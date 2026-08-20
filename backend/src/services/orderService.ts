@@ -1,11 +1,34 @@
+import type pg from 'pg';
 import { db, withTransaction } from '../database/pool.js';
 import { cartRepo } from '../repositories/cartRepo.js';
 import { productRepo } from '../repositories/catalogRepo.js';
 import { governorateRepo } from '../repositories/storefrontRepo.js';
-import { orderRepo, type OrderItemSnapshot } from '../repositories/orderRepo.js';
+import { orderRepo, type OrderItemSnapshot, type OrderWithItems } from '../repositories/orderRepo.js';
 import { ORDER_STATUSES as ALL_ORDER_STATUSES } from '../types/order-status.js';
 import { ORDER_STATUS_TRANSITIONS, type OrderStatus } from '../types/index.js';
 import { Errors } from '../utils/errors.js';
+
+/**
+ * رفض طلب داخل معاملة واحدة: تحديث الحالة + استرجاع المخزون المحجوز.
+ * — تُسترد الكميات مرة واحدة (التحديث نفسه يسجَّل في order_status_history).
+ * — تُحمى من الاسترجاع المزدوج: إذا كان الطلب مرفوضاً أصلاً لا يُسترد شيء.
+ * يعتمد هذا المسارُ الموحّدَ في رفض الإدارة وفي إلغاء العميل.
+ */
+async function rejectOrderInTransaction(
+  tx: pg.PoolClient,
+  order: OrderWithItems,
+  status: OrderStatus,
+  note: string | null,
+  changedBy: string,
+) {
+  await orderRepo.updateStatus(tx, order.id, status, note, changedBy);
+  for (const item of order.items) {
+    await tx.query('UPDATE products SET stock = stock + $2 WHERE id = $1', [
+      item.productId,
+      item.quantity,
+    ]);
+  }
+}
 
 export const orderService = {
   /** إنشاء طلب: معاملة واحدة — تحقق المخزون، لقطات، إنشاء، تنزيل المخزون، تفريغ العربة. */
@@ -78,16 +101,10 @@ export const orderService = {
     if (order.status !== 'PENDING_ADMIN_CONFIRMATION' && order.status !== 'CONFIRMED') {
       throw Errors.conflict('لا يمكن إلغاء طلب في هذه المرحلة');
     }
-    await orderRepo.updateStatus(db, order.id, 'REJECTED', 'أُلغي من قبل العميل', userId);
-    // استرجاع المخزون عند الإلغاء.
-    await withTransaction(async (tx) => {
-      for (const item of order.items) {
-        await tx.query('UPDATE products SET stock = stock + $2 WHERE id = $1', [
-          item.productId,
-          item.quantity,
-        ]);
-      }
-    });
+    // تحديث الحالة + استرجاع المخزون في معاملة واحدة (نفس مسار رفض الإدارة).
+    await withTransaction((tx) =>
+      rejectOrderInTransaction(tx, order, 'REJECTED', 'أُلغي من قبل العميل', userId),
+    );
     return orderRepo.findById(db, order.id);
   },
 
@@ -105,7 +122,7 @@ export const orderService = {
     return order;
   },
 
-  /** تحديث حالة الطلب مع التحقق من الانتقال المسموح به. */
+  /** تحديث حالة الطلب مع التحقق من الانتقال المسموح به + استرجاع المخزون عند الرفض. */
   async adminUpdateStatus(adminId: string, orderId: string, input: { status: OrderStatus; note?: string }) {
     const order = await orderRepo.findById(db, orderId);
     if (!order) throw Errors.notFound('الطلب غير موجود');
@@ -116,18 +133,16 @@ export const orderService = {
     }
 
     const isRejection = input.status === 'REJECTED';
-    await withTransaction(async (tx) => {
-      await orderRepo.updateStatus(tx, order.id, input.status, input.note ?? null, adminId);
-      if (isRejection) {
-        // استرجاع المخزون المحجوز عند الرفض.
-        for (const item of order.items) {
-          await tx.query('UPDATE products SET stock = stock + $2 WHERE id = $1', [
-            item.productId,
-            item.quantity,
-          ]);
-        }
-      }
-    });
+    const alreadyRejected = order.status === 'REJECTED';
+    if (isRejection && !alreadyRejected) {
+      await withTransaction((tx) =>
+        rejectOrderInTransaction(tx, order, input.status, input.note ?? null, adminId),
+      );
+    } else {
+      await withTransaction((tx) =>
+        orderRepo.updateStatus(tx, order.id, input.status, input.note ?? null, adminId),
+      );
+    }
     return orderRepo.findById(db, order.id);
   },
 };

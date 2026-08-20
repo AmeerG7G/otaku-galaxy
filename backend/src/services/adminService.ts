@@ -7,7 +7,7 @@ import {
 import { orderRepo } from '../repositories/orderRepo.js';
 import { bannerRepo, governorateRepo } from '../repositories/storefrontRepo.js';
 import { userRepo } from '../repositories/userRepo.js';
-import { ORDER_STATUS_TRANSITIONS, type OrderStatus } from '../types/index.js';
+import type { OrderStatus } from '../types/index.js';
 import { Errors } from '../utils/errors.js';
 import { orderService } from './orderService.js';
 
@@ -224,14 +224,12 @@ export const adminService = {
   },
 
   async updateOrderStatus(adminId: string, orderId: string, status: OrderStatus, note?: string) {
-    const order = await orderRepo.findById(db, orderId);
-    if (!order) throw Errors.notFound('الطلب غير موجود');
-    const allowed = ORDER_STATUS_TRANSITIONS[order.status] ?? [];
-    if (!allowed.includes(status) && order.status !== status) {
-      throw Errors.conflict(`غير مسموح بالانتقال من ${order.status} إلى ${status}`);
-    }
-    await orderRepo.updateStatus(db, order.id, status, note ?? null, adminId);
-    return (await orderRepo.findById(db, order.id))!;
+    // مسار موحّد عبر orderService: تحقق الانتقال + استرجاع المخزون عند الرفض في معاملة واحدة.
+    const updated = await orderService.adminUpdateStatus(adminId, orderId, {
+      status,
+      note,
+    });
+    return updated!;
   },
 
   // ===== المستخدمون =====

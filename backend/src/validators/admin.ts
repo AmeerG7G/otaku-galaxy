@@ -31,7 +31,32 @@ export const adminProductCreateSchema = z.object({
   isSelected: z.boolean().default(false),
 });
 
-export const adminProductUpdateSchema = adminProductCreateSchema.partial().extend({
+/**
+ * شكل التحديث يختلف عن الإنشاء:
+ * الإنشاء يملأ القيم الافتراضية (صور/خيارات فارغة…)؛ أما التحديث فيجب أن يكون
+ * «حاضر الوعي» — الحقل الغائب يبقى كما هو في قاعدة البيانات، والحقل الموجود
+ * (حتى لو مصفوفة فارغة) يُطبَّق كما هو. اعتماداً على createSchema.partial()
+ * كان يُعيد ملء الافتراضات ([]) عند غياب الحقل فيمسح البيانات — خلل موثّق.
+ */
+export const adminProductUpdateSchema = z.object({
+  name: z.string().trim().min(2).max(150).optional(),
+  description: z.string().trim().max(3000).optional(),
+  price: z.number().positive('السعر يجب أن يكون موجباً').max(1_000_000_000).optional(),
+  categoryId: z.string().uuid('معرّف قسم غير صالح').optional(),
+  subcategoryId: z.string().uuid('معرّف قسم فرعي غير صالح').nullable().optional(),
+  stock: z.number().int().min(0).max(100000).optional(),
+  images: z.array(z.string().url('رابط صورة غير صالح').trim()).max(10).optional(),
+  options: z
+    .array(
+      z.object({
+        name: z.string().trim().min(1).max(40),
+        values: z.array(z.string().trim().min(1).max(80)).min(1).max(50),
+      }),
+    )
+    .max(10)
+    .optional(),
+  isOffer: z.boolean().optional(),
+  isSelected: z.boolean().optional(),
   isActive: z.boolean().optional(),
   rating: z.number().min(0).max(5).nullable().optional(),
   reviewCount: z.number().int().min(0).max(1_000_000).optional(),
