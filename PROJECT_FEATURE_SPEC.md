@@ -4525,3 +4525,118 @@ the rating path was already server-driven.
 5. **`api_integration_test.dart` calls `markTestSkipped` when the backend is down but the tests still
    run and fail.** Pre-existing harness weakness, unrelated to this batch; the suite must be run with
    the dev server up.
+
+---
+
+# STEP 24 — THREE-ENVIRONMENT SPLIT (dev / staging / prod)
+*2026-08-25 · environment separation across Flutter, backend, admin and Git*
+
+Operational reference lives in [`README.md`](README.md). This section records what
+changed and, importantly, what was and was not verified.
+
+## 24.1 Two real defects found during the split
+
+**(a) [CRITICAL] staging and production shared one API host.** `AppConfig.staging`
+and `AppConfig.production` both pointed at `https://api.otaku-galaxy.example/api`.
+A staging build would have written to production data with nothing to indicate it.
+They now have distinct hosts, and `config_test.dart` asserts they can never be
+equal again.
+
+**(b) [CRITICAL] staging inherited development's security posture.** `isProduction`
+was `nodeEnv === 'production'`, so a staging deploy fell into the *development*
+branch of every secret check: the marked dev JWT fallback was accepted, the fixed
+OTP `123456` could be enabled, `SMS_PROVIDER=console` was allowed, and seeding was
+permitted. A host carrying realistic data with development-grade auth is the worst
+combination available. `requiresRealSecrets = (prod || staging)` now governs all of
+it — verified live: staging refuses to boot without `JWT_SECRET`/`DATABASE_URL`,
+and refuses `DEV_OTP_ENABLED=true`.
+
+A third, smaller issue: `usesCleartextTraffic="true"` applied to **every** Android
+build including production. It is now scoped to the dev flavor's manifest.
+
+## 24.2 Git
+
+Branches `dev`, `staging`, `prod`, all created from one commit so they start
+identical. `prod` is the GitHub default. `master` is retained as a historical
+pointer only.
+
+Release path is `dev → staging → prod`, never `dev → prod`. Pull requests state
+direction explicitly (`base` = destination, `compare` = source).
+
+**Protection (verified by attempting a direct push, which was rejected):**
+
+| | `staging` | `prod` |
+|---|---|---|
+| Pull request required | ✅ | ✅ |
+| Approving reviews | 0 | 1 |
+| Required status checks | 3 | 3 |
+| Branch must be up to date | ✅ | ✅ |
+| Force push | ❌ | ❌ |
+| Deletion | ❌ | ❌ |
+| Applies to admins | ✅ | ✅ |
+
+`enforce_admins` matters: with it off, protection *warned* but the owner's direct
+push to `prod` still succeeded. It is now on for both branches.
+
+## 24.3 Flutter
+
+Three entry points (`main_dev` / `main_staging` / `main_prod`) delegating to one
+shared `main_common.dart`. No application code is duplicated. The legacy
+`main.dart` still honours `--dart-define=APP_ENV`.
+
+Android flavors `dev` / `staging` / `prod`. **The production `applicationId` is
+unchanged** (`com.otakugalaxy.otaku_galaxy`) so Play Store updates are unaffected;
+dev and staging carry `.dev` / `.staging` suffixes so all three coexist on a device.
+
+## 24.4 Backend
+
+`APP_ENV` (`dev`/`staging`/`prod`) selects the environment and its file. Loading
+order — process environment → `.env.<APP_ENV>` → `.env` — so deployment secrets can
+be injected without ever touching disk. Templates are committed
+(`.env.<env>.example`); real files are gitignored.
+
+`DOTENV_CONFIG_PATH`, when set, loads *only* that file. This preserves the test
+isolation contract: without it, the fixtures re-loaded the developer's `.env` and
+the production fail-fast tests silently passed while testing nothing. That
+regression was introduced and caught during this batch.
+
+## 24.5 Admin dashboard
+
+Vite modes `dev` / `staging` / `prod` with per-mode `.env` files. A **DEV** or
+**STAGING** badge appears in the header; production shows none — the three
+dashboards are otherwise identical, so the badge is the practical guard against
+editing the wrong database.
+
+## 24.6 Verification
+
+| Check | Result |
+|---|---|
+| Backend `tsc --noEmit` | clean |
+| Backend `vitest` | **209 passed** (203 + 6 new staging-hardening tests) |
+| staging refuses to boot without secrets | **verified live** |
+| staging refuses `DEV_OTP_ENABLED=true` | **verified live** |
+| dev still boots with fallbacks | **verified live** |
+| `npm run dev` + real API call | **verified live** (`/catalog/home` → 200) |
+| `flutter analyze` | clean |
+| `flutter test --exclude-tags integration` | **291 passed** |
+| Admin `tsc -b` | clean |
+| Admin build in all three modes | **verified**, each bakes a different API host |
+| Direct push to `prod` / `staging` | **verified rejected** |
+
+**Not verified — Android builds.** `flutter build apk --flavor …` cannot complete
+in this environment: only a JRE is installed (`javac` absent), so Gradle fails at
+`compileDevDebugJavaWithJavac`. What *was* verified is that Gradle configures the
+flavors and generates every expected variant task — `assembleDevDebug`,
+`assembleStagingDebug`, `assembleProdRelease`, `bundleProdRelease` all resolve.
+Completing an actual APK/AAB needs a JDK and must be confirmed by the maintainer.
+
+## 24.7 Remaining limitations
+
+1. **Android/iOS builds unverified** (§24.6). iOS flavors (schemes + xcconfigs)
+   were not configured at all — Xcode is unavailable here.
+2. **API hosts are placeholders.** `*.otaku-galaxy.example` does not resolve.
+   Real hosts must be set in the env files, or passed via
+   `--dart-define=API_BASE_URL`. `AppConfig.usesPlaceholderApi` logs a warning.
+3. **No staging or production database exists yet** — both must be provisioned.
+4. **CI has never run**; its checks are required by branch protection, so the
+   first pull request will be what actually exercises the workflow.
