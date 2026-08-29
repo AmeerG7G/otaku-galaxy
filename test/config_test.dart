@@ -28,13 +28,26 @@ void main() {
   });
 
   test('بيئات غير التطويرية تستخدم عنواناً صريحاً مستقلاً عن المنصة', () {
+    // عنوانٌ صريح (لا اشتقاق من المنصة) لكلتيهما.
+    expect(AppConfig.staging.apiBaseUrl, startsWith('https://'));
+    expect(AppConfig.production.apiBaseUrl, startsWith('https://'));
+  });
+
+  /// [CRITICAL] الاختبار المسبق والإنتاج لا يتشاركان مضيفاً.
+  ///
+  /// كانا يشيران إلى نفس العنوان حرفياً، أي أن بناء الاختبار كان يكتب في
+  /// بيانات الإنتاج بلا أي مؤشّر. هذا الفحص يمنع عودة ذلك.
+  test('عنوان الاختبار المسبق يختلف عن عنوان الإنتاج', () {
     expect(
       AppConfig.staging.apiBaseUrl,
-      'https://api.otaku-galaxy.example/api',
+      isNot(equals(AppConfig.production.apiBaseUrl)),
+      reason: 'staging يجب ألّا يشير إلى خادم الإنتاج',
     );
-    expect(
-      AppConfig.production.apiBaseUrl,
-      'https://api.otaku-galaxy.example/api',
-    );
+  });
+
+  test('لكل بيئة اسمها القصير المعتمد', () {
+    expect(AppConfig.development.envName, 'dev');
+    expect(AppConfig.staging.envName, 'staging');
+    expect(AppConfig.production.envName, 'prod');
   });
 }

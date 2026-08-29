@@ -61,9 +61,14 @@ coverage/
 !.yarn/versions
 
 # ===== Environment / Secrets =====
+# القاعدة: كل ملف بيئة حقيقي مُستبعَد، وقوالبُه وحدها تُتابَع.
+#
+# `.env.*` وحده كان يبتلع القوالب أيضاً (`.env.dev.example` …)، فيبقى
+# المطوّر الجديد بلا أي مرجع لأسماء المتغيّرات المطلوبة.
 .env
 .env.*
 !.env.example
+!.env.*.example
 !.env.test
 *.pem
 *.key

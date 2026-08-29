@@ -10,6 +10,7 @@ async function main() {
   console.log(
     JSON.stringify({
       nodeEnv: config.nodeEnv,
+      appEnv: config.appEnv,
       isProduction: config.isProduction,
       devOtpEnabled: config.verification.devOtpEnabled,
       jwtSecretLength: config.jwtSecret.length,

@@ -1,11 +1,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
-    <!-- [DEV]: يسمح ببيئة التطوير عبر HTTP مباشر (10.0.2.2). -->
+    <!-- [CRITICAL] لا HTTP صريح هنا.
+         نكهة التطوير وحدها تسمح به عبر بيان خاص بها
+         (`src/dev/AndroidManifest.xml`) لأنها تتصل بـ10.0.2.2 محلياً.
+         تركُه هنا كان يعني أن نسخة الإنتاج تقبل حركةً غير مشفَّرة أيضاً. -->
     <application
-        android:label="otaku_galaxy"
+        android:label="@string/app_name"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher"
-        android:usesCleartextTraffic="true">
+        android:icon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"
             android:exported="true"

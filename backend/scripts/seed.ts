@@ -125,9 +125,11 @@ async function seedAdminUser(client: pg.PoolClient): Promise<void> {
 async function main() {
   // البذر يكتب بيانات تجريبية ويستطيع إنشاء مسؤول — تشغيله على الإنتاج
   // بالخطأ حادثةٌ لا تراجُع عنها، فيتطلّب طلباً صريحاً.
-  if (config.isProduction && process.env.ALLOW_PRODUCTION_SEED !== 'true') {
+  // البذر يكتب بيانات تجريبية — يُرفض في الإنتاج **وفي الاختبار المسبق**،
+  // لأن staging يحمل بيانات شبه حقيقية يفسدها البذر أيضاً.
+  if ((config.isProduction || config.isStaging) && process.env.ALLOW_PRODUCTION_SEED !== 'true') {
     throw new Error(
-      'رفض البذر في الإنتاج. اضبط ALLOW_PRODUCTION_SEED=true إن كنت متأكداً.',
+      `رفض البذر في ${config.appEnv}. اضبط ALLOW_PRODUCTION_SEED=true إن كنت متأكداً.`,
     );
   }
 

@@ -1,17 +1,13 @@
-import 'package:flutter/foundation.dart';
-
-import 'app/view/app.dart';
-import 'bootstrap.dart';
 import 'core/config/app_config.dart';
+import 'main_common.dart';
 
-/// نقطة الدخول: تُقرأ البيئة من --dart-define=APP_ENV وتُهيّأ التطبيق.
-void main() {
-  const env = String.fromEnvironment('APP_ENV', defaultValue: 'development');
-  final config = AppConfig.forEnvironment(Environment.fromString(env));
-  bootstrap(() async => OtakuGalaxyApp(config: config)).then((_) {
-    if (kDebugMode) {
-      // [DEBUG]: سجل نجاح بدء التشغيل أثناء التطوير فقط.
-      debugPrint('App started with $config');
-    }
-  });
+/// نقطة الدخول القديمة — تُبقى للتوافق مع الأدوات التي تشير إلى `lib/main.dart`.
+///
+/// البيئة تُقرأ من `--dart-define=APP_ENV` كما كانت (`dev` / `staging` /
+/// `prod`)، والافتراضي هو التطوير. البناءات الجديدة تستعمل نقاط الدخول
+/// الصريحة (`main_dev.dart` / `main_staging.dart` / `main_prod.dart`) لأنها
+/// تربط النكهة بالبيئة فلا يمكن أن يختارا قيمتين مختلفتين.
+Future<void> main() {
+  const env = String.fromEnvironment('APP_ENV', defaultValue: 'dev');
+  return runOtakuGalaxy(AppConfig.forEnvironment(Environment.fromString(env)));
 }

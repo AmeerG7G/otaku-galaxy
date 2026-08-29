@@ -55,9 +55,14 @@ enum AppConfig {
     enableLogging: true,
   ),
 
+  // [CRITICAL] عنوان الاختبار **يجب** أن يختلف عن عنوان الإنتاج.
+  //
+  // كان الاثنان يشيران إلى نفس المضيف حرفياً، أي أن نسخة الاختبار كانت
+  // تكتب في بيانات الإنتاج. هذا أخطر ما يمكن أن يحدث في فصل البيئات:
+  // لا رسالة خطأ، فقط بياناتُ عملاء حقيقيين تتغيّر من بناءٍ تجريبي.
   staging._(
     environment: Environment.staging,
-    apiBaseUrl: 'https://api.otaku-galaxy.example/api',
+    apiBaseUrl: 'https://staging-api.otaku-galaxy.example/api',
     appName: 'مجرة الأوتاكو (اختبار)',
     enableLogging: true,
   ),
@@ -87,6 +92,25 @@ enum AppConfig {
 
   /// تفعيل التسجيل التفصيلي.
   final bool enableLogging;
+
+  /// الاسم القصير المعتمد للبيئة: `dev` / `staging` / `prod`.
+  ///
+  /// هو نفسه اسم الفرع في Git واسم نكهة أندرويد ووضع Vite في لوحة التحكم،
+  /// فيبقى للبيئة اسمٌ واحد عبر المنظومة كلها بدل ثلاثة أسماء متقاربة.
+  String get envName => switch (environment) {
+    Environment.development => 'dev',
+    Environment.staging => 'staging',
+    Environment.production => 'prod',
+  };
+
+  /// هل ما يزال العنوان قيمةً نائبة لم تُستبدل بمضيف حقيقي؟
+  ///
+  /// المضيفات الحقيقية لم تُنشأ بعد، فنُبقي القيم النائبة ظاهرةً بدل أن
+  /// تبدو إعداداً مكتملاً. البناء الحقيقي يمرّر العنوان عبر
+  /// `--dart-define=API_BASE_URL=...`.
+  bool get usesPlaceholderApi =>
+      _apiBaseUrlOverride.isEmpty &&
+      (apiBaseUrl?.contains('otaku-galaxy.example') ?? false);
 
   /// هل تُعرض ملاحظة «رمز التجربة» في شاشة التحقق؟
   ///

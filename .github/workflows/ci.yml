@@ -1,0 +1,80 @@
+name: CI
+
+# يعمل على طلبات الدمج نحو staging و prod، وعلى الدفع إلى الفروع الثلاثة.
+# وجود هذا الفحص شرطٌ لتفعيل «required status checks» في حماية الفروع.
+on:
+  pull_request:
+    branches: [staging, prod]
+  push:
+    branches: [dev, staging, prod]
+
+jobs:
+  backend:
+    name: Backend (typecheck + tests)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: otaku_galaxy_app
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB: otaku_galaxy_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # بيئة اختبار معزولة تماماً — لا تلمس أي قاعدة حقيقية.
+      NODE_ENV: test
+      TEST_DATABASE_URL: postgres://otaku_galaxy_app:ci_password@localhost:5432/otaku_galaxy_test
+      DATABASE_URL: postgres://otaku_galaxy_app:ci_password@localhost:5432/otaku_galaxy_test
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  admin:
+    name: Admin dashboard (typecheck + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: admin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: admin/package-lock.json
+      - run: npm ci
+      - run: npx tsc -b
+      - run: npx vite build --mode prod
+
+  flutter:
+    name: Flutter (analyze + test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter pub get
+      - run: flutter analyze
+      # اختبارات التكامل تحتاج خادماً حياً؛ موسومة بـ`integration` وتُستثنى
+      # هنا وتُشغَّل محلياً. لا `|| true` — الفشل يجب أن يُفشل الفحص.
+      - run: flutter test --exclude-tags integration

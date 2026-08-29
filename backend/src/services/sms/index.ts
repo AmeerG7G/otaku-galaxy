@@ -112,14 +112,20 @@ export function createSmsProvider(): SmsProvider {
 
   switch (provider) {
     case 'console':
-      if (config.isProduction) {
-        throw new Error('SMS_PROVIDER=console غير مسموح في الإنتاج — اضبط مزوّداً حقيقياً.');
+      // الاختبار المسبق يُعامَل كالإنتاج: بيئةٌ يستعملها بشر يجب أن تُرسل
+      // رسائل حقيقية، لا أن تطبع الرمز في سجلّ الخادم.
+      if (config.isProduction || config.isStaging) {
+        throw new Error(
+          `SMS_PROVIDER=console غير مسموح في ${config.appEnv} — اضبط مزوّداً حقيقياً.`,
+        );
       }
       return new ConsoleSmsProvider();
 
     case 'noop':
-      if (config.isProduction) {
-        throw new Error('SMS_PROVIDER=noop غير مسموح في الإنتاج — لن تصل أي رسالة.');
+      if (config.isProduction || config.isStaging) {
+        throw new Error(
+          `SMS_PROVIDER=noop غير مسموح في ${config.appEnv} — لن تصل أي رسالة.`,
+        );
       }
       return new NoopSmsProvider();
 

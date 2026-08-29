@@ -52,8 +52,15 @@ async function runFixture(script: string, env: Record<string, string | undefined
   }
 }
 
-/** بيئة إنتاج صالحة الأساس — كل حالة تكسر عنصراً واحداً منها. */
+/**
+ * بيئة إنتاج صالحة الأساس — كل حالة تكسر عنصراً واحداً منها.
+ *
+ * `APP_ENV` مذكورة صراحةً لأن العملية الأمّ قد تحمل قيمةً موروثة من ملف
+ * `.env` المحلي، وهي ستطغى على الاشتقاق من `NODE_ENV` فتُفرغ فحصَ الإقلاع
+ * من معناه.
+ */
 const VALID_PRODUCTION_ENV = {
+  APP_ENV: 'prod',
   NODE_ENV: 'production',
   JWT_SECRET: 'a'.repeat(64),
   DATABASE_URL: 'postgres://user:pass@db.example.com:5432/otaku',
@@ -330,6 +337,7 @@ describe('توليد الرمز', () => {
   it('خارج وضع التطوير يُولَّد رمز عشوائي من ستة أرقام لا قيمة ثابتة', async () => {
     // نستدعي المولّد عبر الخدمة مباشرة ببيئة لا تفعّل الرمز الثابت.
     const result = await runFixture('print-config.ts', {
+      APP_ENV: undefined,
       NODE_ENV: 'development',
       DEV_OTP_ENABLED: undefined,
       SMS_PROVIDER: 'console',
@@ -407,6 +415,7 @@ describe('إعدادات الإقلاع — JWT وقاعدة البيانات', 
 
   it('التطوير يعمل ببديل موسوم لا يشبه سرّ إنتاج', async () => {
     const result = await runFixture('print-config.ts', {
+      APP_ENV: undefined,
       NODE_ENV: 'development',
       JWT_SECRET: undefined,
       DATABASE_URL: undefined,
@@ -423,6 +432,7 @@ describe('إعدادات الإقلاع — JWT وقاعدة البيانات', 
 describe('سلوك الرمز الثابت بين التطوير والإنتاج', () => {
   it('لا يعمل الرمز الثابت لمجرّد غياب NODE_ENV', async () => {
     const result = await runFixture('print-config.ts', {
+      APP_ENV: undefined,
       NODE_ENV: undefined,
       DEV_OTP_ENABLED: undefined,
       JWT_SECRET: undefined,
@@ -437,6 +447,7 @@ describe('سلوك الرمز الثابت بين التطوير والإنتا�
 
   it('يعمل في التطوير عند طلبه صراحةً', async () => {
     const result = await runFixture('print-config.ts', {
+      APP_ENV: undefined,
       NODE_ENV: 'development',
       DEV_OTP_ENABLED: 'true',
       JWT_SECRET: undefined,
@@ -454,6 +465,83 @@ describe('سلوك الرمز الثابت بين التطوير والإنتا�
     });
     expect(result.ok).toBe(false);
     expect((result as { stderr: string }).stderr).toContain('DEV_OTP_ENABLED');
+  });
+});
+
+/**
+ * [CRITICAL] الاختبار المسبق (staging) بيئةٌ حقيقية لا امتداد للتطوير.
+ *
+ * كان `staging` يقع خارج فرع الإنتاج في كل فحوص الأسرار، فيرث بدائل
+ * التطوير: مفتاح توقيع معروف، ورمز تحقق ثابت `123456`، ومزوّد رسائل يطبع
+ * في الطرفية. خادمٌ يحمل بيانات شبه حقيقية بحماية التطوير هو أسوأ تركيبة
+ * ممكنة — يبدو جاهزاً وهو مكشوف.
+ */
+describe('الاختبار المسبق مشدَّد كالإنتاج', () => {
+  const VALID_STAGING_ENV = {
+    APP_ENV: 'staging',
+    NODE_ENV: 'production',
+    JWT_SECRET: 'b'.repeat(64),
+    DATABASE_URL: 'postgres://user:pass@staging-db.example.com:5432/otaku_staging',
+    DEV_OTP_ENABLED: undefined,
+    DEV_OTP_CODE: undefined,
+    SMS_PROVIDER: 'http',
+  };
+
+  it('يسقط عند غياب JWT_SECRET', async () => {
+    const result = await runFixture('print-config.ts', {
+      ...VALID_STAGING_ENV,
+      JWT_SECRET: undefined,
+    });
+    expect(result.ok).toBe(false);
+    expect((result as { stderr: string }).stderr).toContain('JWT_SECRET');
+  });
+
+  it('يرفض مفتاحاً ضعيفاً', async () => {
+    const result = await runFixture('print-config.ts', {
+      ...VALID_STAGING_ENV,
+      JWT_SECRET: 'insecure_dev_secret_change_me',
+    });
+    expect(result.ok).toBe(false);
+    expect((result as { stderr: string }).stderr).toContain('JWT_SECRET');
+  });
+
+  it('يسقط عند غياب DATABASE_URL', async () => {
+    const result = await runFixture('print-config.ts', {
+      ...VALID_STAGING_ENV,
+      DATABASE_URL: undefined,
+    });
+    expect(result.ok).toBe(false);
+    expect((result as { stderr: string }).stderr).toContain('DATABASE_URL');
+  });
+
+  it('يرفض الرمز الثابت 123456', async () => {
+    const result = await runFixture('print-config.ts', {
+      ...VALID_STAGING_ENV,
+      DEV_OTP_ENABLED: 'true',
+    });
+    expect(result.ok).toBe(false);
+    expect((result as { stderr: string }).stderr).toContain('DEV_OTP_ENABLED');
+  });
+
+  it('يرفض مزوّد الرسائل الطرفي والصامت', async () => {
+    for (const provider of ['console', 'noop']) {
+      const result = await runFixture('build-sms-provider.ts', {
+        ...VALID_STAGING_ENV,
+        SMS_PROVIDER: provider,
+      });
+      expect(result.ok, provider).toBe(false);
+      expect((result as { stderr: string }).stderr).toContain(provider);
+    }
+  });
+
+  it('يقلع حين تكتمل أسراره، وبلا رمز تطوير', async () => {
+    const result = await runFixture('print-config.ts', VALID_STAGING_ENV);
+    expect(result.ok).toBe(true);
+    const parsed = JSON.parse((result as { stdout: string }).stdout);
+    expect(parsed.devOtpEnabled).toBe(false);
+    expect(parsed.appEnv).toBe('staging');
+    // ولا يشترك مع الإنتاج في وصلة القاعدة.
+    expect(parsed.databaseUrl).toContain('staging');
   });
 });
 
@@ -493,6 +581,7 @@ describe('حدّ التماس مع مزوّد الرسائل', () => {
 
   it('مزوّد http يرسل الطلب فعلاً بالشكل المتفق عليه', async () => {
     const result = await runFixture('sms-http-roundtrip.ts', {
+      APP_ENV: undefined,
       NODE_ENV: 'development',
       DEV_OTP_ENABLED: undefined,
       SMS_PROVIDER: undefined,
@@ -516,6 +605,7 @@ describe('حدّ التماس مع مزوّد الرسائل', () => {
 
   it('فشل المزوّد يظهر خطأً لا صمتاً', async () => {
     const result = await runFixture('sms-http-roundtrip.ts', {
+      APP_ENV: undefined,
       NODE_ENV: 'development',
       DEV_OTP_ENABLED: undefined,
       SMS_PROVIDER: undefined,

@@ -25,6 +25,41 @@ android {
         versionName = flutter.versionName
     }
 
+    // `resValue` معطّل افتراضياً في هذه النسخة من AGP؛ نفعّله كي يحصل كل
+    // نكهة على اسم تطبيق خاص بها (`app_name`).
+    buildFeatures {
+        resValues = true
+    }
+
+    // ── نكهات البيئات ──
+    //
+    // [CRITICAL] معرّف الإنتاج يبقى كما هو: com.otakugalaxy.otaku_galaxy
+    //
+    // تغييرُه يُنشئ تطبيقاً جديداً في Google Play ويقطع التحديثات عن كل من
+    // ثبّت النسخة الحالية. لذلك يأخذ الإنتاج المعرّف الأصلي بلا لاحقة،
+    // بينما تُضاف لاحقة للتطوير والاختبار وحدهما ليتعايشا معه على الجهاز.
+    flavorDimensions += "env"
+
+    productFlavors {
+        create("dev") {
+            dimension = "env"
+            applicationIdSuffix = ".dev"
+            versionNameSuffix = "-dev"
+            resValue("string", "app_name", "Otaku Galaxy DEV")
+        }
+        create("staging") {
+            dimension = "env"
+            applicationIdSuffix = ".staging"
+            versionNameSuffix = "-staging"
+            resValue("string", "app_name", "Otaku Galaxy STAGING")
+        }
+        create("prod") {
+            dimension = "env"
+            // بلا لاحقة عمداً — هوية التطبيق المنشور.
+            resValue("string", "app_name", "Otaku Galaxy")
+        }
+    }
+
     buildTypes {
         release {
             // TODO: Add your own signing config for the release build.

@@ -12,10 +12,13 @@ import 'package:otaku_galaxy/features/auth/domain/entities/user.dart';
 void main() {
   test('يبني رابطاً مطلقاً من مرجع نسبي', () {
     configureMediaOrigin(AppConfig.staging);
-    expect(mediaOrigin, 'https://api.otaku-galaxy.example');
+    // الأصل مشتقّ من عنوان البيئة نفسها — لا مضيف مكرَّر في الاختبار يتقادم
+    // كلما تغيّر الإعداد (وهو ما حدث حين فُصل عنوان الاختبار عن الإنتاج).
+    final expected = AppConfig.staging.apiBaseUrl!.replaceAll('/api', '');
+    expect(mediaOrigin, expected);
     expect(
       resolveMediaUrl('/uploads/product/2026/08/a.png'),
-      'https://api.otaku-galaxy.example/uploads/product/2026/08/a.png',
+      '$expected/uploads/product/2026/08/a.png',
     );
   });
 
@@ -55,7 +58,7 @@ void main() {
       'description': '',
       'images': ['/uploads/product/a.png', 'https://cdn.test/b.png'],
     });
-    expect(product.images.first, startsWith('https://api.otaku-galaxy.example'));
+    expect(product.images.first, startsWith(mediaOrigin));
     expect(product.images.last, 'https://cdn.test/b.png');
 
     final user = User.fromJson({
@@ -66,6 +69,6 @@ void main() {
       'role': 'customer',
       'createdAt': DateTime.now().toIso8601String(),
     });
-    expect(user.avatarUrl, 'https://api.otaku-galaxy.example/uploads/avatar/a.png');
+    expect(user.avatarUrl, '$mediaOrigin/uploads/avatar/a.png');
   });
 }

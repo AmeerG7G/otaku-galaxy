@@ -1,22 +1,84 @@
-import 'dotenv/config';
+import path from 'node:path';
+import dotenv from 'dotenv';
 
 /**
- * قراءة إعدادات البيئة — مع تمييز صريح بين التطوير والإنتاج.
+ * قراءة إعدادات البيئة — مع تمييز صريح بين التطوير والاختبار والإنتاج.
  *
- * القاعدة الحاكمة هنا: **لا قيمة افتراضية صالحة للإنتاج**. كل سرّ (مفتاح
- * التوقيع، وصلة القاعدة) كان له بديلٌ صامت يعمل في الإنتاج بلا اعتراض، وهو
- * أسوأ من التعطّل: خادمٌ يعمل بمفتاح معروف يبدو سليماً وهو مكشوف. الآن
- * الإنتاج يسقط عند الإقلاع إن نقص سرّ، والتطوير وحده يحتفظ ببدائل واضحة.
+ * القاعدة الحاكمة هنا: **لا قيمة افتراضية صالحة للبيئات الحقيقية**. كل سرّ
+ * (مفتاح التوقيع، وصلة القاعدة) كان له بديلٌ صامت يعمل بلا اعتراض، وهو أسوأ
+ * من التعطّل: خادمٌ يعمل بمفتاح معروف يبدو سليماً وهو مكشوف. الآن الإنتاج
+ * **والاختبار المسبق (staging)** يسقطان عند الإقلاع إن نقص سرّ، والتطوير
+ * وحده يحتفظ ببدائل واضحة.
  */
 
+/** البيئات المعتمدة — نفس أسماء فروع Git ونكهات أندرويد. */
+export type AppEnv = 'dev' | 'staging' | 'prod';
+
+function normaliseAppEnv(raw: string | undefined): AppEnv {
+  switch ((raw ?? '').trim().toLowerCase()) {
+    case 'prod':
+    case 'production':
+      return 'prod';
+    case 'staging':
+    case 'stage':
+      return 'staging';
+    default:
+      return 'dev';
+  }
+}
+
 const nodeEnv = process.env.NODE_ENV ?? 'development';
-const isProduction = nodeEnv === 'production';
 
 /**
- * بيئة الاختبار: NODE_ENV=test أو تشغيل تحت vitest.
+ * بيئة الاختبار الآلي: NODE_ENV=test أو تشغيل تحت vitest.
  * تُقرأ قبل أي تحقّق كي لا يسقط تشغيل الاختبارات على متطلبات الإنتاج.
  */
 export const isTest = nodeEnv === 'test' || import.meta.url.includes('vitest');
+
+/**
+ * البيئة المطلوبة صراحةً، وإلا فمشتقّة من NODE_ENV.
+ *
+ * `APP_ENV` هو المصدر المفضّل لأنه يحمل الأسماء الثلاثة المعتمدة، بينما
+ * `NODE_ENV` تبقى لما تتوقّعه المكتبات (`production` مقابل غيرها).
+ */
+export const appEnv: AppEnv = normaliseAppEnv(
+  process.env.APP_ENV ?? (nodeEnv === 'production' ? 'prod' : undefined),
+);
+
+/**
+ * تحميل ملف البيئة الخاص قبل `.env` العام.
+ *
+ * dotenv لا يدهس متغيّراً مضبوطاً سلفاً، فترتيبُ التحميل هو الأولوية:
+ * متغيّرات العملية (أعلى) ← `.env.<البيئة>` ← `.env`. هكذا يبقى ملف `.env`
+ * القديم صالحاً للتطوير المحلي بلا تغيير، ويأخذ كل نشرٍ ملفَّه.
+ */
+const explicitEnvFile = process.env.DOTENV_CONFIG_PATH?.trim();
+
+if (explicitEnvFile) {
+  // مسار صريح يعني «هذا الملف وحده».
+  //
+  // [CRITICAL] تحترمه الاختبارات لعزل نفسها: توجّهه إلى ملف فارغ كي تفحص
+  // «السرّ مفقود» فعلاً. تحميلُ `.env` بعده كان يُعيد سرّ المطوّر فتمرّ
+  // اختبارات الإقلاع الحرجة وهي لا تفحص شيئاً.
+  dotenv.config({ path: explicitEnvFile, quiet: true });
+} else {
+  // الأولوية: متغيّرات العملية ← `.env.<البيئة>` ← `.env`.
+  // dotenv لا يدهس متغيّراً مضبوطاً سلفاً، فالترتيب هو الأولوية.
+  dotenv.config({ path: path.resolve(process.cwd(), `.env.${appEnv}`), quiet: true });
+  dotenv.config({ quiet: true });
+}
+
+/**
+ * البيئات التي تخدم مستخدمين حقيقيين.
+ *
+ * [CRITICAL] الاختبار المسبق (staging) يُعامَل كالإنتاج في كل ما يخصّ
+ * الأسرار. كان `staging` يقع في فرع «غير الإنتاج» فيرث بدائل التطوير: مفتاح
+ * توقيع معروف، ورمز تحقق ثابت `123456`. خادمٌ يشبه الإنتاج بأمان التطوير
+ * هو أسوأ الاحتمالات — يحمل بيانات شبه حقيقية بحماية لا شيء.
+ */
+const isProduction = appEnv === 'prod';
+const isStaging = appEnv === 'staging';
+const requiresRealSecrets = (isProduction || isStaging) && !isTest;
 
 /** يُجمَع كل نقص إعداد ثم يُرمى مرة واحدة — لا اكتشاف نقص واحد في كل إقلاع. */
 const fatalConfigErrors: string[] = [];
@@ -29,14 +91,14 @@ function requireInProduction(
 ): string {
   const provided = value?.trim();
   if (!provided) {
-    if (isProduction) {
-      fatalConfigErrors.push(`${name} مفقود — مطلوب في الإنتاج بلا بديل.`);
+    if (requiresRealSecrets) {
+      fatalConfigErrors.push(`${name} مفقود — مطلوب في ${appEnv} بلا بديل.`);
       return '';
     }
     return devFallback;
   }
   const problem = extraCheck?.(provided);
-  if (problem && isProduction) {
+  if (problem && requiresRealSecrets) {
     fatalConfigErrors.push(`${name}: ${problem}`);
   }
   return provided;
@@ -102,10 +164,12 @@ const databaseUrl = requireInProduction(
  * نشرةً بلا NODE_ENV كانت تقبل 123456 لكل حساب.
  */
 const devOtpRequested = process.env.DEV_OTP_ENABLED === 'true';
-const devOtpEnabled = devOtpRequested && !isProduction;
+const devOtpEnabled = devOtpRequested && !requiresRealSecrets;
 
-if (devOtpRequested && isProduction) {
-  fatalConfigErrors.push('DEV_OTP_ENABLED=true في الإنتاج — رمز ثابت في الإنتاج غير مقبول.');
+if (devOtpRequested && requiresRealSecrets) {
+  fatalConfigErrors.push(
+    `DEV_OTP_ENABLED=true في ${appEnv} — رمز تحقق ثابت خارج التطوير غير مقبول.`,
+  );
 }
 
 if (fatalConfigErrors.length > 0) {
@@ -117,7 +181,10 @@ if (fatalConfigErrors.length > 0) {
 
 export const config = {
   nodeEnv,
-  isDev: nodeEnv === 'development',
+  /** `dev` / `staging` / `prod` — الاسم المعتمد عبر المنظومة كلها. */
+  appEnv,
+  isDev: appEnv === 'dev',
+  isStaging,
   isProduction,
 
   port: Number(process.env.PORT ?? 4000),
@@ -160,7 +227,7 @@ export const config = {
    * لا اسم مزوّد مخبوز في الكود — تبديله إعدادٌ لا إعادة كتابة.
    */
   sms: {
-    provider: (process.env.SMS_PROVIDER ?? (isProduction ? 'http' : 'console')).toLowerCase(),
+    provider: (process.env.SMS_PROVIDER ?? (requiresRealSecrets ? 'http' : 'console')).toLowerCase(),
     apiKey: process.env.SMS_API_KEY ?? '',
     apiSecret: process.env.SMS_API_SECRET ?? '',
     sender: process.env.SMS_SENDER ?? '',

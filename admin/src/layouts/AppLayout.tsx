@@ -20,6 +20,8 @@ import {
 import { NAV_ITEMS, activeMenuKey } from './nav'
 import { useAuthStore } from '../stores/authStore'
 
+import { ENV_BADGE } from '../config/env'
+
 const { Sider, Header, Content } = Layout
 
 export default function AppLayout() {
@@ -157,6 +159,12 @@ export default function AppLayout() {
           <Typography.Text strong style={{ fontSize: 16 }}>
             لوحة تحكم مجرات الاوتاكو
           </Typography.Text>
+          {/* شارة البيئة: تُظهر بوضوح أن هذه ليست لوحة الإنتاج. */}
+          {ENV_BADGE && (
+            <Tag color={ENV_BADGE.color} style={{ fontWeight: 700, margin: 0 }}>
+              {ENV_BADGE.label}
+            </Tag>
+          )}
           <div style={{ flex: 1 }} />
           <Tag color="gold">مشرف</Tag>
           <Space size={4}>
