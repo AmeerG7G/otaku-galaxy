@@ -17,14 +17,10 @@ class CartItem {
 
   double get lineTotal => product.price * quantity;
 
-  factory CartItem.fromJson(Map<String, dynamic> json) {
-    return CartItem(
-      product: Product.fromJson(json['product'] as Map<String, dynamic>),
-      quantity: json['quantity'] as int? ?? 1,
-      selectedOption: json['selectedOption'] as String?,
-      lineId: json['id']?.toString(),
-    );
-  }
+  // [REMOVED] `CartItem.fromJson` — لم يكن يُستدعى قط، وكان يقرأ
+  // `json['product']` بينما الخادم يعيد سطر سلة مسطّحاً بلا هذا المفتاح
+  // إطلاقاً. أي استعمال له كان سيرمي وقت التشغيل. التحويل الحقيقي والوحيد
+  // هو `CartRepositoryImpl._mapLine`، وهو يقرأ الشكل الذي يرسله الخادم فعلاً.
 
   CartItem copyWith({int? quantity, String? selectedOption, String? lineId}) {
     return CartItem(

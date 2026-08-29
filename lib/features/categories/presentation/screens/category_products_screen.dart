@@ -4,13 +4,16 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/design_system/design_system.dart';
 import '../../../../core/router/app_router.dart';
-import '../../../favorites/presentation/cubit/favorites_cubit.dart';
 import '../../../home/presentation/widgets/product_card.dart';
 import '../../../products/domain/entities/category.dart';
 import '../../../products/domain/entities/product.dart';
 import '../../../products/domain/usecases/fetch_categories_usecase.dart';
 import '../../../products/domain/usecases/fetch_category_products_usecase.dart';
+import '../../../products/domain/entities/product_sort.dart';
 
+/// شاشة منتجات القسم — عند دخول قسم رئيسي له أقسام فرعية، تُفتح مباشرةً
+/// على أول قسم فرعي (بلا صفحة "الكل")، مع إمكانية التنقل بالسحب الأفقي
+/// أو بالنقر على اسم القسم الفرعي أعلى الشاشة.
 @RoutePage()
 class CategoryProductsScreen extends StatefulWidget {
   const CategoryProductsScreen({
@@ -31,12 +34,20 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
   List<String> _subcategories = const [];
   // معرّفات الأقسام الفرعية (اسم → معرّف) لفلترة المنتجات عبر subcategoryId.
   Map<String, String> _subcategoryIds = const {};
-  // الصفحة المحددة في المتصفح: 0 = الكل، 1..n = الأقسام الفرعية.
+  // الصفحة الحالية داخل الأقسام الفرعية (0 = أول قسم فرعي — لا صفحة "الكل").
   int _selectedPage = 0;
   bool _loading = true;
+
+  /// الترتيب المختار — يُرسل للخادم عند كل تحميل.
+  ProductSort _sort = ProductSort.newest;
   String? _error;
 
+  /// ترتيب القسم ضمن قائمة الأقسام — يحدّد تدرّج ترويسة v2.
+  /// القسم كما وصل من الخادم (لصورته وأقسامه الفرعية)؛ null قبل التحميل.
+  Category? _category;
+
   late final PageController _pageController;
+  final _pillsScrollController = ScrollController();
 
   @override
   void initState() {
@@ -48,6 +59,7 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
   @override
   void dispose() {
     _pageController.dispose();
+    _pillsScrollController.dispose();
     super.dispose();
   }
 
@@ -60,17 +72,21 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
       final fetchCategoryProducts = context
           .read<FetchCategoryProductsUsecase>();
       final fetchCategories = context.read<FetchCategoriesUsecase>();
-      final products = await fetchCategoryProducts(widget.categoryId);
+      final products = await fetchCategoryProducts(
+        widget.categoryId,
+        sort: _sort,
+      );
       List<String> subcategories = const [];
       Map<String, String> subcategoryIds = const {};
       try {
         final categories = await fetchCategories();
-        final matched = categories
-            .where((Category c) => c.id == widget.categoryId)
-            .toList();
-        if (matched.isNotEmpty) {
-          subcategories = matched.first.subcategories;
-          subcategoryIds = matched.first.subcategoryIds;
+        final index = categories.indexWhere(
+          (Category c) => c.id == widget.categoryId,
+        );
+        if (index != -1) {
+          subcategories = categories[index].subcategories;
+          subcategoryIds = categories[index].subcategoryIds;
+          _category = categories[index];
         }
       } catch (_) {
         // الأقسام الفرعية اختيارية — لا نُفشل الشاشة عند عدم توفرها.
@@ -80,6 +96,7 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
         _products = products;
         _subcategories = subcategories;
         _subcategoryIds = subcategoryIds;
+        _selectedPage = 0;
         _loading = false;
       });
     } catch (e) {
@@ -91,12 +108,8 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
     }
   }
 
-  /// المنتجات الخاصة بصفحة معيّنة (0 = الكل، i = القسم الفرعي i-1).
   List<Product> _productsForPage(int page) {
-    if (page == 0) return _products;
-    final subcategory = _subcategories[page - 1];
-    // الخادم يصدّر معرّف القسم الفرعي في المنتجات (subcategoryId) —
-    // نفلتر به، مع رجوع لاسم القسم الفرعي للتوافق القديم عند الحاجة.
+    final subcategory = _subcategories[page];
     final subcategoryId = _subcategoryIds[subcategory];
     if (subcategoryId != null) {
       return _products.where((p) => p.subcategoryId == subcategoryId).toList();
@@ -115,44 +128,148 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.themeColors;
-
     return Scaffold(
-      appBar: AppBar(title: Text(widget.categoryName), centerTitle: true),
-      body: Container(
-        decoration: BoxDecoration(gradient: colors.surfaceGradient),
-        child: _loading
-            ? _buildLoadingGrid()
-            : _error != null
-            ? AnimeErrorState(message: _error!, onAction: _load)
-            : _products.isEmpty
-            ? AnimeEmptyState(
-                title: 'لا توجد منتجات',
-                subtitle: 'لا توجد منتجات في هذا القسم حالياً',
-                icon: Icons.inventory_2_outlined,
-              )
-            : RefreshIndicator(
-                onRefresh: _load,
-                child: _subcategories.isEmpty
-                    ? _buildProductsScroll(_products)
-                    : Column(
-                        children: [
-                          _buildSubcategoryFilter(),
-                          Expanded(
-                            child: PageView.builder(
-                              controller: _pageController,
-                              onPageChanged: (page) =>
-                                  setState(() => _selectedPage = page),
-                              itemCount: _subcategories.length + 1,
-                              itemBuilder: (context, page) =>
-                                  _buildProductsScroll(_productsForPage(page)),
-                            ),
-                          ),
-                        ],
-                      ),
+      body: Column(
+        children: [
+          OtakuScreenHeader.gradient(
+            title: widget.categoryName,
+            subtitle: _loading
+                ? 'جاري التحميل…'
+                : '${_products.length} منتج في هذا القسم',
+            gradient: LinearGradient(
+              // نفس دالة اللون التي تستخدمها بطاقة القسم، ومشتقّة من
+              // المعرّف لا من الترتيب — فيتطابق اللون هنا ومع الشاشتين
+              // الأخريين حتى قبل أن تصل قائمة الأقسام.
+              colors: AnimeCategoryCard.gradientForCategory(
+                _category ??
+                    Category(id: widget.categoryId, name: widget.categoryName),
               ),
+              begin: Alignment.topRight,
+              end: Alignment.bottomLeft,
+            ),
+            onBack: () => context.router.maybePop(),
+            actions: [
+              OtakuHeaderButton(
+                icon: Icons.search_rounded,
+                onGradient: true,
+                tooltip: 'بحث',
+                onTap: () => context.router.push(SearchRoute()),
+              ),
+            ],
+          ),
+          Expanded(child: _buildContent()),
+        ],
       ),
     );
+  }
+
+  Widget _buildContent() {
+    if (_loading) return const OtakuProductSkeletonGrid();
+    if (_error != null) {
+      return AnimeErrorState(message: _error!, onAction: _load);
+    }
+    if (_products.isEmpty) {
+      return AnimeEmptyState(
+        title: 'ما بيه منتجات هنا',
+        subtitle: 'هذا القسم فاضي حالياً — جرّب قسم ثاني أو ارجع لاحقاً.',
+        artwork: 'assets/art/a-l-detective.png',
+        actionLabel: 'رجوع للأقسام',
+        onAction: () => context.router.maybePop(),
+      );
+    }
+
+    if (_subcategories.isEmpty) {
+      return Column(
+        children: [
+          _buildSortBar(),
+          Expanded(child: _buildProductsScroll(_products)),
+        ],
+      );
+    }
+
+    return Column(
+      children: [
+        _buildSubcategoryPills(),
+        _buildSortBar(),
+        Expanded(
+          child: PageView.builder(
+            controller: _pageController,
+            onPageChanged: (page) {
+              setState(() => _selectedPage = page);
+              _scrollPillIntoView(page);
+            },
+            itemCount: _subcategories.length,
+            itemBuilder: (context, page) =>
+                _buildProductsScroll(_productsForPage(page)),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _scrollPillIntoView(int index) {
+    // تمرير تقريبي يبقي التبويب المختار مرئياً — كل شارة بعرض متغيّر بسيط
+    // فنقدّر الإزاحة بمعدل ثابت مقبول بصرياً بدل قياس دقيق لكل شارة.
+    if (!_pillsScrollController.hasClients) return;
+    final target = (index - 1).clamp(0, _subcategories.length - 1) * 96.0;
+    _pillsScrollController.animateTo(
+      target.clamp(0, _pillsScrollController.position.maxScrollExtent),
+      duration: AppDimens.durationNormal,
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  /// شارات الأقسام الفرعية أعلى الشاشة — نقر أو سحب أفقي للتنقل بينها.
+  Widget _buildSubcategoryPills() {
+    // بلا ارتفاع ثابت: `SizedBox(height: 52)` ناقص الحشوة كان يترك ٣٤ بكسل
+    // لرقاقة تحتاج أكثر، فتُقصّ الكبسولة ونصفُ النص معها. التمرير الأفقي
+    // هنا يقيس محتواه، فيتمدّد مع تكبير الخط ولا يقصّ شيئاً.
+    return SingleChildScrollView(
+      controller: _pillsScrollController,
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.fromLTRB(18, 14, 18, 8),
+      child: Row(
+        children: [
+          for (var index = 0; index < _subcategories.length; index++) ...[
+            if (index > 0) const SizedBox(width: 7),
+            AnimeChoiceChip(
+              label: _subcategories[index],
+              selected: _selectedPage == index,
+              onSelected: (selected) {
+                if (selected) _selectPage(index);
+              },
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// شريط الترتيب — سطح عائم بحافة ١٫٥ كما في مصدر التصميم.
+  Widget _buildSortBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 10, 18, 6),
+      child: OtakuSortBar(label: _sort.label, onTap: _openSortSheet),
+    );
+  }
+
+  /// ورقة الترتيب السفلية — بديل قوائم Material المنسدلة.
+  ///
+  /// النتيجة تُحفظ في الحالة ثم يُعاد التحميل من الخادم، فيشمل الترتيب
+  /// الكتالوج كاملاً لا الصفحة المعروضة فقط.
+  Future<void> _openSortSheet() async {
+    final picked = await showOtakuPicker<ProductSort>(
+      context: context,
+      title: 'ترتيب حسب',
+      selected: _sort,
+      options: [
+        for (final sort in ProductSort.values)
+          OtakuPickerOption(value: sort, label: sort.label),
+      ],
+    );
+    if (picked == null || picked == _sort || !mounted) return;
+    setState(() => _sort = picked);
+    await _load();
   }
 
   /// شبكة المنتجات (تُستخدم داخل صفحة المتصفح أو في القسم بلا أقسام فرعية).
@@ -165,144 +282,31 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
             physics: const AlwaysScrollableScrollPhysics(),
             child: SizedBox(
               height: constraints.maxHeight,
-              child: AnimeEmptyState(
-                title: 'لا توجد منتجات',
-                subtitle: 'لا توجد منتجات في هذا القسم الفرعي بعد',
-                icon: Icons.search_off_outlined,
+              child: const AnimeEmptyState(
+                title: 'ما بيه منتجات بهذا القسم',
+                subtitle: 'جرّب قسم فرعي ثاني — أكيد راح تلكي شي يعجبك.',
+                artwork: 'assets/art/a-l-detective.png',
               ),
             ),
           ),
         ),
       );
     }
-    return GridView.builder(
-      padding: EdgeInsets.all(AppDimens.screenHorizontalPadding),
-      physics: const AlwaysScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 220,
-        mainAxisSpacing: AppDimens.space3,
-        crossAxisSpacing: AppDimens.space3,
-        childAspectRatio: 0.7,
-      ),
-      itemCount: products.length,
-      itemBuilder: (context, index) {
-        final product = products[index];
-        return ProductCard(
-          product: product,
-          onTap: () =>
-              context.router.push(ProductDetailRoute(productId: product.id)),
-          onFavoriteToggle: () =>
-              context.read<FavoritesCubit>().toggle(product),
-        );
-      },
-    );
-  }
-
-  Widget _buildSubcategoryFilter() {
-    return SizedBox(
-      height: 48,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: EdgeInsets.all(AppDimens.screenHorizontalPadding),
-        itemCount: _subcategories.length + 1,
-        separatorBuilder: (_, _) => SizedBox(width: AppDimens.space2),
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: GridView.builder(
+        padding: const EdgeInsets.fromLTRB(18, 10, 18, 26),
+        physics: const AlwaysScrollableScrollPhysics(),
+        gridDelegate: kProductGridDelegate,
+        itemCount: products.length,
         itemBuilder: (context, index) {
-          if (index == 0) {
-            return AnimeChoiceChip(
-              label: 'الكل',
-              selected: _selectedPage == 0,
-              onSelected: (selected) {
-                if (selected) _selectPage(0);
-              },
-            );
-          }
-          final subcategory = _subcategories[index - 1];
-          return AnimeChoiceChip(
-            label: subcategory,
-            selected: _selectedPage == index,
-            onSelected: (selected) {
-              if (selected) _selectPage(index);
-            },
+          final product = products[index];
+          return ProductCard(
+            product: product,
+            onTap: () =>
+                context.router.push(ProductDetailRoute(productId: product.id)),
           );
         },
-      ),
-    );
-  }
-
-  Widget _buildLoadingGrid() {
-    return GridView.builder(
-      padding: EdgeInsets.all(AppDimens.screenHorizontalPadding),
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 220,
-        mainAxisSpacing: AppDimens.space3,
-        crossAxisSpacing: AppDimens.space3,
-        childAspectRatio: 0.7,
-      ),
-      itemCount: 6,
-      itemBuilder: (context, index) => _buildProductSkeleton(),
-    );
-  }
-
-  Widget _buildProductSkeleton() {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppDimens.cardBorderRadius),
-        side: BorderSide(
-          color: Theme.of(context).colorScheme.outlineVariant,
-          width: AppDimens.cardBorderWidth,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    Theme.of(context).colorScheme.outlineVariant,
-                    Theme.of(context).colorScheme.surfaceContainerHighest,
-                  ],
-                ),
-                borderRadius: BorderRadius.vertical(
-                  top: Radius.circular(AppDimens.cardBorderRadius),
-                ),
-              ),
-            ),
-          ),
-          Padding(
-            padding: EdgeInsets.all(AppDimens.cardPadding),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildSkeletonLine(width: 1.0, height: 16),
-                SizedBox(height: AppDimens.space2),
-                _buildSkeletonLine(width: 0.7, height: 14),
-                SizedBox(height: AppDimens.space2),
-                _buildSkeletonLine(width: 0.5, height: 14),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSkeletonLine({required double width, required double height}) {
-    return FractionallySizedBox(
-      widthFactor: width,
-      child: Container(
-        height: height,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              Theme.of(context).colorScheme.outlineVariant,
-              Theme.of(context).colorScheme.surfaceContainerHighest,
-            ],
-          ),
-          borderRadius: BorderRadius.circular(AppDimens.radiusSm),
-        ),
       ),
     );
   }

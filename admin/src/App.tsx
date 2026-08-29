@@ -15,7 +15,14 @@ const CategoriesPage = lazy(() => import('./pages/CategoriesPage'))
 const BannersPage = lazy(() => import('./pages/BannersPage'))
 const GovernoratesPage = lazy(() => import('./pages/GovernoratesPage'))
 const CustomersPage = lazy(() => import('./pages/CustomersPage'))
+const BirthdaysPage = lazy(() => import('./pages/BirthdaysPage'))
+const PointsPage = lazy(() => import('./pages/PointsPage'))
+const NotificationsPage = lazy(() => import('./pages/NotificationsPage'))
 const OffersPage = lazy(() => import('./pages/OffersPage'))
+const ReviewsPage = lazy(() => import('./pages/ReviewsPage'))
+const FranchisesPage = lazy(() => import('./pages/FranchisesPage'))
+const DeliveryZonesPage = lazy(() => import('./pages/DeliveryZonesPage'))
+const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 
 function App() {
   return (
@@ -35,7 +42,14 @@ function App() {
               <Route path="/banners" element={<BannersPage />} />
               <Route path="/governorates" element={<GovernoratesPage />} />
               <Route path="/customers" element={<CustomersPage />} />
+              <Route path="/birthdays" element={<BirthdaysPage />} />
+              <Route path="/points" element={<PointsPage />} />
+              <Route path="/notifications" element={<NotificationsPage />} />
               <Route path="/offers" element={<OffersPage />} />
+              <Route path="/reviews" element={<ReviewsPage />} />
+              <Route path="/franchises" element={<FranchisesPage />} />
+              <Route path="/zones" element={<DeliveryZonesPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
             </Route>
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

@@ -17,6 +17,7 @@ class AnimePrimaryButton extends StatelessWidget {
     this.height,
     this.gradient,
     this.glowEnabled = true,
+    this.borderRadius,
   });
 
   final String label;
@@ -29,11 +30,16 @@ class AnimePrimaryButton extends StatelessWidget {
   final LinearGradient? gradient;
   final bool glowEnabled;
 
+  /// نصف قطر مخصّص. الافتراضي [AppDimens.radiusLg] كما هو في بقية الشاشات؛
+  /// شاشات التصميم التي تطلب r-m (٢٢) تمرّره صراحةً.
+  final double? borderRadius;
+
   @override
   Widget build(BuildContext context) {
     final colors = context.themeColors;
     final effectiveGradient = gradient ?? colors.primaryGradient;
     final effectiveHeight = height ?? AppDimens.buttonHeightLg;
+    final radius = borderRadius ?? AppDimens.radiusLg;
 
     return SizedBox(
       width: expanded ? double.infinity : null,
@@ -42,7 +48,7 @@ class AnimePrimaryButton extends StatelessWidget {
         decoration: BoxDecoration(
           gradient: onPressed != null ? effectiveGradient : null,
           color: onPressed == null ? AppColors.onSurfaceDisabled : null,
-          borderRadius: BorderRadius.circular(AppDimens.radiusLg),
+          borderRadius: BorderRadius.circular(radius),
           boxShadow: glowEnabled && onPressed != null
               ? [
                   BoxShadow(
@@ -63,7 +69,7 @@ class AnimePrimaryButton extends StatelessWidget {
             elevation: 0,
             padding: EdgeInsets.symmetric(horizontal: AppDimens.space7),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppDimens.radiusLg),
+              borderRadius: BorderRadius.circular(radius),
             ),
             textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
               fontWeight: AppDimens.weightBold,

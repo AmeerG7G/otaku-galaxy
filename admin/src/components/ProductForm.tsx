@@ -13,6 +13,7 @@ import {
 } from 'antd'
 import { useQuery } from '@tanstack/react-query'
 import { listAdminCategories } from '../api/categoriesApi'
+import { listFranchises } from '../api/communityApi'
 import ImagesEditor from './ImagesEditor'
 import OptionsEditor from './OptionsEditor'
 
@@ -30,6 +31,11 @@ export interface ProductFormValues {
   isSelected: boolean
   rating?: number | null
   reviewCount?: number
+  /** السعر قبل الخصم — منه تُشتق نسبة الخصم والسعر المشطوب في التطبيق. */
+  previousPrice?: number | null
+  hasDeliveryPromo?: boolean
+  deliveryPromoAmount?: number
+  franchiseIds?: string[]
 }
 
 interface ProductFormProps {
@@ -56,7 +62,23 @@ export default function ProductForm({
     queryFn: listAdminCategories,
   })
 
+  const franchisesQuery = useQuery({
+    queryKey: ['admin-franchises'],
+    queryFn: listFranchises,
+  })
+
   const selectedCategoryId = Form.useWatch('categoryId', form)
+  const price = Form.useWatch('price', form)
+  const previousPrice = Form.useWatch('previousPrice', form)
+
+  // النسبة معروضة فقط — مصدرها الحقيقي هو السعران على الخادم.
+  const discountPercent =
+    typeof price === 'number' &&
+    typeof previousPrice === 'number' &&
+    previousPrice > price &&
+    previousPrice > 0
+      ? Math.round(((previousPrice - price) / previousPrice) * 100)
+      : null
 
   const selectedCategory = categoriesQuery.data?.items.find(
     (category) => category.id === selectedCategoryId,
@@ -161,11 +183,105 @@ export default function ProductForm({
         </Space>
       </Card>
 
-      <Card title="الصور (روابط)" variant="outlined" style={{ marginTop: 16 }}>
+      <Card title="الصور" variant="outlined" style={{ marginTop: 16 }}>
         <Typography.Paragraph type="secondary">
-          الخادم يقبل روابط الصور فقط (لا رفع ملفات).
+          ارفع صورة من جهازك أو ألصق رابطاً. الصورة الأولى هي صورة الغلاف.
         </Typography.Paragraph>
-        <ImagesEditor />
+        <ImagesEditor purpose="product" />
+      </Card>
+
+      <Card title="الأنمي المرتبط" variant="outlined" style={{ marginTop: 16 }}>
+        <Typography.Paragraph type="secondary">
+          بُعد تصنيف مستقل عن الأقسام — يسمح للعميل بتصفّح «ون بيس» عبر كل الأقسام.
+        </Typography.Paragraph>
+        <Form.Item name="franchiseIds" style={{ marginBottom: 0 }}>
+          <Select
+            mode="multiple"
+            allowClear
+            placeholder="اختر أنمي واحداً أو أكثر"
+            loading={franchisesQuery.isPending}
+            options={(franchisesQuery.data?.items ?? []).map((franchise) => ({
+              value: franchise.id,
+              label: franchise.name,
+            }))}
+          />
+        </Form.Item>
+      </Card>
+
+      <Card title="العرض والخصم" variant="outlined" style={{ marginTop: 16 }}>
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="نسبة الخصم تُحسب تلقائياً من السعر السابق — لا تُدخل يدوياً. اترك السعر السابق فارغاً إن لم يكن هناك خصم حقيقي."
+        />
+        <Space size="large" wrap align="start">
+          <Form.Item
+            name="previousPrice"
+            label="السعر قبل الخصم"
+            tooltip="يجب أن يكون أعلى من السعر الحالي."
+            rules={[
+              {
+                validator: (_rule, value: number | null) => {
+                  if (value === null || value === undefined) return Promise.resolve()
+                  const current = form.getFieldValue('price') as number
+                  return value > current
+                    ? Promise.resolve()
+                    : Promise.reject(new Error('يجب أن يكون أعلى من السعر الحالي'))
+                },
+              },
+            ]}
+          >
+            <InputNumber min={0} style={{ width: 200 }} addonAfter="د.ع" precision={0} />
+          </Form.Item>
+          <Form.Item label="نسبة الخصم المحسوبة">
+            <Typography.Text strong style={{ fontSize: 18 }}>
+              {discountPercent === null ? '—' : `${discountPercent}%`}
+            </Typography.Text>
+          </Form.Item>
+          <Form.Item
+            name="hasDeliveryPromo"
+            label="ترويج توصيل"
+            valuePropName="checked"
+            tooltip="يخصم مبلغاً من رسوم التوصيل عن كل قطعة من هذا المنتج."
+          >
+            <Switch />
+          </Form.Item>
+          <Form.Item
+            noStyle
+            shouldUpdate={(prev, next) =>
+              prev.hasDeliveryPromo !== next.hasDeliveryPromo
+            }
+          >
+            {({ getFieldValue }) =>
+              getFieldValue('hasDeliveryPromo') ? (
+                <Form.Item
+                  name="deliveryPromoAmount"
+                  label="قيمة خصم التوصيل / قطعة"
+                  tooltip="يُخصم من رسوم التوصيل، وبحدّ أقصى قيمة الرسوم نفسها."
+                  rules={[
+                    {
+                      required: true,
+                      message: 'أدخل قيمة الخصم',
+                    },
+                    {
+                      type: 'number',
+                      min: 1,
+                      message: 'القيمة يجب أن تكون أكبر من صفر',
+                    },
+                  ]}
+                >
+                  <InputNumber
+                    min={0}
+                    style={{ width: 200 }}
+                    addonAfter="د.ع"
+                    precision={0}
+                  />
+                </Form.Item>
+              ) : null
+            }
+          </Form.Item>
+        </Space>
       </Card>
 
       <Card title="الخيارات" variant="outlined" style={{ marginTop: 16 }}>
@@ -202,19 +318,19 @@ export default function ProductForm({
               </Form.Item>
               <Form.Item
                 name="rating"
-                label="التقييم (قيمة يدوية)"
-                tooltip="الخادم لا يحتوي على نظام تقييم من الزبائن — هذه قيمة يدوية يتحكم بها المشرف."
+                label="التقييم"
+                tooltip="يُحتسب تلقائياً من تقييمات العملاء المنشورة — التعديل اليدوي يُستبدل عند نشر أي تقييم."
                 style={{ marginBottom: 0 }}
               >
-                <InputNumber min={0} max={5} step={0.1} style={{ width: 120 }} />
+                <InputNumber min={0} max={5} step={0.1} style={{ width: 120 }} disabled />
               </Form.Item>
               <Form.Item
                 name="reviewCount"
                 label="عدد التقييمات"
-                tooltip="عدد التقييمات اليدوي المرتبط بالتقييم أعلاه."
+                tooltip="عدد التقييمات المنشورة لهذا المنتج."
                 style={{ marginBottom: 0 }}
               >
-                <InputNumber min={0} max={1000000} style={{ width: 120 }} precision={0} />
+                <InputNumber min={0} style={{ width: 120 }} precision={0} disabled />
               </Form.Item>
             </>
           )}

@@ -1,9 +1,25 @@
+import { resolveMediaUrl } from '../utils/media'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Alert, App, Avatar, Button, Card, Flex, Space, Table, Tag, Typography } from 'antd'
-import { ReloadOutlined } from '@ant-design/icons'
+import {
+  Alert,
+  App,
+  Avatar,
+  Button,
+  Card,
+  Flex,
+  Modal,
+  Space,
+  Statistic,
+  Table,
+  Tag,
+  Typography,
+} from 'antd'
+import { ReloadOutlined, StarOutlined } from '@ant-design/icons'
 import type { TablePaginationConfig } from 'antd'
 import { useState } from 'react'
 import { listCustomers, toggleUserActive } from '../api/customersApi'
+import { getCustomerPoints } from '../api/pointsApi'
+import type { PointsLedgerEntry, PointsReason } from '../types/points'
 import { ApiError } from '../api/client'
 import type { AdminCustomer } from '../types/customers'
 import { formatDateTime } from '../utils/format'
@@ -15,6 +31,18 @@ export default function CustomersPage() {
   const { message, modal } = App.useApp()
   const queryClient = useQueryClient()
   const [page, setPage] = useState(1)
+  const [pointsFor, setPointsFor] = useState<AdminCustomer | null>(null)
+
+  /**
+   * نقاط العميل المحدَّد — تُجلب عند الفتح فقط.
+   *
+   * تقرأ نفس دفتر النقاط الذي تقرأه صفحة النقاط؛ لا حساب ولا تخزين ثانٍ.
+   */
+  const pointsQuery = useQuery({
+    queryKey: ['admin-customer-points', pointsFor?.id],
+    queryFn: () => getCustomerPoints(pointsFor!.id),
+    enabled: Boolean(pointsFor),
+  })
 
   const customersQuery = useQuery({
     queryKey: ['customers', page],
@@ -56,7 +84,7 @@ export default function CustomersPage() {
       key: 'user',
       render: (_: unknown, customer: AdminCustomer) => (
         <Flex align="center" gap={10}>
-          <Avatar src={customer.avatarUrl ?? undefined} size={36}>
+          <Avatar src={resolveMediaUrl(customer.avatarUrl)} size={36}>
             {customer.username.charAt(0)}
           </Avatar>
           <div>
@@ -82,6 +110,16 @@ export default function CustomersPage() {
       dataIndex: 'createdAt',
       key: 'createdAt',
       render: (value: string) => formatDateTime(value),
+    },
+    {
+      title: 'النقاط',
+      key: 'points',
+      width: 110,
+      render: (_: unknown, customer: AdminCustomer) => (
+        <Button size="small" icon={<StarOutlined />} onClick={() => setPointsFor(customer)}>
+          عرض
+        </Button>
+      ),
     },
     {
       title: 'الإجراءات',
@@ -160,6 +198,58 @@ export default function CustomersPage() {
           />
         )}
       </Card>
+      <Modal
+        open={Boolean(pointsFor)}
+        onCancel={() => setPointsFor(null)}
+        footer={null}
+        width={680}
+        title={pointsFor ? `نقاط ${pointsFor.username}` : 'النقاط'}
+      >
+        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+          <Statistic title="الرصيد الحالي" value={pointsQuery.data?.balance ?? 0} />
+          <Table
+            rowKey="id"
+            size="small"
+            loading={pointsQuery.isPending}
+            dataSource={(pointsQuery.data?.ledger ?? []) as PointsLedgerEntry[]}
+            scroll={{ x: 480 }}
+            pagination={{ pageSize: 8, showSizeChanger: false }}
+            columns={[
+              { title: 'الحركة', dataIndex: 'label', key: 'label' },
+              {
+                title: 'السبب',
+                dataIndex: 'reason',
+                key: 'reason',
+                render: (reason: PointsReason) => <Tag>{POINTS_REASON_LABELS[reason] ?? reason}</Tag>,
+              },
+              {
+                title: 'النقاط',
+                dataIndex: 'amount',
+                key: 'amount',
+                render: (amount: number) => (
+                  <Typography.Text type={amount < 0 ? 'danger' : 'success'} strong>
+                    {amount > 0 ? `+${amount}` : amount}
+                  </Typography.Text>
+                ),
+              },
+              {
+                title: 'التاريخ',
+                dataIndex: 'createdAt',
+                key: 'createdAt',
+                render: (value: string) => formatDateTime(value),
+              },
+            ]}
+          />
+        </Space>
+      </Modal>
     </Space>
   )
+}
+
+/** تسميات أسباب المنح — عرض فقط. */
+const POINTS_REASON_LABELS: Record<PointsReason, string> = {
+  order_received: 'استلام طلب',
+  review_approved: 'تقييم معتمد',
+  review_with_photo: 'تقييم مصوّر',
+  manual: 'يدوي',
 }

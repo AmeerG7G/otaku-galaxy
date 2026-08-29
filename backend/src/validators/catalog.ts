@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PRODUCT_SORTS } from '../types/index.js';
 
 export const paginationSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -16,6 +17,7 @@ export const listProductsSchema = paginationSchema.extend({
     .enum(['true', 'false'])
     .optional()
     .transform((v) => (v === undefined ? undefined : v === 'true')),
+  sort: z.enum(PRODUCT_SORTS).optional(),
 });
 
 export const productIdParamSchema = z.object({

@@ -8,4 +8,8 @@ class FetchGovernoratesUsecase {
   final GovernorateRepository _repository;
 
   Future<List<Governorate>> call() => _repository.fetchGovernorates();
+
+  /// مناطق التوصيل داخل محافظة — فارغة إن لم تكن المحافظة مقسّمة مناطق.
+  Future<List<DeliveryZone>> zones(String governorateId) =>
+      _repository.fetchZones(governorateId);
 }

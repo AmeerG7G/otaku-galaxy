@@ -19,7 +19,7 @@ class AnimeDivider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: EdgeInsets.only(left: indent, right: endIndent),
+      margin: EdgeInsetsDirectional.only(start: indent, end: endIndent),
       height: thickness,
       decoration: BoxDecoration(
         gradient: gradient,

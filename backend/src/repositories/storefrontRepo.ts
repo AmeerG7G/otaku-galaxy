@@ -1,35 +1,44 @@
 import type pg from 'pg';
 import type { BannerRow, GovernorateRow } from '../types/index.js';
 
+/**
+ * التمثيل المعتمد للبنر — **مصدر الحقيقة الوحيد** لشكل استجابة البنر.
+ *
+ * [CRITICAL] كل مسار يعيد بنراً يمرّ من هنا: القائمة والإنشاء والتعديل.
+ *
+ * كان `create`/`update` يعيدان صفَّ القاعدة الخام (`image_url`،
+ * `destination_type`، `is_active`) بينما تعيد القائمة camelCase. أي مستهلك
+ * يثق بجواب الإنشاء — لوحة تحكم تعرض النتيجة مباشرةً بدل إعادة الجلب —
+ * يقرأ `undefined` في كل حقل، بلا خطأ يكشف السبب. نفس صنف العطل الذي
+ * أصاب المنتجات (§20)، على جدول آخر.
+ */
+export function toBannerDto(row: BannerRow) {
+  return {
+    id: row.id,
+    imageUrl: row.image_url,
+    title: row.title,
+    destinationType: row.destination_type,
+    destinationValue: row.destination_value,
+    sortOrder: row.sort_order,
+    isActive: row.is_active,
+  };
+}
+
+export type BannerDto = ReturnType<typeof toBannerDto>;
+
 export const bannerRepo = {
   async listActive(db: pg.Pool | pg.PoolClient) {
     const { rows } = await db.query<BannerRow>(
       `SELECT * FROM banners WHERE is_active = TRUE ORDER BY sort_order, created_at DESC`,
     );
-    return rows.map((row) => ({
-      id: row.id,
-      imageUrl: row.image_url,
-      title: row.title,
-      destinationType: row.destination_type,
-      destinationValue: row.destination_value,
-      sortOrder: row.sort_order,
-      isActive: row.is_active,
-    }));
+    return rows.map(toBannerDto);
   },
 
   async listAll(db: pg.Pool | pg.PoolClient) {
     const { rows } = await db.query<BannerRow>(
       'SELECT * FROM banners ORDER BY sort_order, created_at DESC',
     );
-    return rows.map((row) => ({
-      id: row.id,
-      imageUrl: row.image_url,
-      title: row.title,
-      destinationType: row.destination_type,
-      destinationValue: row.destination_value,
-      sortOrder: row.sort_order,
-      isActive: row.is_active,
-    }));
+    return rows.map(toBannerDto);
   },
 
   async create(
@@ -47,7 +56,7 @@ export const bannerRepo = {
        VALUES ($1, $2, $3, $4, $5) RETURNING *`,
       [input.imageUrl, input.title ?? null, input.destinationType, input.destinationValue ?? null, input.sortOrder ?? 0],
     );
-    return rows[0]!;
+    return toBannerDto(rows[0]!);
   },
 
   async update(
@@ -61,7 +70,7 @@ export const bannerRepo = {
       sortOrder?: number;
       isActive?: boolean;
     },
-  ): Promise<BannerRow | null> {
+  ): Promise<BannerDto | null> {
     const sets: string[] = [];
     const values: unknown[] = [id];
     if (input.imageUrl !== undefined) {
@@ -90,13 +99,13 @@ export const bannerRepo = {
     }
     if (sets.length === 0) {
       const { rows } = await db.query<BannerRow>('SELECT * FROM banners WHERE id = $1', [id]);
-      return rows[0] ?? null;
+      return rows[0] ? toBannerDto(rows[0]) : null;
     }
     const { rows } = await db.query<BannerRow>(
       `UPDATE banners SET ${sets.join(', ')} WHERE id = $1 RETURNING *`,
       values,
     );
-    return rows[0] ?? null;
+    return rows[0] ? toBannerDto(rows[0]) : null;
   },
 
   async delete(db: pg.Pool | pg.PoolClient, id: string): Promise<boolean> {
@@ -154,5 +163,28 @@ export const governorateRepo = {
       values,
     );
     return rows[0] ?? null;
+  },
+
+  /**
+   * ما يعتمد على المحافظة.
+   *
+   * الطلبات تُحتسب أولاً: الطلب سجلٌّ تاريخي وحذف محافظته يمزّق سجلّاً
+   * محاسبياً مُغلقاً. مناطق التوصيل تُحتسب أيضاً لأنها تنتمي للمحافظة.
+   */
+  async countDependents(db: pg.Pool | pg.PoolClient, id: string) {
+    const { rows } = await db.query<{ orders: string; zones: string }>(
+      `SELECT (SELECT COUNT(*)::text FROM orders WHERE governorate_id = $1)        AS orders,
+              (SELECT COUNT(*)::text FROM governorate_zones WHERE governorate_id = $1) AS zones`,
+      [id],
+    );
+    return {
+      orders: Number(rows[0]?.orders ?? 0),
+      zones: Number(rows[0]?.zones ?? 0),
+    };
+  },
+
+  async delete(db: pg.Pool | pg.PoolClient, id: string): Promise<boolean> {
+    const { rowCount } = await db.query('DELETE FROM governorates WHERE id = $1', [id]);
+    return (rowCount ?? 0) > 0;
   },
 };

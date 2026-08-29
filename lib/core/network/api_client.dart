@@ -3,11 +3,13 @@ import 'package:flutter/foundation.dart';
 
 import '../config/app_config.dart';
 import '../errors/app_exception.dart';
+import 'media_url.dart';
 
 /// عميل الـ API المركزي على [Dio].
 ///
 /// يقرأ التوكن تلقائياً عبر [tokenProvider] ويضيفه لرؤوس الطلبات،
-/// وعند استجابة 401 ينظّف الجلسة عبر [onUnauthorized] ثم يرمي [AppException].
+/// وعند رفض الجلسة (401، أو 403 لحساب موقوف) ينظّف الجلسة عبر
+/// [onUnauthorized] ثم يرمي [AppException].
 /// جميع الإجابات تمر عبر المغلف الموحّد `{ success, data, message }`.
 class ApiClient {
   ApiClient({
@@ -31,6 +33,11 @@ class ApiClient {
                },
              ),
            ) {
+    // أصل الوسائط يتبع العنوان الفعلي لهذا العميل دائماً — انظر
+    // [configureMediaOriginFromBaseUrl]. بدون هذا السطر يمكن أن ينجح الـAPI
+    // وتفشل الصور وحدها حين يُضبط العنوان من خارج حقن الاعتماديات.
+    configureMediaOriginFromBaseUrl(_dio.options.baseUrl);
+
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) {
@@ -38,19 +45,25 @@ class ApiClient {
           if (token != null && token.isNotEmpty) {
             options.headers['Authorization'] = 'Bearer $token';
           }
-          _log('▶ ${options.method.toUpperCase()} ${options.uri}');
+          _log(
+            '▶ [$platformLabel] base=${_dio.options.baseUrl} '
+            '${options.method} ${options.uri}',
+          );
           handler.next(options);
         },
         onError: (error, handler) {
           final response = error.response;
           _log(
-            '✖ ${error.requestOptions.method.toUpperCase()} '
-            '${error.requestOptions.uri} — '
-            'DioException[${error.type.name}] '
-            '${error.message ?? 'no message'}'
-            '${response != null ? ' — status ${response.statusCode}' : ''}',
+            '✖ [$platformLabel] DioException '
+            'type=${error.type.name} '
+            'error=${error.error} '
+            'message="${error.message ?? 'no message'}" '
+            'url=${error.requestOptions.uri} '
+            'method=${error.requestOptions.method} '
+            'status=${response?.statusCode} '
+            'response=${response?.data}',
           );
-          if (response?.statusCode == 401) {
+          if (_endsSession(response?.statusCode, response?.data)) {
             onUnauthorized?.call();
           }
           handler.next(error);
@@ -58,6 +71,44 @@ class ApiClient {
       ),
     );
   }
+
+
+  /// هل تعني هذه الاستجابة أن الجلسة انتهت فعلاً؟
+  ///
+  /// 401 = رفض التوكن (منتهٍ، أو أُبطل بعد تغيير كلمة المرور).
+  /// 403 مع `ACCOUNT_SUSPENDED` = الحساب أُوقف بعد إصدار التوكن؛ بدون هذه
+  /// الحالة يبقى المستخدم «مسجّلاً» شكلاً بينما يُرفض كل طلب، فيرى أخطاءً
+  /// متكررة بلا تفسير. أما 403 الأخرى (نقص صلاحية، رقم غير مفعَّل) فليست
+  /// نهايةَ جلسة ولا يجوز أن تُخرجه.
+  bool _endsSession(int? status, dynamic data) {
+    if (status == 401) return true;
+    if (status != 403) return false;
+    if (data is! Map<String, dynamic>) return false;
+    final error = data['error'];
+    return error is Map && error['code'] == 'ACCOUNT_SUSPENDED';
+  }
+
+  /// وصف منصة التشغيل الحالية للتشخيص (ويب / أندرويد / آيفون / سطح مكتب).
+  String get platformLabel {
+    if (kIsWeb) return 'web';
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.android:
+        return 'android';
+      case TargetPlatform.iOS:
+        return 'ios';
+      case TargetPlatform.linux:
+        return 'linux';
+      case TargetPlatform.macOS:
+        return 'macos';
+      case TargetPlatform.windows:
+        return 'windows';
+      case TargetPlatform.fuchsia:
+        return 'fuchsia';
+    }
+  }
+
+  /// عنوان قاعدة الـ API الفعلي داخل Dio — للطباعة في سجلات التشخيص.
+  String get probeBaseUrl => _dio.options.baseUrl;
 
   /// سجل تطويري يظهر العنوان الكامل والخطأ الحقيقي قبل أي تعميم.
   void _log(String message) {
@@ -98,15 +149,70 @@ class ApiClient {
       _request(() => _dio.patch<dynamic>(path, data: body));
 
   /// DELETE — يعيد حقل `data` من المغلف الموحّد.
+  /// يرفع ملفاً واحداً كـ multipart ويعيد جسم الاستجابة.
+  ///
+  /// الغرض (`purpose`) يحدّد وجهة التخزين على الخادم؛ العميل مسموح له
+  /// برفع صور التقييمات والصورة الشخصية فقط.
+  Future<dynamic> uploadFile(
+    String path, {
+    required String filePath,
+    required String purpose,
+    String field = 'file',
+  }) {
+    return _request(() async {
+      final form = FormData.fromMap({
+        field: await MultipartFile.fromFile(filePath),
+        'purpose': purpose,
+      });
+      return _dio.post<dynamic>(path, data: form);
+    });
+  }
+
   Future<dynamic> delete(String path) =>
       _request(() => _dio.delete<dynamic>(path));
+
+  /// فحص اتصال مباشر بـ /health (بدون أي تعديل على معالجة الأخطاء).
+  Future<HealthProbe> probeHealth() async {
+    final base = _dio.options.baseUrl;
+    final origin = base.endsWith('/api')
+        ? base.substring(0, base.length - 4)
+        : base;
+    final url = '$origin/health';
+    _log('▶ [$platformLabel] base=${_dio.options.baseUrl} GET $url (probe)');
+    try {
+      final response = await _dio.get<dynamic>(
+        url,
+        options: Options(
+          headers: {'Accept': 'application/json'},
+          extra: {'skipEnvelope': true},
+        ),
+      );
+      return HealthProbe(
+        url: url,
+        reachable: true,
+        statusCode: response.statusCode,
+        rawBody: response.data?.toString(),
+      );
+    } on DioException catch (e) {
+      return HealthProbe(
+        url: url,
+        reachable: false,
+        dioType: e.type.name,
+        dioError: e.error?.toString(),
+        dioMessage: e.message,
+        statusCode: e.response?.statusCode,
+      );
+    } catch (e) {
+      return HealthProbe(url: url, reachable: false, rawError: '$e');
+    }
+  }
 
   Future<dynamic> _request(Future<Response<dynamic>> Function() send) async {
     try {
       final response = await send();
       return _unwrap(response.statusCode ?? 0, response.data);
     } on DioException catch (e) {
-      if (e.response?.statusCode == 401) {
+      if (_endsSession(e.response?.statusCode, e.response?.data)) {
         onUnauthorized?.call();
       }
       throw _toAppException(e);
@@ -115,16 +221,33 @@ class ApiClient {
 
   /// فكّ المغلف الموحّد: نجاح = `data`، فشل = [AppException] برسالة الخادم.
   dynamic _unwrap(int statusCode, dynamic data) {
-    if (statusCode == 401) {
+    if (_endsSession(statusCode, data)) {
       onUnauthorized?.call();
     }
     if (data is! Map<String, dynamic>) {
-      throw AppException('استجابة غير متوقعة من الخادم');
+      throw AppException(
+        'استجابة غير متوقعة من الخادم',
+        statusCode: statusCode,
+      );
     }
     if (data['success'] == true) {
       return data['data'];
     }
-    throw AppException(_messageFrom(data, statusCode));
+    throw AppException(
+      _messageFrom(data, statusCode),
+      statusCode: statusCode,
+      code: _codeFrom(data),
+    );
+  }
+
+  /// رمز الخطأ من مغلف الخادم: `{ error: { code } }`.
+  String? _codeFrom(Map<String, dynamic> data) {
+    final error = data['error'];
+    if (error is Map<String, dynamic>) {
+      final code = error['code'];
+      if (code is String && code.trim().isNotEmpty) return code;
+    }
+    return null;
   }
 
   String _messageFrom(Map<String, dynamic> data, int statusCode) {
@@ -152,10 +275,18 @@ class ApiClient {
     final response = error.response;
     if (response != null) {
       final data = response.data;
+      final status = response.statusCode ?? 500;
       if (data is Map<String, dynamic>) {
-        return AppException(_messageFrom(data, response.statusCode ?? 500));
+        return AppException(
+          _messageFrom(data, status),
+          statusCode: status,
+          code: _codeFrom(data),
+        );
       }
-      return AppException('خطأ من الخادم (${response.statusCode})');
+      return AppException(
+        'خطأ من الخادم (${response.statusCode})',
+        statusCode: status,
+      );
     }
     switch (error.type) {
       case DioExceptionType.connectionTimeout:
@@ -172,5 +303,41 @@ class ApiClient {
       default:
         return AppException(error.message ?? 'حدث خطأ غير متوقع');
     }
+  }
+}
+
+/// نتيجة فحص الاتصال بـ /health — تعرض الخطأ الخام دون ترجمة/إخفاء.
+class HealthProbe {
+  const HealthProbe({
+    required this.url,
+    required this.reachable,
+    this.statusCode,
+    this.rawBody,
+    this.dioType,
+    this.dioError,
+    this.dioMessage,
+    this.rawError,
+  });
+
+  final String url;
+  final bool reachable;
+  final int? statusCode;
+  final String? rawBody;
+  final String? dioType;
+  final String? dioError;
+  final String? dioMessage;
+  final String? rawError;
+
+  @override
+  String toString() {
+    if (reachable) {
+      return 'REACHABLE: $url -> HTTP ${statusCode ?? '?'} $rawBody';
+    }
+    return 'UNREACHABLE: $url -> '
+        'DioException[${dioType ?? '?'}] '
+        'error=${dioError ?? '?'} '
+        'message=${dioMessage ?? '?'} '
+        'status=${statusCode ?? '?'} '
+        'raw=${rawError ?? '?'}';
   }
 }

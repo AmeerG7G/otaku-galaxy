@@ -6,7 +6,13 @@ import '../../../../core/design_system/design_system.dart';
 import '../../../../core/errors/app_exception.dart';
 import '../../../../core/router/app_router.dart';
 import '../cubit/auth_cubit.dart';
+import '../widgets/auth_scaffold.dart';
+import 'otp_verification_screen.dart' show OtpPurpose;
 
+/// «نسيت كلمة المرور» — رقم الهاتف فقط.
+///
+/// المصدر يقسّم الاستعادة على ثلاث شاشات: هذه، ثم رمز التحقق، ثم إعادة
+/// تعيين كلمة المرور. لا يجمع هذا النموذج الرمز وكلمة المرور معاً.
 @RoutePage()
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -18,13 +24,9 @@ class ForgotPasswordScreen extends StatefulWidget {
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
     with TickerProviderStateMixin {
   final _phoneController = TextEditingController();
-  final _otpController = TextEditingController();
-  final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
 
-  int _step = 0;
   bool _loading = false;
-  bool _obscure = true;
 
   late final AnimationController _animationController;
   late final Animation<double> _fadeAnimation;
@@ -56,8 +58,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
   @override
   void dispose() {
     _phoneController.dispose();
-    _otpController.dispose();
-    _passwordController.dispose();
     _animationController.dispose();
     super.dispose();
   }
@@ -76,36 +76,18 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
     );
   }
 
-  Future<void> _next() async {
+  Future<void> _sendCode() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _loading = true);
-    final auth = context.read<AuthCubit>();
+    final phone = _phoneController.text.trim();
     try {
-      if (_step == 0) {
-        // إرسال رمز التحقق المخصّص لإعادة تعيين كلمة المرور
-        // (Purpose: password_reset) — وليس رمز التسجيل.
-        await auth.forgotPassword(_phoneController.text.trim());
-      } else if (_step == 1) {
-        // لا تُتحقق رموز «إعادة التعيين» عبر /auth/verify-otp
-        // (فهي تتبع Purpose مختلفاً)؛ تتم المصادقة الفعلية للرمز عند
-        // حفظ كلمة المرور الجديدة في /auth/reset-password.
-      } else {
-        await auth.resetPassword(
-          _phoneController.text.trim(),
-          _otpController.text.trim(),
-          _passwordController.text,
-        );
-        if (!mounted) return;
-        context.router.push(const LoginRoute());
-        return;
-      }
+      // رمز التحقق المخصّص لإعادة تعيين كلمة المرور (password_reset).
+      await context.read<AuthCubit>().forgotPassword(phone);
       if (!mounted) return;
-      setState(() {
-        if (_step < 2) _step++;
-        _animationController.reset();
-        _animationController.forward();
-      });
+      context.router.push(
+        OtpVerificationRoute(phone: phone, purpose: OtpPurpose.passwordReset),
+      );
     } catch (e) {
       if (!mounted) return;
       _showErrorSnackBar(_messageOf(e));
@@ -122,231 +104,54 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.themeColors;
-    final titles = ['رقم الهاتف', 'رمز التحقق', 'كلمة المرور الجديدة'];
-    final subtitles = [
-      'أدخل رقم هاتفك لإرسال رمز التحقق',
-      'أدخل الرمز المرسل إلى هاتفك',
-      'أدخل كلمة المرور الجديدة',
-    ];
-
-    return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(gradient: colors.surfaceGradient),
-        child: SafeArea(
-          child: FadeTransition(
-            opacity: _fadeAnimation,
-            child: SlideTransition(
-              position: _slideAnimation,
-              child: SingleChildScrollView(
-                padding: EdgeInsets.all(AppDimens.screenHorizontalPadding),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      SizedBox(height: AppDimens.space3),
-
-                      // زر العودة
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: IconButton(
-                          onPressed: () {
-                            if (_step > 0) {
-                              setState(() {
-                                _step--;
-                                _animationController.reset();
-                                _animationController.forward();
-                              });
-                            } else {
-                              Navigator.of(context).pop();
-                            }
-                          },
-                          icon: Icon(
-                            Icons.arrow_forward_ios,
-                            size: AppDimens.iconMd,
-                          ),
-                          style: IconButton.styleFrom(
-                            backgroundColor: Theme.of(
-                              context,
-                            ).colorScheme.surfaceContainerHighest,
-                            foregroundColor: Theme.of(
-                              context,
-                            ).colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ),
-
-                      SizedBox(height: AppDimens.space2),
-
-                      // مؤشر الخطوات
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: List.generate(3, (index) {
-                          return Expanded(
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: AnimatedContainer(
-                                    duration: AppDimens.durationNormal,
-                                    height: 4,
-                                    decoration: BoxDecoration(
-                                      gradient: index <= _step
-                                          ? colors.primaryGradient
-                                          : null,
-                                      color: index <= _step
-                                          ? null
-                                          : Theme.of(
-                                              context,
-                                            ).colorScheme.outlineVariant,
-                                      borderRadius: BorderRadius.circular(
-                                        AppDimens.radiusFull,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                if (index < 2)
-                                  SizedBox(width: AppDimens.space3),
-                              ],
-                            ),
-                          );
-                        }),
-                      ),
-
-                      SizedBox(height: AppDimens.space7),
-
-                      // الشعار
-                      Center(
-                        child: OtakuStoreLogo(
-                          size: AppDimens.iconLogo * 0.7,
-                          animationDuration: const Duration(milliseconds: 2000),
-                        ),
-                      ),
-
-                      SizedBox(height: AppDimens.space7),
-
-                      // العنوان
-                      Text(
-                        titles[_step],
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.headlineSmall
-                            ?.copyWith(
-                              fontWeight: AppDimens.weightBold,
-                              letterSpacing: AppDimens.letterSpacingTight,
-                            ),
-                      ),
-
-                      SizedBox(height: AppDimens.space2),
-
-                      Text(
-                        subtitles[_step],
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-
-                      SizedBox(height: AppDimens.space9),
-
-                      // الحقول حسب الخطوة
-                      if (_step == 0) ...[
-                        AnimeTextField(
-                          controller: _phoneController,
-                          label: 'رقم الهاتف',
-                          hint: 'مثال: 07xxxxxxxx',
-                          prefixIcon: Icons.phone_outlined,
-                          keyboardType: TextInputType.phone,
-                          textInputAction: TextInputAction.next,
-                          onSubmitted: (_) => _next(),
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return 'يرجى إدخال رقم الهاتف';
-                            }
-                            if (value.trim().length < 10) {
-                              return 'رقم الهاتف غير صحيح';
-                            }
-                            return null;
-                          },
-                        ),
-                      ] else if (_step == 1) ...[
-                        AnimeTextField(
-                          controller: _otpController,
-                          label: 'رمز التحقق',
-                          hint: '000000',
-                          prefixIcon: Icons.verified_outlined,
-                          keyboardType: TextInputType.number,
-                          textAlign: TextAlign.center,
-                          textInputAction: TextInputAction.next,
-                          onSubmitted: (_) => _next(),
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return 'يرجى إدخال رمز التحقق';
-                            }
-                            if (value.trim().length != 6) {
-                              return 'رمز التحقق يجب أن يكون 6 أرقام';
-                            }
-                            return null;
-                          },
-                        ),
-                      ] else ...[
-                        AnimeTextField(
-                          controller: _passwordController,
-                          label: 'كلمة المرور الجديدة',
-                          hint: 'أدخل كلمة المرور الجديدة (6 أحرف على الأقل)',
-                          prefixIcon: Icons.lock_outline,
-                          obscureText: _obscure,
-                          textInputAction: TextInputAction.done,
-                          onSubmitted: (_) => _next(),
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                              _obscure
-                                  ? Icons.visibility_outlined
-                                  : Icons.visibility_off_outlined,
-                              size: AppDimens.iconMd,
-                            ),
-                            onPressed: () =>
-                                setState(() => _obscure = !_obscure),
-                          ),
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'يرجى إدخال كلمة المرور الجديدة';
-                            }
-                            if (value.length < 6) {
-                              return 'كلمة المرور قصيرة جداً (6 أحرف على الأقل)';
-                            }
-                            return null;
-                          },
-                        ),
-                      ],
-
-                      SizedBox(height: AppDimens.space7),
-
-                      // زر التالي/حفظ
-                      AnimePrimaryButton(
-                        label: _step == 2 ? 'حفظ كلمة المرور' : 'التالي',
-                        onPressed: _next,
-                        loading: _loading,
-                        icon: _step == 2
-                            ? Icons.save_outlined
-                            : Icons.arrow_back_ios,
-                        iconPosition: _step == 2
-                            ? IconPosition.start
-                            : IconPosition.end,
-                        height: AppDimens.buttonHeightXl,
-                      ),
-
-                      if (_step == 0) ...[
-                        SizedBox(height: AppDimens.space5),
-                        AnimeTextButton(
-                          label: 'تذكرت كلمة المرور؟ تسجيل الدخول',
-                          onPressed: () =>
-                              context.router.push(const LoginRoute()),
-                        ),
-                      ],
-                    ],
-                  ),
+    return FadeTransition(
+      opacity: _fadeAnimation,
+      child: SlideTransition(
+        position: _slideAnimation,
+        child: AuthScaffold(
+          showBack: true,
+          title: 'نسيت كلمة المرور',
+          subtitle: 'أدخل رقم هاتفك وراح نرسل لك رمز تحقق لإعادة التعيين.',
+          artwork: 'assets/art/opt/a-luffy-kid.png',
+          artworkHeight: 166,
+          artworkBottom: -6,
+          form: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                AnimeTextField(
+                  controller: _phoneController,
+                  label: 'رقم الهاتف',
+                  hint: '0770 123 4567',
+                  prefixIcon: Icons.phone_outlined,
+                  keyboardType: TextInputType.phone,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => _sendCode(),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'يرجى إدخال رقم الهاتف';
+                    }
+                    if (value.trim().length < 10) {
+                      return 'رقم الهاتف غير صحيح';
+                    }
+                    return null;
+                  },
                 ),
-              ),
+                SizedBox(height: AppDimens.space6),
+                AnimePrimaryButton(
+                  label: 'إرسال الرمز',
+                  onPressed: _sendCode,
+                  loading: _loading,
+                  height: AppDimens.buttonHeightXl,
+                ),
+              ],
+            ),
+          ),
+          footer: Center(
+            child: AnimeTextButton(
+              label: 'عندك حساب؟ تسجيل الدخول',
+              onPressed: () => context.router.push(const LoginRoute()),
             ),
           ),
         ),

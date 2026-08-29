@@ -1,3 +1,4 @@
+import '../entities/auth_session.dart';
 import '../repositories/auth_repository.dart';
 
 /// التحقق من رمز التأكيد.
@@ -6,6 +7,6 @@ class VerifyOtpUsecase {
 
   final AuthRepository _repository;
 
-  Future<void> call(String phone, String code) =>
+  Future<AuthSession> call(String phone, String code) =>
       _repository.verifyOtp(phone, code);
 }

@@ -27,6 +27,7 @@ export const catalogController = {
       subcategoryId: req.query.subcategoryId,
       offer: req.query.offer,
       selected: req.query.selected,
+      sort: req.query.sort,
     });
     const data = await catalogService.listProducts({
       page: input.page,
@@ -35,6 +36,7 @@ export const catalogController = {
       subcategoryId: input.subcategoryId,
       isOffer: input.offer,
       isSelected: input.selected,
+      sort: input.sort,
     });
     return ok(res, data);
   }) as RequestHandler,

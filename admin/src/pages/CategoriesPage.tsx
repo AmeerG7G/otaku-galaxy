@@ -1,3 +1,4 @@
+import { resolveMediaUrl } from '../utils/media'
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -11,12 +12,14 @@ import {
   Input,
   InputNumber,
   Modal,
+  Popconfirm,
   Space,
   Table,
   Tag,
   Typography,
 } from 'antd'
 import {
+  DeleteOutlined,
   EditOutlined,
   PlusOutlined,
   ReloadOutlined,
@@ -24,12 +27,15 @@ import {
 import {
   createCategory,
   createSubcategory,
+  deleteCategory,
+  deleteSubcategory,
   listAdminCategories,
   updateCategory,
 } from '../api/categoriesApi'
 import { ApiError } from '../api/client'
 import type { AdminCategory } from '../types/categories'
 import EmptyState from '../components/EmptyState'
+import ImageUploadField, { isValidImageRef } from '../components/ImageUploadField'
 
 const NO_IMAGE_PLACEHOLDER =
   'data:image/svg+xml;utf8,' +
@@ -111,6 +117,25 @@ export default function CategoriesPage() {
     },
   })
 
+  const deleteCategoryMutation = useMutation({
+    mutationFn: deleteCategory,
+    onSuccess: (result) => {
+      message.success(result.message || 'حُذف القسم')
+      void queryClient.invalidateQueries({ queryKey: ['admin-categories'] })
+    },
+    // رسالة الخادم تشرح ما الذي يمنع الحذف — نعرضها كما هي.
+    onError: (error: Error) => message.error(error.message),
+  })
+
+  const deleteSubcategoryMutation = useMutation({
+    mutationFn: deleteSubcategory,
+    onSuccess: (result) => {
+      message.success(result.message || 'حُذف القسم الفرعي')
+      void queryClient.invalidateQueries({ queryKey: ['admin-categories'] })
+    },
+    onError: (error: Error) => message.error(error.message),
+  })
+
   const columns = [
     {
       title: 'الصورة',
@@ -118,7 +143,7 @@ export default function CategoriesPage() {
       width: 80,
       render: (_: unknown, category: AdminCategory) => (
         <Image
-          src={category.imageUrl ?? NO_IMAGE_PLACEHOLDER}
+          src={resolveMediaUrl(category.imageUrl) ?? NO_IMAGE_PLACEHOLDER}
           width={48}
           height={48}
           style={{ objectFit: 'cover', borderRadius: 4 }}
@@ -172,6 +197,18 @@ export default function CategoriesPage() {
           >
             إضافة قسم فرعي
           </Button>
+          <Popconfirm
+            title="حذف القسم؟"
+            description="يُرفض الحذف إن كان القسم يحتوي منتجات أو أقساماً فرعية."
+            okText="حذف"
+            cancelText="إلغاء"
+            okButtonProps={{ danger: true, loading: deleteCategoryMutation.isPending }}
+            onConfirm={() => deleteCategoryMutation.mutate(category.id)}
+          >
+            <Button size="small" danger icon={<DeleteOutlined />}>
+              حذف
+            </Button>
+          </Popconfirm>
         </Space>
       ),
     },
@@ -209,8 +246,8 @@ export default function CategoriesPage() {
       <Alert
         type="info"
         showIcon
-        message="إدارة الأقسام: إضافة وتعديل فقط."
-        description="لا يوفر خادم الإدارة تفعيل/تعطيل الأقسام أو حذفها، ولا تعديل/حذف الأقسام الفرعية — تُنشأ الأقسام الجديدة نشطة وتظهر الأقسام الفرعية هنا للاطلاع فقط."
+        message="الحذف محميّ بالتبعيات"
+        description="يُرفض حذف القسم أو القسم الفرعي ما دام شيء يعتمد عليه، ولا يُحذف أي منتج تبعاً لذلك. إن كان القسم مستعملاً فعطّله بدل حذفه."
       />
 
       <Card>
@@ -261,6 +298,28 @@ export default function CategoriesPage() {
                           dataIndex: 'sortOrder',
                           key: 'sortOrder',
                           width: 100,
+                        },
+                        {
+                          title: '',
+                          key: 'actions',
+                          width: 90,
+                          render: (_: unknown, subcategory: { id: string }) => (
+                            <Popconfirm
+                              title="حذف القسم الفرعي؟"
+                              description="يُرفض الحذف إن كانت منتجات مرتبطة به."
+                              okText="حذف"
+                              cancelText="إلغاء"
+                              okButtonProps={{
+                                danger: true,
+                                loading: deleteSubcategoryMutation.isPending,
+                              }}
+                              onConfirm={() =>
+                                deleteSubcategoryMutation.mutate(subcategory.id)
+                              }
+                            >
+                              <Button size="small" danger icon={<DeleteOutlined />} />
+                            </Popconfirm>
+                          ),
                         },
                       ]}
                       dataSource={category.subcategories}
@@ -365,12 +424,17 @@ function CategoryEditorForm({
       </Form.Item>
       <Form.Item
         name="imageUrl"
-        label="رابط الصورة"
+        label="صورة القسم (اختيارية)"
         rules={[
-          { type: 'url', message: 'رابط الصورة غير صالح' },
+          {
+            validator: (_rule, value: string) =>
+              !value || isValidImageRef(value)
+                ? Promise.resolve()
+                : Promise.reject(new Error('رابط الصورة غير صالح')),
+          },
         ]}
       >
-        <Input placeholder="رابط الصورة (اختياري)" />
+        <ImageUploadField purpose="category" allowClear />
       </Form.Item>
       <Form.Item name="sortOrder" label="الترتيب">
         <InputNumber min={0} max={1000} style={{ width: '100%' }} precision={0} />

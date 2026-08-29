@@ -1,3 +1,4 @@
+import { resolveMediaUrl } from '../utils/media'
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -39,6 +40,7 @@ import type {
 import type { AdminCategory } from '../types/categories'
 import type { Product } from '../types/products'
 import EmptyState from '../components/EmptyState'
+import ImageUploadField, { isValidImageRef } from '../components/ImageUploadField'
 
 const NO_IMAGE_PLACEHOLDER =
   'data:image/svg+xml;utf8,' +
@@ -145,7 +147,7 @@ export default function BannersPage() {
       width: 110,
       render: (_: unknown, banner: AdminBanner) => (
         <Image
-          src={banner.imageUrl}
+          src={resolveMediaUrl(banner.imageUrl)}
           width={88}
           height={48}
           style={{ objectFit: 'cover', borderRadius: 4 }}
@@ -382,13 +384,18 @@ function BannerForm({
     >
       <Form.Item
         name="imageUrl"
-        label="رابط الصورة"
+        label="صورة البنر"
         rules={[
-          { required: true, message: 'رابط الصورة مطلوب' },
-          { type: 'url', message: 'رابط الصورة غير صالح' },
+          { required: true, message: 'صورة البنر مطلوبة' },
+          {
+            validator: (_rule, value: string) =>
+              !value || isValidImageRef(value)
+                ? Promise.resolve()
+                : Promise.reject(new Error('رابط الصورة غير صالح')),
+          },
         ]}
       >
-        <Input placeholder="https://…" />
+        <ImageUploadField purpose="banner" />
       </Form.Item>
       <Form.Item
         name="title"

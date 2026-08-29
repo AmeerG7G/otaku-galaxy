@@ -10,8 +10,11 @@ class AuthGuard extends AutoRouteGuard {
   void onNavigation(NavigationResolver resolver, StackRouter router) {
     if (sl<AuthCubit>().isLoggedIn) {
       resolver.next();
-    } else {
-      router.push(const LoginRoute());
+      return;
     }
+    // حسم التنقّل المرفوض صراحةً قبل عرض شاشة الدخول؛ تركه معلّقاً كان
+    // يُبقي الوجهة في الانتظار بلا نتيجة.
+    resolver.next(false);
+    router.push(const LoginRoute());
   }
 }

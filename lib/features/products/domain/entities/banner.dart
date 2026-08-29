@@ -1,3 +1,5 @@
+import '../../../../core/network/media_url.dart';
+
 class Banner {
   const Banner({required this.id, this.imageUrl, this.link});
 
@@ -10,7 +12,7 @@ class Banner {
     final destination = json['destinationValue'] as String?;
     return Banner(
       id: json['id']?.toString() ?? '',
-      imageUrl: json['imageUrl'] as String?,
+      imageUrl: resolveMediaUrl(json['imageUrl'] as String?),
       link: destination ?? json['link'] as String?,
     );
   }

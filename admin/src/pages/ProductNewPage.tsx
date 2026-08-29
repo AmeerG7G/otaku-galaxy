@@ -35,6 +35,12 @@ export default function ProductNewPage() {
       options: values.options,
       isOffer: values.isOffer,
       isSelected: values.isSelected,
+      previousPrice: values.previousPrice ?? null,
+      hasDeliveryPromo: values.hasDeliveryPromo ?? false,
+      deliveryPromoAmount: values.hasDeliveryPromo
+        ? (values.deliveryPromoAmount ?? 0)
+        : 0,
+      franchiseIds: values.franchiseIds ?? [],
     })
   }
 
@@ -64,6 +70,10 @@ export default function ProductNewPage() {
           options: [],
           isOffer: false,
           isSelected: false,
+          hasDeliveryPromo: false,
+          deliveryPromoAmount: 0,
+          previousPrice: null,
+          franchiseIds: [],
         }}
         submitting={createMutation.isPending}
         onSubmit={handleSubmit}

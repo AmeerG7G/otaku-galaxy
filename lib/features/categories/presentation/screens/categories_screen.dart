@@ -4,8 +4,13 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/design_system/design_system.dart';
 import '../../../../core/router/app_router.dart';
+import '../../../products/domain/entities/category.dart';
 import '../../../products/domain/usecases/fetch_categories_usecase.dart';
 
+/// تبويب الأقسام بتصميم Otaku Galaxy v2.
+///
+/// ترويسة تبويب بعنوان تحريري كبير ورسم باهت، ثم عمود لافتات أقسام
+/// عريضة متدرّجة بحروف مائية ضخمة — بدل شبكة المربّعات القديمة.
 @RoutePage()
 class CategoriesScreen extends StatefulWidget {
   const CategoriesScreen({super.key});
@@ -15,7 +20,7 @@ class CategoriesScreen extends StatefulWidget {
 }
 
 class _CategoriesScreenState extends State<CategoriesScreen> {
-  List<dynamic> _categories = [];
+  List<Category> _categories = [];
   bool _loading = true;
   String? _error;
 
@@ -48,124 +53,62 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.themeColors;
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('الأقسام'), centerTitle: true),
-      body: Container(
-        decoration: BoxDecoration(gradient: colors.surfaceGradient),
-        child: _loading
-            ? _buildLoadingGrid()
-            : _error != null
-            ? AnimeErrorState(message: _error!, onAction: _load)
-            : RefreshIndicator(
-                onRefresh: _load,
-                child: CustomScrollView(
-                  slivers: [
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: EdgeInsets.all(
-                          AppDimens.screenHorizontalPadding,
-                        ),
-                        child: Text(
-                          'تصفح أقسام متجر مجرات الاوتاكو',
-                          style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.onSurfaceVariant,
-                              ),
-                        ),
-                      ),
-                    ),
-                    SliverPadding(
-                      padding: EdgeInsets.all(
-                        AppDimens.screenHorizontalPadding,
-                      ),
-                      sliver: SliverGrid(
-                        gridDelegate:
-                            const SliverGridDelegateWithMaxCrossAxisExtent(
-                              maxCrossAxisExtent: 220,
-                              mainAxisSpacing: AppDimens.space3,
-                              crossAxisSpacing: AppDimens.space3,
-                              childAspectRatio: 0.95,
-                            ),
-                        delegate: SliverChildBuilderDelegate((context, index) {
-                          final category = _categories[index];
-                          return AnimeCategoryCard(
-                            category: category,
-                            size: double.infinity,
-                            onTap: () => context.router.push(
-                              CategoryProductsRoute(
-                                categoryId: category.id,
-                                categoryName: category.name,
-                              ),
-                            ),
-                          );
-                        }, childCount: _categories.length),
-                      ),
-                    ),
-                    SliverToBoxAdapter(
-                      child: SizedBox(height: AppDimens.space10),
-                    ),
-                  ],
-                ),
-              ),
-      ),
-    );
-  }
-
-  Widget _buildLoadingGrid() {
-    return GridView.builder(
-      padding: EdgeInsets.all(AppDimens.screenHorizontalPadding),
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 220,
-        mainAxisSpacing: AppDimens.space3,
-        crossAxisSpacing: AppDimens.space3,
-        childAspectRatio: 0.95,
-      ),
-      itemCount: 6,
-      itemBuilder: (context, index) => _buildCategorySkeleton(),
-    );
-  }
-
-  Widget _buildCategorySkeleton() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(AppDimens.radiusLg),
-      ),
+    return SafeArea(
+      bottom: false,
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Container(
-            width: AppDimens.categoryIconSize * 1.5,
-            height: AppDimens.categoryIconSize * 1.5,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  Theme.of(context).colorScheme.outlineVariant,
-                  Theme.of(context).colorScheme.surfaceContainerHighest,
-                ],
-              ),
-              borderRadius: BorderRadius.circular(AppDimens.radiusMd),
-            ),
+          const OtakuScreenHeader.tab(
+            title: 'الأقسام',
+            subtitle: 'تصفّح المتجر حسب ما تحتاجه',
+            artwork: 'assets/art/opt/a-i2.png',
           ),
-          SizedBox(height: AppDimens.space3),
-          Container(
-            height: 14,
-            width: 70,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  Theme.of(context).colorScheme.outlineVariant,
-                  Theme.of(context).colorScheme.surfaceContainerHighest,
-                ],
-              ),
-              borderRadius: BorderRadius.circular(AppDimens.radiusSm),
-            ),
-          ),
+          Expanded(child: _buildBody()),
         ],
+      ),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_loading) {
+      return ListView.separated(
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 26),
+        itemCount: 5,
+        separatorBuilder: (_, _) => const SizedBox(height: 13),
+        itemBuilder: (_, _) =>
+            const OtakuSkeleton.box(height: 112, radius: AppDimens.radiusLg),
+      );
+    }
+    if (_error != null) {
+      return AnimeErrorState(message: _error!, onAction: _load);
+    }
+    if (_categories.isEmpty) {
+      return const AnimeEmptyState(
+        title: 'لا توجد أقسام بعد',
+        subtitle: 'سيظهر هنا كل قسم فور إضافته إلى المتجر.',
+        artwork: 'assets/art/opt/a-i2.png',
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView.separated(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 104),
+        itemCount: _categories.length,
+        separatorBuilder: (_, _) => const SizedBox(height: 13),
+        itemBuilder: (context, index) {
+          final category = _categories[index];
+          return AnimeCategoryCard(
+            category: category,
+            index: index,
+            onTap: () => context.router.push(
+              CategoryProductsRoute(
+                categoryId: category.id,
+                categoryName: category.name,
+              ),
+            ),
+          );
+        },
       ),
     );
   }

@@ -1,3 +1,5 @@
+import { resolveMediaUrl } from '../utils/media'
+import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -10,17 +12,27 @@ import {
   Flex,
   Image,
   Space,
+  DatePicker,
+  Popconfirm,
   Spin,
   Table,
+  Timeline,
   Typography,
 } from 'antd'
 import { ArrowRightOutlined } from '@ant-design/icons'
-import { getOrder, updateOrderStatus } from '../api/ordersApi'
+import type { Dayjs } from 'dayjs'
+import {
+  getOrder,
+  rescheduleReminder,
+  sendReminderNow,
+  updateOrderStatus,
+} from '../api/ordersApi'
 import { ApiError } from '../api/client'
-import type { OrderItem, OrderStatus } from '../types/orders'
+import type { AdminOrder, OrderItem, OrderStatus } from '../types/orders'
 import { formatCurrency, formatDateTime } from '../utils/format'
 import StatusBadge from '../components/StatusBadge'
 import StatusTransitionButtons from '../components/StatusTransitionButtons'
+import { STATUS_LABELS } from '../constants/orders'
 
 export default function OrderDetailPage() {
   const { id = '' } = useParams()
@@ -83,7 +95,7 @@ export default function OrderDetailPage() {
       render: (_: unknown, item: OrderItem) =>
         item.imageUrl ? (
           <Image
-            src={item.imageUrl}
+            src={resolveMediaUrl(item.imageUrl)}
             width={48}
             height={48}
             style={{ objectFit: 'cover', borderRadius: 4 }}
@@ -176,6 +188,9 @@ export default function OrderDetailPage() {
         <Card title="التوصيل" style={{ flex: 1, minWidth: 280 }}>
           <Descriptions column={1} size="small">
             <Descriptions.Item label="المحافظة">{order.province}</Descriptions.Item>
+            {order.zoneName && (
+              <Descriptions.Item label="منطقة التوصيل">{order.zoneName}</Descriptions.Item>
+            )}
             <Descriptions.Item label="العنوان الكامل">
               {order.fullAddress}
             </Descriptions.Item>
@@ -185,6 +200,16 @@ export default function OrderDetailPage() {
             <Descriptions.Item label="أجور التوصيل">
               {formatCurrency(order.deliveryFee)}
             </Descriptions.Item>
+            {order.deliveryNote && (
+              <Descriptions.Item label="وقت الوصول المتوقع">
+                {order.deliveryNote}
+              </Descriptions.Item>
+            )}
+            {order.rejectionReason && (
+              <Descriptions.Item label="سبب الرفض">
+                <Typography.Text type="danger">{order.rejectionReason}</Typography.Text>
+              </Descriptions.Item>
+            )}
           </Descriptions>
         </Card>
       </Flex>
@@ -211,6 +236,13 @@ export default function OrderDetailPage() {
           <Descriptions.Item label="التوصيل">
             {formatCurrency(order.deliveryFee)}
           </Descriptions.Item>
+          {order.deliveryDiscount > 0 && (
+            <Descriptions.Item label="خصم التوصيل">
+              <Typography.Text type="success">
+                −{formatCurrency(order.deliveryDiscount)}
+              </Typography.Text>
+            </Descriptions.Item>
+          )}
           <Descriptions.Item label="الإجمالي النهائي">
             <Typography.Text strong>
               {formatCurrency(order.total)}
@@ -218,6 +250,178 @@ export default function OrderDetailPage() {
           </Descriptions.Item>
         </Descriptions>
       </Card>
+
+      {order.dispatchedAt && (
+        <Card title="تذكير تأكيد الاستلام">
+          <ReminderControls order={order} />
+        </Card>
+      )}
+
+      <Card title="مسار الطلب">
+        {order.statusHistory.length === 0 ? (
+          <Typography.Text type="secondary">
+            لا يوجد سجل انتقالات لهذا الطلب.
+          </Typography.Text>
+        ) : (
+          <Timeline
+            items={order.statusHistory.map((event) => ({
+              color: event.status === 'REJECTED' ? 'red' : 'blue',
+              children: (
+                <Space direction="vertical" size={0}>
+                  <Typography.Text strong>
+                    {STATUS_LABELS[event.status]}
+                  </Typography.Text>
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    {formatDateTime(event.createdAt)}
+                  </Typography.Text>
+                  {event.note && (
+                    <Typography.Text style={{ fontSize: 12 }}>
+                      {event.note}
+                    </Typography.Text>
+                  )}
+                </Space>
+              ),
+            }))}
+          />
+        )}
+        {(order.dispatchedAt || order.deliveredAt) && (
+          <Descriptions column={1} size="small" style={{ marginTop: 12 }}>
+            <Descriptions.Item label="خروج للتوصيل">
+              {order.dispatchedAt ? formatDateTime(order.dispatchedAt) : '—'}
+            </Descriptions.Item>
+            <Descriptions.Item label="وقت الاستلام">
+              {order.deliveredAt ? formatDateTime(order.deliveredAt) : '—'}
+            </Descriptions.Item>
+            <Descriptions.Item label="يُفتح التقييم للعميل">
+              {order.ratingAvailableAt
+                ? `${formatDateTime(order.ratingAvailableAt)} ${
+                    order.ratingAvailable ? '(مفتوح الآن)' : '(لم يحن بعد)'
+                  }`
+                : '—'}
+            </Descriptions.Item>
+          </Descriptions>
+        )}
+      </Card>
+    </Space>
+  )
+}
+
+/**
+ * ضبط تذكير «هل استلمت طلبك؟» لطلب واحد.
+ *
+ * الجدولة على الخادم تقرأ عموداً في القاعدة، فتغيير الموعد هنا يكفي — لا
+ * مؤقّت قديم يبقى معلّقاً. وبعد الإرسال تُقفل الأدوات لأن الخادم يرفض
+ * إعادة الجدولة أو الإرسال مرة ثانية (REMINDER_ALREADY_SENT).
+ */
+const PRESETS = [1, 6, 12, 24, 48] as const
+
+function ReminderControls({ order }: { order: AdminOrder }) {
+  const { message } = App.useApp()
+  const queryClient = useQueryClient()
+  const [customAt, setCustomAt] = useState<Dayjs | null>(null)
+
+  const sent = order.ratingReminderSentAt !== null
+  const invalidate = () => {
+    // نفس مفاتيح الصفحة نفسها — مفتاح مختلف يعني إبطالاً لا يصيب شيئاً
+    // وواجهةً تبقى على حالة قديمة بعد نجاح العملية.
+    void queryClient.invalidateQueries({ queryKey: ['order', order.id] })
+    void queryClient.invalidateQueries({ queryKey: ['orders'] })
+  }
+
+  const reschedule = useMutation({
+    mutationFn: (payload: { delayHours: number } | { remindAt: string }) =>
+      rescheduleReminder(order.id, payload),
+    onSuccess: () => {
+      message.success('حُدّث موعد التذكير')
+      invalidate()
+    },
+    onError: (error) =>
+      message.error(error instanceof ApiError ? error.message : 'تعذر التحديث'),
+  })
+
+  const sendNow = useMutation({
+    mutationFn: () => sendReminderNow(order.id),
+    onSuccess: () => {
+      message.success('أُرسل الإشعار للعميل')
+      invalidate()
+    },
+    onError: (error) =>
+      message.error(error instanceof ApiError ? error.message : 'تعذر الإرسال'),
+  })
+
+  const busy = reschedule.isPending || sendNow.isPending
+
+  if (sent) {
+    return (
+      <Alert
+        type="success"
+        showIcon
+        message="أُرسل التذكير للعميل"
+        description={`وقت الإرسال: ${formatDateTime(order.ratingReminderSentAt!)}. لا يمكن إعادة إرساله أو إعادة جدولته.`}
+      />
+    )
+  }
+
+  return (
+    <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+      <Descriptions column={1} size="small">
+        <Descriptions.Item label="خروج الطلب للتوصيل">
+          {formatDateTime(order.dispatchedAt!)}
+        </Descriptions.Item>
+        <Descriptions.Item label="تأكيد الاستلام">
+          {order.deliveredAt ? formatDateTime(order.deliveredAt) : 'لم يؤكّد بعد'}
+        </Descriptions.Item>
+        <Descriptions.Item label="موعد التذكير الحالي">
+          {order.ratingAvailableAt ? formatDateTime(order.ratingAvailableAt) : '—'}
+          {order.ratingAvailable ? ' (مستحق الآن)' : ''}
+        </Descriptions.Item>
+      </Descriptions>
+
+      <Space wrap>
+        <Typography.Text type="secondary">بعد الخروج للتوصيل بـ:</Typography.Text>
+        {PRESETS.map((hours) => (
+          <Button
+            key={hours}
+            size="small"
+            disabled={busy}
+            onClick={() => reschedule.mutate({ delayHours: hours })}
+          >
+            {hours} ساعة
+          </Button>
+        ))}
+      </Space>
+
+      <Space wrap>
+        <Typography.Text type="secondary">أو وقت محدّد:</Typography.Text>
+        <DatePicker
+          showTime
+          value={customAt}
+          disabled={busy}
+          onChange={(value) => setCustomAt(value)}
+          placeholder="اختر التاريخ والوقت"
+        />
+        <Button
+          size="small"
+          disabled={busy || !customAt}
+          onClick={() =>
+            customAt && reschedule.mutate({ remindAt: customAt.toISOString() })
+          }
+        >
+          حفظ الموعد
+        </Button>
+      </Space>
+
+      <Popconfirm
+        title="إرسال الإشعار الآن؟"
+        description="سيصل العميل فوراً، ولن يُرسل التذكير المجدول بعدها."
+        okText="إرسال"
+        cancelText="إلغاء"
+        onConfirm={() => sendNow.mutateAsync().catch(() => undefined)}
+      >
+        <Button type="primary" loading={sendNow.isPending} disabled={busy}>
+          إرسال الإشعار الآن
+        </Button>
+      </Popconfirm>
     </Space>
   )
 }

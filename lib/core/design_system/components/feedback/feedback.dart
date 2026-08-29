@@ -5,3 +5,4 @@ export 'anime_linear_progress.dart';
 export 'anime_loader.dart';
 export 'anime_order_status_badge.dart';
 export 'anime_product_badge.dart';
+export 'otaku_skeleton.dart';

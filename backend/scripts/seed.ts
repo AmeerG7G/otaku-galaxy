@@ -1,3 +1,4 @@
+import type pg from 'pg';
 import { config } from '../src/config/index.js';
 import { db, closePools } from '../src/database/pool.js';
 import { runMigrations } from './migrate.js';
@@ -15,6 +16,17 @@ const SUBCATEGORIES: Record<string, string[]> = {
   'قرطاسية': ['دفاتر', 'أقلام', 'ملصقات'],
   'حقائب': ['ظهرية', 'قماشية'],
   'إكسسوارات': ['سلاسل', 'خواتم', 'بروشات'],
+};
+
+/**
+ * مناطق التوصيل داخل المحافظة. النجف مقسّمة داخل/خارج القضاء برسمين
+ * مستقلين — متى وُجدت مناطق، صار اختيارها إلزامياً ورسمها هو المحتسب.
+ */
+const GOVERNORATE_ZONES: Record<string, { name: string; deliveryFee: number }[]> = {
+  'النجف': [
+    { name: 'داخل قضاء النجف', deliveryFee: 4000 },
+    { name: 'خارج قضاء النجف', deliveryFee: 6000 },
+  ],
 };
 
 const GOVERNORATES = [
@@ -66,7 +78,59 @@ const PRODUCTS: {
   { name: 'بوستر أنمي A3', description: 'بوستر مطبوع عالي الجودة.', price: 8000, category: 'قرطاسية', subcategory: 'ملصقات', stock: 55, isOffer: false, isSelected: true, images: [img('poster')], options: [] },
 ];
 
+
+/**
+ * حساب المسؤول الأولي — اختياري، صريح، وغير مطبوع.
+ *
+ * كان البذر ينشئ مسؤولاً بكلمة `admin123` ثابتة ويطبعها في السجل. أي نشرة
+ * تشغّل البذر تحصل على مسؤولٍ بكلمة مرور يعرفها كل من قرأ المستودع، ويبقى
+ * أثرها في سجلّات الخادم وأنابيب النشر. الآن:
+ *   - لا يُنشأ حساب إطلاقاً ما لم تُضبط `SEED_ADMIN_PHONE` و`SEED_ADMIN_PASSWORD`.
+ *   - الإنتاج يرفض البذر ما لم يُطلَب صراحةً بـ `ALLOW_PRODUCTION_SEED=true`.
+ *   - لا تُطبع كلمة المرور ولا تُشتق من قيمة افتراضية.
+ */
+async function seedAdminUser(client: pg.PoolClient): Promise<void> {
+  const phone = process.env.SEED_ADMIN_PHONE?.trim();
+  const password = process.env.SEED_ADMIN_PASSWORD;
+
+  if (!phone || !password) {
+    console.log(
+      'Admin user: skipped — set SEED_ADMIN_PHONE and SEED_ADMIN_PASSWORD to create one.',
+    );
+    return;
+  }
+
+  if (!/^07\d{9}$/.test(phone)) {
+    throw new Error('SEED_ADMIN_PHONE غير صالح — يجب أن يبدأ بـ 07 ويتركب من 11 رقماً.');
+  }
+  if (password.length < 12) {
+    throw new Error('SEED_ADMIN_PASSWORD قصيرة — 12 حرفاً على الأقل.');
+  }
+
+  const passwordHash = await bcrypt.hash(password, config.bcryptRounds);
+  await client.query(
+    `INSERT INTO users (username, phone, password_hash, role, phone_verified_at)
+     VALUES ($1, $2, $3, 'admin', now())
+     ON CONFLICT (phone) DO UPDATE
+       SET role = 'admin',
+           password_hash = EXCLUDED.password_hash,
+           phone_verified_at = COALESCE(users.phone_verified_at, now())`,
+    [process.env.SEED_ADMIN_USERNAME?.trim() || 'مدير المتجر', phone, passwordHash],
+  );
+  // الرقم وحده يكفي للتأكيد؛ كلمة المرور لا تُطبع بحال.
+  console.log(`Admin user ready: ${phone} (password taken from SEED_ADMIN_PASSWORD, not logged).`);
+}
+
+
 async function main() {
+  // البذر يكتب بيانات تجريبية ويستطيع إنشاء مسؤول — تشغيله على الإنتاج
+  // بالخطأ حادثةٌ لا تراجُع عنها، فيتطلّب طلباً صريحاً.
+  if (config.isProduction && process.env.ALLOW_PRODUCTION_SEED !== 'true') {
+    throw new Error(
+      'رفض البذر في الإنتاج. اضبط ALLOW_PRODUCTION_SEED=true إن كنت متأكداً.',
+    );
+  }
+
   const url = config.migrationDatabaseUrl || config.databaseUrl;
   console.log('Seeding database…');
   await runMigrations(url);
@@ -128,12 +192,24 @@ async function main() {
     }
 
     for (const g of GOVERNORATES) {
-      await client.query(
+      const { rows } = await client.query<{ id: string }>(
         `INSERT INTO governorates (name, delivery_fee)
          VALUES ($1, $2)
-         ON CONFLICT (name) DO UPDATE SET delivery_fee = EXCLUDED.delivery_fee`,
+         ON CONFLICT (name) DO UPDATE SET delivery_fee = EXCLUDED.delivery_fee
+         RETURNING id`,
         [g.name, g.deliveryFee],
       );
+      const governorateId = rows[0]!.id;
+
+      for (const [index, zone] of (GOVERNORATE_ZONES[g.name] ?? []).entries()) {
+        await client.query(
+          `INSERT INTO governorate_zones (governorate_id, name, delivery_fee, sort_order)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (governorate_id, name)
+           DO UPDATE SET delivery_fee = EXCLUDED.delivery_fee`,
+          [governorateId, zone.name, zone.deliveryFee, index],
+        );
+      }
     }
 
     await client.query(
@@ -143,18 +219,10 @@ async function main() {
       [img('banner1'), img('banner2')],
     );
 
-    const adminPhone = '07700000000';
-    const passwordHash = await bcrypt.hash('admin123', 10);
-    await client.query(
-      `INSERT INTO users (username, phone, password_hash, role)
-       VALUES ($1, $2, $3, 'admin')
-       ON CONFLICT (phone) DO UPDATE SET role = 'admin'`,
-      ['مدير المتجر', adminPhone, passwordHash],
-    );
+    await seedAdminUser(client);
 
     await client.query('COMMIT');
     console.log(`Seeded: ${CATEGORIES.length} categories, ${PRODUCTS.length} products, ${GOVERNORATES.length} governorates.`);
-    console.log(`Admin user: ${adminPhone} / admin123`);
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;

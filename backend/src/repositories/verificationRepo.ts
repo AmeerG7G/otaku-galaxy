@@ -27,7 +27,7 @@ export const verificationRepo = {
     return rows[0]!;
   },
 
-  /** أحدث رمز غير مُستهلَك للهاتف والغرض (مع زيادة عدّاد المحاولات). */
+  /** أحدث رمز غير مُستهلَك للهاتف والغرض. */
   async latestActive(
     db: pg.Pool | pg.PoolClient,
     phone: string,
@@ -41,6 +41,53 @@ export const verificationRepo = {
       [phone, purpose],
     );
     return rows[0] ?? null;
+  },
+
+  /** إبطال كل الرموز الحيّة لهذا (الرقم، الغرض) — يُستدعى قبل إصدار رمز جديد. */
+  async consumeAllActive(
+    db: pg.Pool | pg.PoolClient,
+    phone: string,
+    purpose: VerificationPurpose,
+  ): Promise<void> {
+    await db.query(
+      `UPDATE verification_codes SET consumed_at = now()
+       WHERE phone = $1 AND purpose = $2 AND consumed_at IS NULL`,
+      [phone, purpose],
+    );
+  },
+
+  /**
+   * لحظة آخر إصدار رمز لهذا الرقم — أساس فترة التهدئة بين إرسالين.
+   * تشمل الرموز المُستهلَكة عمداً: الإرسال حدث فعلاً ودُفعت كلفته.
+   */
+  async lastSentAt(
+    db: pg.Pool | pg.PoolClient,
+    phone: string,
+    purpose: VerificationPurpose,
+  ): Promise<Date | null> {
+    const { rows } = await db.query<{ created_at: Date }>(
+      `SELECT created_at FROM verification_codes
+       WHERE phone = $1 AND purpose = $2
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [phone, purpose],
+    );
+    return rows[0]?.created_at ?? null;
+  },
+
+  /** عدد الرموز المُصدَرة لهذا الرقم منذ لحظة معيّنة — أساس سقف النافذة. */
+  async countSince(
+    db: pg.Pool | pg.PoolClient,
+    phone: string,
+    purpose: VerificationPurpose,
+    since: Date,
+  ): Promise<number> {
+    const { rows } = await db.query<{ total: string }>(
+      `SELECT COUNT(*)::text AS total FROM verification_codes
+       WHERE phone = $1 AND purpose = $2 AND created_at >= $3`,
+      [phone, purpose, since],
+    );
+    return Number(rows[0]?.total ?? 0);
   },
 
   async incrementAttempts(db: pg.Pool | pg.PoolClient, id: string): Promise<void> {

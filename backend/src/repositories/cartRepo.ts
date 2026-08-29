@@ -11,6 +11,12 @@ export interface CartLine {
   unitPrice: number;
   lineTotal: number;
   stock: number;
+  /**
+   * ترويج التوصيل على المنتج — تحتاجه السلة والدفع لعرض «خصم التوصيل»
+   * قبل الطلب. القيمة معاينة فقط؛ الخادم يعيد حسابها عند الإنشاء.
+   */
+  hasDeliveryPromo: boolean;
+  deliveryPromoAmount: number;
   createdAt: Date;
 }
 
@@ -25,6 +31,8 @@ const LINE_SELECT = `
   SELECT ci.id, ci.product_id AS "productId", ci.option_value AS "optionValue",
          ci.quantity, ci.created_at AS "createdAt",
          p.name AS "productName", p.stock, p.price AS "unitPrice",
+         p.has_delivery_promo AS "hasDeliveryPromo",
+         p.delivery_promo_amount AS "deliveryPromoAmount",
          (SELECT pi.url FROM product_images pi
           WHERE pi.product_id = p.id ORDER BY pi.sort_order LIMIT 1) AS "productImage"
   FROM cart_items ci
@@ -42,6 +50,8 @@ function mapLine(row: Record<string, unknown>): CartLine {
     unitPrice: Number(row.unitPrice),
     lineTotal: Number(row.unitPrice) * Number(row.quantity),
     stock: Number(row.stock),
+    hasDeliveryPromo: row.hasDeliveryPromo === true,
+    deliveryPromoAmount: Number(row.deliveryPromoAmount ?? 0),
     createdAt: new Date(row.createdAt as string),
   };
 }

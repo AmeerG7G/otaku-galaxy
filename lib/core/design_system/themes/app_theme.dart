@@ -23,6 +23,7 @@ class AppTheme {
       brightness: brightness,
       colorScheme: colors,
       scaffoldBackgroundColor: isLight ? AppColors.background : colors.surface,
+      fontFamily: 'Cairo',
       textTheme: text,
       extensions: [brand],
       appBarTheme: AppBarTheme(
@@ -253,35 +254,37 @@ class AppTheme {
   }
 
   static TextTheme _textTheme(ColorScheme colors) {
-    const base = TextStyle(height: AppDimens.lineHeightNormal);
+    const base = TextStyle(
+      height: AppDimens.lineHeightNormal,
+      fontFamily: 'Cairo',
+    );
+    // العناوين تستخدم Tajawal بخط أثقل — تطابق الهوية الجديدة.
+    const heading = TextStyle(fontFamily: 'Tajawal', letterSpacing: -0.3);
     return TextTheme(
-      headlineLarge: base.copyWith(
-        fontSize: 32,
-        fontWeight: AppDimens.weightExtraBold,
-      ),
-      headlineMedium: base.copyWith(
-        fontSize: 28,
-        fontWeight: AppDimens.weightBold,
-      ),
-      headlineSmall: base.copyWith(
-        fontSize: 24,
-        fontWeight: AppDimens.weightBold,
-      ),
-      titleLarge: base.copyWith(fontSize: 21, fontWeight: AppDimens.weightBold),
-      titleMedium: base.copyWith(
-        fontSize: 18,
-        fontWeight: AppDimens.weightSemiBold,
-      ),
-      titleSmall: base.copyWith(
-        fontSize: 16,
-        fontWeight: AppDimens.weightSemiBold,
-      ),
+      headlineLarge: base
+          .copyWith(fontSize: 32, fontWeight: AppDimens.weightBlack)
+          .merge(heading),
+      headlineMedium: base
+          .copyWith(fontSize: 28, fontWeight: AppDimens.weightBlack)
+          .merge(heading),
+      headlineSmall: base
+          .copyWith(fontSize: 24, fontWeight: AppDimens.weightExtraBold)
+          .merge(heading),
+      titleLarge: base
+          .copyWith(fontSize: 21, fontWeight: AppDimens.weightExtraBold)
+          .merge(heading),
+      titleMedium: base
+          .copyWith(fontSize: 18, fontWeight: AppDimens.weightBold)
+          .merge(heading),
+      titleSmall: base
+          .copyWith(fontSize: 16, fontWeight: AppDimens.weightBold)
+          .merge(heading),
       bodyLarge: base.copyWith(fontSize: 16),
       bodyMedium: base.copyWith(fontSize: 14),
       bodySmall: base.copyWith(fontSize: 12),
       labelLarge: base.copyWith(
         fontSize: 14,
-        fontWeight: AppDimens.weightMedium,
+        fontWeight: AppDimens.weightBold,
       ),
       labelMedium: base.copyWith(
         fontSize: 12,

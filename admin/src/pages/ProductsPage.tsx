@@ -1,3 +1,4 @@
+import { resolveMediaUrl } from '../utils/media'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -95,7 +96,7 @@ export default function ProductsPage() {
       render: (_: unknown, product: Product) =>
         product.images[0] ? (
           <Image
-            src={product.images[0]}
+            src={resolveMediaUrl(product.images[0])}
             width={56}
             height={56}
             style={{ objectFit: 'cover', borderRadius: 4 }}

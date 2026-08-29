@@ -13,9 +13,14 @@ class OtakuStoreLogo extends StatelessWidget {
     this.steamColor,
     this.glowEnabled = true,
     this.animationDuration = AppDimens.durationSlow,
+    this.cornerRadius,
   });
 
   final double size;
+
+  /// نصف قطر الزوايا. الافتراضي نسبة ٠٫٣١ من الحجم — وهي النسبة المستخدمة
+  /// في ترويسات المصدر (٤٦→١٥، ٤٢→١٣، ٣٨→١٢). شاشة البداية تمرّر ٣٤ صراحةً.
+  final double? cornerRadius;
   final bool showText;
   final double? textSize;
   final Color? textColor;
@@ -32,10 +37,12 @@ class OtakuStoreLogo extends StatelessWidget {
       child: SizedBox.square(
         dimension: size,
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(size * 0.24),
+          borderRadius: BorderRadius.circular(cornerRadius ?? size * 0.31),
           child: Image.asset(
             'assets/branding/otaku-galaxy-logo.jpg',
             fit: BoxFit.cover,
+            // ‎object-position:top في المصدر — القصّ يحفظ أعلى الشعار.
+            alignment: Alignment.topCenter,
             filterQuality: FilterQuality.high,
           ),
         ),

@@ -19,6 +19,13 @@ export interface Product {
   isSelected: boolean
   rating: number | null
   reviewCount: number
+  /** السعر قبل الخصم — يُشتق منه السعر المشطوب ونسبة الخصم. */
+  previousPrice: number | null
+  discountPercent: number | null
+  hasDeliveryPromo: boolean
+  /** قيمة خصم التوصيل عن كل قطعة — القيمة المعتمدة في حساب الطلب. */
+  deliveryPromoAmount: number
+  franchiseIds: string[]
   createdAt: string
   updatedAt: string
 }
@@ -52,6 +59,10 @@ export interface ProductCreatePayload {
   options?: ProductOptionInput[]
   isOffer?: boolean
   isSelected?: boolean
+  previousPrice?: number | null
+  hasDeliveryPromo?: boolean
+  deliveryPromoAmount?: number
+  franchiseIds?: string[]
 }
 
 export interface ProductUpdatePayload {
@@ -68,6 +79,10 @@ export interface ProductUpdatePayload {
   isActive?: boolean
   rating?: number | null
   reviewCount?: number
+  previousPrice?: number | null
+  hasDeliveryPromo?: boolean
+  deliveryPromoAmount?: number
+  franchiseIds?: string[]
 }
 
 export interface PublicProduct {
@@ -84,6 +99,11 @@ export interface PublicProduct {
   reviewCount: number
   isOffer: boolean
   isSelected: boolean
+  previousPrice: number | null
+  discountPercent: number | null
+  hasDeliveryPromo: boolean
+  deliveryPromoAmount: number
+  franchiseIds: string[]
 }
 
 export interface ProductFormDraft {
@@ -100,4 +120,8 @@ export interface ProductFormDraft {
   isSelected: boolean
   rating: number | null
   reviewCount: number
+  previousPrice: number | null
+  hasDeliveryPromo: boolean
+  deliveryPromoAmount: number
+  franchiseIds: string[]
 }

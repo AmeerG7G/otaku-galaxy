@@ -43,3 +43,35 @@ export async function createSubcategory(
   )
   return { row: response.data.data!, message: response.data.message ?? '' }
 }
+
+/**
+ * حذف قسم.
+ *
+ * الخادم يرفض بـ409 ما دام منتج أو قسم فرعي يعتمد عليه، ولا يحذف شيئاً
+ * تبعاً. الرسالة العائدة تقول ما الذي يمنع الحذف.
+ */
+export async function deleteCategory(id: string): Promise<{ message: string }> {
+  const response = await client.delete<ApiEnvelope<{ id: string }>>(
+    `/admin/categories/${id}`,
+  )
+  return { message: response.data.message ?? '' }
+}
+
+export async function updateSubcategory(
+  id: string,
+  payload: { name?: string; sortOrder?: number; isActive?: boolean },
+): Promise<{ message: string }> {
+  const response = await client.patch<ApiEnvelope<unknown>>(
+    `/admin/subcategories/${id}`,
+    payload,
+  )
+  return { message: response.data.message ?? '' }
+}
+
+/** حذف قسم فرعي — مرفوض بـ409 ما دامت منتجات مرتبطة به. */
+export async function deleteSubcategory(id: string): Promise<{ message: string }> {
+  const response = await client.delete<ApiEnvelope<{ id: string }>>(
+    `/admin/subcategories/${id}`,
+  )
+  return { message: response.data.message ?? '' }
+}

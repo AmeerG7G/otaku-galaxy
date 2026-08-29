@@ -1,6 +1,7 @@
 import '../entities/category.dart';
 import '../entities/home_data.dart';
 import '../entities/product.dart';
+import '../entities/product_sort.dart';
 import '../entities/product_page.dart';
 
 /// واجهة مستودع المنتجات (تعريف فقط).
@@ -18,7 +19,10 @@ abstract class ProductRepository {
 
   Future<List<Category>> fetchCategories();
 
-  Future<List<Product>> fetchCategoryProducts(String categoryId);
+  Future<List<Product>> fetchCategoryProducts(
+    String categoryId, {
+    ProductSort? sort,
+  });
 
   Future<ProductPage> searchProducts(
     String query, {

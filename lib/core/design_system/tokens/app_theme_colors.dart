@@ -112,19 +112,19 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
     info: AppColors.infoLight,
     infoLight: AppColors.infoLight,
     infoPale: Color(0xFF162F4A),
-    shadowLight: Color(0x1A000000),
-    shadowMedium: Color(0x33000000),
-    shadowDark: Color(0x4D000000),
-    glowPrimary: Color(0x447167E8),
-    glowSecondary: Color(0x44F28BC5),
-    glowAccent: Color(0x44F4BE58),
+    shadowLight: Color(0x40000000),
+    shadowMedium: Color(0x59000000),
+    shadowDark: Color(0x80000000),
+    glowPrimary: Color(0x557C5CFF),
+    glowSecondary: Color(0x55FF3D8F),
+    glowAccent: Color(0x55FFB02E),
     primaryGradient: LinearGradient(
-      colors: [Color(0xFFAAA2FF), Color(0xFF7167E8)],
+      colors: [Color(0xFFFF3D8F), Color(0xFFB3A2FF)],
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
     ),
     secondaryGradient: LinearGradient(
-      colors: [Color(0xFFFFA4D4), Color(0xFFE256A5)],
+      colors: [Color(0xFFFF7FAE), Color(0xFFFF3D8F)],
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
     ),
@@ -134,22 +134,86 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
       end: Alignment.bottomRight,
     ),
     surfaceGradient: LinearGradient(
-      colors: [Color(0xFF141024), Color(0xFF211A39)],
+      colors: [Color(0xFF0B0716), Color(0xFF130C24)],
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
     ),
     animeHeroGradient: LinearGradient(
-      colors: [Color(0xFF1B153F), Color(0xFF4935A6), Color(0xFFC44794)],
-      stops: [0.0, 0.5, 1.0],
+      colors: [Color(0xFFFF3D8F), Color(0xFF7C5CFF), Color(0xFF4EA8FF)],
+      stops: [0.0, 0.58, 1.0],
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
     ),
     bannerGradient: LinearGradient(
-      colors: [Color(0xFF1B153F), Color(0xFF4935A6), Color(0xFFC44794)],
+      colors: [Color(0xFFFF3D8F), Color(0xFF7C5CFF), Color(0xFF4EA8FF)],
+      stops: [0.0, 0.58, 1.0],
       begin: Alignment.centerLeft,
       end: Alignment.centerRight,
     ),
   );
+
+  /// تدرّج ثابت (فاتح/داكن) لخلفية شاشات المصادقة — من هوية التصميم مباشرة.
+  static const LinearGradient authGradientLight = LinearGradient(
+    colors: [Color(0xFFFFD9E7), Color(0xFFE9DCFF), Color(0xFFDBE6FF)],
+    stops: [0.0, 0.52, 1.0],
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+  );
+  static const LinearGradient authGradientDark = LinearGradient(
+    colors: [Color(0xFF3D1C44), Color(0xFF2B1A50), Color(0xFF1A2348)],
+    stops: [0.0, 0.52, 1.0],
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+  );
+
+  // ═══ رموز Otaku Galaxy v2 المشتقّة ═══
+  // تُشتق من [surfaceGradient] بدل إضافة حقول جديدة، حتى تبقى عقود
+  // copyWith/lerp الحالية سليمة بلا تغيير.
+
+  /// هل النسخة الداكنة؟ (أول لون في تدرّج السطح داكن).
+  bool get isDarkScheme =>
+      surfaceGradient.colors.first.computeLuminance() < 0.5;
+
+  /// خلفية حاوية صورة المنتج (--ph) — محايدة دائماً.
+  Color get photoSlot =>
+      isDarkScheme ? const Color(0xFF221A3D) : const Color(0xFFEFEAFA);
+
+  /// لون مؤشّر الصورة داخل الحاوية (--ph-ink).
+  Color get photoSlotInk =>
+      isDarkScheme ? const Color(0xFF6A5F92) : const Color(0xFFB3A9CF);
+
+  /// الظل الناعم (--sh-s) لبطاقات المنتجات والأسطح المرفوعة.
+  List<BoxShadow> get shadowSoft => [
+    BoxShadow(
+      color: isDarkScheme
+          ? const Color(0x5C000000)
+          : const Color(0x1A4A2C8C),
+      blurRadius: 20,
+      offset: const Offset(0, 8),
+    ),
+  ];
+
+  /// ظل خفيف جداً (--sh-xs) للعناصر الصغيرة العائمة.
+  List<BoxShadow> get shadowXSoft => [
+    BoxShadow(
+      color: isDarkScheme
+          ? const Color(0x4D000000)
+          : const Color(0x144A2C8C),
+      blurRadius: 10,
+      offset: const Offset(0, 3),
+    ),
+  ];
+
+  /// ظل عميق (--sh) للأسطح العائمة كشريط التنقل السفلي والأوراق.
+  List<BoxShadow> get shadowFloating => [
+    BoxShadow(
+      color: isDarkScheme
+          ? const Color(0x80000000)
+          : const Color(0x244A2C8C),
+      blurRadius: 40,
+      offset: const Offset(0, 18),
+    ),
+  ];
 
   @override
   AppThemeColors copyWith({

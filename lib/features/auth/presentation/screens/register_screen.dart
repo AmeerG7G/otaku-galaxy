@@ -6,6 +6,8 @@ import '../../../../core/design_system/design_system.dart';
 import '../../../../core/errors/app_exception.dart';
 import '../../../../core/router/app_router.dart';
 import '../cubit/auth_cubit.dart';
+import '../widgets/auth_field.dart';
+import '../widgets/auth_scaffold.dart';
 
 @RoutePage()
 class RegisterScreen extends StatefulWidget {
@@ -105,86 +107,28 @@ class _RegisterScreenState extends State<RegisterScreen>
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.themeColors;
 
-    return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(gradient: colors.surfaceGradient),
-        child: SafeArea(
-          child: FadeTransition(
-            opacity: _fadeAnimation,
-            child: SlideTransition(
-              position: _slideAnimation,
-              child: SingleChildScrollView(
-                padding: EdgeInsets.all(AppDimens.screenHorizontalPadding),
-                child: Form(
+    return FadeTransition(
+      opacity: _fadeAnimation,
+      child: SlideTransition(
+        position: _slideAnimation,
+        child: AuthScaffold(
+          title: 'إنشاء حساب',
+          subtitle: 'خطوة وحدة وتصير من سكّان مجرة الأوتاكو.',
+          artwork: 'assets/art/opt/a-i0.png',
+          artworkHeight: 178,
+          artworkWidth: 150,
+          artworkBottom: -8,
+          form: Form(
                   key: _formKey,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      SizedBox(height: AppDimens.space3),
-
-                      // زر العودة
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: IconButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          icon: Icon(
-                            Icons.arrow_forward_ios,
-                            size: AppDimens.iconMd,
-                          ),
-                          style: IconButton.styleFrom(
-                            backgroundColor: Theme.of(
-                              context,
-                            ).colorScheme.surfaceContainerHighest,
-                            foregroundColor: Theme.of(
-                              context,
-                            ).colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ),
-
-                      SizedBox(height: AppDimens.space2),
-
-                      // الشعار
-                      Center(
-                        child: OtakuStoreLogo(
-                          size: AppDimens.iconLogo * 0.8,
-                          animationDuration: const Duration(milliseconds: 2000),
-                        ),
-                      ),
-
-                      SizedBox(height: AppDimens.space7),
-
-                      // العنوان
-                      Text(
-                        'إنشاء حساب جديد',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.headlineSmall
-                            ?.copyWith(
-                              fontWeight: AppDimens.weightBold,
-                              letterSpacing: AppDimens.letterSpacingTight,
-                            ),
-                      ),
-
-                      SizedBox(height: AppDimens.space2),
-
-                      Text(
-                        'انضم إلى مجتمع مجرات الاوتاكو',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-
-                      SizedBox(height: AppDimens.space9),
-
                       // حقل اسم المستخدم
-                      AnimeTextField(
+                      AuthField(
                         controller: _usernameController,
                         label: 'اسم المستخدم',
-                        hint: 'أدخل اسم المستخدم',
-                        prefixIcon: Icons.person_outline,
+                        hint: 'عمر الطيار',
                         textInputAction: TextInputAction.next,
                         validator: (value) {
                           if (value == null || value.trim().isEmpty) {
@@ -197,14 +141,14 @@ class _RegisterScreenState extends State<RegisterScreen>
                         },
                       ),
 
-                      SizedBox(height: AppDimens.space5),
+                      const SizedBox(height: 15),
 
                       // حقل رقم الهاتف
-                      AnimeTextField(
+                      AuthField(
                         controller: _phoneController,
                         label: 'رقم الهاتف',
-                        hint: 'مثال: 07xxxxxxxx',
-                        prefixIcon: Icons.phone_outlined,
+                        hint: '0770 123 4567',
+                        textDirection: TextDirection.ltr,
                         keyboardType: TextInputType.phone,
                         textInputAction: TextInputAction.next,
                         validator: (value) {
@@ -218,23 +162,23 @@ class _RegisterScreenState extends State<RegisterScreen>
                         },
                       ),
 
-                      SizedBox(height: AppDimens.space5),
+                      const SizedBox(height: 15),
 
                       // حقل كلمة المرور
-                      AnimeTextField(
+                      AuthField(
                         controller: _passwordController,
                         label: 'كلمة المرور',
-                        hint: 'أدخل كلمة المرور (6 أحرف على الأقل)',
-                        prefixIcon: Icons.lock_outline,
+                        hint: '••••••••',
                         obscureText: _obscure,
                         textInputAction: TextInputAction.done,
                         onSubmitted: (_) => _register(),
-                        suffixIcon: IconButton(
+                        trailing: IconButton(
                           icon: Icon(
                             _obscure
                                 ? Icons.visibility_outlined
                                 : Icons.visibility_off_outlined,
                             size: AppDimens.iconMd,
+                            color: Theme.of(context).colorScheme.outline,
                           ),
                           onPressed: () => setState(() => _obscure = !_obscure),
                         ),
@@ -249,70 +193,35 @@ class _RegisterScreenState extends State<RegisterScreen>
                         },
                       ),
 
-                      SizedBox(height: AppDimens.space7),
+                      SizedBox(height: AppDimens.space5),
 
                       // زر إنشاء الحساب
                       AnimePrimaryButton(
-                        label: 'إنشاء الحساب',
+                        label: 'إرسال رمز التحقق',
                         onPressed: _register,
                         loading: _loading,
-                        icon: Icons.person_add_outlined,
-                        iconPosition: IconPosition.start,
                         height: AppDimens.buttonHeightXl,
+                        borderRadius: AppDimens.radiusMd,
+                        gradient: AppColors.ctaGradient,
                       ),
 
-                      SizedBox(height: AppDimens.space7),
+                      SizedBox(height: AppDimens.space3),
 
-                      // ملاحظة
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.info_outline,
-                            size: AppDimens.iconSm,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                          SizedBox(width: AppDimens.space2),
-                          Flexible(
-                            child: Text(
-                              'سيتم إرسال رمز تحقق إلى رقم هاتفك لتأكيد الحساب',
-                              textAlign: TextAlign.center,
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.onSurfaceVariant,
-                                  ),
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      SizedBox(height: AppDimens.space5),
-
-                      // تسجيل الدخول
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            'لديك حساب بالفعل؟ ',
-                            style: Theme.of(context).textTheme.bodyMedium
-                                ?.copyWith(
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.onSurfaceVariant,
-                                ),
-                          ),
-                          AnimeTextButton(
-                            label: 'تسجيل الدخول',
-                            onPressed: () => Navigator.of(context).pop(),
-                          ),
-                        ],
+                      Text(
+                        'بإنشائك حساباً فأنت توافق على شروط الاستخدام وسياسة الخصوصية.',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          height: 1.7,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     ],
                   ),
                 ),
-              ),
+          footer: Center(
+            child: AnimeTextButton(
+              label: 'عندك حساب؟ تسجيل الدخول',
+              onPressed: () => Navigator.of(context).pop(),
             ),
           ),
         ),

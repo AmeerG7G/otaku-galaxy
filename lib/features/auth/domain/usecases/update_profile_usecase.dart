@@ -7,6 +7,13 @@ class UpdateProfileUsecase {
 
   final AuthRepository _repository;
 
-  Future<User> call({String? username, String? avatarUrl}) =>
-      _repository.updateProfile(username: username, avatarUrl: avatarUrl);
+  Future<User> call({
+    String? username,
+    String? avatarUrl,
+    bool clearAvatar = false,
+  }) => _repository.updateProfile(
+    username: username,
+    avatarUrl: avatarUrl,
+    clearAvatar: clearAvatar,
+  );
 }

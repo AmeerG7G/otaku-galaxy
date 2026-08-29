@@ -31,3 +31,16 @@ export async function updateGovernorate(
   )
   return { row: response.data.data!, message: response.data.message ?? '' }
 }
+
+/**
+ * حذف محافظة.
+ *
+ * الخادم يرفض بـ409 ما دامت طلبات أو مناطق توصيل مرتبطة بها — الطلب سجلٌّ
+ * تاريخي لا يجوز أن يفقد محافظته.
+ */
+export async function deleteGovernorate(id: string): Promise<{ message: string }> {
+  const response = await client.delete<ApiEnvelope<{ id: string }>>(
+    `/admin/governorates/${id}`,
+  )
+  return { message: response.data.message ?? '' }
+}

@@ -70,6 +70,10 @@ function publicProductToDraft(product: PublicProduct): ProductFormDraft {
     isSelected: product.isSelected,
     rating: product.rating,
     reviewCount: product.reviewCount,
+    previousPrice: product.previousPrice,
+    hasDeliveryPromo: product.hasDeliveryPromo,
+    deliveryPromoAmount: product.deliveryPromoAmount ?? 0,
+    franchiseIds: product.franchiseIds,
   }
 }
 
@@ -88,6 +92,10 @@ function adminProductToDraft(product: Product): ProductFormDraft {
     isSelected: product.isSelected,
     rating: product.rating,
     reviewCount: product.reviewCount,
+    previousPrice: product.previousPrice,
+    hasDeliveryPromo: product.hasDeliveryPromo,
+    deliveryPromoAmount: product.deliveryPromoAmount ?? 0,
+    franchiseIds: product.franchiseIds,
   }
 }
 

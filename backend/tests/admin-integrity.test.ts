@@ -194,10 +194,11 @@ describe('order rejection stock integrity', () => {
     expect(rejected.status).toBe(200);
     expect(await stockOf(rejectProductId!)).toBe(before);
 
+    // سبب الرفض إلزامي دائماً — حتى في إعادة المحاولة على طلب مرفوض.
     const retry = await api
       .patch(`/api/admin/orders/${orderId}/status`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ status: 'REJECTED' });
+      .send({ status: 'REJECTED', note: 'المنتج غير متوفر' });
     expect(retry.status).toBe(200);
     expect(retry.body.data.status).toBe('REJECTED');
     expect(await stockOf(rejectProductId!)).toBe(before);
@@ -225,9 +226,19 @@ describe('order rejection stock integrity', () => {
     await api
       .patch(`/api/admin/orders/${orderId}/status`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ status: 'REJECTED' })
+      .send({ status: 'REJECTED', note: 'نفد المخزون' })
       .expect(200);
     expect(await stockOf(rejectProductId!)).toBe(before);
+  });
+
+  it('rejection without a reason is refused', async () => {
+    const { orderId } = await placeOrder(rejectProductId!, 1);
+    const response = await api
+      .patch(`/api/admin/orders/${orderId}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'REJECTED' });
+    // نفس اصطلاح بقية أخطاء التحقق في هذا المشروع.
+    expect(response.status).toBe(400);
   });
 
   it('customer cancellation restores stock atomically, second cancel refused', async () => {

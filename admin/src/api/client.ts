@@ -45,7 +45,11 @@ client.interceptors.response.use(
   (response) => response,
   (error: AxiosError<ApiEnvelope<unknown>>) => {
     const status = error.response?.status ?? 0
-    if (status === 401) {
+    // نهاية الجلسة: 401 (توكن مرفوض/مُبطل) أو 403 لحساب أُوقف بعد إصداره.
+    // بقية حالات 403 (نقص صلاحية) ليست نهاية جلسة ولا تُخرج المستخدم.
+    const suspended =
+      status === 403 && error.response?.data?.error?.code === 'ACCOUNT_SUSPENDED'
+    if (status === 401 || suspended) {
       const state = useAuthStore.getState()
       if (state.token) state.clear()
       if (window.location.pathname !== '/login') {

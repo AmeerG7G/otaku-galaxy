@@ -1,14 +1,24 @@
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../../core/design_system/design_system.dart';
-import '../../../cart/presentation/cubit/cart_cubit.dart';
+import '../../../../core/router/app_router.dart';
+import '../../../auth/presentation/cubit/auth_cubit.dart';
+import '../../../cart/presentation/cart_actions.dart';
+import '../../../collections/presentation/widgets/add_to_collection_sheet.dart';
 import '../../../favorites/presentation/cubit/favorites_cubit.dart';
-import '../../../main_navigation/presentation/screens/main_navigation_screen.dart';
+import '../../../favorites/presentation/favorite_toggle.dart';
 import '../../../products/domain/entities/product.dart';
 import '../../../products/domain/usecases/fetch_product_details_usecase.dart';
+import '../../../reviews/presentation/widgets/product_reviews_section.dart';
 
+/// تفاصيل المنتج بتصميم Otaku Galaxy v2.
+///
+/// فتحة صورة ثابتة بارتفاع ٣٣٠ تعلوها أزرار عائمة مربّعة (بلا `SliverAppBar`
+/// ينهار)، ثم كتلة تحريرية بالقسم والاسم والسعر، ثم الوصف والخيارات
+/// والكمية، ثم شريط إجراء سفلي ثابت يخرج من خلفه رسم شخصية.
 @RoutePage()
 class ProductDetailScreen extends StatefulWidget {
   const ProductDetailScreen({super.key, required this.productId});
@@ -48,666 +58,429 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final product = _product;
-    final colors = context.themeColors;
     final isFavorite =
         product != null &&
         context.select<FavoritesCubit, bool>(
           (cubit) => cubit.state.isFavorite(product.id),
         );
 
+    if (_loading) return Scaffold(body: _buildLoadingState());
+    if (product == null) return Scaffold(body: _buildErrorState());
+
     return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(gradient: colors.surfaceGradient),
-        child: _loading
-            ? _buildLoadingState()
-            : product == null
-            ? _buildErrorState(context)
-            : CustomScrollView(
-                slivers: [
-                  // صورة المنتج مع AppBar مدمج
-                  SliverAppBar(
-                    expandedHeight: 320,
-                    pinned: true,
-                    stretch: true,
-                    elevation: 0,
-                    backgroundColor: Colors.transparent,
-                    surfaceTintColor: Colors.transparent,
-                    flexibleSpace: FlexibleSpaceBar(
-                      stretchModes: const [
-                        StretchMode.zoomBackground,
-                        StretchMode.blurBackground,
-                      ],
-                      background: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          _buildProductImage(product),
-                          // تدرج علوي
-                          Container(
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: [
-                                  Colors.black.withValues(alpha: 0.4),
-                                  Colors.transparent,
-                                ],
-                                begin: Alignment.topCenter,
-                                end: Alignment.center,
-                              ),
+      body: Column(
+        children: [
+          Expanded(
+            child: ListView(
+              padding: EdgeInsets.zero,
+              children: [
+                _buildHero(product, isFavorite),
+                _buildDetails(product),
+              ],
+            ),
+          ),
+          _buildBottomBar(product),
+        ],
+      ),
+    );
+  }
+
+  /// فتحة صورة المنتج الكبيرة مع أزرار عائمة — الفتحة تبقى محايدة تماماً.
+  Widget _buildHero(Product product, bool isFavorite) {
+    final theme = Theme.of(context);
+
+    return SizedBox(
+      height: 330,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          DecoratedBox(
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(color: theme.colorScheme.outlineVariant),
+              ),
+            ),
+            child: ProductPhotoSlot(
+              imageUrl: product.images.isNotEmpty ? product.images.first : null,
+              desaturated: !product.inStock,
+              iconSize: 70,
+            ),
+          ),
+          SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _HeroButton(
+                    icon: Directionality.of(context) == TextDirection.rtl
+                        ? Icons.arrow_forward_ios_rounded
+                        : Icons.arrow_back_ios_new_rounded,
+                    onTap: () => context.router.maybePop(),
+                  ),
+                  const Spacer(),
+                  _HeroButton(
+                    icon: Icons.ios_share_rounded,
+                    onTap: () => _shareProduct(product),
+                  ),
+                  const SizedBox(width: 9),
+                  _HeroButton(
+                    icon: isFavorite
+                        ? Icons.favorite_rounded
+                        : Icons.favorite_border_rounded,
+                    filled: isFavorite,
+                    onTap: () => toggleFavoriteGuarded(context, product),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // مؤشّرات الصور أسفل الفتحة.
+          if (product.images.length > 1)
+            PositionedDirectional(
+              start: 0,
+              end: 0,
+              bottom: 18,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  for (var i = 0; i < product.images.length; i++) ...[
+                    if (i > 0) const SizedBox(width: 6),
+                    Container(
+                      width: i == 0 ? 18 : 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: i == 0
+                            ? AppColors.secondary
+                            : theme.colorScheme.outline,
+                        borderRadius: BorderRadius.circular(
+                          AppDimens.radiusFull,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          if (!product.inStock)
+            PositionedDirectional(
+              start: 0,
+              end: 0,
+              bottom: 0,
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                alignment: Alignment.center,
+                color: const Color(0xFF180F30).withValues(alpha: 0.74),
+                child: Text(
+                  'نفدت الكمية',
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    fontSize: 11,
+                    fontWeight: AppDimens.weightExtraBold,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// جسم الصفحة — كتلة تحريرية برسم باهت خلفها.
+  Widget _buildDetails(Product product) {
+    final theme = Theme.of(context);
+    final missingOption =
+        product.options != null &&
+        product.options!.isNotEmpty &&
+        _selectedOptions.length < product.options!.length;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 20, 18, 14),
+      clipBehavior: Clip.hardEdge,
+      decoration: const BoxDecoration(),
+      child: Stack(
+        children: [
+          PositionedDirectional(
+            top: 60,
+            end: -46,
+            child: IgnorePointer(
+              child: Opacity(
+                opacity: 0.13,
+                child: Image.asset('assets/art/opt/a-i4.png', width: 132),
+              ),
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // القسم + الاسم + شارة التقييم.
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (product.categoryName != null)
+                          Text(
+                            product.categoryName!,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              fontSize: 11.5,
+                              fontWeight: AppDimens.weightBold,
+                              letterSpacing: 0.5,
+                              color: AppColors.secondary,
                             ),
                           ),
-                          // شارة التقييم
-                          if (product.rating != null && product.rating! >= 4.5)
-                            Positioned(
-                              top: AppDimens.space6 + kToolbarHeight,
-                              right: AppDimens.screenHorizontalPadding,
-                              child: Container(
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: AppDimens.space3,
-                                  vertical: AppDimens.space1,
-                                ),
-                                decoration: BoxDecoration(
-                                  gradient: colors.accentGradient,
-                                  borderRadius: BorderRadius.circular(
-                                    AppDimens.radiusFull,
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: colors.glowAccent,
-                                      blurRadius: 8,
-                                      spreadRadius: 1,
-                                    ),
-                                  ],
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      Icons.star,
-                                      size: AppDimens.iconXs,
-                                      color: Colors.white,
-                                    ),
-                                    SizedBox(width: AppDimens.space1),
-                                    Text(
-                                      'الأعلى تقييماً',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .labelSmall
-                                          ?.copyWith(
-                                            color: Colors.white,
-                                            fontWeight: AppDimens.weightBold,
-                                          ),
-                                    ),
-                                  ],
-                                ),
-                              ),
+                        const SizedBox(height: 8),
+                        Text(
+                          product.name,
+                          style: theme.textTheme.headlineSmall?.copyWith(
+                            fontFamily: 'Tajawal',
+                            fontWeight: AppDimens.weightBlack,
+                            fontSize: 22,
+                            height: 1.35,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (product.rating != null) ...[
+                    const SizedBox(width: 12),
+                    OtakuPanel(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 7,
+                      ),
+                      radius: AppDimens.radiusFull,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.star_rounded,
+                            size: 15,
+                            color: AppColors.accent,
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            product.rating!.toStringAsFixed(1),
+                            textDirection: TextDirection.ltr,
+                            style: theme.textTheme.labelMedium?.copyWith(
+                              fontSize: 12.5,
+                              fontWeight: AppDimens.weightBold,
                             ),
-                          // شارة نفذت الكمية
-                          if (!product.inStock)
-                            Positioned(
-                              top: AppDimens.space6 + kToolbarHeight,
-                              right: AppDimens.screenHorizontalPadding,
-                              child: Container(
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: AppDimens.space3,
-                                  vertical: AppDimens.space1,
-                                ),
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    colors: [colors.error, colors.errorLight],
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                  ),
-                                  borderRadius: BorderRadius.circular(
-                                    AppDimens.radiusFull,
-                                  ),
-                                ),
-                                child: Text(
-                                  'نفذت الكمية',
-                                  style: Theme.of(context).textTheme.labelSmall
-                                      ?.copyWith(
-                                        color: Colors.white,
-                                        fontWeight: AppDimens.weightBold,
-                                      ),
-                                ),
-                              ),
-                            ),
+                          ),
                         ],
                       ),
                     ),
-                    leading: Container(
-                      margin: EdgeInsets.all(AppDimens.space3),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.3),
-                        borderRadius: BorderRadius.circular(AppDimens.radiusMd),
-                      ),
-                      child: IconButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        icon: Icon(Icons.arrow_back_ios, color: Colors.white),
+                  ],
+                ],
+              ),
+
+              // السعر — السابق والنسبة يظهران فقط ببيانات خصم حقيقية.
+              const SizedBox(height: 14),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Text(
+                    '${product.price.toStringAsFixed(0)} د.ع',
+                    textDirection: TextDirection.ltr,
+                    style: theme.textTheme.headlineMedium?.copyWith(
+                      fontFamily: 'Tajawal',
+                      fontWeight: AppDimens.weightBlack,
+                      fontSize: 25,
+                      height: 1.2,
+                      color: AppColors.secondary,
+                    ),
+                  ),
+                  if (product.hasDiscount) ...[
+                    const SizedBox(width: 11),
+                    Text(
+                      product.previousPrice!.toStringAsFixed(0),
+                      textDirection: TextDirection.ltr,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontSize: 14,
+                        decoration: TextDecoration.lineThrough,
+                        color: theme.colorScheme.outline,
                       ),
                     ),
-                    actions: [
-                      Container(
-                        margin: EdgeInsets.all(AppDimens.space3),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.3),
-                          borderRadius: BorderRadius.circular(
-                            AppDimens.radiusMd,
-                          ),
-                        ),
-                        child: IconButton(
-                          onPressed: () =>
-                              context.read<FavoritesCubit>().toggle(product),
-                          icon: Icon(
-                            isFavorite ? Icons.favorite : Icons.favorite_border,
-                            color: isFavorite
-                                ? colors.errorLight
-                                : Colors.white,
-                          ),
+                    const SizedBox(width: 9),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 9,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        gradient: AppColors.primaryGradient,
+                        borderRadius: BorderRadius.circular(
+                          AppDimens.radiusFull,
                         ),
                       ),
-                    ],
-                  ),
+                      child: Text(
+                        '−${product.discountPercent}٪',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          fontSize: 10.5,
+                          fontWeight: AppDimens.weightExtraBold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
 
-                  // تفاصيل المنتج
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: EdgeInsets.all(
-                        AppDimens.screenHorizontalPadding,
+              const SizedBox(height: 14),
+              ProductStockPill(stock: product.stock),
+
+              // ترويج التوصيل — يضبطه المسؤول على المنتج.
+              if (product.hasDeliveryPromo) ...[
+                const SizedBox(height: 9),
+                Row(
+                  children: [
+                    const Text('🚚', style: TextStyle(fontSize: 13)),
+                    const SizedBox(width: 6),
+                    Text(
+                      'هذا المنتج ضمن عرض التوصيل المميّز',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontSize: 12,
+                        fontWeight: AppDimens.weightBold,
+                        color: AppColors.success,
                       ),
+                    ),
+                  ],
+                ),
+              ],
+
+              _divider(),
+
+              // الوصف.
+              Text('الوصف', style: _sectionStyle(theme)),
+              const SizedBox(height: 9),
+              Text(
+                product.description.trim().isEmpty
+                    ? 'لا يوجد وصف لهذا المنتج بعد.'
+                    : product.description,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontSize: 14,
+                  height: 1.9,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+
+              // الخيارات.
+              if (product.options != null && product.options!.isNotEmpty) ...[
+                const SizedBox(height: 22),
+                Text('الخيارات المتاحة', style: _sectionStyle(theme)),
+                const SizedBox(height: 11),
+                for (final option in product.options!) ...[
+                  _OptionGroup(
+                    option: option,
+                    value: _selectedOptions[option.name],
+                    onChanged: (v) =>
+                        setState(() => _selectedOptions[option.name] = v),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+              ],
+
+              // الكمية.
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(child: Text('الكمية', style: _sectionStyle(theme))),
+                  // الكمية لا تظهر للزبون إلا عند انخفاض المخزون.
+                  if (product.lowStock) ...[
+                    Text(
+                      'متاح ${product.stock}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontSize: 11.5,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                  ],
+                  OtakuQuantityStepper(
+                    quantity: _quantity,
+                    canIncrease: _quantity < product.stock,
+                    onIncrease: () => setState(() => _quantity++),
+                    onDecrease: () {
+                      if (_quantity > 1) setState(() => _quantity--);
+                    },
+                  ),
+                ],
+              ),
+
+              // أضف إلى مجموعتك.
+              const SizedBox(height: 20),
+              _AddToCollectionTile(productId: product.id),
+
+              // الدفع عند الاستلام.
+              const SizedBox(height: 11),
+              OtakuPanel(
+                elevated: false,
+                color: theme.colorScheme.surfaceContainerHighest,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 15,
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        color: AppColors.success.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.check_rounded,
+                        size: 17,
+                        color: AppColors.success,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          // اسم المنتج والسعر
-                          _buildProductHeader(product),
-
-                          SizedBox(height: AppDimens.space5),
-
-                          // التقييم والمخزون
-                          _buildRatingAndStock(context, product),
-
-                          SizedBox(height: AppDimens.space5),
-
-                          // الوصف
-                          _buildDescription(product),
-
-                          // الخيارات
-                          if (product.options != null &&
-                              product.options!.isNotEmpty) ...[
-                            SizedBox(height: AppDimens.space5),
-                            _buildOptions(product),
-                          ],
-
-                          SizedBox(height: AppDimens.space5),
-
-                          // كمية
-                          _buildQuantitySelector(product),
-
-                          SizedBox(height: AppDimens.space7),
-
-                          // أزرار الإجراء
-                          _buildActionButtons(context, product, isFavorite),
-
-                          SizedBox(height: AppDimens.space10),
+                          Text(
+                            'الدفع عند الاستلام',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontSize: 13,
+                              fontWeight: AppDimens.weightBold,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'تدفع بعد ما يوصلك الطلب — بلا أي دفع مسبق.',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              fontSize: 11.5,
+                              height: 1.6,
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
                         ],
                       ),
                     ),
-                  ),
-                ],
-              ),
-      ),
-    );
-  }
-
-  Widget _buildLoadingState() {
-    return CustomScrollView(
-      slivers: [
-        SliverAppBar(
-          expandedHeight: 320,
-          pinned: true,
-          backgroundColor: Colors.transparent,
-          flexibleSpace: Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  Theme.of(context).colorScheme.outlineVariant,
-                  Theme.of(context).colorScheme.surfaceContainerHighest,
-                ],
-              ),
-            ),
-          ),
-        ),
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: EdgeInsets.all(AppDimens.screenHorizontalPadding),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildSkeletonLine(width: 0.6, height: 28),
-                SizedBox(height: AppDimens.space3),
-                _buildSkeletonLine(width: 0.4, height: 24),
-                SizedBox(height: AppDimens.space6),
-                _buildSkeletonLine(width: 1.0, height: 16),
-                SizedBox(height: AppDimens.space2),
-                _buildSkeletonLine(width: 0.8, height: 16),
-                SizedBox(height: AppDimens.space2),
-                _buildSkeletonLine(width: 0.6, height: 16),
-                SizedBox(height: AppDimens.space6),
-                _buildSkeletonLine(width: 1.0, height: 16),
-                SizedBox(height: AppDimens.space2),
-                _buildSkeletonLine(width: 0.9, height: 16),
-                SizedBox(height: AppDimens.space2),
-                _buildSkeletonLine(width: 0.7, height: 16),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSkeletonLine({required double width, required double height}) {
-    return SizedBox(
-      width: double.infinity,
-      child: FractionallySizedBox(
-        widthFactor: width,
-        child: Container(
-          height: height,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                Theme.of(context).colorScheme.outlineVariant,
-                Theme.of(context).colorScheme.surfaceContainerHighest,
-              ],
-            ),
-            borderRadius: BorderRadius.circular(AppDimens.radiusSm),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildErrorState(BuildContext context) {
-    return Center(
-      child: AnimeErrorState(
-        title: 'المنتج غير موجود',
-        message: 'تعذر تحميل تفاصيل المنتج. يرجى المحاولة مرة أخرى.',
-        actionLabel: 'إعادة المحاولة',
-        onAction: _load,
-      ),
-    );
-  }
-
-  Widget _buildProductImage(Product product) {
-    if (product.images.isNotEmpty) {
-      return Image.network(
-        product.images.first,
-        fit: BoxFit.cover,
-        loadingBuilder: (context, child, progress) {
-          if (progress == null) return child;
-          return Container(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            child: Center(
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                value: progress.expectedTotalBytes != null
-                    ? progress.cumulativeBytesLoaded /
-                          progress.expectedTotalBytes!
-                    : null,
-                valueColor: AlwaysStoppedAnimation<Color>(
-                  Theme.of(context).colorScheme.primary,
+                  ],
                 ),
               ),
-            ),
-          );
-        },
-        errorBuilder: (context, error, stackTrace) => _buildImagePlaceholder(),
-      );
-    }
-    return _buildImagePlaceholder();
-  }
 
-  Widget _buildImagePlaceholder() {
-    return Container(
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-      child: Center(
-        child: OtakuStoreLogoSimple(
-          size: AppDimens.iconHero * 2,
-          color: Theme.of(context).colorScheme.primary,
-        ),
-      ),
-    );
-  }
+              _divider(),
 
-  Widget _buildProductHeader(Product product) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          product.name,
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-            fontWeight: AppDimens.weightBold,
-            letterSpacing: AppDimens.letterSpacingTight,
-          ),
-        ),
-        SizedBox(height: AppDimens.space3),
-        Row(
-          children: [
-            Text(
-              formatPrice(product.price),
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                fontWeight: AppDimens.weightExtraBold,
-                color: Theme.of(context).colorScheme.primary,
-                letterSpacing: AppDimens.letterSpacingTight,
-              ),
-            ),
-            if (product.discountedPrice < product.price) ...[
-              SizedBox(width: AppDimens.space3),
-              Text(
-                formatPrice(product.price),
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  decoration: TextDecoration.lineThrough,
-                ),
-              ),
-            ],
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildRatingAndStock(BuildContext context, Product product) {
-    final colors = context.themeColors;
-    return Row(
-      children: [
-        if (product.rating != null) ...[
-          Container(
-            padding: EdgeInsets.symmetric(
-              horizontal: AppDimens.space3,
-              vertical: AppDimens.space1,
-            ),
-            decoration: BoxDecoration(
-              gradient: colors.accentGradient,
-              borderRadius: BorderRadius.circular(AppDimens.radiusFull),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.star_rounded,
-                  size: AppDimens.iconXs,
-                  color: Colors.white,
-                ),
-                SizedBox(width: AppDimens.space1),
+              // التقييمات وصور العملاء.
+              ProductReviewsSection(productId: product.id),
+              const SizedBox(height: 14),
+              if (missingOption)
                 Text(
-                  product.rating!.toStringAsFixed(1),
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: Colors.white,
-                    fontWeight: AppDimens.weightBold,
+                  'اختر كل الخيارات المطلوبة قبل الإضافة إلى السلة.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontSize: 11.5,
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
-                if (product.reviewCount != null &&
-                    product.reviewCount! > 0) ...[
-                  SizedBox(width: AppDimens.space2),
-                  Text(
-                    '(${product.reviewCount} تقييم)',
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: Colors.white.withValues(alpha: 0.9),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-        const Spacer(),
-        _StockIndicator(stock: product.stock),
-      ],
-    );
-  }
-
-  Widget _buildDescription(Product product) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'وصف المنتج',
-          style: Theme.of(
-            context,
-          ).textTheme.titleMedium?.copyWith(fontWeight: AppDimens.weightBold),
-        ),
-        SizedBox(height: AppDimens.space3),
-        Text(
-          product.description,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            height: AppDimens.lineHeightRelaxed,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildOptions(Product product) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'الخيارات المتاحة',
-          style: Theme.of(
-            context,
-          ).textTheme.titleMedium?.copyWith(fontWeight: AppDimens.weightBold),
-        ),
-        SizedBox(height: AppDimens.space3),
-        Wrap(
-          spacing: AppDimens.space3,
-          runSpacing: AppDimens.space3,
-          children: [
-            for (final option in product.options!)
-              _OptionSelector(
-                option: option,
-                value: _selectedOptions[option.name],
-                onChanged: (v) =>
-                    setState(() => _selectedOptions[option.name] = v),
-              ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildQuantitySelector(Product product) {
-    return Row(
-      children: [
-        Text(
-          'الكمية:',
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontWeight: AppDimens.weightSemiBold,
-          ),
-        ),
-        SizedBox(width: AppDimens.space4),
-        Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(AppDimens.radiusMd),
-            border: Border.all(
-              color: Theme.of(context).colorScheme.outlineVariant,
-              width: AppDimens.cardBorderWidth,
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                onPressed: _quantity > 1
-                    ? () => setState(() => _quantity--)
-                    : null,
-                icon: Icon(Icons.remove, size: AppDimens.iconMd),
-                style: IconButton.styleFrom(
-                  foregroundColor: Theme.of(
-                    context,
-                  ).colorScheme.onSurfaceVariant,
-                ),
-              ),
-              Container(
-                width: 50,
-                alignment: Alignment.center,
-                child: Text(
-                  '$_quantity',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: AppDimens.weightBold,
-                  ),
-                ),
-              ),
-              IconButton(
-                onPressed: _quantity < product.stock
-                    ? () => setState(() => _quantity++)
-                    : null,
-                icon: Icon(Icons.add, size: AppDimens.iconMd),
-                style: IconButton.styleFrom(
-                  foregroundColor: Theme.of(context).colorScheme.primary,
-                ),
-              ),
-            ],
-          ),
-        ),
-        SizedBox(width: AppDimens.space3),
-        // الكمية لا تظهر للزبون إلا عند نفاد المخزون (3 قطع أو أقل).
-        if (product.lowStock)
-          Text(
-            'متاح: ${product.stock}',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildActionButtons(
-    BuildContext context,
-    Product product,
-    bool isFavorite,
-  ) {
-    final colors = context.themeColors;
-    return Row(
-      children: [
-        Expanded(
-          flex: 3,
-          child: AnimePrimaryButton(
-            label: product.inStock ? 'إضافة إلى السلة' : 'نفذت الكمية',
-            onPressed: product.inStock
-                ? () {
-                    context.read<CartCubit>().add(product, quantity: _quantity);
-                    _showAddedToCartDialog(product);
-                  }
-                : null,
-            icon: Icons.shopping_cart_outlined,
-            iconPosition: IconPosition.start,
-            height: AppDimens.buttonHeightXl,
-          ),
-        ),
-        SizedBox(width: AppDimens.space3),
-        Expanded(
-          child: IconButton.filledTonal(
-            onPressed: () => context.read<FavoritesCubit>().toggle(product),
-            icon: Icon(
-              isFavorite ? Icons.favorite : Icons.favorite_border,
-              size: AppDimens.iconLg,
-            ),
-            style: IconButton.styleFrom(
-              backgroundColor: isFavorite
-                  ? colors.errorPale
-                  : Theme.of(context).colorScheme.surfaceContainerHighest,
-              foregroundColor: isFavorite
-                  ? colors.error
-                  : Theme.of(context).colorScheme.onSurfaceVariant,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(AppDimens.radiusLg),
-              ),
-              padding: EdgeInsets.all(AppDimens.space3),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// نافذة نجاح الإضافة إلى السلة: «متابعة التسوق» أو «الذهاب إلى السلة».
-  void _showAddedToCartDialog(Product product) {
-    final colors = context.themeColors;
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppDimens.radius2xl),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: AppDimens.iconHero * 1.5,
-              height: AppDimens.iconHero * 1.5,
-              decoration: BoxDecoration(
-                gradient: colors.primaryGradient,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: colors.glowPrimary,
-                    blurRadius: 16,
-                    spreadRadius: 2,
-                  ),
-                ],
-              ),
-              child: Icon(
-                Icons.check,
-                size: AppDimens.iconHero,
-                color: Colors.white,
-              ),
-            ),
-            SizedBox(height: AppDimens.space5),
-            Text(
-              'تمت إضافة المنتج إلى السلة',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: AppDimens.weightBold,
-              ),
-            ),
-            SizedBox(height: AppDimens.space2),
-            Text(
-              product.name,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          Row(
-            children: [
-              Expanded(
-                child: AnimeSecondaryButton(
-                  label: 'متابعة التسوق',
-                  onPressed: () => Navigator.of(dialogContext).pop(),
-                  icon: Icons.storefront_outlined,
-                  iconPosition: IconPosition.start,
-                ),
-              ),
-              SizedBox(width: AppDimens.space3),
-              Expanded(
-                child: AnimePrimaryButton(
-                  label: 'الذهاب إلى السلة',
-                  onPressed: () {
-                    Navigator.of(dialogContext).pop();
-                    mainNavIndex.value = 3; // تبويب السلة
-                    context.router.popUntilRoot();
-                  },
-                  icon: Icons.shopping_cart_outlined,
-                  iconPosition: IconPosition.start,
-                ),
-              ),
             ],
           ),
         ],
@@ -715,58 +488,200 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     );
   }
 
-  String formatPrice(double price) {
-    return '${price.toStringAsFixed(0)} د.ع';
+  TextStyle? _sectionStyle(ThemeData theme) =>
+      theme.textTheme.titleMedium?.copyWith(
+        fontFamily: 'Tajawal',
+        fontWeight: AppDimens.weightExtraBold,
+        fontSize: 15.5,
+      );
+
+  Widget _divider() => Container(
+    height: 1,
+    margin: const EdgeInsets.fromLTRB(0, 22, 0, 18),
+    color: Theme.of(context).colorScheme.outlineVariant,
+  );
+
+  /// شريط الإجراء السفلي — زرّ إضافة عريض مع رسم شخصية خلفه.
+  Widget _buildBottomBar(Product product) {
+    final theme = Theme.of(context);
+    final missingOption =
+        product.options != null &&
+        product.options!.isNotEmpty &&
+        _selectedOptions.length < product.options!.length;
+
+    return Container(
+      decoration: BoxDecoration(
+        border: Border(
+          top: BorderSide(color: theme.colorScheme.outlineVariant),
+        ),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              PositionedDirectional(
+                bottom: 42,
+                end: 6,
+                child: IgnorePointer(
+                  child: Image.asset('assets/art/opt/a-i3.png', width: 82),
+                ),
+              ),
+              AnimePrimaryButton(
+                label: !product.inStock
+                    ? 'نفدت الكمية'
+                    : missingOption
+                    ? 'اختر الخيارات أولاً'
+                    : 'إضافة إلى السلة',
+                onPressed: product.inStock && !missingOption
+                    ? () => _addToCart(context, product)
+                    : null,
+                height: AppDimens.buttonHeightXl,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// هيكل تحميل الصفحة — فتحة صورة متلألئة ثم أسطر نصية.
+  Widget _buildLoadingState() {
+    return ListView(
+      padding: EdgeInsets.zero,
+      children: const [
+        OtakuSkeleton.box(height: 330, radius: 0),
+        Padding(
+          padding: EdgeInsets.fromLTRB(18, 20, 18, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              FractionallySizedBox(
+                widthFactor: 0.3,
+                child: OtakuSkeleton(height: 10),
+              ),
+              SizedBox(height: 12),
+              OtakuSkeleton(height: 18),
+              SizedBox(height: 10),
+              FractionallySizedBox(
+                widthFactor: 0.6,
+                child: OtakuSkeleton(height: 18),
+              ),
+              SizedBox(height: 22),
+              FractionallySizedBox(
+                widthFactor: 0.35,
+                child: OtakuSkeleton(height: 22),
+              ),
+              SizedBox(height: 26),
+              OtakuSkeleton(height: 10),
+              SizedBox(height: 9),
+              OtakuSkeleton(height: 10),
+              SizedBox(height: 9),
+              FractionallySizedBox(
+                widthFactor: 0.7,
+                child: OtakuSkeleton(height: 10),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildErrorState() {
+    return SafeArea(
+      child: Column(
+        children: [
+          OtakuScreenHeader.compact(
+            title: 'المنتج',
+            onBack: () => context.router.maybePop(),
+          ),
+          Expanded(
+            child: AnimeErrorState(
+              message: 'تعذّر تحميل هذا المنتج. تأكد من اتصالك وحاول مرة أخرى.',
+              onAction: () {
+                setState(() => _loading = true);
+                _load();
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// مشاركة المنتج عبر طبقة المشاركة الأصلية لنظام التشغيل (واتساب،
+  /// تيليغرام، نسخ، المزيد...) — بلا شبكة مشاركة داخلية خاصة بالتطبيق.
+  void _shareProduct(Product product) {
+    SharePlus.instance.share(
+      ShareParams(
+        text:
+            '${product.name}\n${product.price.toStringAsFixed(0)} د.ع '
+            '— مجرة الأوتاكو',
+      ),
+    );
+  }
+
+  /// إضافة إلى السلة: تبقي المستخدم في شاشة تفاصيل المنتج، وتُظهر تأكيداً
+  /// خفيفاً بدل نافذة حاجزة. الزائر يُدعى لتسجيل الدخول أولاً.
+  Future<void> _addToCart(BuildContext context, Product product) async {
+    final added = await addToCartGuarded(
+      context,
+      product: product,
+      quantity: _quantity,
+      selectedOption: _selectedOptions.isEmpty
+          ? null
+          : _selectedOptions.values.join('، '),
+    );
+    if (!added || !context.mounted) return;
+
+    showAddedToCartSnack(context);
   }
 }
 
-class _StockIndicator extends StatelessWidget {
-  const _StockIndicator({required this.stock});
+/// زرّ عائم فوق فتحة صورة المنتج — ٤٠×٤٠ بنصف قطر ١٤ وظلّ خفيف.
+class _HeroButton extends StatelessWidget {
+  const _HeroButton({
+    required this.icon,
+    required this.onTap,
+    this.filled = false,
+  });
 
-  final int stock;
+  final IconData icon;
+  final VoidCallback onTap;
+  final bool filled;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final colors = context.themeColors;
-    final (Color color, IconData icon, String label) = switch (stock) {
-      <= 0 => (colors.error, Icons.block, 'نفذت الكمية'),
-      <= 3 => (
-        colors.warning,
-        Icons.timelapse,
-        'كمية محدودة: $stock قطع متبقية',
-      ),
-      _ => (colors.success, Icons.check_circle, 'متوفر'),
-    };
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: AppDimens.space3,
-        vertical: AppDimens.space1,
-      ),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(AppDimens.radiusFull),
-        border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: color, size: AppDimens.iconXs),
-          SizedBox(width: AppDimens.space1),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: color,
-              fontWeight: AppDimens.weightBold,
-            ),
-          ),
-        ],
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: filled ? AppColors.secondary : theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: colors.shadowXSoft,
+        ),
+        child: Icon(
+          icon,
+          size: 17,
+          color: filled ? Colors.white : theme.colorScheme.onSurfaceVariant,
+        ),
       ),
     );
   }
 }
 
-class _OptionSelector extends StatelessWidget {
-  const _OptionSelector({
+/// مجموعة خيارات منتج — عنوان الخيار ثم رقائق قيمه.
+class _OptionGroup extends StatelessWidget {
+  const _OptionGroup({
     required this.option,
     required this.value,
     required this.onChanged,
@@ -784,13 +699,15 @@ class _OptionSelector extends StatelessWidget {
         Text(
           option.name,
           style: Theme.of(context).textTheme.labelMedium?.copyWith(
-            fontWeight: AppDimens.weightSemiBold,
+            fontSize: 12.5,
+            fontWeight: AppDimens.weightBold,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
         ),
-        SizedBox(height: AppDimens.space2),
+        const SizedBox(height: 9),
         Wrap(
-          spacing: AppDimens.space2,
-          runSpacing: AppDimens.space2,
+          spacing: 9,
+          runSpacing: 9,
           children: [
             for (final v in option.values)
               AnimeChoiceChip(
@@ -801,6 +718,79 @@ class _OptionSelector extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+/// «أضف إلى مجموعتك» — خاصية حساب؛ الزائر يُدعى لتسجيل الدخول.
+class _AddToCollectionTile extends StatelessWidget {
+  const _AddToCollectionTile({required this.productId});
+
+  final String productId;
+
+  Future<void> _open(BuildContext context) async {
+    if (!context.read<AuthCubit>().isLoggedIn) {
+      final wantsLogin = await showLoginGate(
+        context,
+        title: 'سجّل دخولك أولاً',
+        body: 'المجموعات تحتاج تسجيل الدخول لحسابك في مجرة الأوتاكو.',
+      );
+      if (wantsLogin && context.mounted) {
+        context.router.push(const LoginRoute());
+      }
+      return;
+    }
+    if (context.mounted) {
+      await showAddToCollectionSheet(context, productId: productId);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return InkWell(
+      onTap: () => _open(context),
+      borderRadius: BorderRadius.circular(AppDimens.radiusMd),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(AppDimens.radiusMd),
+          border: Border.all(
+            color: theme.colorScheme.outlineVariant,
+            width: 1.5,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                Icons.collections_bookmark_outlined,
+                size: 16,
+                color: AppColors.primary,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'أضف إلى مجموعتك',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontSize: 13.5,
+                  fontWeight: AppDimens.weightBold,
+                ),
+              ),
+            ),
+            Icon(Icons.add_rounded, size: 19, color: theme.colorScheme.outline),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -9,6 +9,9 @@ class OrderData {
     required this.phone,
     required this.items,
     this.discount = 0,
+    this.deliveryDiscount = 0,
+    this.zoneId,
+    this.zoneName,
   });
 
   /// معرّف المحافظة لدى الخادم — إلزامي لإنشاء الطلب.
@@ -20,10 +23,23 @@ class OrderData {
   final List<CartItem> items;
   final double discount;
 
+  /// خصم التوصيل المعاين — الخادم يعيد حسابه ويطبّقه عند الإنشاء.
+  final double deliveryDiscount;
+
+  /// رسوم التوصيل بعد الخصم.
+  double get payableDelivery =>
+      (deliveryCost - deliveryDiscount).clamp(0, double.infinity);
+
+  /// منطقة التوصيل المختارة — إلزامية للمحافظات المقسّمة مناطق (النجف).
+  final String? zoneId;
+
+  /// اسم المنطقة للعرض في المراجعة فقط؛ الخادم يحفظ لقطته بنفسه.
+  final String? zoneName;
+
   double get productsTotal =>
       items.fold(0, (sum, item) => sum + item.lineTotal);
 
-  double get total => productsTotal + deliveryCost - discount;
+  double get total => productsTotal + payableDelivery - discount;
 
   /// جسم الطلب: الخادم يقرأ العربة ويرسل المجاميع النهائية.
   Map<String, dynamic> toJson() {
@@ -31,6 +47,7 @@ class OrderData {
       'governorateId': governorateId,
       'fullAddress': fullAddress,
       'phone': phone,
+      if (zoneId != null) 'zoneId': zoneId,
     };
   }
 }

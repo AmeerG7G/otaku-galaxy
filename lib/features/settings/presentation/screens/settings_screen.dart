@@ -3,9 +3,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/design_system/design_system.dart';
+import '../../../../core/di/injection_container.dart';
+import '../../../../core/errors/app_exception.dart';
+import '../../../../core/router/app_router.dart';
+import '../../../auth/presentation/cubit/auth_cubit.dart';
+import '../../data/notification_prefs_storage.dart';
 import '../cubit/theme_cubit.dart';
 import '../cubit/theme_state.dart';
 
+/// الإعدادات بتصميم Otaku Galaxy v2.
+///
+/// ترويسة مضغوطة، ثم مجموعتان معنونتان بأحرف متباعدة: «الحساب» و«إعدادات
+/// الإشعارات». اللغة والمظهر صفّ واحد يفتح شاشة التخصيص ويعرض المظهر
+/// الحالي — كما في المصدر — وكل نموذج يظهر في ورقة سفلية بدل حوار مادي.
 @RoutePage()
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -15,342 +25,222 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  bool _notifications = true;
-  String _language = 'العربية';
+  final _notifPrefs = sl<NotificationPrefsStorage>();
 
   @override
   Widget build(BuildContext context) {
-    final theme = context.read<ThemeCubit>();
-    final colors = context.themeColors;
-
     return Scaffold(
-      appBar: AppBar(title: const Text('الإعدادات'), centerTitle: true),
-      body: Container(
-        decoration: BoxDecoration(gradient: colors.surfaceGradient),
-        child: ListView(
-          padding: EdgeInsets.all(AppDimens.screenHorizontalPadding),
-          children: [
-            // اللغة
-            _buildSectionCard(
-              title: 'اللغة',
-              icon: Icons.language_outlined,
-              children: [_buildLanguageSelector()],
-            ),
-
-            SizedBox(height: AppDimens.space5),
-
-            // الإشعارات
-            _buildSectionCard(
-              title: 'الإشعارات',
-              icon: Icons.notifications_outlined,
+      body: Column(
+        children: [
+          OtakuScreenHeader.compact(
+            title: 'الإعدادات',
+            onBack: () => context.router.maybePop(),
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(18, 8, 18, 26),
               children: [
-                _buildNotificationToggle(
-                  title: 'الإشعارات العامة',
-                  subtitle: 'تلقي إشعارات حول العروض والطلبات',
-                  value: _notifications,
-                  onChanged: (v) => setState(() => _notifications = v),
+                const OtakuGroupLabel(label: 'الحساب'),
+                OtakuSettingRow(
+                  icon: Icons.person_outline,
+                  iconColor: AppColors.accentCyan,
+                  label: 'تعديل اسم الحساب',
+                  onTap: _editDisplayName,
                 ),
+                const SizedBox(height: 9),
+                OtakuSettingRow(
+                  icon: Icons.lock_outline,
+                  iconColor: AppColors.accent,
+                  label: 'إعادة تعيين كلمة المرور',
+                  onTap: _changePassword,
+                ),
+                const SizedBox(height: 9),
+                // اللغة والمظهر صفّ واحد يفتح شاشة التخصيص، ويعرض المظهر
+                // الحالي كقيمة — لا تُكرَّر بطاقات المعاينة هنا.
+                BlocBuilder<ThemeCubit, ThemeState>(
+                  builder: (context, state) => OtakuSettingRow(
+                    icon: Icons.brightness_6_outlined,
+                    iconColor: AppColors.primary,
+                    label: 'اللغة والمظهر',
+                    value: state.isDark ? 'داكن' : 'فاتح',
+                    onTap: () => context.router.push(const PersonalizeRoute()),
+                  ),
+                ),
+
+                const OtakuGroupLabel(
+                  label: 'إعدادات الإشعارات',
+                  padding: EdgeInsets.fromLTRB(0, 24, 0, 11),
+                ),
+                for (final pref in NotificationPref.values) ...[
+                  if (pref != NotificationPref.values.first)
+                    const SizedBox(height: 9),
+                  OtakuSettingRow(
+                    label: pref.label,
+                    compact: true,
+                    showChevron: false,
+                    trailing: OtakuSwitch(
+                      value: _notifPrefs.isEnabled(pref),
+                      onChanged: (v) async {
+                        await _notifPrefs.setEnabled(pref, v);
+                        if (mounted) setState(() {});
+                      },
+                    ),
+                  ),
+                ],
               ],
             ),
-
-            SizedBox(height: AppDimens.space5),
-
-            // المظهر
-            _buildSectionCard(
-              title: 'المظهر',
-              icon: Icons.palette_outlined,
-              children: [_buildThemeSelector(theme)],
-            ),
-
-            SizedBox(height: AppDimens.space10),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildSectionCard({
-    required String title,
-    required IconData icon,
-    required List<Widget> children,
-  }) {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppDimens.cardBorderRadius),
-        side: BorderSide(
-          color: Theme.of(context).colorScheme.outlineVariant,
-          width: AppDimens.cardBorderWidth,
-        ),
-      ),
-      child: Padding(
-        padding: EdgeInsets.all(AppDimens.cardPadding),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    gradient: context.themeColors.primaryGradient,
-                    borderRadius: BorderRadius.circular(AppDimens.radiusMd),
-                  ),
-                  child: Icon(
-                    icon,
-                    color: Colors.white,
-                    size: AppDimens.iconMd,
-                  ),
-                ),
-                SizedBox(width: AppDimens.space3),
-                Text(
-                  title,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: AppDimens.weightBold,
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: AppDimens.space4),
-            ...children,
-          ],
-        ),
-      ),
-    );
-  }
+  /// تعديل اسم المستخدم — ورقة سفلية بحقل واحد.
+  Future<void> _editDisplayName() async {
+    final auth = context.read<AuthCubit>();
+    final controller = TextEditingController(text: auth.user?.username ?? '');
 
-  Widget _buildLanguageSelector() {
-    return Column(
-      children: [
-        _buildLanguageOption(
-          label: 'العربية',
-          icon: Icons.translate,
-          selected: _language == 'العربية',
-          onTap: () => setState(() => _language = 'العربية'),
+    final newName = await showOtakuSheet<String>(
+      context: context,
+      builder: (sheetContext) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
         ),
-        _buildDivider(),
-        _buildLanguageOption(
-          label: 'English',
-          icon: Icons.language,
-          selected: _language == 'English',
-          onTap: () => setState(() => _language = 'English'),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildLanguageOption({
-    required String label,
-    required IconData icon,
-    required bool selected,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(AppDimens.radiusMd),
-      child: Padding(
-        padding: EdgeInsets.symmetric(vertical: AppDimens.space3),
-        child: Row(
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                gradient: selected ? context.themeColors.primaryGradient : null,
-                color: selected
-                    ? null
-                    : Theme.of(context).colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(AppDimens.radiusMd),
-                border: Border.all(
-                  color: selected
-                      ? Colors.transparent
-                      : Theme.of(context).colorScheme.outlineVariant,
-                  width: AppDimens.cardBorderWidth,
-                ),
-              ),
-              child: Icon(
-                icon,
-                color: selected
-                    ? Colors.white
-                    : Theme.of(context).colorScheme.onSurfaceVariant,
-                size: AppDimens.iconMd,
-              ),
-            ),
-            SizedBox(width: AppDimens.space3),
-            Expanded(
-              child: Text(
-                label,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontWeight: selected
-                      ? AppDimens.weightBold
-                      : AppDimens.weightMedium,
-                ),
-              ),
-            ),
-            if (selected)
-              Container(
-                width: 20,
-                height: 20,
-                decoration: BoxDecoration(
-                  gradient: context.themeColors.primaryGradient,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(Icons.check, size: 12, color: Colors.white),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNotificationToggle({
-    required String title,
-    required String subtitle,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-  }) {
-    return Row(
-      children: [
-        Expanded(
+        child: OtakuSheet(
+          title: 'تعديل اسم الحساب',
+          titleSize: 19,
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                title,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontWeight: AppDimens.weightMedium,
-                ),
+              AnimeTextField(
+                controller: controller,
+                label: 'اسم المستخدم',
+                hint: 'أدخل اسمك الجديد',
+                prefixIcon: Icons.person_outline,
               ),
-              SizedBox(height: AppDimens.space1),
-              Text(
-                subtitle,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
+              const SizedBox(height: 20),
+              AnimePrimaryButton(
+                label: 'حفظ',
+                onPressed: () =>
+                    Navigator.of(sheetContext).pop(controller.text),
               ),
             ],
           ),
         ),
-        Switch(
-          value: value,
-          onChanged: onChanged,
-          activeThumbColor: Theme.of(context).colorScheme.primary,
-          activeTrackColor: Theme.of(context).colorScheme.primaryContainer,
-          inactiveThumbColor: Theme.of(context).colorScheme.outline,
-          inactiveTrackColor: Theme.of(context).colorScheme.outlineVariant,
+      ),
+    );
+
+    if (newName == null || newName.trim().isEmpty) return;
+    try {
+      await auth.updateProfile(username: newName.trim());
+      if (!mounted) return;
+      _showSnack('تم تحديث الاسم', success: true);
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack(_messageOf(e), success: false);
+    }
+  }
+
+  /// تغيير كلمة المرور — ورقة سفلية بنموذج مُتحقَّق منه.
+  Future<void> _changePassword() async {
+    final auth = context.read<AuthCubit>();
+    final formKey = GlobalKey<FormState>();
+    final currentCtrl = TextEditingController();
+    final newCtrl = TextEditingController();
+    final confirmCtrl = TextEditingController();
+
+    final confirmed = await showOtakuSheet<bool>(
+      context: context,
+      builder: (sheetContext) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
         ),
-      ],
-    );
-  }
-
-  Widget _buildThemeSelector(ThemeCubit theme) {
-    return BlocBuilder<ThemeCubit, ThemeState>(
-      builder: (context, state) {
-        return Column(
-          children: [
-            _buildThemeOption(
-              title: 'فاتح',
-              subtitle: 'مظهر فاتح دائماً',
-              icon: Icons.light_mode_outlined,
-              selected: !state.isDark,
-              onTap: () => theme.setDark(false),
-            ),
-            _buildDivider(),
-            _buildThemeOption(
-              title: 'داكن',
-              subtitle: 'مظهر داكن دائماً',
-              icon: Icons.dark_mode_outlined,
-              selected: state.isDark,
-              onTap: () => theme.setDark(true),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildThemeOption({
-    required String title,
-    required String subtitle,
-    required IconData icon,
-    required bool selected,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(AppDimens.radiusMd),
-      child: Padding(
-        padding: EdgeInsets.symmetric(vertical: AppDimens.space3),
-        child: Row(
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                gradient: selected ? context.themeColors.primaryGradient : null,
-                color: selected
-                    ? null
-                    : Theme.of(context).colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(AppDimens.radiusMd),
-                border: Border.all(
-                  color: selected
-                      ? Colors.transparent
-                      : Theme.of(context).colorScheme.outlineVariant,
-                  width: AppDimens.cardBorderWidth,
-                ),
-              ),
-              child: Icon(
-                icon,
-                color: selected
-                    ? Colors.white
-                    : Theme.of(context).colorScheme.onSurfaceVariant,
-                size: AppDimens.iconMd,
-              ),
-            ),
-            SizedBox(width: AppDimens.space3),
-            Expanded(
+        child: OtakuSheet(
+          title: 'إعادة تعيين كلمة المرور',
+          titleSize: 19,
+          child: SingleChildScrollView(
+            child: Form(
+              key: formKey,
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    title,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontWeight: selected
-                          ? AppDimens.weightBold
-                          : AppDimens.weightMedium,
-                    ),
+                  AnimeTextField(
+                    controller: currentCtrl,
+                    label: 'كلمة المرور الحالية',
+                    obscureText: true,
+                    prefixIcon: Icons.lock_outline,
+                    validator: (v) => (v == null || v.isEmpty) ? 'مطلوب' : null,
                   ),
-                  SizedBox(height: AppDimens.space1),
-                  Text(
-                    subtitle,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
+                  const SizedBox(height: 12),
+                  AnimeTextField(
+                    controller: newCtrl,
+                    label: 'كلمة المرور الجديدة',
+                    obscureText: true,
+                    prefixIcon: Icons.lock_outline,
+                    validator: (v) => (v == null || v.length < 6)
+                        ? 'كلمة المرور يجب أن تكون 6 أحرف على الأقل'
+                        : null,
+                  ),
+                  const SizedBox(height: 12),
+                  AnimeTextField(
+                    controller: confirmCtrl,
+                    label: 'تأكيد كلمة المرور الجديدة',
+                    obscureText: true,
+                    prefixIcon: Icons.lock_outline,
+                    validator: (v) =>
+                        v != newCtrl.text ? 'كلمتا المرور غير متطابقتين' : null,
+                  ),
+                  const SizedBox(height: 20),
+                  AnimePrimaryButton(
+                    label: 'حفظ',
+                    onPressed: () {
+                      if (formKey.currentState!.validate()) {
+                        Navigator.of(sheetContext).pop(true);
+                      }
+                    },
                   ),
                 ],
               ),
             ),
-            if (selected)
-              Container(
-                width: 20,
-                height: 20,
-                decoration: BoxDecoration(
-                  gradient: context.themeColors.primaryGradient,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(Icons.check, size: 12, color: Colors.white),
-              ),
-          ],
+          ),
         ),
       ),
     );
+
+    if (confirmed != true) return;
+    try {
+      await auth.changePassword(
+        currentPassword: currentCtrl.text,
+        newPassword: newCtrl.text,
+      );
+      if (!mounted) return;
+      _showSnack('تم تغيير كلمة المرور بنجاح', success: true);
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack(_messageOf(e), success: false);
+    }
   }
 
-  Widget _buildDivider() {
-    return Divider(
-      height: 1,
-      color: Theme.of(context).colorScheme.outlineVariant,
-    );
+  String _messageOf(Object e) {
+    if (e is AppException && e.message.trim().isNotEmpty) return e.message;
+    return 'حدث خطأ غير متوقع، يرجى المحاولة مرة أخرى';
+  }
+
+  void _showSnack(String message, {required bool success}) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: success
+              ? context.themeColors.success
+              : context.themeColors.error,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppDimens.radiusLg),
+          ),
+          margin: const EdgeInsets.all(18),
+        ),
+      );
   }
 }

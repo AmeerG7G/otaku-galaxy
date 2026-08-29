@@ -6,6 +6,10 @@ import '../../../../core/design_system/design_system.dart';
 import '../../../../core/errors/app_exception.dart';
 import '../../../../core/router/app_router.dart';
 import '../cubit/auth_cubit.dart';
+import '../widgets/auth_field.dart';
+import '../widgets/auth_scaffold.dart';
+import '../../../settings/data/personalize_storage.dart';
+import '../../../../core/di/injection_container.dart';
 
 @RoutePage()
 class LoginScreen extends StatefulWidget {
@@ -69,7 +73,23 @@ class _LoginScreenState extends State<LoginScreen>
         _passwordController.text,
       );
       if (!mounted) return;
-      context.router.replace(const MainNavigationRoute());
+      context.router.replace(
+        sl<PersonalizeStorage>().isDone
+            ? const MainNavigationRoute()
+            : const PersonalizeRoute(),
+      );
+    } on AppException catch (e) {
+      if (!mounted) return;
+      // حساب صحيح لكن رقمه غير مُفعَّل: الخادم أرسل رمزاً جديداً بالفعل،
+      // فنأخذ المستخدم إلى شاشة الرمز بدل أن نعرض رفضاً يبدو بلا مخرج.
+      if (e.code == 'PHONE_NOT_VERIFIED') {
+        _showErrorSnackBar(e.message);
+        context.router.push(
+          OtpVerificationRoute(phone: _phoneController.text.trim()),
+        );
+        return;
+      }
+      _showErrorSnackBar(_messageOf(e));
     } catch (e) {
       if (!mounted) return;
       _showErrorSnackBar(_messageOf(e));
@@ -100,77 +120,28 @@ class _LoginScreenState extends State<LoginScreen>
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.themeColors;
-
-    return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(gradient: colors.surfaceGradient),
-        child: SafeArea(
-          child: FadeTransition(
-            opacity: _fadeAnimation,
-            child: SlideTransition(
-              position: _slideAnimation,
-              child: SingleChildScrollView(
-                padding: EdgeInsets.all(AppDimens.screenHorizontalPadding),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    minHeight:
-                        MediaQuery.sizeOf(context).height -
-                        2 * AppDimens.screenHorizontalPadding,
-                  ),
-                  child: IntrinsicHeight(
-                    child: Form(
-                      key: _formKey,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          SizedBox(height: AppDimens.space5),
-
-                          // الشعار
-                          Center(
-                            child: OtakuStoreLogo(
-                              size: AppDimens.iconLogo,
-                              animationDuration: const Duration(
-                                milliseconds: 2000,
-                              ),
-                            ),
-                          ),
-
-                          SizedBox(height: AppDimens.space9),
-
-                          // عنوان الترحيب
-                          Text(
-                            'مرحباً بعودتك',
-                            textAlign: TextAlign.center,
-                            style: Theme.of(context).textTheme.headlineSmall
-                                ?.copyWith(
-                                  fontWeight: AppDimens.weightBold,
-                                  letterSpacing: AppDimens.letterSpacingTight,
-                                ),
-                          ),
-
-                          SizedBox(height: AppDimens.space2),
-
-                          Text(
-                            'سجل دخولك لمتابعة التسوق',
-                            textAlign: TextAlign.center,
-                            style: Theme.of(context).textTheme.bodyMedium
-                                ?.copyWith(
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.onSurfaceVariant,
-                                ),
-                          ),
-
-                          SizedBox(height: AppDimens.space9),
-
-                          // حقل رقم الهاتف
-                          AnimeTextField(
+    return FadeTransition(
+      opacity: _fadeAnimation,
+      child: SlideTransition(
+        position: _slideAnimation,
+        child: AuthScaffold(
+          title: 'تسجيل الدخول',
+          subtitle: 'أدخل رقم هاتفك وكلمة المرور للمتابعة إلى حسابك.',
+          artwork: 'assets/art/opt/a-i4.png',
+          artworkHeight: 196,
+          artworkWidth: 138,
+          artworkBottom: -14,
+          form: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                          // حقل رقم الهاتف — تسمية فوق الحقل بلا أيقونات.
+                          AuthField(
                             controller: _phoneController,
                             label: 'رقم الهاتف',
-                            hint: 'مثال: 07xxxxxxxx',
-                            prefixIcon: Icons.phone_outlined,
+                            hint: '0770 123 4567',
+                            textDirection: TextDirection.ltr,
                             keyboardType: TextInputType.phone,
                             textInputAction: TextInputAction.next,
                             validator: (value) {
@@ -184,23 +155,23 @@ class _LoginScreenState extends State<LoginScreen>
                             },
                           ),
 
-                          SizedBox(height: AppDimens.space5),
+                          const SizedBox(height: 15),
 
                           // حقل كلمة المرور
-                          AnimeTextField(
+                          AuthField(
                             controller: _passwordController,
                             label: 'كلمة المرور',
-                            hint: 'أدخل كلمة المرور',
-                            prefixIcon: Icons.lock_outline,
+                            hint: '••••••••',
                             obscureText: _obscure,
                             textInputAction: TextInputAction.done,
                             onSubmitted: (_) => _login(),
-                            suffixIcon: IconButton(
+                            trailing: IconButton(
                               icon: Icon(
                                 _obscure
                                     ? Icons.visibility_outlined
                                     : Icons.visibility_off_outlined,
                                 size: AppDimens.iconMd,
+                                color: Theme.of(context).colorScheme.outline,
                               ),
                               onPressed: () =>
                                   setState(() => _obscure = !_obscure),
@@ -220,7 +191,7 @@ class _LoginScreenState extends State<LoginScreen>
 
                           // نسيت كلمة المرور
                           Align(
-                            alignment: Alignment.centerLeft,
+                            alignment: AlignmentDirectional.centerStart,
                             child: AnimeTextButton(
                               label: 'نسيت كلمة المرور؟',
                               onPressed: () => context.router.push(
@@ -229,76 +200,40 @@ class _LoginScreenState extends State<LoginScreen>
                             ),
                           ),
 
-                          SizedBox(height: AppDimens.space7),
+                          SizedBox(height: AppDimens.space5),
 
                           // زر تسجيل الدخول
                           AnimePrimaryButton(
                             label: 'تسجيل الدخول',
                             onPressed: _login,
                             loading: _loading,
-                            icon: Icons.login,
-                            iconPosition: IconPosition.start,
                             height: AppDimens.buttonHeightXl,
+                            borderRadius: AppDimens.radiusMd,
+                            gradient: AppColors.ctaGradient,
                           ),
-
-                          SizedBox(height: AppDimens.space9),
-
-                          // فاصل
-                          Row(
-                            children: [
-                              Expanded(child: AnimeDivider()),
-                              Padding(
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: AppDimens.space4,
-                                ),
-                                child: Text(
-                                  'أو',
-                                  style: Theme.of(context).textTheme.bodySmall
-                                      ?.copyWith(
-                                        color: Theme.of(
-                                          context,
-                                        ).colorScheme.onSurfaceVariant,
-                                      ),
-                                ),
-                              ),
-                              Expanded(child: AnimeDivider()),
-                            ],
-                          ),
-
-                          SizedBox(height: AppDimens.space5),
-
-                          // زر إنشاء حساب
-                          AnimeOutlinedButton(
-                            label: 'إنشاء حساب جديد',
-                            onPressed: () =>
-                                context.router.push(const RegisterRoute()),
-                            icon: Icons.person_add_outlined,
-                            iconPosition: IconPosition.start,
-                            height: AppDimens.buttonHeightLg,
-                            borderColor: Theme.of(context).colorScheme.primary,
-                          ),
-
-                          SizedBox(height: AppDimens.space7),
-
-                          // ملاحظة
-                          Text(
-                            'بالتسجيل، أنت توافق على شروط الاستخدام وسياسة الخصوصية',
-                            textAlign: TextAlign.center,
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurfaceVariant
-                                      .withValues(alpha: 0.5),
-                                ),
-                          ),
-                        ],
-                      ),
-                    ),
+                    ],
                   ),
                 ),
+          footer: Column(
+            children: [
+              SizedBox(height: AppDimens.space2),
+              AnimeTextButton(
+                label: 'ما عندك حساب؟ إنشاء حساب جديد',
+                onPressed: () => context.router.push(const RegisterRoute()),
               ),
-            ),
+              // متابعة كزائر (بلا حساب) — تصفّح المتجر مباشرة.
+              AnimeTextButton(
+                label: 'تصفح كزائر',
+                onPressed: () =>
+                    context.router.replace(
+        sl<PersonalizeStorage>().isDone
+            ? const MainNavigationRoute()
+            : const PersonalizeRoute(),
+      ),
+                icon: Icons.arrow_back_ios,
+                iconPosition: IconPosition.end,
+              ),
+            ],
           ),
         ),
       ),

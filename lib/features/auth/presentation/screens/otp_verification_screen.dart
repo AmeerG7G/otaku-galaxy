@@ -5,15 +5,37 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/design_system/design_system.dart';
 import '../../../../core/router/app_router.dart';
 import '../cubit/auth_cubit.dart';
+import '../widgets/auth_scaffold.dart';
+import '../widgets/otp_code_field.dart';
+import '../../../settings/data/personalize_storage.dart';
+import '../../../../core/config/app_config.dart';
+import '../../../../core/di/injection_container.dart';
 
-/// رمز التحقق الثابت في بيئة التطوير فقط (VERIFICATION_PROVIDER=development).
+/// رمز التطوير الثابت — يُعرض فقط حين تسمح الإعدادات (انظر
+/// [AppConfig.showDevOtpHint]). الخادم يقرّر فعلياً هل الرمز الثابت مفعَّل
+/// عبر `DEV_OTP_ENABLED`، وهو مستحيل في الإنتاج.
 const String _devOtp = '123456';
+
+/// سبب طلب رمز التحقق — يحدّد وجهة الشاشة بعد إدخال الرمز.
+enum OtpPurpose {
+  /// تأكيد حساب جديد: الرمز يُستهلك هنا ثم ننتقل للتخصيص/الرئيسية.
+  registration,
+
+  /// استعادة كلمة المرور: الرمز يُمرَّر لشاشة إعادة التعيين، لأن نقطة
+  /// `reset-password` تتحقق منه وتغيّر كلمة المرور في طلب واحد.
+  passwordReset,
+}
 
 @RoutePage()
 class OtpVerificationScreen extends StatefulWidget {
-  const OtpVerificationScreen({super.key, required this.phone});
+  const OtpVerificationScreen({
+    super.key,
+    required this.phone,
+    this.purpose = OtpPurpose.registration,
+  });
 
   final String phone;
+  final OtpPurpose purpose;
 
   @override
   State<OtpVerificationScreen> createState() => _OtpVerificationScreenState();
@@ -26,6 +48,9 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen>
 
   bool _loading = false;
   int _resendCountdown = 0;
+
+  /// الحالة البصرية لخانات الرمز (فارغ/جارٍ التحقق/خطأ/نجاح).
+  OtpFieldStatus _otpStatus = OtpFieldStatus.idle;
 
   late final AnimationController _animationController;
   late final Animation<double> _fadeAnimation;
@@ -100,29 +125,41 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen>
   }
 
   Future<void> _verify() async {
-    if (!_formKey.currentState!.validate()) return;
+    final code = _otpController.text.trim();
+    if (code.length != 6) {
+      setState(() => _otpStatus = OtpFieldStatus.invalid);
+      return;
+    }
 
-    setState(() => _loading = true);
+    // استعادة كلمة المرور: لا نتحقق من الرمز هنا لأن التحقق يستهلكه على
+    // الخادم، وشاشة إعادة التعيين تحتاجه في نفس الطلب. نمرّره كما هو.
+    if (widget.purpose == OtpPurpose.passwordReset) {
+      setState(() => _otpStatus = OtpFieldStatus.valid);
+      context.router.push(
+        ResetPasswordRoute(phone: widget.phone, code: code),
+      );
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _otpStatus = OtpFieldStatus.verifying;
+    });
     try {
-      await context.read<AuthCubit>().verifyOtp(
-        widget.phone,
-        _otpController.text.trim(),
-      );
+      await context.read<AuthCubit>().verifyOtp(widget.phone, code);
       if (!mounted) return;
-      context.router.replace(const MainNavigationRoute());
-    } catch (e) {
+      setState(() => _otpStatus = OtpFieldStatus.valid);
+      // مهلة قصيرة ليرى المستخدم حالة النجاح قبل الانتقال.
+      await Future.delayed(const Duration(milliseconds: 700));
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString()),
-          backgroundColor: context.themeColors.error,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppDimens.radiusLg),
-          ),
-          margin: EdgeInsets.all(AppDimens.screenHorizontalPadding),
-        ),
+      context.router.replace(
+        sl<PersonalizeStorage>().isDone
+            ? const MainNavigationRoute()
+            : const PersonalizeRoute(),
       );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _otpStatus = OtpFieldStatus.invalid);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -137,223 +174,100 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen>
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.themeColors;
+    return FadeTransition(
+      opacity: _fadeAnimation,
+      child: SlideTransition(
+        position: _slideAnimation,
+        child: AuthScaffold(
+          title: 'رمز التحقق',
+          subtitle:
+              'أرسلنا رمزاً من ستة أرقام إلى رقم هاتفك عبر رسالة نصية.',
+          artwork: 'assets/art/opt/a-i1.png',
+          artworkHeight: 190,
+          artworkWidth: 142,
+          artworkBottom: -10,
+          ctaArtWidth: 96,
+          form: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Text(
+                    widget.phone,
+                    textDirection: TextDirection.ltr,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: AppDimens.weightBold,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                ),
+                SizedBox(height: AppDimens.space6),
 
-    return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(gradient: colors.surfaceGradient),
-        child: SafeArea(
-          child: FadeTransition(
-            opacity: _fadeAnimation,
-            child: SlideTransition(
-              position: _slideAnimation,
-              child: SingleChildScrollView(
-                padding: EdgeInsets.all(AppDimens.screenHorizontalPadding),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                // خانات الرمز الستّ بحالاتها البصرية.
+                OtpCodeField(
+                  controller: _otpController,
+                  status: _otpStatus,
+                  onCompleted: (_) => _verify(),
+                ),
+
+                SizedBox(height: AppDimens.space5),
+                OtpStatusBanner(status: _otpStatus),
+
+                SizedBox(height: AppDimens.space5),
+                AnimePrimaryButton(
+                  label: 'تأكيد الرمز',
+                  onPressed: _verify,
+                  loading: _loading,
+                  height: AppDimens.buttonHeightXl,
+                  borderRadius: AppDimens.radiusMd,
+                  gradient: AppColors.ctaGradient,
+                ),
+
+                SizedBox(height: AppDimens.space4),
+                Center(
+                  child: AnimeTextButton(
+                    label: _resendCountdown > 0
+                        ? 'إعادة إرسال الرمز بعد $_resendCountdown ث'
+                        : 'إعادة إرسال الرمز',
+                    onPressed: _resendOtp,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // ملاحظة رمز التجربة لا تُعرض إلا في بناء تطوير تصحيحي — نسخة
+          // الإصدار لا تلمّح إطلاقاً إلى وجود رمز ثابت.
+          footer: sl<AppConfig>().showDevOtpHint
+              ? Container(
+                  padding: EdgeInsets.all(AppDimens.space4),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(AppDimens.radiusMd),
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.outlineVariant,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      SizedBox(height: AppDimens.space5),
-
-                      // زر العودة
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: IconButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          icon: Icon(
-                            Icons.arrow_forward_ios,
-                            size: AppDimens.iconMd,
-                          ),
-                          style: IconButton.styleFrom(
-                            backgroundColor: Theme.of(
-                              context,
-                            ).colorScheme.surfaceContainerHighest,
-                            foregroundColor: Theme.of(
-                              context,
-                            ).colorScheme.onSurfaceVariant,
-                          ),
-                        ),
+                      Icon(
+                        Icons.science_outlined,
+                        size: AppDimens.iconSm,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
-
-                      SizedBox(height: AppDimens.space2),
-
-                      // الشعار
-                      Center(
-                        child: OtakuStoreLogo(
-                          size: AppDimens.iconLogo * 0.8,
-                          animationDuration: const Duration(milliseconds: 2000),
-                        ),
-                      ),
-
-                      SizedBox(height: AppDimens.space9),
-
-                      // أيقونة التحقق
-                      Container(
-                        width: AppDimens.avatar3xl,
-                        height: AppDimens.avatar3xl,
-                        margin: EdgeInsets.symmetric(
-                          horizontal: AppDimens.space5,
-                        ),
-                        decoration: BoxDecoration(
-                          gradient: colors.primaryGradient,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: colors.glowPrimary,
-                              blurRadius: 20,
-                              spreadRadius: 3,
-                            ),
-                          ],
-                        ),
-                        child: Icon(
-                          Icons.sms_outlined,
-                          size: AppDimens.iconHero,
-                          color: Colors.white,
-                        ),
-                      ),
-
-                      SizedBox(height: AppDimens.space7),
-
-                      // العنوان
+                      SizedBox(width: AppDimens.space2),
                       Text(
-                        'تأكيد رقم الهاتف',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.headlineSmall
-                            ?.copyWith(
-                              fontWeight: AppDimens.weightBold,
-                              letterSpacing: AppDimens.letterSpacingTight,
-                            ),
-                      ),
-
-                      SizedBox(height: AppDimens.space2),
-
-                      Text(
-                        'تم إرسال رمز التحقق إلى',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        'رمز التجربة: $_devOtp',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-
-                      SizedBox(height: AppDimens.space1),
-
-                      Text(
-                        widget.phone,
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.titleMedium
-                            ?.copyWith(
-                              fontWeight: AppDimens.weightBold,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                      ),
-
-                      SizedBox(height: AppDimens.space9),
-
-                      // حقل رمز التحقق
-                      AnimeTextField(
-                        controller: _otpController,
-                        label: 'رمز التحقق',
-                        hint: '000000',
-                        prefixIcon: Icons.verified_outlined,
-                        keyboardType: TextInputType.number,
-                        textAlign: TextAlign.center,
-                        textInputAction: TextInputAction.done,
-                        onSubmitted: (_) => _verify(),
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'يرجى إدخال رمز التحقق';
-                          }
-                          if (value.trim().length != 6) {
-                            return 'رمز التحقق يجب أن يكون 6 أرقام';
-                          }
-                          return null;
-                        },
-                      ),
-
-                      SizedBox(height: AppDimens.space7),
-
-                      // زر تأكيد
-                      AnimePrimaryButton(
-                        label: 'تأكيد',
-                        onPressed: _verify,
-                        loading: _loading,
-                        icon: Icons.check_circle_outlined,
-                        iconPosition: IconPosition.start,
-                        height: AppDimens.buttonHeightXl,
-                      ),
-
-                      SizedBox(height: AppDimens.space5),
-
-                      // إعادة إرسال
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            'لم تستلم الرمز؟ ',
-                            style: Theme.of(context).textTheme.bodyMedium
-                                ?.copyWith(
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.onSurfaceVariant,
-                                ),
-                          ),
-                          AnimeTextButton(
-                            label: _resendCountdown > 0
-                                ? 'إعادة الإرسال ($_resendCountdown ث)'
-                                : 'إعادة إرسال الرمز',
-                            onPressed: _resendOtp,
-                          ),
-                        ],
-                      ),
-
-                      SizedBox(height: AppDimens.space7),
-
-                      // رمز التجربة (للاختبار)
-                      Container(
-                        padding: EdgeInsets.all(AppDimens.space4),
-                        decoration: BoxDecoration(
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(
-                            AppDimens.radiusMd,
-                          ),
-                          border: Border.all(
-                            color: Theme.of(context).colorScheme.outlineVariant,
-                            width: AppDimens.cardBorderWidth,
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.science_outlined,
-                              size: AppDimens.iconSm,
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.onSurfaceVariant,
-                            ),
-                            SizedBox(width: AppDimens.space2),
-                            Text(
-                              'رمز التجربة: $_devOtp',
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.onSurfaceVariant,
-                                    fontFamily: 'monospace',
-                                  ),
-                            ),
-                          ],
+                          fontFamily: 'monospace',
                         ),
                       ),
                     ],
                   ),
-                ),
-              ),
-            ),
-          ),
+                )
+              : null,
         ),
       ),
     );

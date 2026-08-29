@@ -15,6 +15,24 @@ sealed class CartState extends Equatable {
   /// المجموع الإجمالي.
   double get total => items.fold(0, (sum, item) => sum + item.lineTotal);
 
+  /// مجموع ترويج التوصيل عن كل القطع المؤهَّلة في السلة.
+  ///
+  /// معاينة فقط: الخادم يعيد حسابها وتطبيقها عند إنشاء الطلب بنفس القاعدة
+  /// (المجموع مسقوفاً برسوم التوصيل)، والتطبيق لا يقرّر خصماً أبداً.
+  double get deliveryPromoTotal => items.fold(
+    0,
+    (sum, item) => item.product.hasDeliveryPromo
+        ? sum + item.product.deliveryPromoAmount * item.quantity
+        : sum,
+  );
+
+  /// خصم التوصيل المعروض لرسوم توصيل معيّنة — مسقوف بالرسوم نفسها.
+  double deliveryDiscountFor(double deliveryFee) {
+    if (deliveryFee <= 0) return 0;
+    final promo = deliveryPromoTotal;
+    return promo < deliveryFee ? promo : deliveryFee;
+  }
+
   /// البحث عن عنصر حسب معرّف المنتج.
   CartItem? itemById(String productId) {
     for (final item in items) {

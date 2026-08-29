@@ -3,10 +3,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/design_system/design_system.dart';
+import '../../../../core/errors/app_exception.dart';
+import '../../../../core/router/app_router.dart';
 import '../../../cart/presentation/cubit/cart_cubit.dart';
+import '../../../main_navigation/presentation/screens/main_navigation_screen.dart';
 import '../../../orders/domain/entities/order_data.dart';
 import '../../../orders/domain/usecases/place_order_usecase.dart';
+import '../widgets/order_success_view.dart';
 
+/// مراجعة الطلب بتصميم Otaku Galaxy v2.
+///
+/// ترويسة بخطوة «٢ من ٢»، ثم أسطح عائمة لمعلومات التوصيل والمنتجات
+/// وملخّص الأسعار، ثم شريط تأكيد سفلي. بعد الإرسال تُستبدل الشاشة كلها
+/// بصفحة نجاح تحريرية بملء الشاشة — لا حوار مادي.
 @RoutePage()
 class OrderReviewScreen extends StatefulWidget {
   const OrderReviewScreen({super.key, required this.orderData});
@@ -19,6 +28,7 @@ class OrderReviewScreen extends StatefulWidget {
 
 class _OrderReviewScreenState extends State<OrderReviewScreen> {
   bool _loading = false;
+  bool _placed = false;
 
   Future<void> _confirm() async {
     setState(() => _loading = true);
@@ -26,257 +36,154 @@ class _OrderReviewScreenState extends State<OrderReviewScreen> {
       await context.read<PlaceOrderUsecase>()(widget.orderData);
       if (!mounted) return;
       context.read<CartCubit>().clear();
-      await _showSuccessDialog();
-    } catch (_) {
+      setState(() => _placed = true);
+    } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('تعذر إرسال الطلب. حاول مرة أخرى.'),
-          backgroundColor: context.themeColors.error,
-        ),
-      );
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            // رسالة الخادم تقول للعميل ما الذي ينقص بالضبط («اختر محافظة
+            // صالحة»، «اختر منطقة التوصيل»، «المخزون غير كافٍ»…). طمسُها
+            // خلف نص عام يترك العميل يعيد الضغط بلا فائدة.
+            content: Text(_placeErrorOf(error)),
+            backgroundColor: context.themeColors.error,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(18),
+            duration: const Duration(seconds: 4),
+          ),
+        );
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
-  Future<void> _showSuccessDialog() async {
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppDimens.radius2xl),
+  /// نص الخطأ المعروض عند تعذّر إنشاء الطلب — من الخادم متى أرسل واحداً.
+  String _placeErrorOf(Object error) {
+    if (error is AppException) {
+      switch (error.code) {
+        case 'ZONE_REQUIRED':
+          return 'اختر منطقة التوصيل قبل إرسال الطلب.';
+        case 'ZONE_INVALID':
+        case 'ZONE_NOT_SUPPORTED':
+          return 'منطقة التوصيل غير صالحة لهذه المحافظة.';
+        case 'BIRTHDAY_DISCOUNT_USED':
+          return 'خصم عيد الميلاد مستخدم هذه السنة.';
+        default:
+          return error.message;
+      }
+    }
+    return 'تعذر إرسال الطلب. حاول مرة أخرى.';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final data = widget.orderData;
+
+    // بعد نجاح الإرسال تحلّ صفحة النجاح محلّ الشاشة بالكامل.
+    if (_placed) {
+      return Scaffold(
+        body: OrderSuccessView(
+          onOpenOrders: () {
+            context.router.popUntilRoot();
+            context.router.push(const OrdersRoute());
+          },
+          onKeepShopping: () {
+            mainNavIndex.value = MainTab.home;
+            context.router.popUntilRoot();
+          },
         ),
-        title: Row(
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: context.themeColors.success,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.check_circle,
-                color: Colors.white,
-                size: AppDimens.iconMd,
-              ),
-            ),
-            SizedBox(width: AppDimens.space3),
-            Expanded(
-              child: Text(
-                'تم إرسال طلبك بنجاح',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: AppDimens.weightBold,
-                ),
-              ),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'سيتم التواصل معك عبر WhatsApp\nلتأكيد تفاصيل الطلب.',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                height: AppDimens.lineHeightRelaxed,
-              ),
-            ),
-            SizedBox(height: AppDimens.space3),
-            Text(
-              'بعد التأكيد سيتم تثبيت طلبك\nوإرساله للمعالجة.',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                height: AppDimens.lineHeightRelaxed,
-              ),
-            ),
-            SizedBox(height: AppDimens.space4),
-            Container(
-              padding: EdgeInsets.all(AppDimens.space4),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    context.themeColors.infoPale,
-                    context.themeColors.infoPale.withValues(alpha: 0.5),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(AppDimens.radiusMd),
-              ),
-              child: Row(
+      );
+    }
+
+    return Scaffold(
+      body: Column(
+        children: [
+          OtakuScreenHeader(
+            title: 'مراجعة الطلب',
+            subtitle: 'الخطوة ٢ من ٢',
+            onBack: () => context.router.maybePop(),
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Icon(
-                    Icons.info_outline,
-                    color: context.themeColors.info,
-                    size: AppDimens.iconMd,
-                  ),
-                  SizedBox(width: AppDimens.space3),
-                  Expanded(
-                    child: Text(
-                      'لا تحتاج لتأكيد الطلب عبر WhatsApp من داخل التطبيق. الإدارة ستتواصل معك.',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: context.themeColors.info,
-                      ),
-                    ),
-                  ),
+                  _buildDeliveryInfo(data),
+                  const SizedBox(height: 13),
+                  _buildItemsSection(data),
+                  const SizedBox(height: 13),
+                  _buildPriceSummary(data),
                 ],
               ),
             ),
-          ],
-        ),
-        actions: [
-          AnimePrimaryButton(
-            label: 'حسناً',
-            onPressed: () {
-              Navigator.of(context).pop();
-              context.router.popUntilRoot();
-            },
-            expanded: true,
           ),
+          _buildConfirmBar(),
         ],
       ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.themeColors;
-    final data = widget.orderData;
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('مراجعة الطلب'), centerTitle: true),
-      body: Container(
-        decoration: BoxDecoration(gradient: colors.surfaceGradient),
-        child: Column(
-          children: [
-            Expanded(
-              child: SingleChildScrollView(
-                padding: EdgeInsets.all(AppDimens.screenHorizontalPadding),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // معلومات التوصيل
-                    _buildDeliveryInfo(data),
-
-                    SizedBox(height: AppDimens.space5),
-
-                    // منتجات الطلب
-                    _buildItemsSection(data),
-
-                    SizedBox(height: AppDimens.space5),
-
-                    // ملخص الأسعار
-                    _buildPriceSummary(data),
-                  ],
-                ),
-              ),
+  Widget _sectionCard({required String title, required List<Widget> children}) {
+    return OtakuPanel(
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              fontFamily: 'Tajawal',
+              fontSize: 15,
+              fontWeight: AppDimens.weightExtraBold,
             ),
-
-            // زر التأكيد
-            _buildConfirmButton(),
-          ],
-        ),
+          ),
+          const SizedBox(height: 14),
+          ...children,
+        ],
       ),
     );
   }
 
   Widget _buildDeliveryInfo(OrderData data) {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppDimens.cardBorderRadius),
-        side: BorderSide(
-          color: Theme.of(context).colorScheme.outlineVariant,
-          width: AppDimens.cardBorderWidth,
-        ),
-      ),
-      child: Padding(
-        padding: EdgeInsets.all(AppDimens.cardPadding),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    gradient: context.themeColors.primaryGradient,
-                    borderRadius: BorderRadius.circular(AppDimens.radiusMd),
-                  ),
-                  child: Icon(
-                    Icons.local_shipping_outlined,
-                    color: Colors.white,
-                    size: AppDimens.iconMd,
-                  ),
-                ),
-                SizedBox(width: AppDimens.space3),
-                Text(
-                  'معلومات التوصيل',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: AppDimens.weightBold,
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: AppDimens.space4),
-            _buildInfoRow(
-              icon: Icons.location_on_outlined,
-              label: 'المحافظة',
-              value: data.province,
-            ),
-            _buildInfoRow(
-              icon: Icons.home_outlined,
-              label: 'العنوان الكامل',
-              value: data.fullAddress,
-            ),
-            _buildInfoRow(
-              icon: Icons.phone_outlined,
-              label: 'رقم الهاتف',
-              value: data.phone,
-            ),
-          ],
-        ),
-      ),
+    return _sectionCard(
+      title: 'معلومات التوصيل',
+      children: [
+        _infoRow('المحافظة', data.province),
+        _infoRow('العنوان الكامل', data.fullAddress),
+        _infoRow('رقم الهاتف', data.phone, ltr: true, last: true),
+      ],
     );
   }
 
-  Widget _buildInfoRow({
-    required IconData icon,
-    required String label,
-    required String value,
+  Widget _infoRow(
+    String label,
+    String value, {
+    bool ltr = false,
+    bool last = false,
   }) {
+    final theme = Theme.of(context);
     return Padding(
-      padding: EdgeInsets.only(bottom: AppDimens.space3),
-      child: Row(
+      padding: EdgeInsets.only(bottom: last ? 0 : 12),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            icon,
-            size: AppDimens.iconMd,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          Text(
+            label,
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontSize: 12,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
-          SizedBox(width: AppDimens.space3),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                SizedBox(height: AppDimens.space1),
-                Text(
-                  value,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontWeight: AppDimens.weightMedium,
-                  ),
-                ),
-              ],
+          const SizedBox(height: 5),
+          Text(
+            value,
+            textDirection: ltr ? TextDirection.ltr : null,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontSize: 14,
+              height: 1.5,
+              fontWeight: AppDimens.weightSemiBold,
             ),
           ),
         ],
@@ -285,286 +192,214 @@ class _OrderReviewScreenState extends State<OrderReviewScreen> {
   }
 
   Widget _buildItemsSection(OrderData data) {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppDimens.cardBorderRadius),
-        side: BorderSide(
-          color: Theme.of(context).colorScheme.outlineVariant,
-          width: AppDimens.cardBorderWidth,
-        ),
-      ),
-      child: Column(
-        children: [
-          Padding(
-            padding: EdgeInsets.all(AppDimens.cardPadding),
-            child: Row(
-              children: [
-                Text(
-                  'منتجات الطلب (${data.items.length})',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: AppDimens.weightBold,
-                  ),
+    final theme = Theme.of(context);
+
+    return _sectionCard(
+      title: 'منتجات الطلب (${data.items.length})',
+      children: [
+        for (var i = 0; i < data.items.length; i++) ...[
+          if (i > 0) const SizedBox(height: 13),
+          Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(AppDimens.radiusSm),
+                  border: Border.all(color: theme.colorScheme.outlineVariant),
                 ),
-              ],
-            ),
-          ),
-          Divider(
-            height: 1,
-            color: Theme.of(context).colorScheme.outlineVariant,
-          ),
-          ListView.separated(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            padding: EdgeInsets.zero,
-            itemCount: data.items.length,
-            separatorBuilder: (_, _) => Divider(
-              height: 1,
-              color: Theme.of(context).colorScheme.outlineVariant,
-              indent: AppDimens.cardPadding,
-              endIndent: AppDimens.cardPadding,
-            ),
-            itemBuilder: (context, index) {
-              final item = data.items[index];
-              return Padding(
-                padding: EdgeInsets.all(AppDimens.cardPadding),
-                child: Row(
+                clipBehavior: Clip.antiAlias,
+                child: ProductPhotoSlot(
+                  imageUrl: data.items[i].product.images.isNotEmpty
+                      ? data.items[i].product.images.first
+                      : null,
+                  showLabel: false,
+                  iconSize: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(AppDimens.radiusMd),
-                        color: Theme.of(
-                          context,
-                        ).colorScheme.surfaceContainerHighest,
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(AppDimens.radiusMd),
-                        child: item.product.images.isNotEmpty
-                            ? Image.network(
-                                item.product.images.first,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, _, _) => _buildPlaceholder(),
-                              )
-                            : _buildPlaceholder(),
-                      ),
-                    ),
-                    SizedBox(width: AppDimens.space3),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            item.product.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodyMedium
-                                ?.copyWith(fontWeight: AppDimens.weightMedium),
-                          ),
-                          SizedBox(height: AppDimens.space1),
-                          Text(
-                            'الكمية: ${item.quantity}',
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.onSurfaceVariant,
-                                ),
-                          ),
-                        ],
-                      ),
-                    ),
                     Text(
-                      formatPrice(item.lineTotal),
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: AppDimens.weightBold,
-                        color: Theme.of(context).colorScheme.primary,
+                      data.items[i].product.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontSize: 13.5,
+                        height: 1.5,
+                        fontWeight: AppDimens.weightSemiBold,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'الكمية ${data.items[i].quantity}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontSize: 11.5,
+                        color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ],
                 ),
-              );
-            },
+              ),
+              const SizedBox(width: 10),
+              Text(
+                formatPrice(data.items[i].lineTotal),
+                textDirection: TextDirection.ltr,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontFamily: 'Tajawal',
+                  fontSize: 14,
+                  fontWeight: AppDimens.weightExtraBold,
+                  color: AppColors.secondary,
+                ),
+              ),
+            ],
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildPlaceholder() {
-    return Icon(
-      Icons.image_outlined,
-      size: AppDimens.iconMd,
-      color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ],
     );
   }
 
   Widget _buildPriceSummary(OrderData data) {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppDimens.cardBorderRadius),
-        side: BorderSide(
-          color: Theme.of(context).colorScheme.outlineVariant,
-          width: AppDimens.cardBorderWidth,
+    final theme = Theme.of(context);
+
+    return _sectionCard(
+      title: 'ملخّص الأسعار',
+      children: [
+        // المجموع الفرعي مباشرةً — اشتقاقه من الإجمالي صار خاطئاً بعد
+        // دخول خصم التوصيل في المعادلة.
+        _priceRow('سعر المنتجات', formatPrice(data.productsTotal)),
+        const SizedBox(height: 10),
+        _priceRow('رسوم التوصيل', formatPrice(data.deliveryCost)),
+        if (data.deliveryDiscount > 0) ...[
+          const SizedBox(height: 10),
+          _priceRow(
+            'خصم التوصيل',
+            '-${formatPrice(data.deliveryDiscount)}',
+            color: AppColors.success,
+          ),
+        ],
+        if (data.deliveryCost > 0 && data.payableDelivery == 0) ...[
+          const SizedBox(height: 10),
+          _priceRow('', 'توصيل مجاني 🎉', color: AppColors.success),
+        ],
+        if (data.discount > 0) ...[
+          const SizedBox(height: 10),
+          _priceRow(
+            'الخصم',
+            '-${formatPrice(data.discount)}',
+            color: AppColors.success,
+          ),
+        ],
+        Container(
+          height: 1,
+          margin: const EdgeInsets.symmetric(vertical: 14),
+          color: theme.colorScheme.outlineVariant,
         ),
-      ),
-      child: Padding(
-        padding: EdgeInsets.all(AppDimens.cardPadding),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        Row(
           children: [
-            Row(
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    gradient: context.themeColors.accentGradient,
-                    borderRadius: BorderRadius.circular(AppDimens.radiusMd),
-                  ),
-                  child: Icon(
-                    Icons.receipt_outlined,
-                    color: Colors.white,
-                    size: AppDimens.iconMd,
-                  ),
+            Expanded(
+              child: Text(
+                'المجموع النهائي',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontFamily: 'Tajawal',
+                  fontSize: 16,
+                  fontWeight: AppDimens.weightExtraBold,
                 ),
-                SizedBox(width: AppDimens.space3),
-                Text(
-                  'ملخص الأسعار',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: AppDimens.weightBold,
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: AppDimens.space4),
-            _buildPriceRow(
-              'سعر المنتجات',
-              formatPrice(data.total - data.deliveryCost),
-            ),
-            _buildPriceRow(
-              'تكلفة التوصيل',
-              formatPrice(data.deliveryCost),
-              valueColor: Theme.of(context).colorScheme.primary,
-            ),
-            if (data.discount > 0)
-              _buildPriceRow(
-                'الخصم',
-                '-${formatPrice(data.discount)}',
-                valueColor: context.themeColors.success,
               ),
-            Divider(
-              height: AppDimens.space4,
-              color: Theme.of(context).colorScheme.outlineVariant,
             ),
-            _buildPriceRow(
-              'المجموع النهائي',
+            Text(
               formatPrice(data.total),
-              isTotal: true,
-              valueColor: Theme.of(context).colorScheme.primary,
+              textDirection: TextDirection.ltr,
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontFamily: 'Tajawal',
+                fontSize: 20,
+                fontWeight: AppDimens.weightBlack,
+                color: AppColors.secondary,
+              ),
             ),
           ],
         ),
-      ),
+        const SizedBox(height: 10),
+        Text(
+          'الدفع عند الاستلام — ما تدفع شي قبل ما يوصلك الطلب.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            fontSize: 11.5,
+            height: 1.6,
+            color: theme.colorScheme.outline,
+          ),
+        ),
+      ],
     );
   }
 
-  Widget _buildPriceRow(
-    String label,
-    String value, {
-    bool isTotal = false,
-    Color? valueColor,
-  }) {
-    return Padding(
-      padding: EdgeInsets.symmetric(vertical: AppDimens.space2),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
+  Widget _priceRow(String label, String value, {Color? color}) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
             label,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              fontWeight: isTotal
-                  ? AppDimens.weightSemiBold
-                  : AppDimens.weightRegular,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontSize: 13,
+              color: color ?? theme.colorScheme.onSurfaceVariant,
             ),
           ),
-          Text(
-            value,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              fontWeight: isTotal
-                  ? AppDimens.weightExtraBold
-                  : AppDimens.weightSemiBold,
-              color: valueColor ?? Theme.of(context).colorScheme.onSurface,
-            ),
+        ),
+        Text(
+          value,
+          textDirection: TextDirection.ltr,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontSize: 13,
+            fontWeight: color != null
+                ? AppDimens.weightBold
+                : AppDimens.weightSemiBold,
+            color: color,
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
-  Widget _buildConfirmButton() {
+  Widget _buildConfirmBar() {
+    final theme = Theme.of(context);
     return Container(
-      padding: EdgeInsets.all(AppDimens.screenHorizontalPadding),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            Theme.of(context).colorScheme.surface,
-            Theme.of(context).colorScheme.surfaceContainerHighest,
-          ],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-        ),
         border: Border(
-          top: BorderSide(
-            color: Theme.of(context).colorScheme.outlineVariant,
-            width: AppDimens.cardBorderWidth,
-          ),
+          top: BorderSide(color: theme.colorScheme.outlineVariant),
         ),
-        boxShadow: [
-          BoxShadow(
-            color: context.themeColors.shadowLight,
-            blurRadius: 16,
-            offset: const Offset(0, -4),
-          ),
-        ],
       ),
       child: SafeArea(
         top: false,
-        child: Column(
-          children: [
-            AnimePrimaryButton(
-              label: 'تأكيد إرسال الطلب',
-              onPressed: _confirm,
-              loading: _loading,
-              icon: Icons.send_outlined,
-              iconPosition: IconPosition.start,
-              height: AppDimens.buttonHeightXl,
-              gradient: LinearGradient(
-                colors: [
-                  context.themeColors.success,
-                  context.themeColors.successLight,
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
+          child: Column(
+            children: [
+              AnimePrimaryButton(
+                label: 'تأكيد إرسال الطلب',
+                onPressed: _confirm,
+                loading: _loading,
+                height: AppDimens.buttonHeightXl,
               ),
-            ),
-            SizedBox(height: AppDimens.space3),
-            Text(
-              'بالضغط على زر التأكيد، سيتم إرسال طلبك إلى الإدارة للمراجعة والتواصل معك عبر WhatsApp',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              const SizedBox(height: 10),
+              Text(
+                'بالضغط على التأكيد يُرسل طلبك للإدارة للمراجعة، '
+                'وراح يتواصلون وياك عبر واتساب.',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontSize: 11.5,
+                  height: 1.6,
+                  color: theme.colorScheme.outline,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
-  String formatPrice(double price) {
-    return '${price.toStringAsFixed(0)} د.ع';
-  }
+  String formatPrice(double price) => '${price.toStringAsFixed(0)} د.ع';
 }

@@ -124,6 +124,87 @@ class CategoryProductsRouteArgs {
 }
 
 /// generated route for
+/// [CollectionDetailScreen]
+class CollectionDetailRoute extends PageRouteInfo<CollectionDetailRouteArgs> {
+  CollectionDetailRoute({
+    Key? key,
+    required String collectionId,
+    required String collectionName,
+    List<PageRouteInfo>? children,
+  }) : super(
+         CollectionDetailRoute.name,
+         args: CollectionDetailRouteArgs(
+           key: key,
+           collectionId: collectionId,
+           collectionName: collectionName,
+         ),
+         initialChildren: children,
+       );
+
+  static const String name = 'CollectionDetailRoute';
+
+  static PageInfo page = PageInfo(
+    name,
+    builder: (data) {
+      final args = data.argsAs<CollectionDetailRouteArgs>();
+      return CollectionDetailScreen(
+        key: args.key,
+        collectionId: args.collectionId,
+        collectionName: args.collectionName,
+      );
+    },
+  );
+}
+
+class CollectionDetailRouteArgs {
+  const CollectionDetailRouteArgs({
+    this.key,
+    required this.collectionId,
+    required this.collectionName,
+  });
+
+  final Key? key;
+
+  final String collectionId;
+
+  final String collectionName;
+
+  @override
+  String toString() {
+    return 'CollectionDetailRouteArgs{key: $key, collectionId: $collectionId, collectionName: $collectionName}';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! CollectionDetailRouteArgs) return false;
+    return key == other.key &&
+        collectionId == other.collectionId &&
+        collectionName == other.collectionName;
+  }
+
+  @override
+  int get hashCode =>
+      key.hashCode ^ collectionId.hashCode ^ collectionName.hashCode;
+}
+
+/// generated route for
+/// [CommunityScreen]
+class CommunityRoute extends PageRouteInfo<void> {
+  const CommunityRoute({List<PageRouteInfo>? children})
+    : super(CommunityRoute.name, initialChildren: children);
+
+  static const String name = 'CommunityRoute';
+
+  static PageInfo page = PageInfo(
+    name,
+    builder: (data) {
+      return const CommunityScreen();
+    },
+  );
+}
+
+/// generated route for
 /// [FavoritesScreen]
 class FavoritesRoute extends PageRouteInfo<void> {
   const FavoritesRoute({List<PageRouteInfo>? children})
@@ -151,6 +232,22 @@ class ForgotPasswordRoute extends PageRouteInfo<void> {
     name,
     builder: (data) {
       return const ForgotPasswordScreen();
+    },
+  );
+}
+
+/// generated route for
+/// [GalaxyPointsScreen]
+class GalaxyPointsRoute extends PageRouteInfo<void> {
+  const GalaxyPointsRoute({List<PageRouteInfo>? children})
+    : super(GalaxyPointsRoute.name, initialChildren: children);
+
+  static const String name = 'GalaxyPointsRoute';
+
+  static PageInfo page = PageInfo(
+    name,
+    builder: (data) {
+      return const GalaxyPointsScreen();
     },
   );
 }
@@ -204,6 +301,38 @@ class MainNavigationRoute extends PageRouteInfo<void> {
 }
 
 /// generated route for
+/// [NotificationsScreen]
+class NotificationsRoute extends PageRouteInfo<void> {
+  const NotificationsRoute({List<PageRouteInfo>? children})
+    : super(NotificationsRoute.name, initialChildren: children);
+
+  static const String name = 'NotificationsRoute';
+
+  static PageInfo page = PageInfo(
+    name,
+    builder: (data) {
+      return const NotificationsScreen();
+    },
+  );
+}
+
+/// generated route for
+/// [OnboardingScreen]
+class OnboardingRoute extends PageRouteInfo<void> {
+  const OnboardingRoute({List<PageRouteInfo>? children})
+    : super(OnboardingRoute.name, initialChildren: children);
+
+  static const String name = 'OnboardingRoute';
+
+  static PageInfo page = PageInfo(
+    name,
+    builder: (data) {
+      return const OnboardingScreen();
+    },
+  );
+}
+
+/// generated route for
 /// [OrderDataScreen]
 class OrderDataRoute extends PageRouteInfo<void> {
   const OrderDataRoute({List<PageRouteInfo>? children})
@@ -225,10 +354,15 @@ class OrderDetailRoute extends PageRouteInfo<OrderDetailRouteArgs> {
   OrderDetailRoute({
     Key? key,
     required String orderId,
+    bool confirmOnOpen = false,
     List<PageRouteInfo>? children,
   }) : super(
          OrderDetailRoute.name,
-         args: OrderDetailRouteArgs(key: key, orderId: orderId),
+         args: OrderDetailRouteArgs(
+           key: key,
+           orderId: orderId,
+           confirmOnOpen: confirmOnOpen,
+         ),
          initialChildren: children,
        );
 
@@ -238,32 +372,44 @@ class OrderDetailRoute extends PageRouteInfo<OrderDetailRouteArgs> {
     name,
     builder: (data) {
       final args = data.argsAs<OrderDetailRouteArgs>();
-      return OrderDetailScreen(key: args.key, orderId: args.orderId);
+      return OrderDetailScreen(
+        key: args.key,
+        orderId: args.orderId,
+        confirmOnOpen: args.confirmOnOpen,
+      );
     },
   );
 }
 
 class OrderDetailRouteArgs {
-  const OrderDetailRouteArgs({this.key, required this.orderId});
+  const OrderDetailRouteArgs({
+    this.key,
+    required this.orderId,
+    this.confirmOnOpen = false,
+  });
 
   final Key? key;
 
   final String orderId;
 
+  final bool confirmOnOpen;
+
   @override
   String toString() {
-    return 'OrderDetailRouteArgs{key: $key, orderId: $orderId}';
+    return 'OrderDetailRouteArgs{key: $key, orderId: $orderId, confirmOnOpen: $confirmOnOpen}';
   }
 
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
     if (other is! OrderDetailRouteArgs) return false;
-    return key == other.key && orderId == other.orderId;
+    return key == other.key &&
+        orderId == other.orderId &&
+        confirmOnOpen == other.confirmOnOpen;
   }
 
   @override
-  int get hashCode => key.hashCode ^ orderId.hashCode;
+  int get hashCode => key.hashCode ^ orderId.hashCode ^ confirmOnOpen.hashCode;
 }
 
 /// generated route for
@@ -335,10 +481,15 @@ class OtpVerificationRoute extends PageRouteInfo<OtpVerificationRouteArgs> {
   OtpVerificationRoute({
     Key? key,
     required String phone,
+    OtpPurpose purpose = OtpPurpose.registration,
     List<PageRouteInfo>? children,
   }) : super(
          OtpVerificationRoute.name,
-         args: OtpVerificationRouteArgs(key: key, phone: phone),
+         args: OtpVerificationRouteArgs(
+           key: key,
+           phone: phone,
+           purpose: purpose,
+         ),
          initialChildren: children,
        );
 
@@ -348,32 +499,58 @@ class OtpVerificationRoute extends PageRouteInfo<OtpVerificationRouteArgs> {
     name,
     builder: (data) {
       final args = data.argsAs<OtpVerificationRouteArgs>();
-      return OtpVerificationScreen(key: args.key, phone: args.phone);
+      return OtpVerificationScreen(
+        key: args.key,
+        phone: args.phone,
+        purpose: args.purpose,
+      );
     },
   );
 }
 
 class OtpVerificationRouteArgs {
-  const OtpVerificationRouteArgs({this.key, required this.phone});
+  const OtpVerificationRouteArgs({
+    this.key,
+    required this.phone,
+    this.purpose = OtpPurpose.registration,
+  });
 
   final Key? key;
 
   final String phone;
 
+  final OtpPurpose purpose;
+
   @override
   String toString() {
-    return 'OtpVerificationRouteArgs{key: $key, phone: $phone}';
+    return 'OtpVerificationRouteArgs{key: $key, phone: $phone, purpose: $purpose}';
   }
 
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
     if (other is! OtpVerificationRouteArgs) return false;
-    return key == other.key && phone == other.phone;
+    return key == other.key && phone == other.phone && purpose == other.purpose;
   }
 
   @override
-  int get hashCode => key.hashCode ^ phone.hashCode;
+  int get hashCode => key.hashCode ^ phone.hashCode ^ purpose.hashCode;
+}
+
+/// generated route for
+/// [PersonalizeScreen]
+class PersonalizeRoute extends PageRouteInfo<void> {
+  const PersonalizeRoute({List<PageRouteInfo>? children})
+    : super(PersonalizeRoute.name, initialChildren: children);
+
+  static const String name = 'PersonalizeRoute';
+
+  static PageInfo page = PageInfo(
+    name,
+    builder: (data) {
+      return const PersonalizeScreen();
+    },
+  );
 }
 
 /// generated route for
@@ -424,6 +601,53 @@ class ProductDetailRouteArgs {
 }
 
 /// generated route for
+/// [RateOrderScreen]
+class RateOrderRoute extends PageRouteInfo<RateOrderRouteArgs> {
+  RateOrderRoute({
+    Key? key,
+    required Order order,
+    List<PageRouteInfo>? children,
+  }) : super(
+         RateOrderRoute.name,
+         args: RateOrderRouteArgs(key: key, order: order),
+         initialChildren: children,
+       );
+
+  static const String name = 'RateOrderRoute';
+
+  static PageInfo page = PageInfo(
+    name,
+    builder: (data) {
+      final args = data.argsAs<RateOrderRouteArgs>();
+      return RateOrderScreen(key: args.key, order: args.order);
+    },
+  );
+}
+
+class RateOrderRouteArgs {
+  const RateOrderRouteArgs({this.key, required this.order});
+
+  final Key? key;
+
+  final Order order;
+
+  @override
+  String toString() {
+    return 'RateOrderRouteArgs{key: $key, order: $order}';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! RateOrderRouteArgs) return false;
+    return key == other.key && order == other.order;
+  }
+
+  @override
+  int get hashCode => key.hashCode ^ order.hashCode;
+}
+
+/// generated route for
 /// [RegisterScreen]
 class RegisterRoute extends PageRouteInfo<void> {
   const RegisterRoute({List<PageRouteInfo>? children})
@@ -437,6 +661,147 @@ class RegisterRoute extends PageRouteInfo<void> {
       return const RegisterScreen();
     },
   );
+}
+
+/// generated route for
+/// [ResetPasswordScreen]
+class ResetPasswordRoute extends PageRouteInfo<ResetPasswordRouteArgs> {
+  ResetPasswordRoute({
+    Key? key,
+    required String phone,
+    required String code,
+    List<PageRouteInfo>? children,
+  }) : super(
+         ResetPasswordRoute.name,
+         args: ResetPasswordRouteArgs(key: key, phone: phone, code: code),
+         initialChildren: children,
+       );
+
+  static const String name = 'ResetPasswordRoute';
+
+  static PageInfo page = PageInfo(
+    name,
+    builder: (data) {
+      final args = data.argsAs<ResetPasswordRouteArgs>();
+      return ResetPasswordScreen(
+        key: args.key,
+        phone: args.phone,
+        code: args.code,
+      );
+    },
+  );
+}
+
+class ResetPasswordRouteArgs {
+  const ResetPasswordRouteArgs({
+    this.key,
+    required this.phone,
+    required this.code,
+  });
+
+  final Key? key;
+
+  final String phone;
+
+  final String code;
+
+  @override
+  String toString() {
+    return 'ResetPasswordRouteArgs{key: $key, phone: $phone, code: $code}';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! ResetPasswordRouteArgs) return false;
+    return key == other.key && phone == other.phone && code == other.code;
+  }
+
+  @override
+  int get hashCode => key.hashCode ^ phone.hashCode ^ code.hashCode;
+}
+
+/// generated route for
+/// [ReviewSubmittedScreen]
+class ReviewSubmittedRoute extends PageRouteInfo<ReviewSubmittedRouteArgs> {
+  ReviewSubmittedRoute({
+    Key? key,
+    required String productName,
+    required int rating,
+    required String comment,
+    String? photoUrl,
+    List<PageRouteInfo>? children,
+  }) : super(
+         ReviewSubmittedRoute.name,
+         args: ReviewSubmittedRouteArgs(
+           key: key,
+           productName: productName,
+           rating: rating,
+           comment: comment,
+           photoUrl: photoUrl,
+         ),
+         initialChildren: children,
+       );
+
+  static const String name = 'ReviewSubmittedRoute';
+
+  static PageInfo page = PageInfo(
+    name,
+    builder: (data) {
+      final args = data.argsAs<ReviewSubmittedRouteArgs>();
+      return ReviewSubmittedScreen(
+        key: args.key,
+        productName: args.productName,
+        rating: args.rating,
+        comment: args.comment,
+        photoUrl: args.photoUrl,
+      );
+    },
+  );
+}
+
+class ReviewSubmittedRouteArgs {
+  const ReviewSubmittedRouteArgs({
+    this.key,
+    required this.productName,
+    required this.rating,
+    required this.comment,
+    this.photoUrl,
+  });
+
+  final Key? key;
+
+  final String productName;
+
+  final int rating;
+
+  final String comment;
+
+  final String? photoUrl;
+
+  @override
+  String toString() {
+    return 'ReviewSubmittedRouteArgs{key: $key, productName: $productName, rating: $rating, comment: $comment, photoUrl: $photoUrl}';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! ReviewSubmittedRouteArgs) return false;
+    return key == other.key &&
+        productName == other.productName &&
+        rating == other.rating &&
+        comment == other.comment &&
+        photoUrl == other.photoUrl;
+  }
+
+  @override
+  int get hashCode =>
+      key.hashCode ^
+      productName.hashCode ^
+      rating.hashCode ^
+      comment.hashCode ^
+      photoUrl.hashCode;
 }
 
 /// generated route for
@@ -518,4 +883,79 @@ class SplashRoute extends PageRouteInfo<void> {
       return const SplashScreen();
     },
   );
+}
+
+/// generated route for
+/// [WriteReviewScreen]
+class WriteReviewRoute extends PageRouteInfo<WriteReviewRouteArgs> {
+  WriteReviewRoute({
+    Key? key,
+    required String orderId,
+    required String productId,
+    required String productName,
+    List<PageRouteInfo>? children,
+  }) : super(
+         WriteReviewRoute.name,
+         args: WriteReviewRouteArgs(
+           key: key,
+           orderId: orderId,
+           productId: productId,
+           productName: productName,
+         ),
+         initialChildren: children,
+       );
+
+  static const String name = 'WriteReviewRoute';
+
+  static PageInfo page = PageInfo(
+    name,
+    builder: (data) {
+      final args = data.argsAs<WriteReviewRouteArgs>();
+      return WriteReviewScreen(
+        key: args.key,
+        orderId: args.orderId,
+        productId: args.productId,
+        productName: args.productName,
+      );
+    },
+  );
+}
+
+class WriteReviewRouteArgs {
+  const WriteReviewRouteArgs({
+    this.key,
+    required this.orderId,
+    required this.productId,
+    required this.productName,
+  });
+
+  final Key? key;
+
+  final String orderId;
+
+  final String productId;
+
+  final String productName;
+
+  @override
+  String toString() {
+    return 'WriteReviewRouteArgs{key: $key, orderId: $orderId, productId: $productId, productName: $productName}';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! WriteReviewRouteArgs) return false;
+    return key == other.key &&
+        orderId == other.orderId &&
+        productId == other.productId &&
+        productName == other.productName;
+  }
+
+  @override
+  int get hashCode =>
+      key.hashCode ^
+      orderId.hashCode ^
+      productId.hashCode ^
+      productName.hashCode;
 }

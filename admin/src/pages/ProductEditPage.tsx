@@ -53,8 +53,13 @@ export default function ProductEditPage() {
       isOffer: values.isOffer,
       isSelected: values.isSelected,
       isActive: values.isActive,
-      rating: values.rating ?? null,
-      reviewCount: values.reviewCount ?? 0,
+      // التقييم وعدده مشتقان من تقييمات العملاء المنشورة — لا نرسلهما.
+      previousPrice: values.previousPrice ?? null,
+      hasDeliveryPromo: values.hasDeliveryPromo ?? false,
+      deliveryPromoAmount: values.hasDeliveryPromo
+        ? (values.deliveryPromoAmount ?? 0)
+        : 0,
+      franchiseIds: values.franchiseIds ?? [],
     }
     if (optionsLoaded) {
       updateMutation.mutate({ payload })

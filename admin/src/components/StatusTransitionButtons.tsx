@@ -25,7 +25,13 @@ export default function StatusTransitionButtons({
 
   const actions = statusActions(currentStatus)
   const isRejection = pending?.to === 'REJECTED'
+  const isDelivery = pending?.to === 'OUT_FOR_DELIVERY'
   const activeAction = actions.find((action) => action.to === pending?.to)
+  // سبب الرفض إلزامي على الخادم — نمنع الإرسال بلا سبب هنا أيضاً.
+  const noteMissing = isRejection && !note.trim()
+
+  /** صيغ وقت الوصول الجاهزة — تظهر للعميل كما هي في إشعار «طلبك بالطريق». */
+  const ETA_PRESETS = ['سيصل اليوم', 'سيصل غداً', 'سيصل بعد غد', 'سيصل خلال ٢-٣ أيام']
 
   function openTransition(to: OrderStatus) {
     setPending({ to })
@@ -38,7 +44,7 @@ export default function StatusTransitionButtons({
   }
 
   async function confirmTransition() {
-    if (!pending) return
+    if (!pending || noteMissing) return
     try {
       await onTransition(pending.to, note.trim() || undefined)
       close()
@@ -79,7 +85,7 @@ export default function StatusTransitionButtons({
         okButtonProps={{
           danger: isRejection,
           loading: submitting,
-          disabled: submitting,
+          disabled: submitting || noteMissing,
         }}
         cancelButtonProps={{ disabled: submitting }}
         destroyOnHidden
@@ -94,20 +100,55 @@ export default function StatusTransitionButtons({
               <Alert
                 type="warning"
                 showIcon
-                message="سيُعدّل الطلب كـ«مرفوض» ولن يظهر في تدفق الطلبات."
-                description="ملاحظة: خادم المتجر الحالي لا يُرجع الكميات إلى المخزون عند الرفض من لوحة التحكم — تحتاج لتصحيح المخزون يدوياً من صفحة المنتج إن لزم."
+                message="سبب الرفض إلزامي ويظهر للعميل داخل التطبيق."
+                description="الكميات تُرجَع للمخزون تلقائياً عند الرفض، ويصل العميل إشعار بالسبب."
                 style={{ marginBottom: 16 }}
               />
             )}
+            {isDelivery && (
+              <>
+                <Alert
+                  type="info"
+                  showIcon
+                  message="وقت الوصول المتوقع يظهر للعميل في إشعار «طلبك بالطريق» وفي تفاصيل الطلب."
+                  style={{ marginBottom: 12 }}
+                />
+                <Space wrap style={{ marginBottom: 12 }}>
+                  {ETA_PRESETS.map((preset) => (
+                    <Button
+                      key={preset}
+                      size="small"
+                      type={note === preset ? 'primary' : 'default'}
+                      onClick={() => setNote(preset)}
+                      disabled={submitting}
+                    >
+                      {preset}
+                    </Button>
+                  ))}
+                </Space>
+              </>
+            )}
             <Input.TextArea
               rows={3}
+              maxLength={300}
+              showCount
+              status={noteMissing ? 'error' : undefined}
               placeholder={
-                isRejection ? 'سبب الرفض (اختياري)' : 'ملاحظة (اختياري)'
+                isRejection
+                  ? 'سبب الرفض (إلزامي) — مثال: المنتج غير متوفر حالياً'
+                  : isDelivery
+                    ? 'وقت الوصول المتوقع — مثال: سيصل غداً'
+                    : 'ملاحظة (اختياري)'
               }
               value={note}
               onChange={(event) => setNote(event.target.value)}
               disabled={submitting}
             />
+            {noteMissing && (
+              <Typography.Text type="danger" style={{ fontSize: 12 }}>
+                اكتب سبب الرفض قبل التأكيد.
+              </Typography.Text>
+            )}
           </>
         )}
       </Modal>

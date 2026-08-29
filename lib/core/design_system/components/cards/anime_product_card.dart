@@ -3,8 +3,13 @@ import 'package:flutter/material.dart';
 import '../../tokens/app_colors.dart';
 import '../../tokens/app_dimens.dart';
 import '../../tokens/app_theme_colors.dart';
-import '../branding/otaku_store_logo.dart';
+import '../feedback/product_photo_slot.dart';
+import '../feedback/product_stock_pill.dart';
 
+/// بطاقة المنتج بتصميم Otaku Galaxy v2.
+///
+/// مساحة صورة المنتج تبقى حاوية نظيفة ومحايدة ([ProductPhotoSlot]) جاهزة
+/// لصور المنتجات الحقيقية — لا تُوضع رسوم الأنمي داخلها إطلاقاً.
 class AnimeProductCard extends StatelessWidget {
   const AnimeProductCard({
     super.key,
@@ -12,112 +17,194 @@ class AnimeProductCard extends StatelessWidget {
     this.onTap,
     this.onFavoriteToggle,
     this.isFavorite = false,
-    this.width = AppDimens.productCardWidth,
+    this.width,
+    this.compact = false,
   });
 
   final dynamic product;
   final VoidCallback? onTap;
   final VoidCallback? onFavoriteToggle;
   final bool isFavorite;
-  final double width;
+  final double? width;
+
+  /// نسخة المفضلة في المصدر: الاسم والسعر فقط — بلا كبسولة مخزون ولا تقييم
+  /// ولا سطر ترويج توصيل.
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.themeColors;
+    final inStock = product.inStock as bool;
 
-    return SizedBox(
-      width: width,
-      child: Card(
+    final card = Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(AppDimens.radiusMd),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+        boxShadow: colors.shadowSoft,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Material(
+        color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Expanded(
+              // ── مساحة صورة المنتج ──
+              SizedBox(
+                height: 130,
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    _ProductArtwork(product: product),
-                    PositionedDirectional(
-                      top: AppDimens.space3,
-                      start: AppDimens.space3,
-                      child: _ActionIcon(
-                        icon: isFavorite
-                            ? Icons.favorite
-                            : Icons.favorite_border,
-                        color: isFavorite ? colors.error : Colors.white,
-                        background: Colors.black.withValues(alpha: 0.34),
-                        onTap: onFavoriteToggle,
-                      ),
+                    ProductPhotoSlot(
+                      imageUrl: _firstImage,
+                      desaturated: !inStock,
                     ),
-                    if (product.categoryName != null)
+                    // شارة العرض/المختار — أعلى جهة البداية.
+                    if (_badgeLabel != null)
                       PositionedDirectional(
-                        top: AppDimens.space3,
-                        end: AppDimens.space3,
-                        child: _CategoryTag(label: product.categoryName),
+                        top: 9,
+                        start: 9,
+                        child: _Badge(
+                          label: _badgeLabel!,
+                          highlighted: (product.isOffer as bool) ||
+                              (product.discountPercent as int? ?? 0) > 0,
+                        ),
                       ),
-                    if (!product.inStock)
-                      const Positioned.fill(
-                        child: ColoredBox(color: Color(0x990B0816)),
+                    // زر المفضلة — دائري أعلى جهة النهاية.
+                    if (onFavoriteToggle != null)
+                      PositionedDirectional(
+                        top: 8,
+                        end: 8,
+                        child: _FavoriteButton(
+                          isFavorite: isFavorite,
+                          onTap: onFavoriteToggle!,
+                        ),
                       ),
-                    if (!product.inStock)
-                      const Center(child: _StockLabel(label: 'نفدت الكمية')),
+                    // شريط «نفد المخزون» أسفل الصورة.
+                    if (!inStock)
+                      const PositionedDirectional(
+                        start: 0,
+                        end: 0,
+                        bottom: 0,
+                        child: _SoldOutStrip(),
+                      ),
                   ],
                 ),
               ),
+              // ── تفاصيل المنتج ──
               Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppDimens.space4,
-                  AppDimens.space3,
-                  AppDimens.space3,
-                  AppDimens.space3,
-                ),
+                padding: const EdgeInsets.fromLTRB(12, 11, 12, 13),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      product.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: AppDimens.weightBold,
+                    SizedBox(
+                      height: 36,
+                      child: Text(
+                        product.name as String,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          fontSize: 12.5,
+                          height: 1.4,
+                          fontWeight: AppDimens.weightSemiBold,
+                          color: Theme.of(context).colorScheme.onSurface,
+                        ),
                       ),
                     ),
-                    const SizedBox(height: AppDimens.space1),
+                    const SizedBox(height: AppDimens.space2),
                     Row(
                       children: [
-                        Expanded(
+                        Flexible(
                           child: Text(
-                            '${product.price.toStringAsFixed(0)} د.ع',
+                            '${(product.price as double).toStringAsFixed(0)} د.ع',
+                            textDirection: TextDirection.ltr,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: Theme.of(context).textTheme.labelLarge
                                 ?.copyWith(
-                                  color: Theme.of(context).colorScheme.primary,
+                                  fontFamily: 'Tajawal',
+                                  fontSize: 14,
                                   fontWeight: AppDimens.weightExtraBold,
+                                  color: AppColors.secondary,
                                 ),
                           ),
+                        ),
+                        // السعر السابق يظهر فقط حين يرسله الخادم فعلاً.
+                        if (product.hasDiscount as bool) ...[
+                          const SizedBox(width: 7),
+                          Flexible(
+                            child: Text(
+                              (product.previousPrice as double)
+                                  .toStringAsFixed(0),
+                              textDirection: TextDirection.ltr,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.labelSmall
+                                  ?.copyWith(
+                                    fontSize: 11,
+                                    decoration: TextDecoration.lineThrough,
+                                    color: Theme.of(context).colorScheme.outline,
+                                  ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    if (!compact) ...[
+                    const SizedBox(height: AppDimens.space2),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ProductStockPill(stock: product.stock as int),
                         ),
                         if (product.rating != null) ...[
                           Icon(
                             Icons.star_rounded,
-                            size: AppDimens.iconXs,
+                            size: 12,
                             color: AppColors.accent,
                           ),
-                          const SizedBox(width: AppDimens.space1),
+                          const SizedBox(width: 2),
                           Text(
-                            product.rating!.toStringAsFixed(1),
+                            (product.rating as double).toStringAsFixed(1),
+                            textDirection: TextDirection.ltr,
                             style: Theme.of(context).textTheme.labelSmall
                                 ?.copyWith(
+                                  fontSize: 10.5,
                                   color: Theme.of(
                                     context,
                                   ).colorScheme.onSurfaceVariant,
-                                  fontWeight: AppDimens.weightBold,
                                 ),
                           ),
                         ],
                       ],
                     ),
+                    ],
+                    if (!compact && _deliveryPromoLabel != null) ...[
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          const Text('🚚', style: TextStyle(fontSize: 10)),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              _deliveryPromoLabel!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.labelSmall
+                                  ?.copyWith(
+                                    fontSize: 9.5,
+                                    fontWeight: AppDimens.weightBold,
+                                    color: AppColors.success,
+                                  ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -126,131 +213,128 @@ class AnimeProductCard extends StatelessWidget {
         ),
       ),
     );
+
+    return width == null ? card : SizedBox(width: width, child: card);
+  }
+
+  String? get _firstImage {
+    final images = product.images;
+    if (images is List && images.isNotEmpty) {
+      final first = images.first as String;
+      return first.isEmpty ? null : first;
+    }
+    return null;
+  }
+
+  /// سطر ترويج التوصيل بقيمته الحقيقية من الخادم.
+  ///
+  /// لا يُعرض ما لم يوجد مبلغ فعلي — الشارة يجب أن تُترجم دائماً إلى خصم
+  /// حقيقي يطبّقه الخادم عند إنشاء الطلب.
+  String? get _deliveryPromoLabel {
+    if (product.hasDeliveryPromo as bool != true) return null;
+    final amount = (product.deliveryPromoAmount as num?)?.toDouble() ?? 0;
+    if (amount <= 0) return null;
+    return 'خصم ${amount.toStringAsFixed(0)} د.ع من التوصيل لكل قطعة';
+  }
+
+  /// شارة البطاقة: نسبة الخصم الحقيقية أولاً (لا تظهر إلا بوجود سعر سابق
+  /// أعلى من الحالي)، ثم «عرض»، ثم «مختار». لا نخترع قيمة عند غياب البيانات.
+  String? get _badgeLabel {
+    final percent = product.discountPercent as int?;
+    if (percent != null && percent > 0) return '−$percent٪';
+    if (product.isOffer as bool) return 'عرض';
+    if (product.isSelected as bool) return 'مختار';
+    return null;
   }
 }
 
-class _ProductArtwork extends StatelessWidget {
-  const _ProductArtwork({required this.product});
+/// شارة العرض (تدرّج وردي‑بنفسجي) أو المختار (أزرق هادئ).
+class _Badge extends StatelessWidget {
+  const _Badge({required this.label, required this.highlighted});
 
-  final dynamic product;
+  final String label;
+  final bool highlighted;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        gradient: highlighted ? context.themeColors.primaryGradient : null,
+        color: highlighted
+            ? null
+            : Color.alphaBlend(
+                AppColors.accentCyan.withValues(alpha: 0.20),
+                Theme.of(context).colorScheme.surface,
+              ),
+        borderRadius: BorderRadius.circular(AppDimens.radiusFull),
+      ),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          fontSize: 9.5,
+          fontWeight: AppDimens.weightExtraBold,
+          color: highlighted ? Colors.white : AppColors.accentCyan,
+        ),
+      ),
+    );
+  }
+}
+
+/// زر المفضلة الدائري — القلب نفسه كبير وواضح داخل الدائرة.
+class _FavoriteButton extends StatelessWidget {
+  const _FavoriteButton({required this.isFavorite, required this.onTap});
+
+  final bool isFavorite;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.themeColors;
-    final imageUrl = product.images is List && product.images.isNotEmpty
-        ? product.images.first as String
-        : null;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(gradient: colors.animeHeroGradient),
-      child: imageUrl == null || imageUrl.isEmpty
-          ? Stack(
-              alignment: Alignment.center,
-              children: [
-                PositionedDirectional(
-                  top: -AppDimens.space8,
-                  end: -AppDimens.space7,
-                  child: Icon(
-                    Icons.auto_awesome,
-                    size: AppDimens.iconHero * 1.7,
-                    color: Colors.white.withValues(alpha: 0.12),
-                  ),
-                ),
-                Opacity(
-                  opacity: 0.94,
-                  child: OtakuStoreLogoSimple(size: AppDimens.iconHero),
-                ),
-              ],
-            )
-          : Image.network(
-              imageUrl,
-              fit: BoxFit.cover,
-              errorBuilder: (_, _, _) =>
-                  Center(child: OtakuStoreLogoSimple(size: AppDimens.iconHero)),
-            ),
-    );
-  }
-}
-
-class _ActionIcon extends StatelessWidget {
-  const _ActionIcon({
-    required this.icon,
-    required this.color,
-    required this.background,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final Color color;
-  final Color background;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
     return Material(
-      color: background,
-      borderRadius: BorderRadius.circular(AppDimens.radiusMd),
+      color: isFavorite
+          ? AppColors.secondary
+          : Theme.of(context).colorScheme.surface,
+      shape: const CircleBorder(),
+      elevation: 0,
       child: InkWell(
+        customBorder: const CircleBorder(),
         onTap: onTap,
-        borderRadius: BorderRadius.circular(AppDimens.radiusMd),
-        child: SizedBox(
-          width: 34,
-          height: 34,
-          child: Icon(icon, color: color, size: AppDimens.iconMd),
+        child: Container(
+          width: 29,
+          height: 29,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            boxShadow: colors.shadowXSoft,
+          ),
+          child: Icon(
+            isFavorite ? Icons.favorite : Icons.favorite_border,
+            size: 17,
+            color: isFavorite
+                ? Colors.white
+                : Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
         ),
       ),
     );
   }
 }
 
-class _CategoryTag extends StatelessWidget {
-  const _CategoryTag({required this.label});
-
-  final String label;
+class _SoldOutStrip extends StatelessWidget {
+  const _SoldOutStrip();
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppDimens.space2,
-        vertical: AppDimens.space1,
-      ),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.88),
-        borderRadius: BorderRadius.circular(AppDimens.radiusFull),
-      ),
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      color: const Color(0xBD180F30),
       child: Text(
-        label,
+        'نفد المخزون',
+        textAlign: TextAlign.center,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          color: AppColors.primaryDark,
-          fontWeight: AppDimens.weightBold,
-        ),
-      ),
-    );
-  }
-}
-
-class _StockLabel extends StatelessWidget {
-  const _StockLabel({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppDimens.space3,
-        vertical: AppDimens.space2,
-      ),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(AppDimens.radiusFull),
-      ),
-      child: Text(
-        label,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          color: AppColors.error,
-          fontWeight: AppDimens.weightBold,
+          fontSize: 10,
+          fontWeight: AppDimens.weightExtraBold,
+          color: Colors.white,
         ),
       ),
     );

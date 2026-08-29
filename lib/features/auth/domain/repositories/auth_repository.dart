@@ -10,8 +10,11 @@ abstract class AuthRepository {
     required String password,
   });
 
-  /// التحقق من رمز التسجيل.
-  Future<void> verifyOtp(String phone, String code);
+  /// التحقق من رمز التسجيل — يعيد جلسة جاهزة.
+  ///
+  /// الحساب أُنشئ عند التسجيل والتحقق يثبت ملكية الرقم، فيُصبح المستخدم
+  /// مصادَقاً مباشرةً بلا مطالبته بتسجيل دخول يدوي بعده.
+  Future<AuthSession> verifyOtp(String phone, String code);
 
   /// إعادة إرسال رمز التحقق.
   Future<void> sendOtp(String phone);
@@ -26,5 +29,19 @@ abstract class AuthRepository {
   Future<User> me();
 
   /// تحديث الملف الشخصي (الاسم أو الصورة).
-  Future<User> updateProfile({String? username, String? avatarUrl});
+  /// تحديث الملف الشخصي.
+  ///
+  /// [avatarUrl] الفارغ يعني «لا تغيّر الصورة»؛ لمسحها فعلياً يجب تمرير
+  /// [clearAvatar] لأن الحقل الغائب عن الطلب يُبقي القيمة الحالية على الخادم.
+  Future<User> updateProfile({
+    String? username,
+    String? avatarUrl,
+    bool clearAvatar = false,
+  });
+
+  /// تغيير كلمة المرور من الإعدادات — مستخدم مسجّل دخوله، بلا رمز تحقق.
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  });
 }

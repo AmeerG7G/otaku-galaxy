@@ -31,13 +31,13 @@ class AppDimens {
 
   // ===== نصف القطر (Border Radius) =====
   static const double radiusNone = 0;
-  static const double radiusXs = 4;
-  static const double radiusSm = 8;
-  static const double radiusMd = 12;
-  static const double radiusLg = 16;
-  static const double radiusXl = 20;
-  static const double radius2xl = 24;
-  static const double radius3xl = 28;
+  static const double radiusXs = 12;
+  static const double radiusSm = 16;
+  static const double radiusMd = 22;
+  static const double radiusLg = 30;
+  static const double radiusXl = 38;
+  static const double radius2xl = 38;
+  static const double radius3xl = 42;
   static const double radiusFull = 9999;
 
   // ===== أحجام الأيقونات (Icon Sizes) =====
@@ -98,10 +98,10 @@ class AppDimens {
   // ===== أبعاد البطاقات والحاويات (Card & Container) =====
   static const double cardElevation = 0;
   static const double cardBorderWidth = 1;
-  static const double cardBorderRadius = 16;
-  static const double cardPadding = 12;
+  static const double cardBorderRadius = 22;
+  static const double cardPadding = 13;
 
-  static const double containerBorderRadius = 16;
+  static const double containerBorderRadius = 22;
   static const double containerPadding = 16;
 
   // ===== أبعاد الشاشات (Screen Dimensions) =====
@@ -215,6 +215,7 @@ class AppDimens {
   static const FontWeight weightSemiBold = FontWeight.w600;
   static const FontWeight weightBold = FontWeight.w700;
   static const FontWeight weightExtraBold = FontWeight.w800;
+  static const FontWeight weightBlack = FontWeight.w900;
 
   // ===== ارتفاع السطر (Line Heights) =====
   static const double lineHeightTight = 1.2;

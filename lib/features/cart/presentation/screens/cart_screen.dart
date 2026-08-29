@@ -4,317 +4,354 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/design_system/design_system.dart';
 import '../../../../core/router/app_router.dart';
+import '../../../auth/presentation/cubit/auth_cubit.dart';
+import '../../../auth/presentation/cubit/auth_state.dart';
+import '../../../main_navigation/presentation/screens/main_navigation_screen.dart';
 import '../../domain/entities/cart_item.dart';
 import '../cubit/cart_cubit.dart';
 import '../cubit/cart_state.dart';
 
+/// تبويب السلة بتصميم Otaku Galaxy v2.
+///
+/// ترويسة تبويب كبيرة، ثم بطاقات عناصر بفتحة صورة ٧٤ وعدّاد كمية
+/// كبسولي، ثم بطاقة ملخّص، ثم زرّ إتمام متدرّج يخرج من خلفه رسم شخصية.
 @RoutePage()
 class CartScreen extends StatelessWidget {
   const CartScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.themeColors;
+    final isLoggedIn = context.select<AuthCubit, bool>(
+      (cubit) => cubit.state is AuthAuthenticated,
+    );
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('السلة'), centerTitle: true),
-      body: Container(
-        decoration: BoxDecoration(gradient: colors.surfaceGradient),
-        child: BlocBuilder<CartCubit, CartState>(
-          builder: (context, state) {
-            return state.items.isEmpty
-                ? _buildEmptyCart(context)
-                : Column(
-                    children: [
-                      Expanded(
-                        child: ListView.separated(
-                          padding: EdgeInsets.all(
-                            AppDimens.screenHorizontalPadding,
-                          ),
-                          itemCount: state.items.length,
-                          separatorBuilder: (_, _) =>
-                              SizedBox(height: AppDimens.space3),
-                          itemBuilder: (context, index) {
-                            return _CartItemTile(item: state.items[index]);
-                          },
-                        ),
-                      ),
-                      _buildBottomSummary(context, state),
-                    ],
-                  );
-          },
-        ),
+    return SafeArea(
+      bottom: false,
+      child: BlocBuilder<CartCubit, CartState>(
+        builder: (context, state) {
+          final count = state.items.fold<int>(0, (sum, i) => sum + i.quantity);
+
+          return Column(
+            children: [
+              OtakuScreenHeader.tab(
+                title: 'السلة',
+                subtitle: !isLoggedIn
+                    ? 'سجّل الدخول لتبدأ سلتك'
+                    : count == 0
+                    ? '0 منتجات في السلة'
+                    : '$count منتجات في السلة',
+              ),
+              Expanded(
+                child: !isLoggedIn
+                    ? AnimeGuestPrompt(
+                        title: 'أنت تتصفح كزائر',
+                        body:
+                            'سجّل الدخول لإضافة منتجات إلى سلتك وإتمام الطلب.',
+                        icon: Icons.shopping_cart_outlined,
+                        onLogin: () => context.router.push(const LoginRoute()),
+                      )
+                    : state.items.isEmpty
+                    ? _buildEmpty(context)
+                    : _buildFilled(context, state),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
 
-  Widget _buildEmptyCart(BuildContext context) {
-    return Center(
-      child: AnimeEmptyState(
-        title: 'السلة فارغة',
-        subtitle: 'لم تضف أي منتجات بعد. ابدأ بالتسوق الآن!',
-        icon: Icons.shopping_cart_outlined,
-        actionLabel: 'تصفح المنتجات',
-        onAction: () => context.router.navigate(const HomeRoute()),
-        iconSize: AppDimens.iconHero * 1.5,
-      ),
+  Widget _buildEmpty(BuildContext context) {
+    return AnimeEmptyState(
+      title: 'السلة فاضية',
+      subtitle: 'خذ جولة بالمتجر واختار اللي يعجبك، السلة راح تنتظرك.',
+      artwork: 'assets/art/opt/a-luffy-kid.png',
+      actionLabel: 'استكشف المنتجات',
+      onAction: () => mainNavIndex.value = MainTab.home,
     );
   }
 
-  Widget _buildBottomSummary(BuildContext context, CartState cart) {
-    final colors = context.themeColors;
-    final subtotal = cart.total;
-
-    return Container(
-      padding: EdgeInsets.all(AppDimens.screenHorizontalPadding),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            Theme.of(context).colorScheme.surface,
-            Theme.of(context).colorScheme.surfaceContainerHighest,
-          ],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-        ),
-        border: Border(
-          top: BorderSide(
-            color: Theme.of(context).colorScheme.outlineVariant,
-            width: AppDimens.cardBorderWidth,
+  Widget _buildFilled(BuildContext context, CartState cart) {
+    return ListView(
+      padding: const EdgeInsets.only(bottom: 104),
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
+          child: Column(
+            children: [
+              for (final item in cart.items) ...[
+                _CartItemCard(item: item),
+                const SizedBox(height: 12),
+              ],
+            ],
           ),
         ),
-        boxShadow: [
-          BoxShadow(
-            color: colors.shadowLight,
-            blurRadius: 16,
-            offset: const Offset(0, -4),
+        _buildSummary(context, cart),
+        _buildCheckoutButton(context),
+      ],
+    );
+  }
+
+  /// بطاقة ملخّص السلة — المجموع الفرعي، التوصيل، ثم الإجمالي بالوردي.
+  Widget _buildSummary(BuildContext context, CartState cart) {
+    final theme = Theme.of(context);
+
+    return OtakuPanel(
+      margin: const EdgeInsets.fromLTRB(18, 4, 18, 0),
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        children: [
+          _SummaryRow(
+            label: 'المجموع الفرعي',
+            value: '${cart.total.toStringAsFixed(0)} د.ع',
+          ),
+          const SizedBox(height: 10),
+          _SummaryRow(
+            label: 'رسوم التوصيل',
+            // التوصيل يُحتسب في الخطوة التالية حسب المحافظة والمنطقة.
+            valueWidget: Text(
+              'يُحتسب عند إدخال العنوان',
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontSize: 12,
+                color: theme.colorScheme.outline,
+              ),
+            ),
+          ),
+          Container(
+            height: 1,
+            margin: const EdgeInsets.symmetric(vertical: 14),
+            color: theme.colorScheme.outlineVariant,
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'الإجمالي',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontFamily: 'Tajawal',
+                    fontWeight: AppDimens.weightExtraBold,
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+              Text(
+                '${cart.total.toStringAsFixed(0)} د.ع',
+                textDirection: TextDirection.ltr,
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontFamily: 'Tajawal',
+                  fontWeight: AppDimens.weightBlack,
+                  fontSize: 19,
+                  color: AppColors.secondary,
+                ),
+              ),
+            ],
           ),
         ],
       ),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'المجموع',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: AppDimens.weightSemiBold,
-                  ),
-                ),
-                Text(
-                  _formatPrice(subtotal),
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: AppDimens.weightExtraBold,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: AppDimens.space5),
-            AnimePrimaryButton(
-              label: 'إتمام الطلب',
-              onPressed: () => context.router.push(const OrderDataRoute()),
-              icon: Icons.arrow_back_ios,
-              iconPosition: IconPosition.end,
-              height: AppDimens.buttonHeightXl,
-            ),
-          ],
-        ),
-      ),
     );
   }
 
-  String _formatPrice(double price) {
-    return '${price.toStringAsFixed(0)} د.ع';
+  /// زرّ إتمام الطلب — رسم شخصية يخرج من خلف الزرّ كما في التصميم.
+  Widget _buildCheckoutButton(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 0),
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: AlignmentDirectional.centerStart,
+        children: [
+          PositionedDirectional(
+            bottom: 24,
+            end: -10,
+            child: IgnorePointer(
+              child: Image.asset('assets/art/opt/a-i3.png', width: 76),
+            ),
+          ),
+          AnimePrimaryButton(
+            label: 'إتمام الطلب',
+            onPressed: () => context.router.push(const OrderDataRoute()),
+            height: AppDimens.buttonHeightXl,
+          ),
+        ],
+      ),
+    );
   }
 }
 
-class _CartItemTile extends StatelessWidget {
-  const _CartItemTile({required this.item});
+class _SummaryRow extends StatelessWidget {
+  const _SummaryRow({required this.label, this.value, this.valueWidget});
+
+  final String label;
+  final String? value;
+  final Widget? valueWidget;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontSize: 13,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+        valueWidget ??
+            Text(
+              value!,
+              textDirection: TextDirection.ltr,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontSize: 13,
+                fontWeight: AppDimens.weightBold,
+              ),
+            ),
+      ],
+    );
+  }
+}
+
+/// بطاقة عنصر في السلة — فتحة صورة، اسم، سعر السطر، وعدّاد كمية.
+class _CartItemCard extends StatelessWidget {
+  const _CartItemCard({required this.item});
 
   final CartItem item;
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.themeColors;
+    final theme = Theme.of(context);
     final cart = context.read<CartCubit>();
+    final option = item.selectedOption;
+    final lineTotal = item.product.price * item.quantity;
 
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppDimens.cardBorderRadius),
-        side: BorderSide(
-          color: Theme.of(context).colorScheme.outlineVariant,
-          width: AppDimens.cardBorderWidth,
-        ),
-      ),
-      child: Padding(
-        padding: EdgeInsets.all(AppDimens.cardPadding),
-        child: Row(
-          children: [
-            // صورة المنتج
-            Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(AppDimens.radiusMd),
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(AppDimens.radiusMd),
-                child: item.product.images.isNotEmpty
-                    ? Image.network(
-                        item.product.images.first,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => _buildPlaceholder(context),
-                      )
-                    : _buildPlaceholder(context),
-              ),
+    return OtakuPanel(
+      padding: const EdgeInsets.all(12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 74,
+            height: 74,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(AppDimens.radiusSm),
+              border: Border.all(color: theme.colorScheme.outlineVariant),
             ),
-
-            SizedBox(width: AppDimens.space4),
-
-            // تفاصيل المنتج
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    item.product.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: AppDimens.weightSemiBold,
-                    ),
-                  ),
-                  SizedBox(height: AppDimens.space2),
-                  Text(
-                    _formatPrice(item.lineTotal),
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: AppDimens.weightBold,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                  ),
-                  SizedBox(height: AppDimens.space3),
-                  // أدوات التحكم بالكمية
-                  Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(AppDimens.radiusMd),
-                      border: Border.all(
-                        color: Theme.of(context).colorScheme.outlineVariant,
-                        width: AppDimens.cardBorderWidth,
+            clipBehavior: Clip.antiAlias,
+            child: ProductPhotoSlot(
+              imageUrl: item.product.images.isNotEmpty
+                  ? item.product.images.first
+                  : null,
+              showLabel: false,
+              iconSize: 24,
+            ),
+          ),
+          const SizedBox(width: 13),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        item.product.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontSize: 13.5,
+                          height: 1.5,
+                          fontWeight: AppDimens.weightSemiBold,
+                        ),
                       ),
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          iconSize: AppDimens.iconSm,
-                          onPressed: () => cart.decrease(item.product.id),
-                          icon: Icon(Icons.remove, size: AppDimens.iconMd),
-                          style: IconButton.styleFrom(
-                            foregroundColor: Theme.of(
-                              context,
-                            ).colorScheme.onSurfaceVariant,
-                          ),
+                    const SizedBox(width: 8),
+                    // إزالة العنصر — حبر هادئ لا ينافس السعر بصرياً.
+                    InkWell(
+                      onTap: () => _confirmRemove(context, item),
+                      customBorder: const CircleBorder(),
+                      child: Padding(
+                        padding: const EdgeInsets.all(3),
+                        child: Icon(
+                          Icons.close_rounded,
+                          size: 17,
+                          color: theme.colorScheme.outline,
                         ),
-                        Container(
-                          width: 40,
-                          alignment: Alignment.center,
-                          child: Text(
-                            '${item.quantity}',
-                            style: Theme.of(context).textTheme.titleSmall
-                                ?.copyWith(fontWeight: AppDimens.weightBold),
-                          ),
-                        ),
-                        IconButton(
-                          iconSize: AppDimens.iconSm,
-                          onPressed: () => cart.increase(item.product.id),
-                          icon: Icon(Icons.add, size: AppDimens.iconMd),
-                          style: IconButton.styleFrom(
-                            foregroundColor: Theme.of(
-                              context,
-                            ).colorScheme.primary,
-                          ),
-                        ),
-                      ],
+                      ),
+                    ),
+                  ],
+                ),
+                if (option != null && option.trim().isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 9,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(AppDimens.radiusFull),
+                    ),
+                    child: Text(
+                      option,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        fontSize: 10.5,
+                        fontWeight: AppDimens.weightBold,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
                 ],
-              ),
-            ),
-
-            SizedBox(width: AppDimens.space3),
-
-            // زر الحذف
-            IconButton(
-              onPressed: () => _showDeleteConfirmation(context, item),
-              icon: Icon(Icons.delete_outline, size: AppDimens.iconMd),
-              style: IconButton.styleFrom(
-                backgroundColor: colors.errorPale,
-                foregroundColor: colors.error,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(AppDimens.radiusMd),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${lineTotal.toStringAsFixed(0)} د.ع',
+                        textDirection: TextDirection.ltr,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontFamily: 'Tajawal',
+                          fontWeight: AppDimens.weightExtraBold,
+                          fontSize: 14.5,
+                          color: AppColors.secondary,
+                        ),
+                      ),
+                    ),
+                    OtakuQuantityStepper(
+                      quantity: item.quantity,
+                      canIncrease: item.quantity < item.product.stock,
+                      onIncrease: () => cart.increase(
+                        item.product.id,
+                        selectedOption: item.selectedOption,
+                      ),
+                      onDecrease: () => cart.decrease(
+                        item.product.id,
+                        selectedOption: item.selectedOption,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
+              ],
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPlaceholder(BuildContext context) {
-    return Icon(
-      Icons.image_outlined,
-      size: AppDimens.iconLg,
-      color: Theme.of(context).colorScheme.onSurfaceVariant,
-    );
-  }
-
-  Future<void> _showDeleteConfirmation(
-    BuildContext context,
-    CartItem item,
-  ) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppDimens.radius2xl),
-        ),
-        title: Text(
-          'حذف المنتج',
-          style: Theme.of(context).textTheme.titleLarge,
-        ),
-        content: Text(
-          'هل تريد حذف "${item.product.name}" من السلة؟',
-          style: Theme.of(context).textTheme.bodyMedium,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('إلغاء'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: FilledButton.styleFrom(
-              backgroundColor: context.themeColors.error,
-            ),
-            child: const Text('حذف'),
           ),
         ],
       ),
     );
-
-    if (confirmed == true && context.mounted) {
-      context.read<CartCubit>().remove(item.product.id);
-    }
   }
 
-  String _formatPrice(double price) {
-    return '${price.toStringAsFixed(0)} د.ع';
+  Future<void> _confirmRemove(BuildContext context, CartItem item) async {
+    final cart = context.read<CartCubit>();
+    final confirmed = await showOtakuConfirm(
+      context: context,
+      title: 'إزالة المنتج',
+      message: 'راح نشيل «${item.product.name}» من سلتك. تريد تكمل؟',
+      confirmLabel: 'إزالة',
+      cancelLabel: 'إلغاء',
+      destructive: true,
+    );
+    if (confirmed != true) return;
+    await cart.remove(item.product.id, selectedOption: item.selectedOption);
   }
 }

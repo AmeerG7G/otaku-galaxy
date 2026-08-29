@@ -5,30 +5,42 @@ import 'theme_state.dart';
 
 /// يدير مظهر التطبيق (فاتح/داكن).
 ///
-/// الافتراضي للمستخدمين الجدد هو المظهر الداكن، واختيار المستخدم
-/// (فاتح/داكن) يُحفظ محلياً ويُستعاد عند إعادة فتح التطبيق.
+/// الافتراضي قبل أي اختيار صريح هو المظهر الفاتح. «قبل أي اختيار» تعني
+/// غياب القيمة المحفوظة فقط — لا كل إقلاع ولا كل شاشة. متى حفظ المستخدم
+/// اختياره صار هو المصدر الوحيد، ولا يُستبدل تلقائياً أبداً.
+///
+/// مظهر النظام (فاتح/داكن) لا يُقرأ إطلاقاً: قيمة `themeMode` في
+/// [MaterialApp] تُشتق من هذه الحالة وحدها، فلا يرث التطبيق تفضيل الجهاز.
 ///
 /// مسجّل كـ singleton لأن المظهر مشترك بين شاشة الإعدادات وجذر التطبيق.
 class ThemeCubit extends Cubit<ThemeState> {
-  ThemeCubit(this._prefs) : super(const ThemeDark());
+  ThemeCubit(this._prefs) : super(const ThemeLight());
 
   static const String _prefKey = 'theme_mode_dark';
 
   final SharedPreferences _prefs;
 
-  /// استعادة المظهر المحفوظ (إن وُجد)؛ إن لم يُحفظ شيء يبقى الداكن الافتراضي.
+  /// استعادة المظهر المحفوظ.
+  ///
+  /// تُستدعى مرة واحدة عند الإقلاع (داخل حقن الاعتماديات، قبل `runApp`)
+  /// فتُحسم الحالة قبل أول إطار مرسوم — لا وميض بين مظهرين.
+  /// غياب القيمة يعني «لا اختيار صريح بعد» فيبقى الفاتح الافتراضي.
   void loadPreference() {
     final saved = _prefs.getBool(_prefKey);
-    if (saved != null && saved != isDark) {
+    if (saved == null) return;
+    if (saved != isDark) {
       emit(saved ? const ThemeDark() : const ThemeLight());
     }
   }
 
-  /// تعيين المظهر بشكل مباشر مع حفظه ليبقى بعد إعادة فتح التطبيق.
+  /// تعيين المظهر بشكل صريح مع حفظه ليبقى بعد إعادة فتح التطبيق.
+  ///
+  /// الحفظ يقع دائماً حتى لو طابق الاختيارُ الحالةَ الحالية: أول اختيار على
+  /// تثبيت جديد قد يوافق الافتراضي، ويجب أن يُسجَّل كقرار مستخدم لا كصمت.
   void setDark(bool value) {
+    _prefs.setBool(_prefKey, value);
     if (isDark != value) {
       emit(value ? const ThemeDark() : const ThemeLight());
-      _prefs.setBool(_prefKey, value);
     }
   }
 

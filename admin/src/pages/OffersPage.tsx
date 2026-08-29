@@ -1,3 +1,4 @@
+import { resolveMediaUrl } from '../utils/media'
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -113,7 +114,7 @@ export default function OffersPage() {
       width: 80,
       render: (_: unknown, product: Product) => (
         <Image
-          src={product.images[0] ?? NO_IMAGE_PLACEHOLDER}
+          src={resolveMediaUrl(product.images[0]) ?? NO_IMAGE_PLACEHOLDER}
           width={56}
           height={56}
           style={{ objectFit: 'cover', borderRadius: 4 }}

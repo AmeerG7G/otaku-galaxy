@@ -4,15 +4,19 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/design_system/design_system.dart';
 import '../../../../core/router/app_router.dart';
-import '../../../favorites/presentation/cubit/favorites_cubit.dart';
+import '../../../auth/presentation/cubit/auth_cubit.dart';
+import '../../../main_navigation/presentation/screens/main_navigation_screen.dart';
+import '../../../notifications/presentation/cubit/notifications_cubit.dart';
 import '../../../products/domain/entities/category.dart';
 import '../../../products/domain/entities/home_data.dart';
 import '../../../products/domain/entities/product.dart';
 import '../../../products/domain/usecases/fetch_home_usecase.dart';
 import '../../../products/domain/usecases/fetch_products_usecase.dart';
 import '../widgets/banner_carousel.dart';
+import '../widgets/home_compositions.dart';
 import '../widgets/product_card.dart';
 import '../widgets/product_section.dart';
+import '../../../auth/presentation/cubit/auth_state.dart';
 
 @RoutePage()
 class HomeScreen extends StatefulWidget {
@@ -24,7 +28,6 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   late Future<HomeData> _future;
-  final _searchController = TextEditingController();
 
   // اكتشف المنتجات: تغذية مستمرة بمنتجات عشوائية عند التمرير.
   final List<Product> _explore = [];
@@ -36,11 +39,6 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _future = context.read<FetchHomeUsecase>()();
-  }
-
-  void _onSubmitted(String value) {
-    if (value.trim().isEmpty) return;
-    context.router.push(SearchRoute(initialQuery: value.trim()));
   }
 
   Future<void> _loadMoreExplore() async {
@@ -70,16 +68,20 @@ class _HomeScreenState extends State<HomeScreen> {
     return false;
   }
 
+  /// أعلى نسبة خصم حقيقية بين منتجات الرئيسية — `null` إن لم يوجد خصم.
+  int? _maxDiscountOf(HomeData data) {
+    final percents = [
+      ...data.offers,
+      ...data.selectedProducts,
+      ...data.discover,
+    ].map((p) => p.discountPercent).whereType<int>().where((p) => p > 0);
+    return percents.isEmpty ? null : percents.reduce((a, b) => a > b ? a : b);
+  }
+
   /// المنتجات المرئية في قسم اكتشف (بدون تكرار عبر الصفحات).
   List<Product> _visibleExplore(List<Product> seed) {
     final seen = <String>{};
     return [...seed, ..._explore].where((p) => seen.add(p.id)).toList();
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
   }
 
   @override
@@ -109,10 +111,32 @@ class _HomeScreenState extends State<HomeScreen> {
                     onNotification: _onScrollNotification,
                     child: CustomScrollView(
                       slivers: [
-                        // بانر إعلاني
+                        // تركيبة البطل (تدرّج + شخصية تكسر الحافة)
                         SliverToBoxAdapter(
-                          child: BannerCarousel(banners: data.banners),
+                          child: HomeHeroCard(
+                            onShop: () =>
+                                mainNavIndex.value = MainTab.categories,
+                          ),
                         ),
+
+                        // بطاقات ترويجية — بطاقة الخصومات تظهر فقط عند
+                        // وجود خصم حقيقي في الكتالوج، وبنسبته الفعلية.
+                        SliverToBoxAdapter(
+                          child: HomePromoRail(
+                            maxDiscount: _maxDiscountOf(data),
+                            onTap: () =>
+                                mainNavIndex.value = MainTab.categories,
+                          ),
+                        ),
+
+                        // بانر المتجر (من الخادم)
+                        if (data.banners.isNotEmpty)
+                          SliverToBoxAdapter(
+                            child: Padding(
+                              padding: const EdgeInsets.only(top: 18),
+                              child: BannerCarousel(banners: data.banners),
+                            ),
+                          ),
 
                         // العروض
                         if (data.offers.isNotEmpty)
@@ -120,19 +144,8 @@ class _HomeScreenState extends State<HomeScreen> {
                             child: ProductSection(
                               title: 'العروض',
                               products: data.offers,
-                              showBadge: true,
-                              badgeType: BadgeType.offer,
-                            ),
-                          ),
-
-                        // منتجات مختارة
-                        if (data.selectedProducts.isNotEmpty)
-                          SliverToBoxAdapter(
-                            child: ProductSection(
-                              title: 'منتجات مختارة',
-                              products: data.selectedProducts,
-                              showBadge: true,
-                              badgeType: BadgeType.featured,
+                              onSeeAll: () =>
+                                  mainNavIndex.value = MainTab.categories,
                             ),
                           ),
 
@@ -143,20 +156,26 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
 
+                        // منتجات مختارة
+                        if (data.selectedProducts.isNotEmpty)
+                          SliverToBoxAdapter(
+                            child: ProductSection(
+                              title: 'منتجات مختارة',
+                              products: data.selectedProducts,
+                            ),
+                          ),
+
+                        // طمأنة التوصيل والدفع عند الاستلام
+                        const SliverToBoxAdapter(
+                          child: DeliveryAssuranceStrip(),
+                        ),
+
                         // اكتشف المنتجات (تغذية لا نهائية)
                         SliverToBoxAdapter(child: _buildExploreHeader()),
                         SliverPadding(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: AppDimens.screenHorizontalPadding,
-                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 18),
                           sliver: SliverGrid(
-                            gridDelegate:
-                                const SliverGridDelegateWithMaxCrossAxisExtent(
-                                  maxCrossAxisExtent: 220,
-                                  mainAxisSpacing: AppDimens.space3,
-                                  crossAxisSpacing: AppDimens.space3,
-                                  childAspectRatio: 0.7,
-                                ),
+                            gridDelegate: kProductGridDelegate,
                             delegate: SliverChildBuilderDelegate(
                               (context, index) {
                                 final explore = _visibleExplore(data.discover);
@@ -166,9 +185,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                   onTap: () => context.router.push(
                                     ProductDetailRoute(productId: product.id),
                                   ),
-                                  onFavoriteToggle: () => context
-                                      .read<FavoritesCubit>()
-                                      .toggle(product),
                                 );
                               },
                               childCount: _visibleExplore(data.discover).length,
@@ -209,138 +225,76 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  /// ترويسة الرئيسية — الشعار وسطر ترحيب وجرس الإشعارات، ثم بطاقة بحث
+  /// قابلة للنقر بدائرة متدرّجة، كما في مصدر تصميم v2.
   Widget _buildBrandHeaderWithSearch() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppDimens.screenHorizontalPadding,
-        AppDimens.space4,
-        AppDimens.screenHorizontalPadding,
-        AppDimens.space3,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
+      clipBehavior: Clip.hardEdge,
+      decoration: const BoxDecoration(),
+      child: Stack(
         children: [
-          Row(
-            children: [
-              const OtakuStoreLogoSimple(size: 44),
-              const SizedBox(width: AppDimens.space3),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'مجرة الأوتاكو',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: AppDimens.weightExtraBold,
-                      ),
-                    ),
-                    Text(
-                      'كل ما تحبه من عالم الأنمي',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
+          // هالة بنفسجية ناعمة خلف الترويسة.
+          PositionedDirectional(
+            top: -96,
+            end: -70,
+            child: IgnorePointer(
+              child: Container(
+                width: 250,
+                height: 250,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      AppColors.primary.withValues(alpha: 0.20),
+                      AppColors.primary.withValues(alpha: 0),
+                    ],
+                    stops: const [0, 0.66],
+                  ),
                 ),
               ),
-            ],
-          ),
-          SizedBox(height: AppDimens.space3),
-          _buildSearchBar(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSearchBar() {
-    return Container(
-      height: 44,
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(AppDimens.radiusFull),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outlineVariant,
-          width: AppDimens.cardBorderWidth,
-        ),
-      ),
-      child: TextField(
-        controller: _searchController,
-        textInputAction: TextInputAction.search,
-        onSubmitted: _onSubmitted,
-        style: Theme.of(
-          context,
-        ).textTheme.bodyMedium?.copyWith(fontWeight: AppDimens.weightMedium),
-        decoration: InputDecoration(
-          hintText: 'ابحث عن منتج...',
-          hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            color: Theme.of(
-              context,
-            ).colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-          ),
-          prefixIcon: Padding(
-            padding: EdgeInsets.all(AppDimens.space3),
-            child: Icon(
-              Icons.search,
-              size: AppDimens.iconMd,
-              color: Theme.of(context).colorScheme.primary,
             ),
           ),
-          suffixIcon: _searchController.text.isNotEmpty
-              ? IconButton(
-                  icon: Icon(
-                    Icons.clear,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                  onPressed: () {
-                    _searchController.clear();
-                    setState(() {});
-                  },
-                )
-              : IconButton(
-                  icon: Icon(
-                    Icons.arrow_back_ios,
-                    size: AppDimens.iconSm,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                  onPressed: () => _onSubmitted(_searchController.text),
-                ),
-          border: InputBorder.none,
-          contentPadding: EdgeInsets.symmetric(
-            horizontal: AppDimens.space4,
-            vertical: AppDimens.space3,
-          ),
-        ),
-        onChanged: (_) => setState(() {}),
-      ),
-    );
-  }
-
-  Widget _buildExploreHeader() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppDimens.screenHorizontalPadding,
-        AppDimens.space6,
-        AppDimens.screenHorizontalPadding,
-        AppDimens.space3,
-      ),
-      child: Row(
-        children: [
           Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                'اكتشف المنتجات',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: AppDimens.weightBold,
-                ),
+              Row(
+                children: [
+                  const OtakuStoreLogoSimple(size: 46),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'أهلاً بك في',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontSize: 12,
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        Text(
+                          'مجرة الأوتاكو',
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontFamily: 'Tajawal',
+                            fontSize: 18,
+                            letterSpacing: -0.2,
+                            fontWeight: AppDimens.weightExtraBold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // الإشعارات تعيش في شريط الرئيسية العلوي بجانب هوية المتجر،
+                  // وليست عنصراً داخل الحساب.
+                  const _NotificationsBell(),
+                ],
               ),
-              SizedBox(height: AppDimens.space1),
-              Text(
-                'تابع التمرير لاكتشاف المزيد',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
+              const SizedBox(height: 15),
+              _buildSearchCta(),
             ],
           ),
         ],
@@ -348,206 +302,66 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  /// بطاقة البحث — تفتح شاشة البحث بدل حقل داخل الرئيسية.
+  Widget _buildSearchCta() {
+    final theme = Theme.of(context);
+    final colors = context.themeColors;
+
+    return InkWell(
+      onTap: () => context.router.push(SearchRoute()),
+      borderRadius: BorderRadius.circular(AppDimens.radiusMd),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(AppDimens.radiusMd),
+          border: Border.all(color: theme.colorScheme.outlineVariant),
+          boxShadow: colors.shadowXSoft,
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: const BoxDecoration(
+                gradient: AppColors.primaryGradient,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.search_rounded,
+                size: 17,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              'دوّر على أي منتج تحبه…',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontSize: 13.5,
+                color: theme.colorScheme.outline,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildExploreHeader() => const SectionHeader(title: 'اكتشف المنتجات');
+
+  /// حالة تحميل الرئيسية — هياكل متلألئة بنفس إيقاع الأقسام الحقيقية.
   Widget _buildLoadingState() {
-    return CustomScrollView(
-      slivers: [
-        SliverToBoxAdapter(child: BannerCarousel(banners: const [])),
-        SliverToBoxAdapter(child: _buildSectionSkeleton('العروض')),
-        SliverToBoxAdapter(child: _buildSectionSkeleton('منتجات مختارة')),
-        SliverToBoxAdapter(child: _buildCategoriesSkeleton()),
-        SliverToBoxAdapter(child: _buildSectionSkeleton('اكتشف المنتجات')),
-      ],
-    );
-  }
-
-  Widget _buildSectionSkeleton(String title) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
+    return ListView(
+      padding: const EdgeInsets.only(bottom: 104),
+      children: const [
         Padding(
-          padding: EdgeInsets.fromLTRB(
-            AppDimens.screenHorizontalPadding,
-            AppDimens.space6,
-            AppDimens.screenHorizontalPadding,
-            AppDimens.space3,
-          ),
-          child: Container(
-            height: 24,
-            width: 120,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  Theme.of(context).colorScheme.outlineVariant,
-                  Theme.of(context).colorScheme.surfaceContainerHighest,
-                ],
-              ),
-              borderRadius: BorderRadius.circular(AppDimens.radiusMd),
-            ),
-          ),
+          padding: EdgeInsets.fromLTRB(18, 18, 18, 0),
+          child: OtakuSkeleton.box(height: 174, radius: AppDimens.radiusXl),
         ),
-        SizedBox(
-          height: 240,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: EdgeInsets.symmetric(
-              horizontal: AppDimens.screenHorizontalPadding,
-            ),
-            itemCount: 3,
-            separatorBuilder: (_, _) => SizedBox(width: AppDimens.space3),
-            itemBuilder: (context, index) => _buildProductCardSkeleton(),
-          ),
-        ),
-        SizedBox(height: AppDimens.space6),
+        _HomeRailSkeleton(titleWidth: 100, itemHeight: 96, itemWidth: 104),
+        _HomeRailSkeleton(titleWidth: 120, itemHeight: 232, itemWidth: 152),
+        _HomeRailSkeleton(titleWidth: 140, itemHeight: 232, itemWidth: 152),
       ],
-    );
-  }
-
-  Widget _buildProductCardSkeleton() {
-    return Container(
-      width: AppDimens.productCardWidth,
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(AppDimens.cardBorderRadius),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    Theme.of(context).colorScheme.outlineVariant,
-                    Theme.of(context).colorScheme.surfaceContainerHighest,
-                  ],
-                ),
-                borderRadius: BorderRadius.vertical(
-                  top: Radius.circular(AppDimens.cardBorderRadius),
-                ),
-              ),
-            ),
-          ),
-          Padding(
-            padding: EdgeInsets.all(AppDimens.cardPadding),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  height: 16,
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        Theme.of(context).colorScheme.outlineVariant,
-                        Theme.of(context).colorScheme.surfaceContainerHighest,
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(AppDimens.radiusSm),
-                  ),
-                ),
-                SizedBox(height: AppDimens.space2),
-                Container(
-                  height: 14,
-                  width: 80,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        Theme.of(context).colorScheme.outlineVariant,
-                        Theme.of(context).colorScheme.surfaceContainerHighest,
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(AppDimens.radiusSm),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCategoriesSkeleton() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: EdgeInsets.fromLTRB(
-            AppDimens.screenHorizontalPadding,
-            AppDimens.space6,
-            AppDimens.screenHorizontalPadding,
-            AppDimens.space3,
-          ),
-          child: Container(
-            height: 24,
-            width: 80,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  Theme.of(context).colorScheme.outlineVariant,
-                  Theme.of(context).colorScheme.surfaceContainerHighest,
-                ],
-              ),
-              borderRadius: BorderRadius.circular(AppDimens.radiusMd),
-            ),
-          ),
-        ),
-        SizedBox(
-          height: 100,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: EdgeInsets.symmetric(
-              horizontal: AppDimens.screenHorizontalPadding,
-            ),
-            itemCount: 5,
-            separatorBuilder: (_, _) => SizedBox(width: AppDimens.space3),
-            itemBuilder: (context, index) => _buildCategoryCardSkeleton(),
-          ),
-        ),
-        SizedBox(height: AppDimens.space6),
-      ],
-    );
-  }
-
-  Widget _buildCategoryCardSkeleton() {
-    return Container(
-      width: AppDimens.categoryCardSize,
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(AppDimens.radiusLg),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: AppDimens.categoryIconSize * 1.5,
-            height: AppDimens.categoryIconSize * 1.5,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  Theme.of(context).colorScheme.outlineVariant,
-                  Theme.of(context).colorScheme.surfaceContainerHighest,
-                ],
-              ),
-              borderRadius: BorderRadius.circular(AppDimens.radiusMd),
-            ),
-          ),
-          SizedBox(height: AppDimens.space3),
-          Container(
-            height: 12,
-            width: 60,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  Theme.of(context).colorScheme.outlineVariant,
-                  Theme.of(context).colorScheme.surfaceContainerHighest,
-                ],
-              ),
-              borderRadius: BorderRadius.circular(AppDimens.radiusSm),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -559,64 +373,196 @@ class _CategoriesSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // القسم كله داخل حاوية واحدة مع رسم تزييني خلف الترويسة والشريط،
+    // كما في كتلة «تسوّق حسب القسم» في مصدر التصميم.
+    return ClipRect(
+      child: Stack(
+        children: [
+          PositionedDirectional(
+            top: 14,
+            end: -34,
+            child: IgnorePointer(
+              child: Opacity(
+                opacity: 0.20,
+                child: Image.asset(
+                  'assets/art/opt/a-i6.png',
+                  width: 112,
+                  fit: BoxFit.contain,
+                ),
+              ),
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SectionHeader(
+                title: 'تسوّق حسب القسم',
+                onSeeAll: () => mainNavIndex.value = MainTab.categories,
+              ),
+              SizedBox(
+                height: 100,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.fromLTRB(18, 0, 18, 4),
+                  itemCount: categories.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 11),
+                  itemBuilder: (context, index) {
+                    final category = categories[index];
+                    return AnimeCategoryCard.rail(
+                      category: category,
+                      index: index,
+                      onTap: () => context.router.push(
+                        CategoryProductsRoute(
+                          categoryId: category.id,
+                          categoryName: category.name,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// جرس الإشعارات في شريط الرئيسية العلوي — يعرض عدد غير المقروء ويفتح
+/// مركز الإشعارات. للزائر يعرض دعوة تسجيل الدخول (الإشعارات خاصية حساب).
+class _NotificationsBell extends StatefulWidget {
+  const _NotificationsBell();
+
+  @override
+  State<_NotificationsBell> createState() => _NotificationsBellState();
+}
+
+class _NotificationsBellState extends State<_NotificationsBell> {
+  @override
+  void initState() {
+    super.initState();
+    if (context.read<AuthCubit>().isLoggedIn) {
+      context.read<NotificationsCubit>().load();
+    }
+  }
+
+  Future<void> _open() async {
+    if (!context.read<AuthCubit>().isLoggedIn) {
+      final wantsLogin = await showLoginGate(
+        context,
+        title: 'سجّل دخولك أولاً',
+        body: 'الإشعارات تحتاج تسجيل الدخول لحسابك في مجرة الأوتاكو.',
+      );
+      if (wantsLogin && mounted) {
+        context.router.push(const LoginRoute());
+      }
+      return;
+    }
+    if (mounted) context.router.push(const NotificationsRoute());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<NotificationsCubit, NotificationsState>(
+      builder: (context, state) {
+        final isLoggedIn = context.select<AuthCubit, bool>(
+          (cubit) => cubit.state is AuthAuthenticated,
+        );
+        // الزائر بلا إشعارات أصلاً — إظهار جرس لا يفعل سوى طلب الدخول
+        // يجعل التصفّح يبدو محاصَراً، فنُخفيه بدل ذلك.
+        if (!isLoggedIn) return const SizedBox.shrink();
+        final unread = state.unreadCount;
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(AppDimens.radiusMd),
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.outlineVariant,
+                ),
+              ),
+              child: IconButton(
+                onPressed: _open,
+                icon: const Icon(Icons.notifications_none_rounded),
+                tooltip: 'الإشعارات',
+              ),
+            ),
+            if (unread > 0)
+              PositionedDirectional(
+                top: -2,
+                end: -2,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 5),
+                  constraints: const BoxConstraints(
+                    minWidth: 18,
+                    minHeight: 18,
+                  ),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: AppColors.secondary,
+                    borderRadius: BorderRadius.circular(AppDimens.radiusFull),
+                    border: Border.all(
+                      color: Theme.of(context).scaffoldBackgroundColor,
+                      width: 2,
+                    ),
+                  ),
+                  child: Text(
+                    unread > 9 ? '9+' : '$unread',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Colors.white,
+                      fontSize: 9,
+                      height: 1,
+                      fontWeight: AppDimens.weightBold,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// هيكل قسم أفقي في الرئيسية أثناء التحميل.
+class _HomeRailSkeleton extends StatelessWidget {
+  const _HomeRailSkeleton({
+    required this.titleWidth,
+    required this.itemHeight,
+    required this.itemWidth,
+  });
+
+  final double titleWidth;
+  final double itemHeight;
+  final double itemWidth;
+
+  @override
+  Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: EdgeInsets.fromLTRB(
-            AppDimens.screenHorizontalPadding,
-            AppDimens.space6,
-            AppDimens.screenHorizontalPadding,
-            AppDimens.space3,
-          ),
-          child: Row(
-            children: [
-              Text(
-                'الأقسام',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: AppDimens.weightBold,
-                ),
-              ),
-              const Spacer(),
-              AnimeTextButton(
-                label: 'الكل',
-                onPressed: () => context.router.push(
-                  CategoryProductsRoute(
-                    categoryId: 'all',
-                    categoryName: 'جميع الأقسام',
-                  ),
-                ),
-                icon: Icons.arrow_back_ios,
-                iconPosition: IconPosition.end,
-              ),
-            ],
-          ),
+          padding: const EdgeInsets.fromLTRB(18, 26, 18, 12),
+          child: OtakuSkeleton(width: titleWidth, height: 18, radius: 8),
         ),
         SizedBox(
-          height: 100,
+          height: itemHeight,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            padding: EdgeInsets.symmetric(
-              horizontal: AppDimens.screenHorizontalPadding,
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            itemCount: 4,
+            separatorBuilder: (_, _) => const SizedBox(width: 13),
+            itemBuilder: (_, _) => OtakuSkeleton.box(
+              width: itemWidth,
+              height: itemHeight,
+              radius: AppDimens.radiusMd,
             ),
-            itemCount: categories.length,
-            separatorBuilder: (_, _) => SizedBox(width: AppDimens.space3),
-            itemBuilder: (context, index) {
-              final category = categories[index];
-              return AnimeCategoryCard(
-                category: category,
-                size: AppDimens.categoryCardSize,
-                onTap: () => context.router.push(
-                  CategoryProductsRoute(
-                    categoryId: category.id,
-                    categoryName: category.name,
-                  ),
-                ),
-              );
-            },
           ),
         ),
-        SizedBox(height: AppDimens.space6),
       ],
     );
   }

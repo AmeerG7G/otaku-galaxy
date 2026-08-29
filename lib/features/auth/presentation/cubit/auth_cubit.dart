@@ -2,8 +2,11 @@ import 'dart:convert';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../../core/errors/app_exception.dart';
+
 import '../../data/datasources/auth_local_storage.dart';
 import '../../domain/entities/user.dart';
+import '../../domain/usecases/change_password_usecase.dart';
 import '../../domain/usecases/get_me_usecase.dart';
 import '../../domain/usecases/login_usecase.dart';
 import '../../domain/usecases/forgot_password_usecase.dart';
@@ -29,6 +32,7 @@ class AuthCubit extends Cubit<AuthState> {
     required this.resetPasswordUsecase,
     required this.getMeUsecase,
     required this.updateProfileUsecase,
+    required this.changePasswordUsecase,
   }) : super(const AuthInitializing());
 
   final AuthLocalStorage localStorage;
@@ -40,6 +44,7 @@ class AuthCubit extends Cubit<AuthState> {
   final ResetPasswordUsecase resetPasswordUsecase;
   final GetMeUsecase getMeUsecase;
   final UpdateProfileUsecase updateProfileUsecase;
+  final ChangePasswordUsecase changePasswordUsecase;
 
   User? _user;
   bool _sessionLoaded = false;
@@ -50,8 +55,13 @@ class AuthCubit extends Cubit<AuthState> {
   /// هل توجد جلسة محفوظة؟
   bool get isLoggedIn => localStorage.isLoggedIn;
 
-  /// استعادة الجلسة عند بدء التشغيل: قراءة التوكن المحفوظ ثم التحقق
-  /// منه لدى الخادم عبر `/auth/me`؛ إن فشل التحقق تُمسح الجلسة.
+  /// استعادة الجلسة عند بدء التشغيل: قراءة التوكن المحفوظ ثم التحقق منه
+  /// لدى الخادم عبر `/auth/me`.
+  ///
+  /// [CRITICAL]: الجلسة تُمسح فقط حين يرفضها الخادم صراحةً (401). أي فشل
+  /// آخر — انقطاع شبكة، مهلة، خادم متوقف — يُبقي التوكن ويستعيد المستخدم
+  /// من النسخة المحفوظة، وإلا كان انقطاعٌ لحظي واحد عند الإقلاع يُخرج
+  /// المستخدم نهائياً ويحذف توكنه الصالح.
   Future<void> loadSession() async {
     if (_sessionLoaded) return;
     _sessionLoaded = true;
@@ -66,11 +76,41 @@ class AuthCubit extends Cubit<AuthState> {
       _user = user;
       await localStorage.updateUser(jsonEncode(user.toJson()));
       emit(AuthAuthenticated(user: user));
+    } on AppException catch (e) {
+      if (e.isUnauthorized) {
+        await _clearSession();
+        return;
+      }
+      _restoreCachedUser();
     } catch (_) {
-      await localStorage.logout();
-      _user = null;
+      // خطأ غير متوقع (تحليل/تسلسل) — نُبقي الجلسة ولا نعاقب المستخدم.
+      _restoreCachedUser();
+    }
+  }
+
+  /// يستعيد آخر مستخدم محفوظ محلياً حين يتعذّر الوصول للخادم.
+  ///
+  /// التوكن يبقى، فأول طلب ناجح لاحقاً يعمل طبيعياً؛ وإن كان التوكن منتهياً
+  /// فعلاً سيردّ الخادم 401 وتُمسح الجلسة عبر [forceLogout].
+  void _restoreCachedUser() {
+    final cached = localStorage.getUserJson();
+    if (cached == null || cached.isEmpty) {
+      // لا نسخة محفوظة: نُبقي التوكن لكن نعرض حالة غير مسجّل حتى ينجح طلب.
+      emit(const AuthUnauthenticated());
+      return;
+    }
+    try {
+      _user = User.fromJson(jsonDecode(cached) as Map<String, dynamic>);
+      emit(AuthAuthenticated(user: _user!));
+    } catch (_) {
       emit(const AuthUnauthenticated());
     }
+  }
+
+  Future<void> _clearSession() async {
+    await localStorage.logout();
+    _user = null;
+    emit(const AuthUnauthenticated());
   }
 
   /// تسجيل الدخول برقم الهاتف وكلمة المرور.
@@ -98,8 +138,11 @@ class AuthCubit extends Cubit<AuthState> {
       forgotPasswordUsecase.call(phone);
 
   /// التحقق من رمز التحقق.
-  Future<void> verifyOtp(String phone, String code) =>
-      verifyOtpUsecase.call(phone, code);
+  /// التحقق من الرمز ثم حفظ الجلسة العائدة — المستخدم يصبح مصادَقاً فوراً.
+  Future<void> verifyOtp(String phone, String code) async {
+    final session = await verifyOtpUsecase.call(phone, code);
+    await _saveSession(session.token, session.user);
+  }
 
   /// إعادة تعيين كلمة المرور.
   Future<void> resetPassword(String phone, String code, String newPassword) =>
@@ -107,16 +150,30 @@ class AuthCubit extends Cubit<AuthState> {
 
   /// تحديث الملف الشخصي (الاسم أو الصورة) عبر `PATCH /auth/me` ثم مزامنة
   /// الحالة المحلية حتى تنعكس التعديلات على بقية الشاشات فوراً.
-  Future<void> updateProfile({String? username, String? avatar}) async {
+  Future<void> updateProfile({
+    String? username,
+    String? avatar,
+    bool clearAvatar = false,
+  }) async {
     if (_user == null) return;
     final updated = await updateProfileUsecase.call(
       username: username,
       avatarUrl: avatar,
+      clearAvatar: clearAvatar,
     );
     _user = updated;
     await localStorage.updateUser(jsonEncode(updated.toJson()));
     emit(AuthAuthenticated(user: updated));
   }
+
+  /// تغيير كلمة المرور من الإعدادات — مستخدم مسجّل دخوله بالفعل، بلا رمز تحقق.
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) => changePasswordUsecase.call(
+    currentPassword: currentPassword,
+    newPassword: newPassword,
+  );
 
   /// مسح الجلسة بشكل إجباري (انتهاء صلاحية التوكن / استجابة 401).
   Future<void> forceLogout() async {

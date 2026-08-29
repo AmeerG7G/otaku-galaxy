@@ -1,47 +1,33 @@
 import type pg from 'pg';
+import { SELECT_WITH_IMAGES, mapProduct } from './catalogRepo.js';
 import type { Paginated, ProductRow } from '../types/index.js';
 
-/** يحوّل صفوف المنتجات + صورها إلى الشكل الجاهز للواجهة. */
-export function shapeProductImages(
-  rows: (ProductRow & { images?: string[] })[],
-) {
-  return rows.map((row) => ({
-    id: row.id,
-    name: row.name,
-    description: row.description,
-    price: Number(row.price),
-    stock: row.stock,
-    images: (row.images ?? []) as string[],
-    categoryId: row.category_id,
-    subcategoryId: row.subcategory_id,
-    rating: row.rating === null || row.rating === undefined ? null : Number(row.rating),
-    reviewCount: row.review_count,
-    isOffer: row.is_offer,
-    isSelected: row.is_selected,
-  }));
-}
-
-const PRODUCT_WITH_IMAGES = `
-  SELECT p.*,
-         COALESCE(
-           (SELECT json_agg(pi.url ORDER BY pi.sort_order)
-            FROM product_images pi WHERE pi.product_id = p.id),
-           '[]'::json
-         ) AS images
-  FROM products p`;
-
 export const favoriteRepo = {
-  /** مفضّلات المستخدم — المنتجات النشطة فقط. */
+  /**
+   * مفضّلات المستخدم — المنتجات النشطة فقط.
+   *
+   * تعيد **منتجات**، فتستعمل تمثيل المنتج المعتمد ([mapProduct]).
+   *
+   * [CRITICAL] كان هنا `shapeProductImages` — تمثيلٌ ثالثٌ للمنتج أسقط كل
+   * بيانات العرض: `previousPrice` و`discountPercent` و`hasDeliveryPromo`
+   * و`deliveryPromoAmount` و`franchiseIds` و`isActive`. فكان المنتج المخفَّض
+   * يظهر بسعره الكامل بلا شارة خصم في شاشة المفضلة وحدها، بينما يظهر
+   * مخفَّضاً في الرئيسية والبحث — بلا خطأ يكشف السبب، لأن نموذج فلاتر يقرأ
+   * الحقول الغائبة كـ`null`/`0`.
+   *
+   * الاستعلام يستعمل بنية `SELECT_WITH_IMAGES` كي تصل الأعمدة التي يحتاجها
+   * المُحوِّل (الصور والامتيازات) — لا يكفي استدعاء المُحوِّل وحده.
+   */
   async list(
     db: pg.Pool | pg.PoolClient,
     userId: string,
     page: number,
     limit: number,
-  ): Promise<Paginated<ReturnType<typeof shapeProductImages>[number]>> {
+  ): Promise<Paginated<ReturnType<typeof mapProduct>>> {
     const values: unknown[] = [userId, limit, (page - 1) * limit];
     const [{ rows }, countRows] = await Promise.all([
-      db.query(
-        `${PRODUCT_WITH_IMAGES}
+      db.query<ProductRow & { images?: unknown; franchise_ids?: unknown }>(
+        `${SELECT_WITH_IMAGES('p')}
          JOIN favorites fav ON fav.product_id = p.id AND fav.user_id = $1
          WHERE p.is_active = TRUE
          ORDER BY fav.created_at DESC
@@ -58,7 +44,7 @@ export const favoriteRepo = {
     ]);
     const total = Number(countRows.rows[0]?.total ?? 0);
     return {
-      items: shapeProductImages(rows),
+      items: rows.map(mapProduct),
       page,
       limit,
       total,

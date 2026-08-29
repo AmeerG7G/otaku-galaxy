@@ -1,3 +1,5 @@
+import '../../../../core/network/media_url.dart';
+
 class Category {
   const Category({
     required this.id,
@@ -37,7 +39,7 @@ class Category {
     return Category(
       id: json['id']?.toString() ?? '',
       name: json['name'] as String? ?? '',
-      imageUrl: json['imageUrl'] as String?,
+      imageUrl: resolveMediaUrl(json['imageUrl'] as String?),
       subcategories: names,
       subcategoryIds: ids,
     );

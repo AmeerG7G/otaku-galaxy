@@ -37,7 +37,27 @@ export const resetPasswordSchema = z.object({
 
 export const updateProfileSchema = z.object({
   username: z.string().trim().min(2).max(40).optional(),
-  avatarUrl: z.string().url('رابط صورة غير صالح').nullable().optional(),
+  /**
+   * مرجع الصورة كما يعيده مسار الرفع — نسبي (`/uploads/...`) وفق تمثيل
+   * الوسائط الموحّد.
+   *
+   * الأصول الخارجية مرفوضة هنا عمداً: كان الشرط يقبل أي `https://…`، فيصلح
+   * الحقل لتخزين رابط يملكه المستخدم ويُحمَّل عند كل عرض لصورته. الشكل وحده
+   * لا يكفي أيضاً — الخدمة تتأكد أن المرجع ملفٌ في `media_files`.
+   */
+  avatarUrl: z
+    .string()
+    .trim()
+    .max(500)
+    .refine((v) => v.startsWith('/uploads/'), 'رابط صورة غير صالح — ارفع الصورة أولاً')
+    .nullable()
+    .optional(),
+});
+
+/** تغيير كلمة المرور من الإعدادات — مستخدم مسجّل دخوله بالفعل، بلا رمز تحقق. */
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, 'أدخل كلمة المرور الحالية'),
+  newPassword: password,
 });
 
 export type RegisterInput = z.infer<typeof registerSchema>;
@@ -45,3 +65,4 @@ export type VerifyInput = z.infer<typeof verifySchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
+export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;

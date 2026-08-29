@@ -22,6 +22,12 @@ export const orderController = {
     return ok(res, data);
   }) as RequestHandler,
 
+  /** الطلب المنتظر تأكيد استلامه (أو null). */
+  pendingConfirmation: (async (req, res) => {
+    const order = await orderService.pendingConfirmation(req.auth!.id);
+    return ok(res, order);
+  }) as RequestHandler,
+
   getMine: (async (req, res) => {
     const { id } = parse(orderIdParamSchema, req.params);
     const order = await orderService.getMyOrder(req.auth!.id, id);
@@ -32,5 +38,12 @@ export const orderController = {
     const { id } = parse(orderIdParamSchema, req.params);
     const order = await orderService.cancelOrder(req.auth!.id, id);
     return ok(res, order, 'أُلغي الطلب');
+  }) as RequestHandler,
+
+  /** تأكيد العميل استلام طلبه — ينقله إلى COMPLETED عبر مسار الحالة الموحّد. */
+  confirmReceipt: (async (req, res) => {
+    const { id } = parse(orderIdParamSchema, req.params);
+    const order = await orderService.confirmReceipt(req.auth!.id, id);
+    return ok(res, order, 'تم تأكيد استلام الطلب');
   }) as RequestHandler,
 };

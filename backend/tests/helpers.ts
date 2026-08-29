@@ -1,7 +1,9 @@
+import { randomUUID } from 'node:crypto';
 import type { Express } from 'express';
 import bcrypt from 'bcryptjs';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
+import { config } from '../src/config/index.js';
 import { db } from '../src/database/pool.js';
 
 export const app: Express = createApp();
@@ -67,15 +69,32 @@ export async function registerAndLogin(phone = `077${Math.floor(10000000 + Math.
   return { phone, password, token: login.body.data.token as string, userId: login.body.data.user.id as string };
 }
 
+/** كلمة مرور المسؤول في الاختبارات — قيمة محلية للسويت لا قيمة افتراضية للمنتج. */
+const ADMIN_TEST_PASSWORD = 'test-admin-password-not-a-default';
+
+/**
+ * مسؤول جاهز للاختبارات.
+ *
+ * `phone_verified_at` يُضبط صراحةً لأن الإدراج المباشر يتخطّى مسار التحقق،
+ * وتسجيل الدخول صار يرفض أي حساب لم يُثبت ملكية رقمه.
+ */
 export async function createAdminUser() {
   const phone = '07700000000';
-  const passwordHash = await bcrypt.hash('admin123', 10);
+  const passwordHash = await bcrypt.hash(ADMIN_TEST_PASSWORD, 10);
   await db.query(
-    `INSERT INTO users (username, phone, password_hash, role)
-     VALUES ($1, $2, $3, 'admin') ON CONFLICT (phone) DO UPDATE SET role = 'admin'`,
+    `INSERT INTO users (username, phone, password_hash, role, phone_verified_at)
+     VALUES ($1, $2, $3, 'admin', now())
+     ON CONFLICT (phone) DO UPDATE
+       SET role = 'admin',
+           password_hash = EXCLUDED.password_hash,
+           is_active = TRUE,
+           phone_verified_at = now()`,
     ['مدير', phone, passwordHash],
   );
-  const login = await api.post('/api/auth/login').send({ phone, password: 'admin123' }).expect(200);
+  const login = await api
+    .post('/api/auth/login')
+    .send({ phone, password: ADMIN_TEST_PASSWORD })
+    .expect(200);
   return login.body.data.token as string;
 }
 
@@ -90,4 +109,50 @@ export async function purgeTestUsers(pattern = '077%') {
   await db.query(`DELETE FROM favorites WHERE user_id IN ${sub}`, [pattern]);
   await db.query('DELETE FROM verification_codes WHERE phone LIKE $1', [pattern]);
   await db.query('DELETE FROM users WHERE phone LIKE $1', [pattern]);
+}
+/**
+ * محاكاة مرور مهلة التقييم.
+ *
+ * تُزحزح الطوابع الثلاثة معاً (الإرسال، الاستلام، النافذة) بنفس المقدار،
+ * فيبقى القيد `rating_available_at >= dispatched_at` صحيحاً ويصير التقييم
+ * مستحقاً الآن. هذا أصدق من تعطيل المهلة في الاختبارات: القاعدة الإنتاجية
+ * نفسها تبقى مفعَّلة، والاختبار هو من ينقل الزمن.
+ */
+export async function fastForwardRatingWindow(orderId: string, hours = 25) {
+  const { rowCount } = await db.query(
+    `UPDATE orders
+        SET dispatched_at = dispatched_at - make_interval(hours => $2),
+            delivered_at = delivered_at - make_interval(hours => $2),
+            rating_available_at = rating_available_at - make_interval(hours => $2)
+      WHERE id = $1 AND dispatched_at IS NOT NULL`,
+    [orderId, hours],
+  );
+  if ((rowCount ?? 0) === 0) {
+    throw new Error(
+      `fastForwardRatingWindow: الطلب ${orderId} لم يخرج للتوصيل بعد`,
+    );
+  }
+}
+
+/**
+ * يسجّل صورة مرفوعة فعلاً ويعيد رابطها.
+ *
+ * صورة التقييم يجب أن تكون ملفاً يعرفه الخادم (صفّاً في `media_files`)، لا
+ * أي رابط يرسله العميل. تكتب هذه الدالة الصفّ مباشرةً بدل المرور بـ
+ * multipart، فيبقى فحص الملكية مفعَّلاً في الاختبار بدل الالتفاف عليه.
+ */
+export async function registerUploadedPhoto(uploadedBy?: string) {
+  const storageKey = `review/test/${randomUUID()}.png`;
+  // [CRITICAL] مرجع نسبي — نفس ما يكتبه سائق التخزين في الإنتاج.
+  //
+  // كان هذا السطر يبني رابطاً مطلقاً من `publicBaseUrl`، فتفحص الاختباراتُ
+  // تمثيلاً لا تنتجه المنظومة أصلاً منذ توحيد الوسائط (هجرة 021). أي عطل
+  // يخصّ المرجع النسبي كان سيمرّ بلا أن يمسّه اختبار.
+  const url = `${config.uploads.publicPath}/${storageKey}`;
+  await db.query(
+    `INSERT INTO media_files (storage_key, url, purpose, mime_type, size_bytes, uploaded_by)
+     VALUES ($1, $2, 'review', 'image/png', 1024, $3)`,
+    [storageKey, url, uploadedBy ?? null],
+  );
+  return url;
 }

@@ -3,6 +3,7 @@ import { authService } from '../services/authService.js';
 import { ok } from '../utils/response.js';
 import { parse } from '../utils/zod.js';
 import {
+  changePasswordSchema,
   forgotPasswordSchema,
   loginSchema,
   registerSchema,
@@ -20,8 +21,9 @@ export const authController = {
 
   verify: (async (req, res) => {
     const input = parse(verifySchema, req.body);
-    await authService.verifyRegistration(input.phone, input.code);
-    return ok(res, null, 'تم التحقق بنجاح — يمكنك تسجيل الدخول الآن');
+    const result = await authService.verifyRegistration(input.phone, input.code);
+    // تُعاد الجلسة كما في تسجيل الدخول ليُصبح المستخدم مصادَقاً مباشرةً.
+    return ok(res, result, 'تم التحقق بنجاح — أهلاً بك');
   }) as RequestHandler,
 
   resendCode: (async (req, res) => {
@@ -57,5 +59,17 @@ export const authController = {
     const input = parse(updateProfileSchema, req.body);
     const user = await authService.updateProfile(req.auth!, input);
     return ok(res, { user });
+  }) as RequestHandler,
+
+  changePassword: (async (req, res) => {
+    const input = parse(changePasswordSchema, req.body);
+    // تغيير كلمة المرور يُبطل الجلسات السابقة، فيُعاد توكن جديد لهذا الجهاز
+    // كي لا يخرج صاحبُ الطلب من التطبيق فور نجاح العملية.
+    const result = await authService.changePassword(
+      req.auth!,
+      input.currentPassword,
+      input.newPassword,
+    );
+    return ok(res, result, 'تم تغيير كلمة المرور بنجاح');
   }) as RequestHandler,
 };

@@ -9,7 +9,14 @@ import '../../core/router/app_router.dart';
 import '../../features/auth/presentation/cubit/auth_cubit.dart';
 import '../../features/auth/presentation/cubit/auth_state.dart';
 import '../../features/cart/presentation/cubit/cart_cubit.dart';
+import '../../features/collections/presentation/cubit/collections_cubit.dart';
+import '../../features/connectivity/presentation/offline_gate.dart';
+import '../../features/notifications/presentation/cubit/notifications_cubit.dart';
+import '../../features/points/presentation/cubit/points_cubit.dart';
+import '../../features/reviews/domain/repositories/review_repository.dart';
+import '../../features/reviews/presentation/cubit/reviews_cubit.dart';
 import '../../features/favorites/presentation/cubit/favorites_cubit.dart';
+import '../../features/settings/presentation/cubit/locale_cubit.dart';
 import '../../features/settings/presentation/cubit/theme_cubit.dart';
 import '../../features/settings/presentation/cubit/theme_state.dart';
 import '../../features/orders/domain/usecases/fetch_order_details_usecase.dart';
@@ -22,6 +29,7 @@ import '../../features/products/domain/usecases/fetch_home_usecase.dart';
 import '../../features/products/domain/usecases/fetch_product_details_usecase.dart';
 import '../../features/products/domain/usecases/fetch_products_usecase.dart';
 import '../../features/products/domain/usecases/search_products_usecase.dart';
+import '../../features/birthday/data/birthday_storage.dart';
 
 /// جذر التطبيق: يربط الثيم والرواتر والاعتماديات المشتركة.
 class OtakuGalaxyApp extends StatelessWidget {
@@ -44,6 +52,8 @@ class OtakuGalaxyApp extends StatelessWidget {
         RepositoryProvider.value(value: di.sl<FetchMyOrdersUsecase>()),
         RepositoryProvider.value(value: di.sl<FetchOrderDetailsUsecase>()),
         RepositoryProvider.value(value: di.sl<FetchGovernoratesUsecase>()),
+        // شاشة المجتمع تقرأ مستودع التقييمات مباشرة.
+        RepositoryProvider.value(value: di.sl<ReviewRepository>()),
       ],
       child: MultiBlocProvider(
         providers: [
@@ -51,25 +61,43 @@ class OtakuGalaxyApp extends StatelessWidget {
           BlocProvider<CartCubit>.value(value: di.sl<CartCubit>()),
           BlocProvider<FavoritesCubit>.value(value: di.sl<FavoritesCubit>()),
           BlocProvider<ThemeCubit>.value(value: di.sl<ThemeCubit>()),
+          BlocProvider<LocaleCubit>.value(value: di.sl<LocaleCubit>()),
+          BlocProvider<ReviewsCubit>.value(value: di.sl<ReviewsCubit>()),
+          BlocProvider<PointsCubit>.value(value: di.sl<PointsCubit>()),
+          BlocProvider<NotificationsCubit>.value(
+            value: di.sl<NotificationsCubit>(),
+          ),
+          BlocProvider<CollectionsCubit>.value(
+            value: di.sl<CollectionsCubit>(),
+          ),
         ],
         child: BlocListener<AuthCubit, AuthState>(
-          // [NOTE]: دورة حياة الجلسة موحّدة هنا:
-          // عند الدخول تُحمّل السلة والمفضلة، وعند الخروج تُمسح
-          // وتُعاد التوجيه لشاشة الدخول (يشمل انتهاء التوكن 401).
+          // [NOTE]: دورة حياة الجلسة موحّدة هنا: السلة والمفضلة خاصيتا
+          // حساب فقط — عند الدخول تُحمَّلان من الخادم، وعند الخروج تُمسحان
+          // محلياً (لا سلة زائر). التصفح كزائر مسموح للتصفح فقط؛ الشاشات
+          // التي تحتاج حساباً تعرض دعوة تسجيل الدخول عند الحاجة.
           listener: (context, state) {
             if (state is AuthAuthenticated) {
               di.sl<CartCubit>().load();
               di.sl<FavoritesCubit>().load();
+              // حالة عيد الميلاد تُقرأ من الخادم لكل حساب على حدة.
+              di.sl<BirthdayStorage>().refresh();
+              di.sl<NotificationsCubit>().load();
+              di.sl<PointsCubit>().load();
             } else if (state is AuthUnauthenticated) {
+              // كل ما يخص الحساب يُمسح فوراً حتى لا يظهر لحساب آخر.
               di.sl<CartCubit>().clear();
               di.sl<FavoritesCubit>().clear();
-              final current = appRouter.current.name;
-              if (current != LoginRoute.name && current != SplashRoute.name) {
-                appRouter.replaceAll([LoginRoute()]);
-              }
+              di.sl<BirthdayStorage>().clear();
+              di.sl<PointsCubit>().clear();
+              di.sl<NotificationsCubit>().clear();
+              di.sl<CollectionsCubit>().clear();
+              di.sl<ReviewsCubit>().clear();
             }
           },
-          child: BlocBuilder<ThemeCubit, ThemeState>(
+          child: BlocBuilder<LocaleCubit, AppLanguage>(
+            builder: (context, language) =>
+                BlocBuilder<ThemeCubit, ThemeState>(
             builder: (context, themeState) {
               return MaterialApp.router(
                 title: config.appName,
@@ -81,16 +109,26 @@ class OtakuGalaxyApp extends StatelessWidget {
                 // [NOTE]: تبديل فوري بدون وميض رمادي بين المظهرين.
                 themeAnimationDuration: Duration.zero,
                 themeAnimationCurve: Curves.linear,
-                locale: const Locale('ar'),
-                supportedLocales: const [Locale('ar')],
+                // العربية والكردية كلتاهما RTL — الاتجاه ثابت بينهما.
+                locale: language.locale,
+                supportedLocales: AppLanguage.values.map((l) => l.locale),
                 localizationsDelegates: const [
                   GlobalMaterialLocalizations.delegate,
                   GlobalWidgetsLocalizations.delegate,
                   GlobalCupertinoLocalizations.delegate,
                 ],
+                // الكردية (ckb) بلا حزمة ترجمة في Flutter — نُبقي تعريبات
+                // Material العربية كأقرب بديل بدل الرجوع للإنجليزية.
+                localeResolutionCallback: (locale, supported) =>
+                    const Locale('ar'),
+                // حاجز الاتصال يغلّف كل الشاشات — زائر أو مسجّل أو عائد،
+                // بلا استثناء؛ لا محتوى فارغ أوفلاين.
+                builder: (context, child) =>
+                    OfflineGate(child: child ?? const SizedBox.shrink()),
                 routerConfig: appRouter.config(),
               );
             },
+                ),
           ),
         ),
       ),

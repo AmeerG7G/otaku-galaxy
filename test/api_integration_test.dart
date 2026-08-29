@@ -198,7 +198,7 @@ void main() {
   test('واجهة السلة: إضافة تظهر فوراً → زيادة → نقصان → حذف', () async {
     final product = await _pickInStockProduct(products);
 
-    final cubit = CartCubit(repository: CartRepositoryImpl(api: api));
+    final cubit = CartCubit(CartRepositoryImpl(api: api));
     try {
       await cubit.add(product);
       var state = cubit.state;
@@ -244,7 +244,7 @@ void main() {
       await cart.addToCart(product.id, quantity: 1);
 
       // محاكاة إعادة تشغيل التطبيق: مثيل جديد تماماً يقرأ من الخادم.
-      final fresh = CartCubit(repository: CartRepositoryImpl(api: api));
+      final fresh = CartCubit(CartRepositoryImpl(api: api));
       await fresh.load();
       expect(fresh.state, isA<CartLoaded>());
       expect(
@@ -258,6 +258,136 @@ void main() {
       }
     },
   );
+
+  /// [B-1/B-2] بيانات العرض يجب أن تكون واحدة عبر كل سطح — عبر الخادم
+  /// الحقيقي وطبقة بيانات التطبيق الحقيقية، لا حمولات مُصطنعة.
+  ///
+  /// كان المنتج الواحد يصل مخفَّضاً إلى الرئيسية والبحث، وبلا أي بيانات عرض
+  /// إلى المفضلة، وبلا `deliveryPromoAmount` إلى التفاصيل و«اكتشف».
+  test('العرض نفسه يصل متطابقاً إلى التفاصيل والمفضلة والرئيسية', () async {
+    // منتج مخفَّض فعلاً من الكتالوج — إن لم يوجد، لا شيء يُفحص.
+    Product? discounted;
+    for (var page = 1; page <= 5 && discounted == null; page++) {
+      final result = await products.fetchProducts(page: page, limit: 50);
+      for (final p in result.items) {
+        if (p.hasDiscount && p.hasDeliveryPromo && p.deliveryPromoAmount > 0) {
+          discounted = p;
+          break;
+        }
+      }
+      if (!result.hasMore) break;
+    }
+    if (discounted == null) {
+      markTestSkipped('لا يوجد منتج بعرض كامل في قاعدة التطوير');
+      return;
+    }
+
+    final fromList = discounted;
+
+    // 1) التفاصيل — كانت تصل بلا deliveryPromoAmount.
+    final detail = await products.fetchProductDetails(fromList.id);
+    expect(detail.previousPrice, fromList.previousPrice);
+    expect(detail.discountPercent, fromList.discountPercent);
+    expect(detail.hasDeliveryPromo, fromList.hasDeliveryPromo);
+    expect(
+      detail.deliveryPromoAmount,
+      fromList.deliveryPromoAmount,
+      reason: 'تفاصيل المنتج يجب أن تحمل نفس قيمة خصم التوصيل',
+    );
+
+    // 2) المفضلة — كانت تصل بلا أي بيانات عرض إطلاقاً.
+    await favorites.addFavorite(fromList.id);
+    final favs = await favorites.fetchFavorites();
+    final fromFav = favs.firstWhere((p) => p.id == fromList.id);
+    expect(fromFav.previousPrice, fromList.previousPrice);
+    expect(fromFav.discountPercent, fromList.discountPercent);
+    expect(fromFav.hasDiscount, isTrue);
+    expect(fromFav.hasDeliveryPromo, fromList.hasDeliveryPromo);
+    expect(
+      fromFav.deliveryPromoAmount,
+      fromList.deliveryPromoAmount,
+      reason: 'المفضلة يجب أن تعرض نفس الخصم الذي تعرضه بقية الشاشات',
+    );
+    await favorites.removeFavorite(fromList.id);
+
+    // 3) «اكتشف» — العقد كامل لكل منتجاته، أياً كانت القائمة العشوائية.
+    final home = await products.fetchHome();
+    expect(home.discover, isNotEmpty);
+    for (final p in home.discover) {
+      if (p.hasDeliveryPromo) {
+        expect(
+          p.deliveryPromoAmount,
+          greaterThan(0),
+          reason: 'شارة ترويج التوصيل بلا مبلغ = سطر مخفيّ في البطاقة',
+        );
+      }
+      if (p.previousPrice != null) {
+        expect(p.discountPercent, isNotNull);
+      }
+    }
+  });
+
+  /// [MEDIA] كل مرجع وسائط يصل من الخادم يجب أن يكون قابلاً للتحميل فعلاً
+  /// بعد تمريره على `resolveMediaUrl` — لا تحقّق شكليّ فقط.
+  ///
+  /// هذا يغلق السلسلة كاملة داخل طبقة التطبيق الحقيقية:
+  /// الخادم → النموذج → المحوِّل → طلب HTTP فعلي → 200 بمحتوى صورة.
+  test('كل صورة يعيدها الخادم تُحمَّل فعلاً بعد التحويل', () async {
+    final home = await products.fetchHome();
+
+    final refs = <String>{};
+    for (final banner in home.banners) {
+      final url = banner.imageUrl;
+      if (url != null && url.isNotEmpty) refs.add(url);
+    }
+    for (final category in home.categories) {
+      final url = category.imageUrl;
+      if (url != null && url.isNotEmpty) refs.add(url);
+    }
+    for (final bucket in [home.offers, home.selectedProducts, home.discover]) {
+      for (final product in bucket) {
+        refs.addAll(product.images.where((i) => i.isNotEmpty));
+      }
+    }
+
+    expect(refs, isNotEmpty, reason: 'لا صور في الرئيسية — لا شيء يُفحص');
+
+    // الروابط الخارجية (بذور placehold.co) تُستثنى: الفحص لسلامة أنبوب
+    // الوسائط لدينا، لا لتوفّر خدمة طرف ثالث أثناء الاختبار.
+    final ours = refs.where((u) => u.contains('/uploads/')).toList();
+
+    // عميل واحد بمهلة قصيرة — لا عميل جديد لكل صورة ولا انتظار مفتوح.
+    final media = Dio(
+      BaseOptions(
+        connectTimeout: const Duration(seconds: 3),
+        receiveTimeout: const Duration(seconds: 3),
+        responseType: ResponseType.bytes,
+        validateStatus: (_) => true,
+      ),
+    );
+
+    final failures = <String>[];
+    for (final url in ours) {
+      // كل رابط هنا مطلق أصلاً — `resolveMediaUrl` طبّقه في النموذج.
+      expect(
+        url.startsWith('http'),
+        isTrue,
+        reason: 'المحوِّل لم يُنتج رابطاً مطلقاً: $url',
+      );
+      try {
+        final res = await media.get<List<int>>(url);
+        final type = res.headers.value('content-type') ?? '';
+        if (res.statusCode != 200 || !type.startsWith('image/')) {
+          failures.add('$url -> ${res.statusCode} $type');
+        }
+      } catch (e) {
+        failures.add('$url -> $e');
+      }
+    }
+    media.close(force: true);
+
+    expect(failures, isEmpty, reason: failures.join(' | '));
+  }, timeout: const Timeout(Duration(minutes: 2)));
 
   test('الطلب: إنشاء → قائمة → تفاصيل مع حالة "بانتظار التأكيد"', () async {
     final product = await _pickInStockProduct(products);

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { api, purgeTestUsers, registerAndLogin } from './helpers.js';
+import { api, DEV_CODE, purgeTestUsers, registerAndLogin } from './helpers.js';
 
 describe('auth flow', () => {
   beforeAll(async () => {
@@ -74,5 +74,78 @@ describe('auth flow', () => {
       .expect(200);
     const login = await api.post('/api/auth/login').send({ phone, password: 'newpass99' });
     expect(login.status).toBe(200);
+  });
+
+  it('change password from settings (authenticated, no OTP)', async () => {
+    const { phone, password, token } = await registerAndLogin();
+
+    // كلمة مرور حالية خاطئة → مرفوض.
+    const wrong = await api
+      .patch('/api/auth/me/password')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ currentPassword: 'not-the-password', newPassword: 'brandnew99' });
+    expect(wrong.status).toBe(401);
+
+    // كلمة مرور حالية صحيحة → تُحدَّث فوراً بلا رمز تحقق.
+    const ok = await api
+      .patch('/api/auth/me/password')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ currentPassword: password, newPassword: 'brandnew99' });
+    expect(ok.status).toBe(200);
+
+    // تسجيل الدخول بكلمة المرور القديمة يفشل، والجديدة تنجح.
+    const oldLogin = await api.post('/api/auth/login').send({ phone, password });
+    expect(oldLogin.status).toBe(401);
+    const newLogin = await api.post('/api/auth/login').send({ phone, password: 'brandnew99' });
+    expect(newLogin.status).toBe(200);
+  });
+
+  it('rejects unauthenticated password change', async () => {
+    const res = await api
+      .patch('/api/auth/me/password')
+      .send({ currentPassword: 'x', newPassword: 'newpass99' });
+    expect(res.status).toBe(401);
+  });
+});
+
+/**
+ * التحقق من رمز التسجيل يجب أن يُنهي التسجيل بجلسة جاهزة.
+ * كان يعيد null، فيصل المستخدم لشاشة محمية وهو غير مصادَق فيُعاد لتسجيل
+ * الدخول رغم إتمامه التسجيل والتحقق بنجاح.
+ */
+describe('registration ends authenticated', () => {
+  it('verify returns a working session', async () => {
+    const phone = `078${Math.floor(10000000 + Math.random() * 89999999)}`;
+    await api
+      .post('/api/auth/register')
+      .send({ username: 'مختبر التحقق', phone, password: 'secret123' })
+      .expect(200);
+
+    const verified = await api
+      .post('/api/auth/verify')
+      .send({ phone, code: DEV_CODE })
+      .expect(200);
+
+    expect(verified.body.data.token).toBeTruthy();
+    expect(verified.body.data.user.phone).toBe(phone);
+
+    // التوكن العائد صالح فعلاً على مسار محمي.
+    const me = await api
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${verified.body.data.token}`)
+      .expect(200);
+    expect(me.body.data.user.phone).toBe(phone);
+  });
+
+  it('a wrong code does not produce a session', async () => {
+    const phone = `078${Math.floor(10000000 + Math.random() * 89999999)}`;
+    await api
+      .post('/api/auth/register')
+      .send({ username: 'مختبر التحقق', phone, password: 'secret123' })
+      .expect(200);
+
+    const bad = await api.post('/api/auth/verify').send({ phone, code: '000000' });
+    expect(bad.status).toBe(400);
+    expect(bad.body.data).toBeNull();
   });
 });

@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../../tokens/app_colors.dart';
 import '../../tokens/app_dimens.dart';
-import '../../tokens/app_theme_colors.dart';
 
+/// رقاقة اختيار بتصميم Otaku Galaxy v2.
+///
+/// عند التحديد: كبسولة متدرّجة وردي→بنفسجي بحبر أبيض بلا حافة.
+/// عند غيره: سطح عائم بحافة رفيعة وحبر ثانوي — لا `FilterChip` مادية.
 class AnimeChoiceChip extends StatelessWidget {
   const AnimeChoiceChip({
     super.key,
@@ -17,55 +21,63 @@ class AnimeChoiceChip extends StatelessWidget {
   final bool selected;
   final ValueChanged<bool> onSelected;
   final IconData? icon;
+
+  /// لون بديل للتدرّج عند الحاجة (فلاتر الحالة مثلاً).
   final Color? color;
 
   @override
   Widget build(BuildContext context) {
-    final effectiveColor = color ?? Theme.of(context).colorScheme.primary;
-    final themeColors = context.themeColors;
+    final theme = Theme.of(context);
+    final tint = color;
 
-    return FilterChip(
-      label: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (icon != null) ...[
-            Icon(icon, size: AppDimens.iconXs),
-            SizedBox(width: AppDimens.space1),
+    return InkWell(
+      onTap: () => onSelected(!selected),
+      borderRadius: BorderRadius.circular(AppDimens.radiusFull),
+      child: AnimatedContainer(
+        duration: AppDimens.durationFast,
+        curve: AppDimens.curveEmphasized,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+        decoration: BoxDecoration(
+          gradient: selected && tint == null ? AppColors.primaryGradient : null,
+          // لون صلب تحت التدرّج بدل `transparent`: لو تعذّر رسم التدرّج لأي
+          // سبب تبقى الرقاقة المحدَّدة مصمتة وواضحة بدل أن تبدو شفافة.
+          color: selected
+              ? (tint ?? AppColors.secondary)
+              : theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(AppDimens.radiusFull),
+          border: selected
+              ? null
+              : Border.all(color: theme.colorScheme.outlineVariant),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(
+                icon,
+                size: 14,
+                color: selected
+                    ? Colors.white
+                    : theme.colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 5),
+            ],
+            Text(
+              label,
+              style: theme.textTheme.labelLarge?.copyWith(
+                fontSize: 13,
+                height: 1.2,
+                fontWeight: selected
+                    ? AppDimens.weightBold
+                    : AppDimens.weightSemiBold,
+                color: selected
+                    ? Colors.white
+                    : theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
           ],
-          Text(label),
-        ],
+        ),
       ),
-      selected: selected,
-      onSelected: onSelected,
-      showCheckmark: false,
-      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-      selectedColor: effectiveColor.withValues(alpha: 0.15),
-      checkmarkColor: effectiveColor,
-      side: BorderSide(
-        color: selected
-            ? effectiveColor
-            : Theme.of(context).colorScheme.outlineVariant,
-        width: selected ? 2 : 1,
-      ),
-      labelStyle: Theme.of(context).textTheme.labelMedium?.copyWith(
-        color: selected
-            ? effectiveColor
-            : Theme.of(context).colorScheme.onSurfaceVariant,
-        fontWeight: selected ? AppDimens.weightBold : AppDimens.weightMedium,
-      ),
-      padding: EdgeInsets.symmetric(
-        horizontal: AppDimens.space3,
-        vertical: AppDimens.space1,
-      ),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppDimens.radiusFull),
-      ),
-      elevation: 0,
-      pressElevation: 0,
-      selectedShadowColor: themeColors.glowPrimary,
-      shadowColor: Colors.transparent,
     );
   }
 }
-
-/// مؤشر تحميل بتصميم أنمي

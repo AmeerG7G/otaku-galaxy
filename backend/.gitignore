@@ -5,3 +5,5 @@ coverage/
 .env
 .env.local
 .env.test
+# ملفات المستخدمين المرفوعة — لا تُرفع للمستودع.
+uploads/

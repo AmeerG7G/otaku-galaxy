@@ -60,7 +60,7 @@ class _BannerCarouselState extends State<BannerCarousel> {
                   horizontal: AppDimens.screenHorizontalPadding,
                   vertical: AppDimens.space2,
                 ),
-                child: _PromoSlide(index: index),
+                child: _PromoSlide(banner: widget.banners[index], index: index),
               ),
             ),
           ),
@@ -93,8 +93,43 @@ class _BannerCarouselState extends State<BannerCarousel> {
   }
 }
 
+/// شريحة بانر واحدة.
+///
+/// كانت تبني من قائمة ترويج ثابتة داخل الملف وتتجاهل البانر القادم من
+/// الخادم تماماً — لذلك لم تكن صور المسؤول تظهر ولا تتغيّر مهما رفع. الآن
+/// تعرض صورة البانر الفعلية، ويبقى التصميم الترويجي القديم بديلاً حين لا
+/// يرفع المسؤول صورة بعد.
 class _PromoSlide extends StatelessWidget {
-  const _PromoSlide({required this.index});
+  const _PromoSlide({required this.banner, required this.index});
+
+  final model.Banner banner;
+  final int index;
+
+  @override
+  Widget build(BuildContext context) {
+    final imageUrl = banner.imageUrl?.trim();
+    if (imageUrl != null && imageUrl.isNotEmpty) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(AppDimens.bannerBorderRadius),
+        child: Image.network(
+          imageUrl,
+          width: double.infinity,
+          fit: BoxFit.cover,
+          // فشل التحميل يعود للتصميم الترويجي بدل مستطيل مكسور.
+          errorBuilder: (_, _, _) => _PromoFallback(index: index),
+          loadingBuilder: (context, child, progress) => progress == null
+              ? child
+              : const OtakuSkeleton(height: AppDimens.bannerHeight),
+        ),
+      );
+    }
+    return _PromoFallback(index: index);
+  }
+}
+
+/// التصميم الترويجي الافتراضي — يظهر فقط حين لا توجد صورة بانر.
+class _PromoFallback extends StatelessWidget {
+  const _PromoFallback({required this.index});
 
   final int index;
 

@@ -6,6 +6,7 @@ import '../../../../core/design_system/design_system.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../favorites/presentation/cubit/favorites_cubit.dart';
 import '../../../favorites/presentation/cubit/favorites_state.dart';
+import '../../../favorites/presentation/favorite_toggle.dart';
 import '../../../products/domain/entities/product.dart';
 
 /// بطاقة منتج ذاتية الاتصال بالمفضلة والتنقل لتفاصيل المنتج.
@@ -15,15 +16,15 @@ class ProductCard extends StatelessWidget {
     required this.product,
     this.onTap,
     this.onFavoriteToggle,
-    this.showBadge = false,
-    this.badgeType,
+    this.compact = false,
   });
 
   final Product product;
   final VoidCallback? onTap;
   final VoidCallback? onFavoriteToggle;
-  final bool showBadge;
-  final BadgeType? badgeType;
+
+  /// بطاقة المفضلة في المصدر: اسم وسعر فقط.
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -32,13 +33,13 @@ class ProductCard extends StatelessWidget {
       builder: (context, isFavorite) => AnimeProductCard(
         product: product,
         isFavorite: isFavorite,
+        compact: compact,
         onTap:
             onTap ??
             () =>
                 context.router.push(ProductDetailRoute(productId: product.id)),
         onFavoriteToggle:
-            onFavoriteToggle ??
-            () => context.read<FavoritesCubit>().toggle(product),
+            onFavoriteToggle ?? () => toggleFavoriteGuarded(context, product),
       ),
     );
   }

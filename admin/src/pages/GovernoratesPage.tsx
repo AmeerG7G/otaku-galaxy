@@ -10,14 +10,21 @@ import {
   Input,
   InputNumber,
   Modal,
+  Popconfirm,
   Space,
   Table,
   Tag,
   Typography,
 } from 'antd'
-import { EditOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons'
+import {
+  DeleteOutlined,
+  EditOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+} from '@ant-design/icons'
 import {
   createGovernorate,
+  deleteGovernorate,
   listAdminGovernorates,
   updateGovernorate,
 } from '../api/governoratesApi'
@@ -75,6 +82,16 @@ export default function GovernoratesPage() {
     },
   })
 
+  const deleteMutation = useMutation({
+    mutationFn: deleteGovernorate,
+    onSuccess: (result) => {
+      message.success(result.message || 'حُذفت المحافظة')
+      void queryClient.invalidateQueries({ queryKey: ['admin-governorates'] })
+    },
+    // الخادم يشرح ما الذي يمنع الحذف (طلبات/مناطق) — تُعرض رسالته كما هي.
+    onError: (error: Error) => message.error(error.message),
+  })
+
   const columns = [
     {
       title: 'المحافظة',
@@ -108,6 +125,18 @@ export default function GovernoratesPage() {
           >
             تعديل
           </Button>
+          <Popconfirm
+            title="حذف المحافظة؟"
+            description="يُرفض الحذف إن كانت طلبات أو مناطق توصيل مرتبطة بها."
+            okText="حذف"
+            cancelText="إلغاء"
+            okButtonProps={{ danger: true, loading: deleteMutation.isPending }}
+            onConfirm={() => deleteMutation.mutate(governorate.id)}
+          >
+            <Button size="small" danger icon={<DeleteOutlined />}>
+              حذف
+            </Button>
+          </Popconfirm>
         </Space>
       ),
     },

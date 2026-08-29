@@ -4,10 +4,17 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/design_system/design_system.dart';
 import '../../../../core/router/app_router.dart';
-import '../../../favorites/presentation/cubit/favorites_cubit.dart';
+import '../../../main_navigation/presentation/screens/main_navigation_screen.dart';
 import '../../../products/domain/entities/product.dart';
 import '../../../products/domain/usecases/search_products_usecase.dart';
+import '../../../../core/di/injection_container.dart';
+import '../../data/search_history_storage.dart';
 
+/// شاشة البحث بتصميم Otaku Galaxy v2.
+///
+/// صفّ علوي = زر رجوع مربّع + حقل بحث عائم بنصف قطر ٢٢. قبل الكتابة تظهر
+/// رقائق «الأخيرة» و«مقترحة» ولوحة تحريرية برسم شخصية؛ وبعدها صفوف نتائج
+/// أفقية أو حالة «لا نتائج» تحريرية.
 @RoutePage()
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key, this.initialQuery = ''});
@@ -20,13 +27,27 @@ class SearchScreen extends StatefulWidget {
 
 class _SearchScreenState extends State<SearchScreen> {
   final _controller = TextEditingController();
+  /// آخر عمليات البحث — تُحمَّل من التخزين المحلي وتبقى بعد إغلاق التطبيق.
+  List<String> _recent = const [];
   List<Product> _results = [];
   bool _searched = false;
   bool _loading = false;
 
+  /// اقتراحات ثابتة تساعد الزائر على البدء — ليست بيانات وهمية لمنتجات.
+  static const _suggestions = [
+    'تيشيرت',
+    'هودي',
+    'مجسمات',
+    'حقيبة',
+    'ملصقات',
+    'إكسسوارات',
+  ];
+
   @override
   void initState() {
     super.initState();
+    // استعادة السجلّ المحفوظ فور فتح الشاشة (يبقى بعد إعادة التشغيل).
+    _recent = sl<SearchHistoryStorage>().load();
     if (widget.initialQuery.isNotEmpty) {
       _controller.text = widget.initialQuery;
       _search(widget.initialQuery);
@@ -49,11 +70,18 @@ class _SearchScreenState extends State<SearchScreen> {
       return;
     }
 
+    // يُلتقط قبل أي await حتى لا يُقرأ الـcontext عبر فجوة غير متزامنة.
+    final searchProducts = context.read<SearchProductsUsecase>();
+
     setState(() {
       _searched = true;
       _loading = true;
     });
-    final results = await context.read<SearchProductsUsecase>()(trimmed);
+    // يُحفظ على الجهاز فوراً ليبقى بعد إغلاق الشاشة أو التطبيق.
+    final recent = await sl<SearchHistoryStorage>().add(trimmed);
+    if (mounted) setState(() => _recent = recent);
+
+    final results = await searchProducts(trimmed);
     if (!mounted) return;
     setState(() {
       _results = results.items;
@@ -61,348 +89,238 @@ class _SearchScreenState extends State<SearchScreen> {
     });
   }
 
+  void _pick(String term) {
+    _controller.text = term;
+    _search(term);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final colors = context.themeColors;
-
     return Scaffold(
-      appBar: AppBar(
-        title: Container(
-          height: 44,
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(AppDimens.radiusFull),
-          ),
-          child: TextField(
-            controller: _controller,
-            autofocus: true,
-            textInputAction: TextInputAction.search,
-            onSubmitted: _search,
-            style: Theme.of(context).textTheme.bodyMedium,
-            decoration: InputDecoration(
-              hintText: 'ابحث عن منتج...',
-              hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(
-                  context,
-                ).colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-              ),
-              prefixIcon: Icon(
-                Icons.search,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              suffixIcon: _controller.text.isNotEmpty
-                  ? IconButton(
-                      icon: Icon(
-                        Icons.clear,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                      onPressed: () {
-                        _controller.clear();
-                        _search('');
-                        setState(() {});
-                      },
-                    )
-                  : null,
-              border: InputBorder.none,
-              contentPadding: EdgeInsets.symmetric(
-                horizontal: AppDimens.space4,
-                vertical: AppDimens.space3,
-              ),
-            ),
-            onChanged: (value) {
-              if (value.trim().isEmpty) {
-                _search('');
-              }
-              setState(() {});
-            },
-          ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            _buildSearchBar(),
+            Expanded(child: _buildBody()),
+          ],
         ),
-        actions: [
-          IconButton(
-            onPressed: () => _search(_controller.text),
-            icon: Icon(
-              Icons.search,
-              color: Theme.of(context).colorScheme.primary,
+      ),
+    );
+  }
+
+  Widget _buildSearchBar() {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
+      child: Row(
+        children: [
+          OtakuHeaderButton.back(onTap: () => context.router.maybePop()),
+          const SizedBox(width: 10),
+          Expanded(
+            child: TextField(
+              controller: _controller,
+              autofocus: widget.initialQuery.isEmpty,
+              textInputAction: TextInputAction.search,
+              onSubmitted: _search,
+              onChanged: (value) {
+                if (value.trim().isEmpty) _search('');
+                setState(() {});
+              },
+              style: theme.textTheme.bodyMedium?.copyWith(fontSize: 14),
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: 'ابحث عن منتج…',
+                hintStyle: theme.textTheme.bodyMedium?.copyWith(
+                  fontSize: 14,
+                  color: theme.colorScheme.outline,
+                ),
+                filled: true,
+                fillColor: theme.colorScheme.surface,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
+                suffixIcon: _controller.text.isEmpty
+                    ? null
+                    : IconButton(
+                        icon: Icon(
+                          Icons.close_rounded,
+                          size: 18,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                        onPressed: () {
+                          _controller.clear();
+                          _search('');
+                          setState(() {});
+                        },
+                      ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(AppDimens.radiusMd),
+                  borderSide: BorderSide(
+                    color: theme.colorScheme.outlineVariant,
+                    width: 1.5,
+                  ),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(AppDimens.radiusMd),
+                  borderSide: BorderSide(
+                    color: theme.colorScheme.outlineVariant,
+                    width: 1.5,
+                  ),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(AppDimens.radiusMd),
+                  borderSide: const BorderSide(
+                    color: AppColors.secondary,
+                    width: 1.5,
+                  ),
+                ),
+              ),
             ),
           ),
         ],
       ),
-      body: Container(
-        decoration: BoxDecoration(gradient: colors.surfaceGradient),
-        child: _loading
-            ? _buildLoadingState()
-            : !_searched
-            ? _buildInitialState(context)
-            : _results.isEmpty
-            ? AnimeEmptyState(
-                title: 'لا توجد نتائج',
-                subtitle: 'جرب البحث بكلمات أخرى',
-                icon: Icons.search_off_outlined,
-              )
-            : _buildResultsList(),
-      ),
     );
   }
 
-  Widget _buildLoadingState() {
-    return ListView.builder(
-      padding: EdgeInsets.all(AppDimens.screenHorizontalPadding),
-      itemCount: 5,
-      itemBuilder: (context, index) => _buildResultSkeleton(),
-    );
+  Widget _buildBody() {
+    if (!_searched) return _buildIdleState();
+    if (_loading) return _buildSearchingState();
+    if (_results.isEmpty) return _buildNoResults();
+    return _buildResults();
   }
 
-  Widget _buildInitialState(BuildContext context) {
-    final colors = context.themeColors;
-    return Center(
-      child: Padding(
-        padding: EdgeInsets.all(AppDimens.space9),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+  /// حالة ما قبل البحث — رقائق الأخيرة والمقترحة ثم لوحة تحريرية.
+  Widget _buildIdleState() {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(18, 4, 18, 26),
+      children: [
+        if (_recent.isNotEmpty) ...[
+          Row(
+            children: [
+              Expanded(
+                child: OtakuGroupLabel(
+                  label: 'عمليات البحث الأخيرة',
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                ),
+              ),
+              AnimeTextButton(
+                label: 'مسح الكل',
+                onPressed: () async {
+                  await sl<SearchHistoryStorage>().clear();
+                  if (mounted) setState(() => _recent = const []);
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 3),
+          Wrap(
+            spacing: 9,
+            runSpacing: 9,
+            children: [
+              for (final term in _recent)
+                AnimeChoiceChip(
+                  label: term,
+                  selected: false,
+                  onSelected: (_) => _pick(term),
+                ),
+            ],
+          ),
+          const SizedBox(height: 22),
+        ],
+        const OtakuGroupLabel(
+          label: 'مقترحة لك',
+          padding: EdgeInsets.only(bottom: 11),
+        ),
+        Wrap(
+          spacing: 9,
+          runSpacing: 9,
           children: [
-            Container(
-              width: 100,
-              height: 100,
-              decoration: BoxDecoration(
-                gradient: colors.primaryGradient,
-                shape: BoxShape.circle,
+            for (final term in _suggestions)
+              AnimeChoiceChip(
+                label: term,
+                selected: false,
+                onSelected: (_) => _pick(term),
               ),
-              child: Icon(
-                Icons.search,
-                size: AppDimens.iconHero,
-                color: Colors.white,
-              ),
-            ),
-            SizedBox(height: AppDimens.space5),
-            Text(
-              'ابحث عن منتجاتك المفضلة',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: AppDimens.weightBold,
-              ),
-            ),
-            SizedBox(height: AppDimens.space3),
-            Text(
-              'اكتب اسم المنتج أو الفئة في شريط البحث أعلاه',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
           ],
         ),
-      ),
+        const OtakuEditorialPanel(
+          title: 'دوّر على أي شي يخطر ببالك',
+          body: 'اكتب اسم المنتج أو الأنمي، وراح نطلعلك كل الموجود بالمتجر.',
+          artwork: 'assets/art/a-l-detective.png',
+          margin: EdgeInsets.only(top: 24),
+          artHeight: 150,
+          minHeight: 150,
+          contentWidthFactor: 0.64,
+        ),
+      ],
     );
   }
 
-  Widget _buildResultsList() {
+  Widget _buildSearchingState() {
+    final theme = Theme.of(context);
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const SizedBox(
+          width: 26,
+          height: 26,
+          child: CircularProgressIndicator(
+            strokeWidth: 3,
+            color: AppColors.secondary,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          'نبحث في المجرّة…',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontSize: 13,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildResults() {
+    final theme = Theme.of(context);
     return ListView.separated(
-      padding: EdgeInsets.all(AppDimens.screenHorizontalPadding),
-      itemCount: _results.length,
-      separatorBuilder: (_, _) => SizedBox(height: AppDimens.space3),
+      padding: const EdgeInsets.fromLTRB(18, 6, 18, 26),
+      itemCount: _results.length + 1,
+      separatorBuilder: (_, _) => const SizedBox(height: 11),
       itemBuilder: (context, index) {
-        final product = _results[index];
-        return _SearchResultTile(product: product);
+        if (index == 0) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 7),
+            child: Text(
+              '${_results.length} نتيجة',
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontSize: 12.5,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          );
+        }
+        final product = _results[index - 1];
+        return AnimeProductRow(
+          product: product,
+          onTap: () =>
+              context.router.push(ProductDetailRoute(productId: product.id)),
+        );
       },
     );
   }
 
-  Widget _buildResultSkeleton() {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppDimens.cardBorderRadius),
-        side: BorderSide(
-          color: Theme.of(context).colorScheme.outlineVariant,
-          width: AppDimens.cardBorderWidth,
-        ),
-      ),
-      child: Padding(
-        padding: EdgeInsets.all(AppDimens.cardPadding),
-        child: Row(
-          children: [
-            Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    Theme.of(context).colorScheme.outlineVariant,
-                    Theme.of(context).colorScheme.surfaceContainerHighest,
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(AppDimens.radiusMd),
-              ),
-            ),
-            SizedBox(width: AppDimens.space4),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildSkeletonLine(width: 0.6, height: 16),
-                  SizedBox(height: AppDimens.space2),
-                  _buildSkeletonLine(width: 0.4, height: 14),
-                  SizedBox(height: AppDimens.space2),
-                  _buildSkeletonLine(width: 0.3, height: 14),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSkeletonLine({required double width, required double height}) {
-    return FractionallySizedBox(
-      widthFactor: width,
-      child: Container(
-        height: height,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              Theme.of(context).colorScheme.outlineVariant,
-              Theme.of(context).colorScheme.surfaceContainerHighest,
-            ],
-          ),
-          borderRadius: BorderRadius.circular(AppDimens.radiusSm),
-        ),
-      ),
-    );
-  }
-}
-
-class _SearchResultTile extends StatelessWidget {
-  const _SearchResultTile({required this.product});
-
-  final Product product;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.themeColors;
-    final isFavorite = context.select<FavoritesCubit, bool>(
-      (cubit) => cubit.state.isFavorite(product.id),
-    );
-
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppDimens.cardBorderRadius),
-        side: BorderSide(
-          color: Theme.of(context).colorScheme.outlineVariant,
-          width: AppDimens.cardBorderWidth,
-        ),
-      ),
-      child: InkWell(
-        onTap: () =>
-            context.router.push(ProductDetailRoute(productId: product.id)),
-        borderRadius: BorderRadius.circular(AppDimens.cardBorderRadius),
-        child: Padding(
-          padding: EdgeInsets.all(AppDimens.cardPadding),
-          child: Row(
-            children: [
-              Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(AppDimens.radiusMd),
-                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(AppDimens.radiusMd),
-                  child: product.images.isNotEmpty
-                      ? Image.network(
-                          product.images.first,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) => _buildPlaceholder(context),
-                        )
-                      : _buildPlaceholder(context),
-                ),
-              ),
-              SizedBox(width: AppDimens.space4),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      product.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: AppDimens.weightSemiBold,
-                      ),
-                    ),
-                    SizedBox(height: AppDimens.space2),
-                    Row(
-                      children: [
-                        Text(
-                          product.inStock
-                              ? '${product.price.toStringAsFixed(0)} د.ع'
-                              : 'نفذت الكمية',
-                          style: Theme.of(context).textTheme.titleSmall
-                              ?.copyWith(
-                                fontWeight: AppDimens.weightBold,
-                                color: product.inStock
-                                    ? Theme.of(context).colorScheme.primary
-                                    : colors.error,
-                              ),
-                        ),
-                        if (product.rating != null) ...[
-                          SizedBox(width: AppDimens.space3),
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.star_rounded,
-                                size: AppDimens.iconXs,
-                                color: AppColors.accent,
-                              ),
-                              SizedBox(width: AppDimens.space1),
-                              Text(
-                                product.rating!.toStringAsFixed(1),
-                                style: Theme.of(context).textTheme.labelSmall
-                                    ?.copyWith(
-                                      fontWeight: AppDimens.weightSemiBold,
-                                    ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              SizedBox(width: AppDimens.space3),
-              IconButton(
-                onPressed: () => context.read<FavoritesCubit>().toggle(product),
-                icon: Icon(
-                  isFavorite ? Icons.favorite : Icons.favorite_border,
-                  size: AppDimens.iconMd,
-                ),
-                style: IconButton.styleFrom(
-                  backgroundColor: isFavorite
-                      ? colors.errorPale
-                      : Theme.of(context).colorScheme.surfaceContainerHighest,
-                  foregroundColor: isFavorite
-                      ? colors.error
-                      : Theme.of(context).colorScheme.onSurfaceVariant,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(AppDimens.radiusMd),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPlaceholder(BuildContext context) {
-    return Icon(
-      Icons.image_outlined,
-      size: AppDimens.iconMd,
-      color: Theme.of(context).colorScheme.onSurfaceVariant,
+  Widget _buildNoResults() {
+    return AnimeEmptyState(
+      title: 'ما لكينا شي',
+      subtitle: 'جرّب كلمة أقصر أو تصفّح الأقسام — أكيد راح تلكي شي يعجبك.',
+      artwork: 'assets/art/opt/a-i1.png',
+      actionLabel: 'تصفّح الأقسام',
+      onAction: () {
+        mainNavIndex.value = MainTab.categories;
+        context.router.popUntilRoot();
+      },
     );
   }
 }

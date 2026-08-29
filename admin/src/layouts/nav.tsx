@@ -1,13 +1,19 @@
 import type { MenuProps } from 'antd'
 import {
   AppstoreOutlined,
+  BellOutlined,
   EnvironmentOutlined,
   FireOutlined,
+  GiftOutlined,
   HomeOutlined,
+  NodeIndexOutlined,
   PictureOutlined,
+  SettingOutlined,
   ShoppingCartOutlined,
+  StarOutlined,
   TagsOutlined,
   TeamOutlined,
+  VideoCameraOutlined,
 } from '@ant-design/icons'
 
 export const NAV_ITEMS: MenuProps['items'] = [
@@ -18,7 +24,14 @@ export const NAV_ITEMS: MenuProps['items'] = [
   { key: '/banners', icon: <PictureOutlined />, label: 'البنرات' },
   { key: '/governorates', icon: <EnvironmentOutlined />, label: 'المحافظات والتوصيل' },
   { key: '/customers', icon: <TeamOutlined />, label: 'الزبائن' },
+  { key: '/birthdays', icon: <GiftOutlined />, label: 'أعياد الميلاد' },
+  { key: '/points', icon: <StarOutlined />, label: 'نقاط المجرّة' },
+  { key: '/notifications', icon: <BellOutlined />, label: 'الإشعارات' },
   { key: '/offers', icon: <FireOutlined />, label: 'العروض' },
+  { key: '/reviews', icon: <StarOutlined />, label: 'التقييمات' },
+  { key: '/franchises', icon: <VideoCameraOutlined />, label: 'الأنمي' },
+  { key: '/zones', icon: <NodeIndexOutlined />, label: 'مناطق التوصيل' },
+  { key: '/settings', icon: <SettingOutlined />, label: 'الإعدادات' },
 ]
 
 export function activeMenuKey(pathname: string): string {

@@ -4,46 +4,73 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/design_system/design_system.dart';
 import '../../../../core/router/app_router.dart';
+import '../../../auth/presentation/cubit/auth_cubit.dart';
+import '../../../auth/presentation/cubit/auth_state.dart';
+import '../../../collections/presentation/screens/collections_tab.dart';
+import '../../../home/presentation/widgets/product_card.dart';
 import '../../../main_navigation/presentation/screens/main_navigation_screen.dart';
-import '../../../products/domain/entities/product.dart';
 import '../cubit/favorites_cubit.dart';
 import '../cubit/favorites_state.dart';
 
+/// تبويب المفضلة بتصميم Otaku Galaxy v2.
+///
+/// ترويسة تبويب كبيرة، ثم مبدّل مقسّم (المفضلة / مجموعاتي) بدل `TabBar`
+/// المادي، ثم شبكة بطاقات منتجات بعمودين — لا صفوف بطاقات مادية.
+/// المجموعات تعيش داخل المفضلة ولا تظهر كوجهة تنقل رئيسية.
 @RoutePage()
-class FavoritesScreen extends StatelessWidget {
+class FavoritesScreen extends StatefulWidget {
   const FavoritesScreen({super.key});
 
   @override
+  State<FavoritesScreen> createState() => _FavoritesScreenState();
+}
+
+class _FavoritesScreenState extends State<FavoritesScreen> {
+  int _tab = 0;
+
+  @override
   Widget build(BuildContext context) {
-    final colors = context.themeColors;
+    final isLoggedIn = context.select<AuthCubit, bool>(
+      (cubit) => cubit.state is AuthAuthenticated,
+    );
 
     return Scaffold(
-      appBar: AppBar(title: const Text('المفضلة'), centerTitle: true),
-      body: Container(
-        decoration: BoxDecoration(gradient: colors.surfaceGradient),
+      body: SafeArea(
         child: BlocBuilder<FavoritesCubit, FavoritesState>(
           builder: (context, state) {
-            if (state.products.isEmpty) {
-              return _buildEmptyFavorites();
-            }
-            return RefreshIndicator(
-              onRefresh: () => context.read<FavoritesCubit>().load(),
-              child: CustomScrollView(
-                slivers: [
-                  SliverPadding(
-                    padding: EdgeInsets.all(AppDimens.screenHorizontalPadding),
-                    sliver: SliverList(
-                      delegate: SliverChildBuilderDelegate((context, index) {
-                        final product = state.products[index];
-                        return _FavoriteTile(product: product);
-                      }, childCount: state.products.length),
+            return Column(
+              children: [
+                OtakuScreenHeader(
+                  title: 'المفضلة',
+                  onBack: () => context.router.maybePop(),
+                  subtitle: !isLoggedIn
+                      ? 'سجّل الدخول لتحفظ ما يعجبك'
+                      : state.products.isEmpty
+                      ? 'لسه ما حفظت أي منتج'
+                      : '${state.products.length} منتج محفوظ',
+                ),
+                if (!isLoggedIn)
+                  Expanded(
+                    child: AnimeGuestPrompt(
+                      title: 'أنت تتصفح كزائر',
+                      body: 'سجّل الدخول لتتابع طلباتك وتحفظ مفضلتك ومجموعاتك.',
+                      icon: Icons.favorite_outline,
+                      onLogin: () => context.router.push(const LoginRoute()),
                     ),
+                  )
+                else ...[
+                  OtakuSegmentedControl(
+                    labels: const ['المفضلة', 'مجموعاتي'],
+                    selectedIndex: _tab,
+                    onSelected: (index) => setState(() => _tab = index),
                   ),
-                  SliverToBoxAdapter(
-                    child: SizedBox(height: AppDimens.space10),
+                  Expanded(
+                    child: _tab == 0
+                        ? _buildFavorites(state)
+                        : const CollectionsTab(),
                   ),
                 ],
-              ),
+              ],
             );
           },
         ),
@@ -51,153 +78,30 @@ class FavoritesScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildEmptyFavorites() {
-    return Center(
-      child: AnimeEmptyState(
-        title: 'لا توجد منتجات مفضلة',
-        subtitle: 'اضغط على قلب المنتج لإضافته إلى مفضلاتك',
-        icon: Icons.favorite_outline,
-        actionLabel: 'تصفح المنتجات',
+  Widget _buildFavorites(FavoritesState state) {
+    if (state.products.isEmpty) {
+      return AnimeEmptyState(
+        title: 'مفضلتك لسه فاضية',
+        subtitle: 'اضغط القلب على أي منتج يعجبك، وراح يستناك هنا.',
+        artwork: 'assets/art/opt/a-i2.png',
+        actionLabel: 'اكتشف منتجات',
         onAction: () {
-          // الانتقال لتبويب الرئيسية في الغلاف الرئيسي.
-          mainNavIndex.value = 0;
+          context.router.maybePop();
+          mainNavIndex.value = MainTab.home;
         },
-        iconSize: AppDimens.iconHero * 1.5,
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: () => context.read<FavoritesCubit>().load(),
+      child: GridView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(18, 12, 18, 26),
+        gridDelegate: kProductGridDelegate,
+        itemCount: state.products.length,
+        itemBuilder: (context, index) =>
+            ProductCard(product: state.products[index], compact: true),
       ),
     );
-  }
-}
-
-class _FavoriteTile extends StatelessWidget {
-  const _FavoriteTile({required this.product});
-
-  final Product product;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.themeColors;
-
-    return Card(
-      margin: EdgeInsets.only(bottom: AppDimens.space3),
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppDimens.cardBorderRadius),
-        side: BorderSide(
-          color: Theme.of(context).colorScheme.outlineVariant,
-          width: AppDimens.cardBorderWidth,
-        ),
-      ),
-      child: InkWell(
-        onTap: () =>
-            context.router.push(ProductDetailRoute(productId: product.id)),
-        borderRadius: BorderRadius.circular(AppDimens.cardBorderRadius),
-        child: Padding(
-          padding: EdgeInsets.all(AppDimens.cardPadding),
-          child: Row(
-            children: [
-              // صورة المنتج
-              Container(
-                width: 72,
-                height: 72,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(AppDimens.radiusMd),
-                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(AppDimens.radiusMd),
-                  child: product.images.isNotEmpty
-                      ? Image.network(
-                          product.images.first,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) => _buildPlaceholder(context),
-                        )
-                      : _buildPlaceholder(context),
-                ),
-              ),
-
-              SizedBox(width: AppDimens.space4),
-
-              // تفاصيل المنتج
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      product.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: AppDimens.weightSemiBold,
-                      ),
-                    ),
-                    SizedBox(height: AppDimens.space2),
-                    Row(
-                      children: [
-                        Text(
-                          formatPrice(product.price),
-                          style: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(
-                                fontWeight: AppDimens.weightBold,
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
-                        ),
-                        if (product.rating != null) ...[
-                          SizedBox(width: AppDimens.space3),
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.star_rounded,
-                                size: AppDimens.iconXs,
-                                color: AppColors.accent,
-                              ),
-                              SizedBox(width: AppDimens.space1),
-                              Text(
-                                product.rating!.toStringAsFixed(1),
-                                style: Theme.of(context).textTheme.labelSmall
-                                    ?.copyWith(
-                                      fontWeight: AppDimens.weightSemiBold,
-                                    ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-
-              SizedBox(width: AppDimens.space3),
-
-              // زر الحذف
-              IconButton(
-                onPressed: () =>
-                    context.read<FavoritesCubit>().remove(product.id),
-                icon: Icon(Icons.delete_outline, size: AppDimens.iconMd),
-                style: IconButton.styleFrom(
-                  backgroundColor: colors.errorPale,
-                  foregroundColor: colors.error,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(AppDimens.radiusMd),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPlaceholder(BuildContext context) {
-    return Icon(
-      Icons.image_outlined,
-      size: AppDimens.iconLg,
-      color: Theme.of(context).colorScheme.onSurfaceVariant,
-    );
-  }
-
-  String formatPrice(double price) {
-    return '${price.toStringAsFixed(0)} د.ع';
   }
 }

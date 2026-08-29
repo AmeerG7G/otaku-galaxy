@@ -36,6 +36,33 @@ export interface AdminOrder {
   customer: OrderCustomer | null
   createdAt: string
   items: OrderItem[]
+  /** منطقة التوصيل داخل المحافظة وقت الطلب (النجف)؛ null لغيرها. */
+  zoneName: string | null
+  /** وقت الوصول المتوقع الذي أدخلته الإدارة عند الخروج للتوصيل. */
+  deliveryNote: string | null
+  /** سبب الرفض كما يراه العميل. */
+  rejectionReason: string | null
+  /** خصم التوصيل المطبَّق وقت الطلب — بدونه لا تتطابق الإجماليات المعروضة. */
+  deliveryDiscount: number
+  /** لحظة خروج الطلب للتوصيل — مرجع نافذة التقييم. */
+  dispatchedAt: string | null
+  /** لحظة تأكيد الاستلام؛ null قبل الاستلام. */
+  deliveredAt: string | null
+  /** لحظة فتح التقييم للعميل (الاستلام + المهلة). */
+  ratingAvailableAt: string | null
+  /** هل صار التقييم مفتوحاً للعميل الآن؟ */
+  ratingAvailable: boolean
+  /** لحظة إرسال تذكير الاستلام؛ null إن لم يُرسل بعد. */
+  ratingReminderSentAt: string | null
+  /** مسار الطلب بأوقاته. */
+  statusHistory: OrderStatusEvent[]
+}
+
+/** حدث واحد في مسار الطلب. */
+export interface OrderStatusEvent {
+  status: OrderStatus
+  note: string | null
+  createdAt: string
 }
 
 export interface StatusCounts {
