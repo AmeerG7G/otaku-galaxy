@@ -46,6 +46,14 @@ class ApiEndpoints {
   // نقاط المجرّة.
   static const String points = '/points';
 
+  /// المطالبة بمزيّة مستوى — مفتاح المستوى في المسار، ولا حمولة.
+  ///
+  /// المفتاح معرّف إنجليزي مستقر (`explorer`, `champion`…) لا اسم معروض:
+  /// الأسماء تُصرَّف بجنس القارئ، ومسارٌ يحمل اسماً معروضاً ينكسر أول مرة
+  /// تُغيَّر صياغة.
+  static String claimReward(String levelKey) =>
+      '/points/rewards/$levelKey/claim';
+
   // المجموعات.
   static const String collections = '/collections';
   static const String collectionItem = '/collections/';
@@ -62,6 +70,13 @@ class ApiEndpoints {
 
   // إعدادات المتجر العامة (روابط التواصل).
   static const String storeSettings = '/catalog/settings';
+
+  // إعدادات نسخة التطبيق (إجبار التحديث) — عام، وخارج فحص النسخة عمداً
+  // حتى تستطيع النسخة المحجوبة قراءة سبب الحجب ورابط المتجر.
+  static const String appVersion = '/catalog/app-version';
+
+  // رسوم الشخصيات المُدارة من لوحة التحكم (فتحات بصرية).
+  static const String visuals = '/catalog/visuals';
 
   // رفع صور تقييمات العملاء.
   static const String uploads = '/uploads';

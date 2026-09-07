@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/design_system/design_system.dart';
+import '../../../../core/l10n/gender.dart';
 import '../../../../core/errors/app_exception.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../cart/presentation/cubit/cart_cubit.dart';
@@ -63,7 +64,7 @@ class _OrderReviewScreenState extends State<OrderReviewScreen> {
     if (error is AppException) {
       switch (error.code) {
         case 'ZONE_REQUIRED':
-          return 'اختر منطقة التوصيل قبل إرسال الطلب.';
+          return context.g(GenderedStrings.chooseZoneBeforeOrder);
         case 'ZONE_INVALID':
         case 'ZONE_NOT_SUPPORTED':
           return 'منطقة التوصيل غير صالحة لهذه المحافظة.';
@@ -83,15 +84,20 @@ class _OrderReviewScreenState extends State<OrderReviewScreen> {
     // بعد نجاح الإرسال تحلّ صفحة النجاح محلّ الشاشة بالكامل.
     if (_placed) {
       return Scaffold(
-        body: OrderSuccessView(
-          onOpenOrders: () {
-            context.router.popUntilRoot();
-            context.router.push(const OrdersRoute());
-          },
-          onKeepShopping: () {
-            mainNavIndex.value = MainTab.home;
-            context.router.popUntilRoot();
-          },
+        // عمودٌ موسَّط بعرض القراءة على اللوح — القائمة الممتدّة بعرض
+        // ١٣٦٦ بكسل تصير صفوفاً فارغة الوسط. لا أثر له على الهاتف.
+        body: ResponsiveContentFrame(
+          maxWidth: kReadingMaxWidth,
+          child: OrderSuccessView(
+            onOpenOrders: () {
+              context.router.popUntilRoot();
+              context.router.push(const OrdersRoute());
+            },
+            onKeepShopping: () {
+              mainNavIndex.value = MainTab.home;
+              context.router.popUntilRoot();
+            },
+          ),
         ),
       );
     }
@@ -324,11 +330,11 @@ class _OrderReviewScreenState extends State<OrderReviewScreen> {
         ),
         const SizedBox(height: 10),
         Text(
-          'الدفع عند الاستلام — ما تدفع شي قبل ما يوصلك الطلب.',
+          'الدفع عند الاستلام — لا تدفع شيئاً قبل وصول الطلب.',
           style: theme.textTheme.bodySmall?.copyWith(
             fontSize: 11.5,
             height: 1.6,
-            color: theme.colorScheme.outline,
+            color: theme.colorScheme.onSurfaceVariant,
           ),
         ),
       ],
@@ -386,12 +392,12 @@ class _OrderReviewScreenState extends State<OrderReviewScreen> {
               const SizedBox(height: 10),
               Text(
                 'بالضغط على التأكيد يُرسل طلبك للإدارة للمراجعة، '
-                'وراح يتواصلون وياك عبر واتساب.',
+                'وسنتواصل معك عبر واتساب.',
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodySmall?.copyWith(
                   fontSize: 11.5,
                   height: 1.6,
-                  color: theme.colorScheme.outline,
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
             ],

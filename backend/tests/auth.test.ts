@@ -3,10 +3,10 @@ import { api, DEV_CODE, purgeTestUsers, registerAndLogin } from './helpers.js';
 
 describe('auth flow', () => {
   beforeAll(async () => {
-    await purgeTestUsers('077%');
+    await purgeTestUsers();
   });
   afterAll(async () => {
-    await purgeTestUsers('077%');
+    await purgeTestUsers();
   });
 
   it('rejects registration with invalid phone', async () => {
@@ -14,6 +14,7 @@ describe('auth flow', () => {
       username: 'مختبر',
       phone: '123',
       password: 'secret123',
+      gender: 'male',
     });
     expect(res.status).toBe(400);
     expect(res.body.success).toBe(false);
@@ -27,6 +28,7 @@ describe('auth flow', () => {
       username: 'مختبر',
       phone,
       password: 'secret123',
+      gender: 'male',
     });
     expect(reg.status).toBe(200);
     expect(reg.body.message).toContain('رمز');
@@ -40,7 +42,8 @@ describe('auth flow', () => {
     const login = await api.post('/api/auth/login').send({ phone, password: 'secret123' });
     expect(login.status).toBe(200);
     expect(login.body.data.token).toBeTruthy();
-    expect(login.body.data.user.phone).toBe(phone);
+    // أُرسل `077…` وخُزّن `+96477…`: هذا هو التطبيع من طرف إلى طرف.
+    expect(login.body.data.user.phone).toBe(`+964${phone.slice(1)}`);
 
     const me = await api
       .get('/api/auth/me')
@@ -55,6 +58,7 @@ describe('auth flow', () => {
       username: 'آخر',
       phone,
       password: 'secret123',
+      gender: 'male',
     });
     expect(res.status).toBe(409);
   });
@@ -118,7 +122,9 @@ describe('registration ends authenticated', () => {
     const phone = `078${Math.floor(10000000 + Math.random() * 89999999)}`;
     await api
       .post('/api/auth/register')
-      .send({ username: 'مختبر التحقق', phone, password: 'secret123' })
+      .send({ username: 'مختبر التحقق', phone, password: 'secret123',
+        gender: 'male',
+      })
       .expect(200);
 
     const verified = await api
@@ -127,21 +133,23 @@ describe('registration ends authenticated', () => {
       .expect(200);
 
     expect(verified.body.data.token).toBeTruthy();
-    expect(verified.body.data.user.phone).toBe(phone);
+    expect(verified.body.data.user.phone).toBe(`+964${phone.slice(1)}`);
 
     // التوكن العائد صالح فعلاً على مسار محمي.
     const me = await api
       .get('/api/auth/me')
       .set('Authorization', `Bearer ${verified.body.data.token}`)
       .expect(200);
-    expect(me.body.data.user.phone).toBe(phone);
+    expect(me.body.data.user.phone).toBe(`+964${phone.slice(1)}`);
   });
 
   it('a wrong code does not produce a session', async () => {
     const phone = `078${Math.floor(10000000 + Math.random() * 89999999)}`;
     await api
       .post('/api/auth/register')
-      .send({ username: 'مختبر التحقق', phone, password: 'secret123' })
+      .send({ username: 'مختبر التحقق', phone, password: 'secret123',
+        gender: 'male',
+      })
       .expect(200);
 
     const bad = await api.post('/api/auth/verify').send({ phone, code: '000000' });

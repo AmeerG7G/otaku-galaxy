@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'core/di/injection_container.dart' as di;
+import 'core/design_system/design_system.dart';
 
 /// تهيئة التطبيق مع معالجة أخطاء شاملة وحقن الاعتماديات.
 Future<void> bootstrap(FutureOr<Widget> Function() builder) async {
@@ -57,14 +58,20 @@ Future<void> _setupSystemPreferences() async {
     DeviceOrientation.portraitDown,
   ]);
 
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.dark,
-      systemNavigationBarColor: Colors.white,
-      systemNavigationBarIconBrightness: Brightness.dark,
-    ),
-  );
+  // [CRITICAL] شريط النظام السفلي **شفاف** لا أبيض.
+  //
+  // كان `systemNavigationBarColor: Colors.white` يطلي منطقة تنقّل أندرويد
+  // بالأبيض الصمّاء، فتظهر شريطاً فاتحاً يبدو جزءاً من التطبيق أسفل شريط
+  // التنقّل الخاص به — وهي بالضبط الشكوى. ومع `edgeToEdge` لا معنى لطلائها
+  // أصلاً: الوضع موجودٌ ليمتدّ محتوى التطبيق تحتها ويرسم النظامُ مؤشّره
+  // فوقه.
+  //
+  // وكان اللون ثابتاً يُضبط مرة واحدة عند الإقلاع، فيبقى أبيض في الوضع
+  // الداكن، وتبقى أيقونات شريط الحالة داكنةً على خلفية داكنة أي غير
+  // مرئية. الأسلوب الآن يُشتقّ من الثيم في `OtakuGalaxyApp` عبر
+  // `AnnotatedRegion`، فيتبدّل مع تبدّل المظهر — وما يُضبط هنا هو الحدّ
+  // الآمن قبل أن تُبنى الشجرة.
+  SystemChrome.setSystemUIOverlayStyle(otakuSystemOverlay(Brightness.light));
 
   await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 }

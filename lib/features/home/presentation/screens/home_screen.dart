@@ -2,21 +2,21 @@ import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../../core/auth/require_auth.dart';
 import '../../../../core/design_system/design_system.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../auth/presentation/cubit/auth_cubit.dart';
 import '../../../main_navigation/presentation/screens/main_navigation_screen.dart';
 import '../../../notifications/presentation/cubit/notifications_cubit.dart';
-import '../../../products/domain/entities/category.dart';
 import '../../../products/domain/entities/home_data.dart';
 import '../../../products/domain/entities/product.dart';
 import '../../../products/domain/usecases/fetch_home_usecase.dart';
 import '../../../products/domain/usecases/fetch_products_usecase.dart';
-import '../widgets/banner_carousel.dart';
 import '../widgets/home_compositions.dart';
 import '../widgets/product_card.dart';
 import '../widgets/product_section.dart';
 import '../../../auth/presentation/cubit/auth_state.dart';
+import '../../../products/domain/entities/banner.dart' as model;
 
 @RoutePage()
 class HomeScreen extends StatefulWidget {
@@ -87,6 +87,16 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return SafeArea(
+      // [CRITICAL] `bottom: false` — كالتبويبات الأربعة الأخرى.
+      //
+      // الغلاف الرئيسي يستعمل `extendBody: true`، فيُبلغ Scaffold جسمَه أن
+      // الحشوة السفلية تساوي ارتفاع شريط التنقّل. و`SafeArea` الافتراضية
+      // (bottom: true) تستهلك تلك الحشوة، فيتوقّف محتوى الرئيسية **فوق**
+      // الشريط ويظهر تحته شريطٌ فارغ بلون الخلفية يحيط بالشريط العائم —
+      // وهو «السطح الفاتح المحيط». الأقسام والمجتمع والسلة والحساب كلها
+      // تمرّر `bottom: false` منذ البداية، فيمرّ محتواها خلف الشريط؛
+      // الرئيسية وحدها كانت شاذّة.
+      bottom: false,
       child: Column(
         children: [
           _buildBrandHeaderWithSearch(),
@@ -114,8 +124,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         // تركيبة البطل (تدرّج + شخصية تكسر الحافة)
                         SliverToBoxAdapter(
                           child: HomeHeroCard(
-                            onShop: () =>
-                                mainNavIndex.value = MainTab.categories,
+                            banner: data.heroBanner,
+                            onShop: () => _openBanner(data.heroBanner),
                           ),
                         ),
 
@@ -124,19 +134,12 @@ class _HomeScreenState extends State<HomeScreen> {
                         SliverToBoxAdapter(
                           child: HomePromoRail(
                             maxDiscount: _maxDiscountOf(data),
+                            banners: data.promoBanners,
+                            onOpenBanner: _openBanner,
                             onTap: () =>
                                 mainNavIndex.value = MainTab.categories,
                           ),
                         ),
-
-                        // بانر المتجر (من الخادم)
-                        if (data.banners.isNotEmpty)
-                          SliverToBoxAdapter(
-                            child: Padding(
-                              padding: const EdgeInsets.only(top: 18),
-                              child: BannerCarousel(banners: data.banners),
-                            ),
-                          ),
 
                         // العروض
                         if (data.offers.isNotEmpty)
@@ -148,13 +151,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                   mainNavIndex.value = MainTab.categories,
                             ),
                           ),
-
-                        // الأقسام
-                        SliverToBoxAdapter(
-                          child: _CategoriesSection(
-                            categories: data.categories,
-                          ),
-                        ),
 
                         // منتجات مختارة
                         if (data.selectedProducts.isNotEmpty)
@@ -175,7 +171,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         SliverPadding(
                           padding: const EdgeInsets.symmetric(horizontal: 18),
                           sliver: SliverGrid(
-                            gridDelegate: kProductGridDelegate,
+                            gridDelegate: productGridDelegate(context),
                             delegate: SliverChildBuilderDelegate(
                               (context, index) {
                                 final explore = _visibleExplore(data.discover);
@@ -227,76 +223,64 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// ترويسة الرئيسية — الشعار وسطر ترحيب وجرس الإشعارات، ثم بطاقة بحث
   /// قابلة للنقر بدائرة متدرّجة، كما في مصدر تصميم v2.
+  ///
+  /// [CRITICAL] لا سطح محيطاً بالترويسة — لا حاوية ملوّنة ولا هالة ولا قصّ.
+  ///
+  /// كان هنا `Stack` يحمل هالةً بنفسجية دائرية (٢٥٠×٢٥٠، `primary` بشفافية
+  /// ٢٠٪) موضوعةً خارج الحدود (`top:-96, end:-70`)، والحاوية الأم تقصّ
+  /// بـ`Clip.hardEdge`. والقصّ هو ما صنع المشكلة: هالةٌ ناعمة الأطراف
+  /// تُقصّ بحدٍّ حادّ عند حافة الترويسة، فتظهر **مستطيلاً شفافاً مائلاً
+  /// للبنفسجي** يحيط بالشعار والاسم والجرس وحقل البحث معاً. `BoxDecoration()`
+  /// الفارغة كانت تُوهم بأن لا سطح هناك، والسطح كان الهالةَ المقصوصة لا
+  /// الحاوية.
+  ///
+  /// أُزيلت الهالة والقصّ معاً. ما بقي: الحشوة نفسها (١٨/١٨/١٨/٠) والعناصر
+  /// نفسها بترتيبها ومسافاتها — الشعار، الاسم، الجرس، وبطاقة البحث — مرسومةً
+  /// مباشرةً على خلفية الشاشة.
   Widget _buildBrandHeaderWithSearch() {
     final theme = Theme.of(context);
 
-    return Container(
+    return Padding(
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
-      clipBehavior: Clip.hardEdge,
-      decoration: const BoxDecoration(),
-      child: Stack(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // هالة بنفسجية ناعمة خلف الترويسة.
-          PositionedDirectional(
-            top: -96,
-            end: -70,
-            child: IgnorePointer(
-              child: Container(
-                width: 250,
-                height: 250,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: RadialGradient(
-                    colors: [
-                      AppColors.primary.withValues(alpha: 0.20),
-                      AppColors.primary.withValues(alpha: 0),
-                    ],
-                    stops: const [0, 0.66],
-                  ),
+          Row(
+            children: [
+              const OtakuStoreLogoSimple(size: 46),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'أهلاً بك في',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontSize: 12,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    Text(
+                      'مجرة الأوتاكو',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontFamily: 'Tajawal',
+                        fontSize: 18,
+                        letterSpacing: -0.2,
+                        fontWeight: AppDimens.weightExtraBold,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  const OtakuStoreLogoSimple(size: 46),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'أهلاً بك في',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            fontSize: 12,
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                        Text(
-                          'مجرة الأوتاكو',
-                          style: theme.textTheme.titleLarge?.copyWith(
-                            fontFamily: 'Tajawal',
-                            fontSize: 18,
-                            letterSpacing: -0.2,
-                            fontWeight: AppDimens.weightExtraBold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  // الإشعارات تعيش في شريط الرئيسية العلوي بجانب هوية المتجر،
-                  // وليست عنصراً داخل الحساب.
-                  const _NotificationsBell(),
-                ],
-              ),
-              const SizedBox(height: 15),
-              _buildSearchCta(),
+              // الإشعارات تعيش في شريط الرئيسية العلوي بجانب هوية المتجر،
+              // وليست عنصراً داخل الحساب. سطحها الخاص (٤٢×٤٢) يبقى — هو
+              // زرٌّ مستقل لا جزءٌ من سطحٍ محيط.
+              const _NotificationsBell(),
             ],
           ),
+          const SizedBox(height: 15),
+          _buildSearchCta(),
         ],
       ),
     );
@@ -328,17 +312,17 @@ class _HomeScreenState extends State<HomeScreen> {
                 shape: BoxShape.circle,
               ),
               child: const Icon(
-                Icons.search_rounded,
+                AppIcons.search,
                 size: 17,
                 color: Colors.white,
               ),
             ),
             const SizedBox(width: 10),
             Text(
-              'دوّر على أي منتج تحبه…',
+              'ابحث عن منتجك المفضّل…',
               style: theme.textTheme.bodyMedium?.copyWith(
                 fontSize: 13.5,
-                color: theme.colorScheme.outline,
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
           ],
@@ -348,6 +332,31 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildExploreHeader() => const SectionHeader(title: 'اكتشف المنتجات');
+
+  /// يفتح وجهة البنر التي ضبطها المسؤول.
+  ///
+  /// [CRITICAL] الوجهة بيانات لا كود. البنر بلا وجهة (أو بوجهة بلا معرّف)
+  /// يقود إلى الأقسام كسلوك آمن بدل أن يبتلع الضغطة صامتاً — الزبون ضغط،
+  /// فيجب أن يحدث شيء.
+  void _openBanner(model.Banner? banner) {
+    if (banner == null || !banner.isTappable) {
+      mainNavIndex.value = MainTab.categories;
+      return;
+    }
+    final value = banner.destinationValue!.trim();
+    switch (banner.destination) {
+      case model.BannerDestination.product:
+        context.router.push(ProductDetailRoute(productId: value));
+      case model.BannerDestination.category:
+      case model.BannerDestination.subcategory:
+      case model.BannerDestination.anime:
+        // الأقسام والأنمي يُفتحان من تبويب الأقسام: لا مسار مباشر لهما في
+        // الرواتر الحالي، وابتكار واحد هنا يخرج عن نطاق هذا التغيير.
+        mainNavIndex.value = MainTab.categories;
+      case model.BannerDestination.none:
+        mainNavIndex.value = MainTab.categories;
+    }
+  }
 
   /// حالة تحميل الرئيسية — هياكل متلألئة بنفس إيقاع الأقسام الحقيقية.
   Widget _buildLoadingState() {
@@ -365,73 +374,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
-
-class _CategoriesSection extends StatelessWidget {
-  const _CategoriesSection({required this.categories});
-
-  final List<Category> categories;
-
-  @override
-  Widget build(BuildContext context) {
-    // القسم كله داخل حاوية واحدة مع رسم تزييني خلف الترويسة والشريط،
-    // كما في كتلة «تسوّق حسب القسم» في مصدر التصميم.
-    return ClipRect(
-      child: Stack(
-        children: [
-          PositionedDirectional(
-            top: 14,
-            end: -34,
-            child: IgnorePointer(
-              child: Opacity(
-                opacity: 0.20,
-                child: Image.asset(
-                  'assets/art/opt/a-i6.png',
-                  width: 112,
-                  fit: BoxFit.contain,
-                ),
-              ),
-            ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SectionHeader(
-                title: 'تسوّق حسب القسم',
-                onSeeAll: () => mainNavIndex.value = MainTab.categories,
-              ),
-              SizedBox(
-                height: 100,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.fromLTRB(18, 0, 18, 4),
-                  itemCount: categories.length,
-                  separatorBuilder: (_, _) => const SizedBox(width: 11),
-                  itemBuilder: (context, index) {
-                    final category = categories[index];
-                    return AnimeCategoryCard.rail(
-                      category: category,
-                      index: index,
-                      onTap: () => context.router.push(
-                        CategoryProductsRoute(
-                          categoryId: category.id,
-                          categoryName: category.name,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// جرس الإشعارات في شريط الرئيسية العلوي — يعرض عدد غير المقروء ويفتح
-/// مركز الإشعارات. للزائر يعرض دعوة تسجيل الدخول (الإشعارات خاصية حساب).
 class _NotificationsBell extends StatefulWidget {
   const _NotificationsBell();
 
@@ -449,15 +391,11 @@ class _NotificationsBellState extends State<_NotificationsBell> {
   }
 
   Future<void> _open() async {
-    if (!context.read<AuthCubit>().isLoggedIn) {
-      final wantsLogin = await showLoginGate(
-        context,
-        title: 'سجّل دخولك أولاً',
-        body: 'الإشعارات تحتاج تسجيل الدخول لحسابك في مجرة الأوتاكو.',
-      );
-      if (wantsLogin && mounted) {
-        context.router.push(const LoginRoute());
-      }
+    if (!await requireAuthentication(
+      context,
+      title: 'سجّل دخولك أولاً',
+      body: 'الإشعارات تحتاج تسجيل الدخول لحسابك في مجرة الأوتاكو.',
+    )) {
       return;
     }
     if (mounted) context.router.push(const NotificationsRoute());
@@ -467,39 +405,49 @@ class _NotificationsBellState extends State<_NotificationsBell> {
   Widget build(BuildContext context) {
     return BlocBuilder<NotificationsCubit, NotificationsState>(
       builder: (context, state) {
+        // الجرس مرئي للزائر أيضاً: لمسه يفتح البوابة الموحّدة «سجّل دخولك
+        // أولاً» (تُنفَّذ في `_open`)، والشارة لا تُعرض إلّا لحساب مسجّل.
         final isLoggedIn = context.select<AuthCubit, bool>(
           (cubit) => cubit.state is AuthAuthenticated,
         );
-        // الزائر بلا إشعارات أصلاً — إظهار جرس لا يفعل سوى طلب الدخول
-        // يجعل التصفّح يبدو محاصَراً، فنُخفيه بدل ذلك.
-        if (!isLoggedIn) return const SizedBox.shrink();
-        final unread = state.unreadCount;
+        final unread = isLoggedIn ? state.unreadCount : 0;
         return Stack(
           clipBehavior: Clip.none,
           children: [
+            // جرس الإشعارات بمقاس المرجع تماماً: ٤٢×٤٢ بحواف ١٥ وسطح
+            // أبيض بحدّ وظلّ ناعم (home header: width/height 42, radius 15).
             Container(
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.surface,
-                borderRadius: BorderRadius.circular(AppDimens.radiusMd),
+                borderRadius: BorderRadius.circular(15),
                 border: Border.all(
                   color: Theme.of(context).colorScheme.outlineVariant,
                 ),
+                boxShadow: context.themeColors.shadowXSoft,
               ),
               child: IconButton(
                 onPressed: _open,
-                icon: const Icon(Icons.notifications_none_rounded),
+                icon: const Icon(
+                  Icons.notifications_none_rounded,
+                  size: 22,
+                ),
                 tooltip: 'الإشعارات',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints.tightFor(
+                  width: 42,
+                  height: 42,
+                ),
               ),
             ),
             if (unread > 0)
               PositionedDirectional(
-                top: -2,
-                end: -2,
+                top: -4,
+                end: -4,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 5),
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
                   constraints: const BoxConstraints(
-                    minWidth: 18,
-                    minHeight: 18,
+                    minWidth: 17,
+                    minHeight: 17,
                   ),
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
@@ -514,7 +462,7 @@ class _NotificationsBellState extends State<_NotificationsBell> {
                     unread > 9 ? '9+' : '$unread',
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
                       color: Colors.white,
-                      fontSize: 9,
+                      fontSize: 10,
                       height: 1,
                       fontWeight: AppDimens.weightBold,
                     ),

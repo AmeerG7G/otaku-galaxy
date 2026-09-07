@@ -14,8 +14,11 @@ export interface DashboardStats {
     completedThisMonth: number;
   };
   products: { total: number; active: number; lowStock: number; outOfStock: number };
-  customers: { total: number };
+  customers: { total: number; active: number };
   reviews: { pending: number };
+  /** أعياد الميلاد بتقويم المتجر — «اليوم» سؤال عن الزبون لا عن الخادم. */
+  birthdays: { today: number; upcoming7: number; missing: number };
+  notifications: { total: number; last7Days: number };
 }
 
 /** حدّ «قارب على النفاد» — نفس الحد المستخدم في واجهة لوحة التحكم. */
@@ -26,7 +29,12 @@ export const statsRepo = {
    * كل أرقام لوحة التحكم في استعلام واحد مجمَّع على الخادم — أدق وأخف من
    * جلب كل المنتجات والطلبات للمتصفح ثم عدّها هناك.
    */
-  async dashboard(db: pg.Pool | pg.PoolClient): Promise<DashboardStats> {
+  async dashboard(
+    db: pg.Pool | pg.PoolClient,
+    timezone: string,
+  ): Promise<DashboardStats> {
+    const today = '(now() AT TIME ZONE $2)::date';
+    const nextBirthday = `next_birthday(u.birth_day, u.birth_month, ${today})`;
     const { rows } = await db.query<Record<string, string>>(
       `SELECT
          (SELECT COUNT(*)::text FROM orders) AS orders_total,
@@ -48,8 +56,22 @@ export const statsRepo = {
            WHERE is_active = TRUE AND stock > 0 AND stock <= $1) AS products_low,
          (SELECT COUNT(*)::text FROM products WHERE is_active = TRUE AND stock = 0) AS products_out,
          (SELECT COUNT(*)::text FROM users WHERE role = 'customer') AS customers_total,
-         (SELECT COUNT(*)::text FROM reviews WHERE status = 'pending') AS reviews_pending`,
-      [LOW_STOCK_THRESHOLD],
+         (SELECT COUNT(*)::text FROM users
+           WHERE role = 'customer' AND is_active = TRUE) AS customers_active,
+         (SELECT COUNT(*)::text FROM reviews WHERE status = 'pending') AS reviews_pending,
+         (SELECT COUNT(*)::text FROM users u
+           WHERE u.role = 'customer' AND u.birth_day IS NOT NULL
+             AND ${nextBirthday} = ${today}) AS birthdays_today,
+         (SELECT COUNT(*)::text FROM users u
+           WHERE u.role = 'customer' AND u.birth_day IS NOT NULL
+             AND ${nextBirthday} BETWEEN ${today} AND ${today} + interval '7 days')
+           AS birthdays_upcoming,
+         (SELECT COUNT(*)::text FROM users u
+           WHERE u.role = 'customer' AND u.birth_day IS NULL) AS birthdays_missing,
+         (SELECT COUNT(*)::text FROM notifications) AS notifications_total,
+         (SELECT COUNT(*)::text FROM notifications
+           WHERE created_at >= now() - interval '7 days') AS notifications_week`,
+      [LOW_STOCK_THRESHOLD, timezone],
     );
 
     const row = rows[0]!;
@@ -78,8 +100,20 @@ export const statsRepo = {
         lowStock: n('products_low'),
         outOfStock: n('products_out'),
       },
-      customers: { total: n('customers_total') },
+      customers: {
+        total: n('customers_total'),
+        active: n('customers_active'),
+      },
       reviews: { pending: n('reviews_pending') },
+      birthdays: {
+        today: n('birthdays_today'),
+        upcoming7: n('birthdays_upcoming'),
+        missing: n('birthdays_missing'),
+      },
+      notifications: {
+        total: n('notifications_total'),
+        last7Days: n('notifications_week'),
+      },
     };
   },
 

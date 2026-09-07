@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import { GENDERS } from '../types/index.js';
+import { BIRTHDAY_FILTERS, CUSTOMER_SORTS } from '../repositories/userRepo.js';
+import { BANNER_DESTINATIONS, BANNER_PLACEMENTS } from '../types/index.js';
 
 /**
  * رابط صورة: إمّا رابط مطلق، أو مسار نسبي تحت /uploads يخدمه الخادم نفسه.
@@ -23,6 +26,59 @@ export const adminUserIdSchema = idSchema;
 
 const price = z.number().positive('السعر يجب أن يكون موجباً').max(1_000_000_000);
 
+/**
+ * مبلغ خصم التوصيل عن القطعة الواحدة.
+ *
+ * غير سالب، وبمنزلتين عشريتين على الأكثر — العمود `NUMERIC(12,2)`، وقيمةٌ
+ * أدقّ منه تُقرَّب في القاعدة بصمت فيحفظ المتجر رقماً غير الذي أدخله المسؤول.
+ *
+ * السقف عند رسوم التوصيل **لا يقع هنا**: الرسوم تختلف بالمحافظة والمنطقة
+ * وتتغيّر بعد ضبط المنتج، فالسقف قرارُ وقتِ الطلب لا وقتِ الضبط.
+ */
+const deliveryPromoAmount = z
+  .number()
+  .min(0, 'قيمة خصم التوصيل لا يمكن أن تكون سالبة')
+  .max(1_000_000)
+  .refine(
+    (value) => Number.isInteger(Math.round(value * 100)) && value * 100 % 1 === 0,
+    'قيمة خصم التوصيل تقبل منزلتين عشريتين على الأكثر',
+  );
+
+/**
+ * «مفعَّل ⇔ مبلغ موجب» — نفس ثابت قيد القاعدة
+ * (`products_delivery_promo_amount_positive`)، مرفوعاً إلى الحدّ ليصل المسؤول
+ * سببٌ مفهوم بدل رسالة القيد العامة «قيمة غير صالحة لأحد حقول المنتج».
+ *
+ * القيد يبقى: هو الحارس الحقيقي، وهذا تحسينُ رسالةٍ لا بديلٌ عنه.
+ */
+function assertDeliveryPromoCoherent(
+  value: { hasDeliveryPromo?: boolean; deliveryPromoAmount?: number },
+  ctx: z.RefinementCtx,
+): void {
+  const { hasDeliveryPromo, deliveryPromoAmount: amount } = value;
+  if (hasDeliveryPromo === true && amount !== undefined && amount <= 0) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['deliveryPromoAmount'],
+      message: 'فعّلت خصم التوصيل — أدخل قيمة أكبر من صفر',
+    });
+  }
+  if (hasDeliveryPromo === false && amount !== undefined && amount > 0) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['deliveryPromoAmount'],
+      message: 'خصم التوصيل معطَّل — القيمة يجب أن تكون صفراً',
+    });
+  }
+}
+
+/** موعد التوفر القادم (إن حدّده المسؤول) — ISO 8601؛ null يفرّغه. */
+const restockAt = z
+  .string()
+  .datetime({ offset: true, message: 'تاريخ توفر غير صالح' })
+  .nullable()
+  .optional();
+
 export const adminProductCreateSchema = z.object({
   name: z.string().trim().min(2).max(150),
   description: z.string().trim().max(3000).default(''),
@@ -46,9 +102,10 @@ export const adminProductCreateSchema = z.object({
   previousPrice: z.number().positive().max(1_000_000_000).nullable().optional(),
   hasDeliveryPromo: z.boolean().default(false),
   /** قيمة خصم التوصيل عن كل قطعة — إلزامية موجبة متى فُعِّل الترويج. */
-  deliveryPromoAmount: z.number().min(0).max(1_000_000).default(0),
+  deliveryPromoAmount: deliveryPromoAmount.default(0),
   franchiseIds: z.array(z.string().uuid('معرّف أنمي غير صالح')).max(20).default([]),
-});
+  restockAt,
+}).superRefine(assertDeliveryPromoCoherent);
 
 /**
  * شكل التحديث يختلف عن الإنشاء:
@@ -81,14 +138,16 @@ export const adminProductUpdateSchema = z.object({
   reviewCount: z.number().int().min(0).max(1_000_000).optional(),
   previousPrice: z.number().positive().max(1_000_000_000).nullable().optional(),
   hasDeliveryPromo: z.boolean().optional(),
-  deliveryPromoAmount: z.number().min(0).max(1_000_000).optional(),
+  deliveryPromoAmount: deliveryPromoAmount.optional(),
   franchiseIds: z.array(z.string().uuid('معرّف أنمي غير صالح')).max(20).optional(),
-});
+  restockAt,
+}).superRefine(assertDeliveryPromoCoherent);
 
 export const adminCategorySchema = z.object({
   name: z.string().trim().min(2).max(60),
   imageUrl: imageUrl.nullable().optional(),
   sortOrder: z.number().int().min(0).max(1000).optional(),
+  isActive: z.boolean().optional(),
 });
 
 export const adminSubcategorySchema = z.object({
@@ -100,7 +159,9 @@ export const adminSubcategorySchema = z.object({
 export const adminBannerSchema = z.object({
   imageUrl,
   title: z.string().trim().max(120).nullable().optional(),
-  destinationType: z.enum(['product', 'category', 'subcategory', 'none']).default('none'),
+  subtitle: z.string().trim().max(160).optional(),
+  placement: z.enum(BANNER_PLACEMENTS).default('promo'),
+  destinationType: z.enum(BANNER_DESTINATIONS).default('none'),
   destinationValue: z.string().trim().max(80).nullable().optional(),
   sortOrder: z.number().int().min(0).max(1000).optional(),
 });
@@ -120,7 +181,9 @@ export const adminBannerSchema = z.object({
 export const adminBannerUpdateSchema = z.object({
   imageUrl: imageUrl.optional(),
   title: z.string().trim().max(120).nullable().optional(),
-  destinationType: z.enum(['product', 'category', 'subcategory', 'none']).optional(),
+  subtitle: z.string().trim().max(160).optional(),
+  placement: z.enum(BANNER_PLACEMENTS).optional(),
+  destinationType: z.enum(BANNER_DESTINATIONS).optional(),
   destinationValue: z.string().trim().max(80).nullable().optional(),
   sortOrder: z.number().int().min(0).max(1000).optional(),
   isActive: z.boolean().optional(),
@@ -129,6 +192,7 @@ export const adminBannerUpdateSchema = z.object({
 export const adminGovernorateSchema = z.object({
   name: z.string().trim().min(2).max(60),
   deliveryFee: z.number().min(0).max(10_000_000),
+  isActive: z.boolean().optional(),
 });
 
 /** تعديل قسم فرعي — القسم الأب لا يتغيّر بعد الإنشاء. */
@@ -161,29 +225,98 @@ export const adminNotificationQuerySchema = z.object({
 /** معرّف عميل لمسار النقاط. */
 export const adminCustomerIdSchema = idSchema;
 
-/**
- * إعدادات الأعمال.
- *
- * القيم تصل نصّاً أو رقماً أو `null` (إفراغ = عودة للافتراضي). المدى نفسه
- * يُفحص في `businessConfigService` حيث تعيش المواصفات، فلا يُكرَّر هنا رقمٌ
- * قد يتباعد عنه.
- */
-const businessSettingValue = z.union([z.string(), z.number(), z.null()]).optional();
-
-/**
- * كل المفاتيح اختيارية: اللوحة ترسل ما غيّره المسؤول فقط.
- *
- * لا تستعمل `z.record` مع مفتاح `enum` هنا: في Zod 4 يصير السجلّ **شاملاً**
- * فيطالب بكل المفاتيح دفعةً واحدة، فيُرفض أي حفظ جزئي بـ400.
- */
-export const adminBusinessSettingsSchema = z.object({
-  points_order_received: businessSettingValue,
-  points_review_approved: businessSettingValue,
-  points_review_with_photo: businessSettingValue,
-  birthday_discount_percent: businessSettingValue,
-  order_rating_delay_hours: businessSettingValue,
-});
+// [NOTE] حُذف `adminBusinessSettingsSchema` و`businessSettingValue`.
+//
+// لم تبقَ إعدادات أعمال رقمية تُكتب من اللوحة، فمدقّقٌ لجسم طلبٍ لا وجود
+// لمساره يوحي بقدرةٍ أُزيلت.
 
 export type AdminProductCreateInput = z.infer<typeof adminProductCreateSchema>;
 export type AdminProductUpdateInput = z.infer<typeof adminProductUpdateSchema>;
 export type AdminBannerInput = z.infer<typeof adminBannerSchema>;
+
+// ── الزبائن وأعياد الميلاد ──
+
+/** «true»/«false» من سلسلة استعلام، أو غياب يعني «بلا ترشيح». */
+const optionalBoolean = z
+  .enum(['true', 'false'])
+  .optional()
+  .transform((value) => (value === undefined ? undefined : value === 'true'));
+
+export const adminCustomersQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  search: z.string().trim().min(1).max(80).optional(),
+  isActive: optionalBoolean,
+  hasBirthday: optionalBoolean,
+  hasOrders: optionalBoolean,
+  minPoints: z.coerce.number().int().min(0).optional(),
+  maxPoints: z.coerce.number().int().min(0).optional(),
+  /**
+   * ترشيح بالجنس — تعدادٌ مغلق يشمل `unknown` للحسابات التي لم تُسأل.
+   *
+   * قيمةٌ خارجه تُرفض عند الحدّ بدل أن تُتجاهل بصمت: مسؤولٌ كتب `Male` يجب
+   * أن يرى الرفض لا قائمةً كاملة يظنّها مرشَّحة.
+   */
+  gender: z.enum([...GENDERS, 'unknown']).optional(),
+  sort: z.enum(CUSTOMER_SORTS).optional(),
+});
+
+export const adminBirthdayQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  filter: z.enum(BIRTHDAY_FILTERS).default('registered'),
+  /** نافذة «قريباً»/«مؤخّراً» — الواجهة تعرض ٧/١٤/٣٠. */
+  windowDays: z.coerce.number().int().min(1).max(365).default(7),
+});
+
+// ── مزايا مستويات نقاط المجرّة ──
+//
+// [NOTE] حُذفت `loyaltyLevelCreate/Update/Id`. كانت تسمح ببناء السلّم من
+// اللوحة؛ السلّم الآن ثابت في `domain/galaxyPoints.ts` ولا مسار يعدّله، فبقاء
+// مدقّقاتٍ لأجسام طلبات لا وجود لها يوحي بقدرةٍ أُزيلت.
+
+/** طابور الهدايا: كلّها أو غير المسلَّمة فقط. */
+export const giftClaimsQuerySchema = z.object({
+  pending: z
+    .union([z.boolean(), z.enum(['true', 'false'])])
+    .transform((value) => value === true || value === 'true')
+    .optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+// ── قائمة منتجات الإدارة ──
+
+/**
+ * ترشيح قائمة المنتجات بالقسم أو القسم الفرعي.
+ *
+ * يخدم المسار «الأقسام ← قسم فرعي ← منتجاته»: بدونه كانت الشاشة تُحمّل كل
+ * المنتجات ثم تُرشِّحها في المتصفح، فتبدو صحيحة على صفحة واحدة وتُخفي
+ * منتجات الصفحات التالية.
+ */
+export const adminProductsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(50).default(12),
+  categoryId: z.string().uuid('معرّف قسم غير صالح').optional(),
+  subcategoryId: z.string().uuid('معرّف قسم فرعي غير صالح').optional(),
+  /**
+   * ترشيح العروض/المختارة للإدارة.
+   *
+   * [CRITICAL] كانت لوحة التحكم تقرأ هذين القسمين من `/api/catalog/products`
+   * العام لأن مسار الإدارة لا يقبلهما. ونتيجةُ ذلك أن منتجاً معطّلاً مرفوعاً
+   * كعرض لا يظهر في شاشة العروض أصلاً، فلا سبيل لإزالته منها: القائمة العامة
+   * تُخفي غير النشط عمداً. الترشيح هنا يقرأ نفس مستودع المنتجات بـ
+   * `includeInactive`، فتُدار العروض من مسارٍ يتطلّب صلاحية مسؤول لا من مسارٍ
+   * عام.
+   *
+   * القيمة نصّية لأن معايير الاستعلام نصوص؛ نفس صيغة `listProductsSchema`.
+   */
+  offer: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === 'true')),
+  selected: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === 'true')),
+});

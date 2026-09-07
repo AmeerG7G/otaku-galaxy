@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/design_system/design_system.dart';
+import '../../../../core/l10n/gender.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../auth/presentation/cubit/auth_cubit.dart';
 import '../../../auth/presentation/cubit/auth_state.dart';
@@ -10,6 +11,8 @@ import '../../../main_navigation/presentation/screens/main_navigation_screen.dar
 import '../../domain/entities/cart_item.dart';
 import '../cubit/cart_cubit.dart';
 import '../cubit/cart_state.dart';
+import '../../../visuals/domain/visual_slot.dart';
+import '../../../visuals/presentation/managed_artwork.dart';
 
 /// تبويب السلة بتصميم Otaku Galaxy v2.
 ///
@@ -36,7 +39,7 @@ class CartScreen extends StatelessWidget {
               OtakuScreenHeader.tab(
                 title: 'السلة',
                 subtitle: !isLoggedIn
-                    ? 'سجّل الدخول لتبدأ سلتك'
+                    ? context.g(GenderedStrings.loginToStartCart)
                     : count == 0
                     ? '0 منتجات في السلة'
                     : '$count منتجات في السلة',
@@ -46,7 +49,7 @@ class CartScreen extends StatelessWidget {
                     ? AnimeGuestPrompt(
                         title: 'أنت تتصفح كزائر',
                         body:
-                            'سجّل الدخول لإضافة منتجات إلى سلتك وإتمام الطلب.',
+                            context.g(GenderedStrings.loginToAddToCart),
                         icon: Icons.shopping_cart_outlined,
                         onLogin: () => context.router.push(const LoginRoute()),
                       )
@@ -63,11 +66,15 @@ class CartScreen extends StatelessWidget {
 
   Widget _buildEmpty(BuildContext context) {
     return AnimeEmptyState(
-      title: 'السلة فاضية',
-      subtitle: 'خذ جولة بالمتجر واختار اللي يعجبك، السلة راح تنتظرك.',
+      title: 'السلة فارغة',
+      subtitle: context.g(GenderedStrings.browseAndPick),
       artwork: 'assets/art/opt/a-luffy-kid.png',
-      actionLabel: 'استكشف المنتجات',
+      artworkSlot: VisualSlots.emptyCart,
+      actionLabel: 'اكتشف المنتجات',
       onAction: () => mainNavIndex.value = MainTab.home,
+      // السلة والمفضلة موسّطتان: الرسم فوق ثم الزرّ تحته، كلاهما في المنتصف.
+      // بقية الشاشات تبقى على التخطيط الجانبي الذي يصفه مرجع التصميم.
+      centered: true,
     );
   }
 
@@ -113,7 +120,7 @@ class CartScreen extends StatelessWidget {
               'يُحتسب عند إدخال العنوان',
               style: theme.textTheme.bodySmall?.copyWith(
                 fontSize: 12,
-                color: theme.colorScheme.outline,
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
           ),
@@ -163,7 +170,11 @@ class CartScreen extends StatelessWidget {
             bottom: 24,
             end: -10,
             child: IgnorePointer(
-              child: Image.asset('assets/art/opt/a-i3.png', width: 76),
+              child: const ManagedArtwork(
+                slot: VisualSlots.cartCheckout,
+                fallbackAsset: 'assets/art/opt/a-i3.png',
+                width: 76,
+              ),
             ),
           ),
           AnimePrimaryButton(
@@ -277,7 +288,7 @@ class _CartItemCard extends StatelessWidget {
                         child: Icon(
                           Icons.close_rounded,
                           size: 17,
-                          color: theme.colorScheme.outline,
+                          color: theme.colorScheme.onSurfaceVariant,
                         ),
                       ),
                     ),
@@ -346,7 +357,7 @@ class _CartItemCard extends StatelessWidget {
     final confirmed = await showOtakuConfirm(
       context: context,
       title: 'إزالة المنتج',
-      message: 'راح نشيل «${item.product.name}» من سلتك. تريد تكمل؟',
+      message: 'سيُزال «${item.product.name}» من سلتك. هل تريد المتابعة؟',
       confirmLabel: 'إزالة',
       cancelLabel: 'إلغاء',
       destructive: true,

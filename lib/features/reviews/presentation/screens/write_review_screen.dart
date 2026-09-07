@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/design_system/design_system.dart';
+import '../../../../core/l10n/gender.dart';
 import '../../../../core/router/app_router.dart';
 import '../../domain/entities/review.dart';
 import '../cubit/reviews_cubit.dart';
@@ -12,6 +13,7 @@ import '../../../../core/errors/app_exception.dart';
 import '../../../../core/di/injection_container.dart';
 import '../../../../core/constants/api_endpoints.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../../visuals/domain/visual_slot.dart';
 
 /// كتابة تقييم جديد أو تعديل تقييم مرفوض وإعادة إرساله.
 ///
@@ -35,9 +37,16 @@ class WriteReviewScreen extends StatefulWidget {
 }
 
 class _WriteReviewScreenState extends State<WriteReviewScreen> {
+  /// أقصى عدد صور للتقييم الواحد.
+  ///
+  /// [CRITICAL] نسخةٌ للتجربة لا للأمان. الحارس الحقيقي في الخادم
+  /// (`galaxyPoints.MAX_REVIEW_PHOTOS`) وفي قيد القاعدة؛ من يستدعي الـAPI
+  /// مباشرةً لا يمرّ بهذه الشاشة أصلاً. وجودها هنا يمنع رحلةً تنتهي برفض.
+  static const _maxPhotos = 5;
+
   final _commentController = TextEditingController();
   int _rating = 0;
-  String? _photoUrl;
+  final List<String> _photoUrls = [];
   bool _uploadingPhoto = false;
   bool _submitting = false;
   bool _loading = true;
@@ -66,7 +75,9 @@ class _WriteReviewScreenState extends State<WriteReviewScreen> {
       if (existing != null) {
         _rating = existing.rating;
         _commentController.text = existing.comment;
-        _photoUrl = existing.photoUrl;
+        _photoUrls
+          ..clear()
+          ..addAll(existing.photoUrls);
       }
       _loading = false;
     });
@@ -92,7 +103,7 @@ class _WriteReviewScreenState extends State<WriteReviewScreen> {
           _existing!.id,
           rating: _rating,
           comment: _commentController.text.trim(),
-          photoUrl: _photoUrl,
+          photoUrls: List.unmodifiable(_photoUrls),
         );
       } else {
         await cubit.submit(
@@ -101,7 +112,7 @@ class _WriteReviewScreenState extends State<WriteReviewScreen> {
           productName: widget.productName,
           rating: _rating,
           comment: _commentController.text.trim(),
-          photoUrl: _photoUrl,
+          photoUrls: List.unmodifiable(_photoUrls),
         );
       }
       if (!mounted) return;
@@ -112,7 +123,8 @@ class _WriteReviewScreenState extends State<WriteReviewScreen> {
           productName: widget.productName,
           rating: _rating,
           comment: _commentController.text.trim(),
-          photoUrl: _photoUrl,
+          // شاشة التأكيد تعرض صورة واحدة؛ الأولى تمثّل الباقي.
+          photoUrl: _photoUrls.isEmpty ? null : _photoUrls.first,
         ),
       );
     } catch (error) {
@@ -135,7 +147,9 @@ class _WriteReviewScreenState extends State<WriteReviewScreen> {
         case 'INVALID_PHOTO_URL':
           return 'صورة التقييم غير صالحة — أعد رفعها.';
         case 'REVIEW_EXISTS':
-          return 'سبق أن قيّمت هذا المنتج في هذا الطلب.';
+          return 'سبق أن قيّمت هذا المنتج.';
+        case 'TOO_MANY_PHOTOS':
+          return 'الحد الأقصى $_maxPhotos صور للتقييم الواحد.';
         case 'ORDER_NOT_COMPLETED':
           return 'لا يمكن تقييم منتجات طلب لم يُستلم بعد.';
         default:
@@ -158,8 +172,14 @@ class _WriteReviewScreenState extends State<WriteReviewScreen> {
   }
 
   /// يختار صورة من المعرض ويرفعها للخادم، ثم يحتفظ برابطها الحقيقي.
-  /// التقييم المصوّر يمنح نقاطاً أكثر عند اعتماده.
+  ///
+  /// إرفاق صورة (واحدة أو خمس) يمنح خمس نقاط مقطوعة — لا خمساً لكل صورة.
   Future<void> _attachPhoto() async {
+    if (_photoUrls.length >= _maxPhotos) {
+      _snack('الحد الأقصى $_maxPhotos صور للتقييم الواحد');
+      return;
+    }
+
     final picked = await ImagePicker().pickImage(
       source: ImageSource.gallery,
       maxWidth: 1600,
@@ -175,7 +195,15 @@ class _WriteReviewScreenState extends State<WriteReviewScreen> {
         purpose: 'review',
       );
       if (!mounted) return;
-      setState(() => _photoUrl = (data as Map<String, dynamic>)['url'] as String?);
+      final url = (data as Map<String, dynamic>)['url'] as String?;
+      if (url == null || url.trim().isEmpty) {
+        _snack('تعذّر رفع الصورة، حاول مرة أخرى');
+        return;
+      }
+      setState(() {
+        // السباق ممكن: رفعان متزامنان قد ينتهيان معاً بعد بلوغ السقف.
+        if (_photoUrls.length < _maxPhotos) _photoUrls.add(url);
+      });
       _snack('تمت إضافة الصورة');
     } catch (e) {
       if (!mounted) return;
@@ -192,94 +220,104 @@ class _WriteReviewScreenState extends State<WriteReviewScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Column(
-        children: [
-          OtakuScreenHeader(
-            title: _isEditingRejected ? 'تعديل التقييم' : 'قيّم المنتج',
-            subtitle: widget.productName,
-            artwork: 'assets/art/opt/a-i6.png',
-            onBack: () => context.router.maybePop(),
-          ),
-          Expanded(
-            child: _loading
-                ? const OtakuListSkeleton(count: 3, height: 110)
-                : ListView(
-                    padding: const EdgeInsets.fromLTRB(18, 12, 18, 26),
-                    children: [
-                      if (_isEditingRejected) ...[
-                        _RejectedBanner(reason: _existing!.rejectionReason),
-                        SizedBox(height: AppDimens.space5),
+      // عمودٌ موسَّط بعرض القراءة على اللوح — القائمة الممتدّة بعرض
+      // ١٣٦٦ بكسل تصير صفوفاً فارغة الوسط. لا أثر له على الهاتف.
+      body: ResponsiveContentFrame(
+        maxWidth: kReadingMaxWidth,
+        child: Column(
+          children: [
+            OtakuScreenHeader(
+              title: _isEditingRejected
+                  ? 'تعديل التقييم'
+                  : context.g(GenderedStrings.rateProduct),
+              subtitle: widget.productName,
+              artwork: 'assets/art/opt/a-i6.png',
+              artworkSlot: VisualSlots.writeReview,
+              onBack: () => context.router.maybePop(),
+            ),
+            Expanded(
+              child: _loading
+                  ? const OtakuListSkeleton(count: 3, height: 110)
+                  : ListView(
+                      padding: const EdgeInsets.fromLTRB(18, 12, 18, 26),
+                      children: [
+                        if (_isEditingRejected) ...[
+                          _RejectedBanner(reason: _existing!.rejectionReason),
+                          SizedBox(height: AppDimens.space5),
+                        ],
+                        Center(
+                          child: StarRating(
+                            rating: _rating,
+                            size: AppDimens.icon2xl,
+                            onChanged: (v) => setState(() => _rating = v),
+                          ),
+                        ),
+                        SizedBox(height: AppDimens.space7),
+                        Text(
+                          'ما رأيك في المنتج؟',
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(fontWeight: AppDimens.weightBold),
+                        ),
+                        SizedBox(height: AppDimens.space3),
+                        AnimeTextField(
+                          controller: _commentController,
+                          label: '',
+                          hint: context.g(GenderedStrings.writeYourOpinion),
+                          maxLines: 5,
+                        ),
+                        SizedBox(height: AppDimens.space6),
+                        Text(
+                          '📸 ${context.g(GenderedStrings.addPhotos)}',
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(fontWeight: AppDimens.weightBold),
+                        ),
+                        SizedBox(height: AppDimens.space2),
+                        Text(
+                          'اختياري — إرفاق الصور يمنحك $_maxPhotos نقاط '
+                          'إضافية، سواء أرفقت صورة واحدة أو $_maxPhotos.',
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                                height: AppDimens.lineHeightRelaxed,
+                              ),
+                        ),
+                        SizedBox(height: AppDimens.space3),
+                        _PhotoPicker(
+                          photoUrls: _photoUrls,
+                          maxPhotos: _maxPhotos,
+                          uploading: _uploadingPhoto,
+                          onAdd: _attachPhoto,
+                          onRemove: (index) =>
+                              setState(() => _photoUrls.removeAt(index)),
+                        ),
+                        SizedBox(height: AppDimens.space9),
+                        AnimePrimaryButton(
+                          label: _isEditingRejected
+                              ? 'إعادة الإرسال'
+                              : 'إرسال التقييم',
+                          onPressed: _submit,
+                          loading: _submitting,
+                          height: AppDimens.buttonHeightXl,
+                        ),
+                        SizedBox(height: AppDimens.space3),
+                        Text(
+                          'لكل منتج تقييم واحد، ويُنشر بعد المراجعة.',
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
+                        ),
+                        SizedBox(height: AppDimens.space6),
                       ],
-                      Center(
-                        child: StarRating(
-                          rating: _rating,
-                          size: AppDimens.icon2xl,
-                          onChanged: (v) => setState(() => _rating = v),
-                        ),
-                      ),
-                      SizedBox(height: AppDimens.space7),
-                      Text(
-                        'شنو رأيك بالمنتج؟',
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: AppDimens.weightBold,
-                        ),
-                      ),
-                      SizedBox(height: AppDimens.space3),
-                      AnimeTextField(
-                        controller: _commentController,
-                        label: '',
-                        hint: 'اكتب رأيك بالمنتج… الجودة، الحجم، سرعة التوصيل.',
-                        maxLines: 5,
-                      ),
-                      SizedBox(height: AppDimens.space6),
-                      Text(
-                        '📸 أضف صورة للمنتج',
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: AppDimens.weightBold,
-                        ),
-                      ),
-                      SizedBox(height: AppDimens.space2),
-                      Text(
-                        'اختياري — التقييم المصوّر يعطيك ٥ نقاط مجرّة بدل نقطة واحدة.',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          height: AppDimens.lineHeightRelaxed,
-                        ),
-                      ),
-                      SizedBox(height: AppDimens.space3),
-                      if (_photoUrl == null)
-                        AnimeOutlinedButton(
-                          label: _uploadingPhoto ? 'جاري الرفع…' : 'إضافة صورة',
-                          onPressed: _uploadingPhoto ? null : _attachPhoto,
-                          icon: Icons.add_a_photo_outlined,
-                          iconPosition: IconPosition.start,
-                        )
-                      else
-                        _AttachedPhotoRow(
-                          onRemove: () => setState(() => _photoUrl = null),
-                        ),
-                      SizedBox(height: AppDimens.space9),
-                      AnimePrimaryButton(
-                        label: _isEditingRejected
-                            ? 'إعادة الإرسال'
-                            : 'إرسال التقييم',
-                        onPressed: _submit,
-                        loading: _submitting,
-                        height: AppDimens.buttonHeightXl,
-                      ),
-                      SizedBox(height: AppDimens.space3),
-                      Text(
-                        'تقييم واحد لكل منتج بكل طلب. يُنشر بعد مراجعة الإدارة.',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      SizedBox(height: AppDimens.space6),
-                    ],
-                  ),
-          ),
-        ],
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -308,7 +346,7 @@ class _RejectedBanner extends StatelessWidget {
             '❌ لم يتم قبول تقييمك',
             style: Theme.of(context).textTheme.titleSmall?.copyWith(
               fontWeight: AppDimens.weightBold,
-              color: colors.error,
+              color: colors.errorText,
             ),
           ),
           if (reason != null && reason!.trim().isNotEmpty) ...[
@@ -327,43 +365,141 @@ class _RejectedBanner extends StatelessWidget {
   }
 }
 
-class _AttachedPhotoRow extends StatelessWidget {
-  const _AttachedPhotoRow({required this.onRemove});
+/// شبكة صور التقييم — إضافة وإزالة حتى السقف.
+///
+/// المصغّرات مربّعة بحجم ثابت وتلتفّ في `Wrap`، فتعمل على الهاتف الصغير
+/// واللوح بلا تخطيط منفصل لكلٍّ منهما. زرّ الإضافة يختفي عند بلوغ السقف بدل
+/// أن يبقى معطَّلاً يوحي بإمكان المزيد.
+class _PhotoPicker extends StatelessWidget {
+  const _PhotoPicker({
+    required this.photoUrls,
+    required this.maxPhotos,
+    required this.uploading,
+    required this.onAdd,
+    required this.onRemove,
+  });
 
+  final List<String> photoUrls;
+  final int maxPhotos;
+  final bool uploading;
+  final VoidCallback onAdd;
+  final ValueChanged<int> onRemove;
+
+  static const double _tile = 78;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final full = photoUrls.length >= maxPhotos;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: AppDimens.space3,
+          runSpacing: AppDimens.space3,
+          children: [
+            for (var i = 0; i < photoUrls.length; i++)
+              _Thumb(
+                url: photoUrls[i],
+                size: _tile,
+                onRemove: () => onRemove(i),
+              ),
+            if (!full)
+              Semantics(
+                button: true,
+                label: 'إضافة صورة',
+                child: InkWell(
+                  onTap: uploading ? null : onAdd,
+                  borderRadius: BorderRadius.circular(AppDimens.radiusMd),
+                  child: Container(
+                    width: _tile,
+                    height: _tile,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(AppDimens.radiusMd),
+                      border: Border.all(color: theme.colorScheme.outlineVariant),
+                    ),
+                    child: uploading
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Icon(
+                            Icons.add_a_photo_outlined,
+                            size: AppDimens.iconMd,
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+        SizedBox(height: AppDimens.space2),
+        Text(
+          full
+              ? 'وصلت إلى الحد الأقصى ($maxPhotos صور).'
+              : '${photoUrls.length} من $maxPhotos',
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// مصغّرة صورة واحدة مع زرّ إزالتها.
+class _Thumb extends StatelessWidget {
+  const _Thumb({required this.url, required this.size, required this.onRemove});
+
+  final String url;
+  final double size;
   final VoidCallback onRemove;
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.themeColors;
-    return Row(
-      children: [
-        Container(
-          width: 64,
-          height: 64,
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(AppDimens.radiusMd),
-            border: Border.all(
-              color: Theme.of(context).colorScheme.outlineVariant,
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(AppDimens.radiusMd),
+              child: CustomerPhoto(url: url),
             ),
           ),
-          child: Icon(
-            Icons.image_outlined,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-        ),
-        SizedBox(width: AppDimens.space3),
-        Expanded(
-          child: Text(
-            'تمت إضافة الصورة',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              fontWeight: AppDimens.weightSemiBold,
-              color: colors.success,
+          PositionedDirectional(
+            top: 2,
+            end: 2,
+            child: Semantics(
+              button: true,
+              label: 'إزالة الصورة',
+              child: InkWell(
+                onTap: onRemove,
+                customBorder: const CircleBorder(),
+                child: Container(
+                  width: 22,
+                  height: 22,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.55),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.close_rounded,
+                    size: 14,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
             ),
           ),
-        ),
-        TextButton(onPressed: onRemove, child: const Text('إزالة')),
-      ],
+        ],
+      ),
     );
   }
 }

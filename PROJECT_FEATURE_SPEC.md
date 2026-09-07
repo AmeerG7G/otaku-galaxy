@@ -3087,7 +3087,8 @@ Confirmed defects in current code. Each was verified by reading the named file o
 |---|---|---|---|
 | B-1 | ~~P1~~ **FIXED 2026-08-25 (§20)** | ~~**`/favorites` omits every promotion field.** `favoritesRepo.shapeProductImages` returns no `previousPrice`, `discountPercent`, `hasDeliveryPromo`, `deliveryPromoAmount` or `franchiseIds`. A product showing `−40٪` on the home screen shows **no badge** in Favorites, because `Product.hasDiscount` needs those fields~~ — now maps through the canonical `catalogRepo.mapProduct` | `backend/src/repositories/favoritesRepo.ts` |
 | B-2 | ~~P1~~ **FIXED 2026-08-25 (§20)** | ~~**`deliveryPromoAmount` missing from product detail and home `discover`.** `catalogService` hand-rolls two mappers that emit `hasDeliveryPromo` but not the amount, so the promo line silently disappears on those surfaces while working on `/catalog/products`~~ — both hand-rolled mappers deleted; the service now delegates to `productRepo.findDetailById` / `productRepo.listDiscover` | `backend/src/services/catalogService.ts` |
-| B-3 | P2 | **Inactive governorates are invisible and unrecoverable.** `adminService.listGovernorates()` calls `governorateRepo.listActive`, and `adminGovernorateSchema` has no `isActive`, so a deactivated governorate cannot be seen or restored from the admin UI | `adminService.ts:256`, `validators/admin.ts` |
+cd ~/otaku_galaxy/backend
+APP_ENV=dev npm run dev| B-3 | P2 | **Inactive governorates are invisible and unrecoverable.** `adminService.listGovernorates()` calls `governorateRepo.listActive`, and `adminGovernorateSchema` has no `isActive`, so a deactivated governorate cannot be seen or restored from the admin UI | `adminService.ts:256`, `validators/admin.ts` |
 | B-4 | P2 | **Admin product list omits `product_options`**, so `getProductForEdit` falls back to the public endpoint — which 404s for inactive products, making `patchProductFlags` fail on them with `INACTIVE_PRODUCT_OPTIONS_UNAVAILABLE` | `catalogRepo.ts` (no `product_options` select), `admin/src/api/productsApi.ts` |
 | B-5 | P2 | **`franchises.image_url` is unreachable.** `FranchisesPage` has no image field, so the column and the `franchise` media purpose are never written | `admin/src/pages/FranchisesPage.tsx` — no `ImageUploadField` |
 | B-6 | P2 | **Notification preference toggles do nothing.** 6 switches persist to `SharedPreferences`; nothing sends them to the server and no producer reads them | `lib/features/settings/data/notification_prefs_storage.dart` |
@@ -4640,3 +4641,3511 @@ Completing an actual APK/AAB needs a JDK and must be confirmed by the maintainer
 3. **No staging or production database exists yet** — both must be provisioned.
 4. **CI has never run**; its checks are required by branch protection, so the
    first pull request will be what actually exercises the workflow.
+
+---
+
+# STEP 25 — DEV AUDIT & GAP ANALYSIS
+*2026-08-29 · dev branch only · two repository-level defects found and fixed*
+
+Documentation-and-audit batch. Operational status now lives in
+[`README.md`](README.md) §9–§10 with explicit ✅ / ⚠️ / ❌ / 🔧 labels; this
+section records what the audit found.
+
+## 25.1 [CRITICAL] The repository was missing 23 source files
+
+`flutter analyze` **passes locally but failed in CI** with
+`Target of URI doesn't exist: …/auth_repository_impl.dart`. The files exist on
+disk; they were never committed.
+
+**Root cause.** `.gitignore` carried a bare `data/` rule under a
+"Database / local dev" heading. A bare pattern matches at **every** depth, so it
+excluded `lib/features/*/data/` — thirteen directories holding the entire
+Flutter data layer (repositories and local datasources). 191 Dart files existed
+under `lib/`; only 168 were tracked.
+
+**Consequence.** A fresh clone could not build the app. The only reason this was
+invisible is that every working copy already had the files.
+
+**Fix.** The rule is anchored to the repository root (`/data/`), which is what
+the "local dev database" intent meant. All 191 files are now tracked.
+
+This is exactly the class of defect that only surfaces on a clean checkout, and
+CI is what surfaced it.
+
+## 25.2 [CRITICAL] Concurrent migration runs corrupted each other
+
+The backend CI job failed with
+`duplicate key value violates unique constraint "pg_class_relname_nsp_index"`.
+
+**Root cause.** `runMigrations` had no mutual exclusion. `CREATE TABLE IF NOT
+EXISTS` is not concurrency-safe in PostgreSQL: two sessions both pass the
+existence check, then collide on a system catalogue index.
+
+**Reproduced locally** — two concurrent runners against an empty schema: one
+succeeded, the other failed with `pg_type_typname_nsp_index`.
+
+**Fix.** The runner takes a session-scoped `pg_advisory_lock` for the duration
+of the run and releases it explicitly. Re-verified: both concurrent runners now
+succeed (one applies 24 migrations, the other no-ops), and a third run is a
+clean no-op.
+
+## 25.3 Known failing Flutter test — classified, not fixed
+
+```
+test/api_integration_test.dart
+  أقسام الإكسسوارات والحقائب
+```
+
+**Classification: TEST DATA PROBLEM (pre-existing).** The test asserts every
+subcategory of «إكسسوارات» holds at least one product; 5 of its 8 are empty in
+the development database. Those subcategories were created through the admin
+dashboard — the seed script defines only three.
+
+**Not an application defect** — verified live that the API returns
+`success: true` with `0` items for an empty subcategory rather than erroring.
+
+Deliberately **not fixed**: the remedy is a merchandising decision (stock those
+subcategories) or a test-scope decision (stop asserting catalogue completeness),
+and neither is mine to make. Both options are recorded in README §10.
+
+## 25.4 Security audit — no findings
+
+| Check | Result |
+|---|---|
+| `.env` files tracked or in history | none — only `*.example` templates and an intentionally empty test fixture |
+| Hardcoded secrets in tracked source | none |
+| Real values in committed templates | none — all `change_me_*`, `USER:PASSWORD`, `*.example` |
+| Production URL leaked into dev config | none; each environment's host lives in its own `AppConfig` entry |
+| Dev or staging pointing at a production database | no; templates are distinct per environment |
+| CORS | empty allow-list when unset, which blocks all cross-origin |
+| Rate limiting | global + per-purpose auth limiters active |
+| Secrets in logs | none; the seed logs the admin phone and explicitly not the password |
+
+Authorization coverage already asserted by existing tests: unauthenticated
+requests rejected, customers blocked from admin routes, customers unable to read
+or confirm another customer's order, unable to review another customer's order,
+unable to moderate reviews; and idempotency on points, stock restoration,
+reminders and the birthday registration.
+
+## 25.5 Verified state
+
+| Check | Result |
+|---|---|
+| Backend `tsc --noEmit` | clean |
+| Backend `vitest` | **209 passed** (15 files) |
+| Admin `tsc -b` | clean |
+| Admin `vite build` (dev / staging / prod) | all three succeed |
+| `flutter analyze` | clean |
+| `flutter test --exclude-tags integration` | **291 passed** |
+| `flutter test` (backend running) | 301 passed, 1 skipped, 1 failed (§25.3) |
+| Migration race, before/after fix | reproduced, then fixed and re-verified |
+
+**Not verified:** Android and iOS builds. The environment has a JRE but no JDK,
+so Gradle cannot compile; there is no emulator or device. Gradle *configuration*
+of all three flavors was verified.
+
+## 25.6 Gap summary
+
+**P0 — before staging is possible:** provision a staging database and backend
+host, generate staging secrets, replace the placeholder hostnames, and get one
+green CI run.
+
+**P1 — reliability:** connect a real SMS provider (the `http` provider is
+implemented but has never spoken to a carrier), verify Android builds on a
+machine with a JDK, configure iOS flavors, decide the catalogue-data question.
+
+**P2 — later:** release signing (release currently signs with the debug key), a
+deployment pipeline (CI runs tests only), backup/restore, monitoring, load
+testing, and an admin dashboard test runner.
+
+---
+
+# STEP 26 — DEV: ADMIN DASHBOARD ENHANCEMENT & FEATURE INTEGRATION
+
+**Branch:** `dev` only. Nothing was merged, deployed, or promoted to `staging`
+or `prod`; no PR was opened. All schema changes are additive migrations applied
+to the development database only.
+
+This step is written the way the audit steps before it are: what already
+existed, what was actually missing, what was built, and what was deliberately
+**not** built. Only features verified in the repository are marked implemented.
+
+## 26.1 Audit — what already existed
+
+The request assumed several systems were missing. Most were not.
+
+| Feature | Database | Backend | Admin UI | Flutter | Verdict before this step |
+|---|---|---|---|---|---|
+| Anime (`franchises`) | ✅ 014 | ✅ CRUD | ✅ page + product picker | ✅ browse | **Complete** except search |
+| Delivery zones | ✅ 015 | ✅ server-side pricing | ✅ separate page | ✅ mandatory picker | **Complete**, but split across two screens |
+| Notifications | ✅ 012 | ⚠️ single-user only | ⚠️ read-only + 1 recipient | ✅ inbox | **Partial** — no targeting |
+| Galaxy Points ledger | ✅ 010 | ✅ | ✅ read-only | ✅ | **Complete** |
+| Galaxy **levels** | ❌ | ❌ | ❌ | ⚠️ hardcoded `enum` | **Flutter only** |
+| Birthday | ✅ 013 | ⚠️ 3 coarse filters | ⚠️ flat list | ✅ | **Partial** |
+| Customers | ✅ 001 | ⚠️ page/limit only | ⚠️ no search | — | **Partial** |
+| Banners | ✅ 004 | ✅ | ✅ CRUD | ✅ carousel | **Complete** — symptom already fixed |
+| Categories/subcategories | ✅ 002 | ⚠️ no product filter | ⚠️ no drill-down | ✅ | **Partial** |
+| Order state machine | ✅ 006 | ✅ | ✅ | ✅ | **Complete**, but two-step confirm |
+
+Consequence: this step **extended** existing systems. No table, endpoint, or
+screen was duplicated, and no working API was replaced.
+
+## 26.2 Orders — the confirmation stage was removed, not renamed
+
+`ORDER_STATUS_TRANSITIONS` changed:
+
+```
+PENDING_ADMIN_CONFIRMATION: ['CONFIRMED', 'REJECTED']   →  ['PREPARING', 'REJECTED']
+```
+
+Three consequences had to be handled rather than discovered later:
+
+1. **`CONFIRMED` still exists.** Real orders stopped there. Deleting the value
+   or its outgoing transition would strand those rows in a state the machine
+   cannot move. It is reachable *out of*, never *into*.
+2. **Notification ownership moved.** `PREPARING` now emits «تم قبول طلبك», but
+   only from `PENDING_ADMIN_CONFIRMATION`. Without that condition, a legacy
+   order moved out of `CONFIRMED` would send a second acceptance notification
+   for one order.
+3. **Customer cancellation window.** Cancelling was allowed in `PENDING` and
+   `CONFIRMED`. Collapsing the stage would have silently removed the customer's
+   ability to cancel the instant an admin clicked confirm. `PREPARING` was added
+   to `CUSTOMER_CANCELLABLE_STATUSES` to preserve the existing right.
+
+Flutter previously rendered `PREPARING` as «قيد التوصيل» and offered *confirm
+receipt* on it — a button the server refuses with `NOT_OUT_FOR_DELIVERY`. Both
+were corrected.
+
+Eight existing tests drove the old path (`CONFIRMED → PREPARING → …`). They were
+updated to the new path, not deleted; the two that assert transition behaviour
+specifically were rewritten to assert the new rule.
+
+## 26.3 Anime search — the data existed, the path did not
+
+`franchises` and `product_franchises` shipped in migration 014, but
+`productRepo.search` matched `products.name` alone. A product named «قلادة فضية»
+tagged *Demon Slayer* was unreachable to anyone searching the anime.
+
+Migration `025` adds `alt_names TEXT[]` plus a `franchise_search_text()` helper.
+Search now matches product name **or** franchise name **or** any alias, and
+skips inactive franchises so hiding an anime hides it from search too.
+
+## 26.4 Bind-parameter defect found during implementation
+
+The first birthday/audience implementation interpolated `$1` (timezone) and `$2`
+(window days) directly into the filter conditions. PostgreSQL **rejects any
+statement passed more parameters than it references**, so filters that need
+neither — «لم يسجّل ميلاده», «له طلبات» — failed with a 500 while the others
+worked. Caught by an existing dashboard test before it reached a screen.
+
+Fixed by binding both parameters in an explicit scope join used by every query:
+
+```sql
+FROM users u CROSS JOIN (SELECT $1::text AS tz, $2::int AS days) k
+```
+
+Conditions read `k.tz` / `k.days` by name, so both parameters are always
+referenced regardless of the filter. The same latent defect existed in the
+audience builder and was fixed the same way.
+
+## 26.5 Timezone — «today» is the customer's calendar
+
+`config.storeTimezone` (`STORE_TIMEZONE`, default `Asia/Baghdad`) is passed into
+every birthday query. A UTC server rolls over at 03:00 Baghdad time: tomorrow's
+greeting would arrive three hours before today ended, and the real birthday
+would be classified as "yesterday". Migration `026` adds `next_birthday()` and
+`safe_birthday_date()`, which handle year-wrap and 29 February (celebrated on
+the 28th in non-leap years instead of dropping the customer from every list).
+
+## 26.6 Loyalty levels — moved out of the app binary
+
+Migration `027` creates `loyalty_levels`, seeded with the **exact** values that
+were in `otaku_level.dart`, so the upgrade changed nothing visible.
+
+Two invariants are enforced in the database, not by convention:
+
+- `required_points` is `UNIQUE` — two equal thresholds make "current level" a
+  question with no single answer.
+- A deferred constraint trigger requires **an active level at 0 points**. Without
+  it, deleting or disabling the base level leaves every new customer (balance 0)
+  off the ladder with no level at all.
+
+**[CRITICAL] The ledger is never rewritten.** A test compares every
+`points_ledger` row before and after a threshold edit and asserts they are
+byte-identical. Editing a threshold changes how a balance is *interpreted*,
+never its amount.
+
+Flutter has **no fallback ladder** on purpose. A cached local ladder would show
+a customer a reward cancelled a month ago and look correct.
+
+## 26.7 Strict payload validation for broadcasts
+
+`audience: "all"` sent together with `userIds: [two customers]` used to be
+accepted — Zod strips unknown keys by default — and the announcement would reach
+**every** customer while the admin believed they were messaging two. The
+broadcast schema is now a `.strict()` discriminated union; the contradictory
+payload is rejected with 400 and a test asserts **zero** notification rows are
+created. No message can be recalled after sending.
+
+## 26.8 Deliberately NOT implemented
+
+| Requested | Status | Why |
+|---|---|---|
+| Scheduled notification sending | ❌ Not implemented | No calendar scheduler exists. The only scheduler is the rating reminder, driven by order state. Nothing would fire a scheduled send. |
+| Automatic birthday greetings | ❌ Not implemented | Same reason. Greetings are sent by an admin click; the screen says so. |
+| Push notification delivery | ❌ Not implemented | No provider connected. The API returns `push: null` and the UI states records are in-app only. |
+| Banner start/end dates | ❌ Not implemented | The column does not exist and was not invented. |
+| Manual points adjustment | ❌ Not implemented (pre-existing decision) | Every ledger row mirrors a real event guarded by a unique index. A manual grant with no event breaks that guarantee. |
+
+## 26.9 Verification
+
+| Command | Result |
+|---|---|
+| `backend: npx tsc --noEmit` | ✅ clean |
+| `backend: npx vitest run` | ✅ **281 passed** (22 files) |
+| `admin: npx tsc -b` | ✅ clean |
+| `admin: npx vite build --mode dev\|staging\|prod` | ✅ all three |
+| `flutter analyze` | ✅ clean |
+| `flutter test --exclude-tags integration` | ✅ **292 passed** |
+| `flutter test test/api_integration_test.dart` (live dev backend) | ⚠️ 10 passed, 1 skipped, **1 failed — the pre-existing empty-subcategory data problem from STEP 25, unchanged** |
+
+Verified in the running dev application (browser, real dev database):
+
+- Order **#93**: one click on «تأكيد الطلب» → status `PREPARING`, history
+  `['PENDING_ADMIN_CONFIRMATION', 'PREPARING']` — no intermediate stage.
+- Unified **المحافظات والتوصيل** screen: 10 governorates, Najaf expanding to two
+  zones; inside-district fee set to 3,000 and read back from the public
+  `/catalog/governorates/:id/zones` endpoint as 3,000 / 4,000.
+- **Banners**: `/catalog/home` returns two active banners with relative
+  references; both images served `200` with correct content types.
+- **Loyalty ladder** rendering with live customer counts per level (104/1/0/0,
+  reconciling with 105 customers).
+- **Customer search**: `0771` → 13 of 105, filtered in SQL.
+- **Birthdays**: «لم يسجّل ميلاده» → 102 customers, timezone displayed as
+  `Asia/Baghdad`; composer opened pre-targeted with a live audience count of 102
+  and the "in-app record, not push" warning.
+- **Responsive**: drawer navigation confirmed at 319 px viewport.
+
+A bug was found *during* browser verification and fixed: the broadcast
+composer's reset effect depended on an object literal rebuilt by its parent on
+every render, so it re-ran continuously and would have wiped whatever the admin
+was typing. It now resets only on the closed → open transition.
+
+## 26.10 Not verifiable in this environment
+
+- **Android / iOS builds and on-device runs** — no JDK (`javac` absent), no
+  emulator, no device. Unchanged from STEP 25.
+- **Flutter UI rendering** — the web build launches and reaches the dev backend
+  (verified: `GET /api/catalog/settings` → 200 from the browser), but Flutter
+  renders to canvas and the preview pane cannot capture frames here, so no
+  screenshot-level UI verification was possible. The Flutter data layer is
+  covered instead by the integration suite above, run against the live backend.
+
+---
+
+# STEP 27 — DEV: DYNAMIC CHARACTER ARTWORK
+
+**Branch:** `dev` only. Not merged, deployed, or promoted. One additive
+migration applied to the development database only.
+
+## 27.1 What existed before
+
+The preceding audit (see the Character Art Slots report) established the
+baseline: 48 references in `lib/`, 12 illustration files, ~30 placements, heavy
+reuse (`a-i0.png` in seven places), 22 of 24 inline `Image.asset` calls without
+error handling, and no disk image cache. The backend already had uploads, MIME
+sniffing, a storage driver, `media_files`, relative URLs and immutable cache
+headers. Nothing about image handling needed inventing.
+
+This step therefore **extended** that infrastructure. No table, endpoint or
+upload component was duplicated.
+
+## 27.2 The single design decision everything follows
+
+An unconfigured slot is **omitted** from `/catalog/visuals` rather than returned
+empty. Absence is the fallback signal.
+
+The alternative — returning every slot with a possibly-empty image list — forces
+the app to distinguish "not configured" from "configured with nothing", two
+states that mean the same thing to it. Omission makes the post-upgrade state
+(no rows at all) and the deleted-image state identical and correct, with no
+branch in the client.
+
+`ManagedArtwork.fallbackAsset` is required for the same reason. An optional
+fallback would let one forgotten call site render nothing on a customer's phone.
+
+## 27.3 Rotation is resolved server-side
+
+`GET /catalog/visuals` returns the chosen `currentUrl`, the full `urls` list for
+prefetching, and `validUntil`.
+
+Resolving on the device would have meant: a character that changes whenever a
+widget rebuilds, two phones disagreeing because their clocks differ, and a user
+able to see tomorrow's character by moving their clock forward. The daily index
+is `((now() AT TIME ZONE store_tz)::date - epoch) % count`, computed in SQL —
+no device state, no randomness, stable for the whole store day.
+
+## 27.4 Guards added at the database level
+
+- `slot_key` is `UNIQUE` and CHECK-constrained to `^[a-z][a-z0-9_]{2,48}$`. A key
+  with a space or an Arabic letter would store fine and then match no
+  `ManagedArtwork` in the app — a slot that looks configured and never appears.
+  The validator repeats the same pattern so the rejection is a 400, not a 500.
+- `UNIQUE (slot_id, url)` — the same image twice in one slot skews daily
+  rotation for no benefit.
+- Images are ordered by `sort_order, created_at`. Without the second key, two
+  images sharing a `sort_order` have undefined order, and the daily index picks
+  a different one between requests on the same day.
+- `ON DELETE CASCADE` from slot to images: an image has no meaning outside its
+  slot. Files on disk are left alone — that is a separate cleanup decision.
+
+## 27.5 Migration of existing artwork
+
+| Category | Count | Action |
+|---|---|---|
+| A — must stay local | 5 placements | Untouched: splash ×2, offline gate art, offline gate logo, store logo |
+| B — migrated | 25 placements | Now `ManagedArtwork` across 16 slots |
+| C — static UI | 0 | None found; every remaining `Image.asset` is either a fallback branch or Category A |
+
+No bundled asset was deleted. Every migrated placement kept its original file as
+the required fallback.
+
+Five design-system widgets gained an optional `artworkSlot` alongside the
+existing `artwork` path (`OtakuScreenHeader`, `AnimeEmptyState`,
+`OtakuEditorialPanel`, `AnimeGuestPrompt`, `AuthScaffold`), so 23 call sites
+changed by exactly one added argument and no layout changed.
+
+## 27.6 Security review
+
+- Read is public and read-only; there is no write handler on the customer route.
+- All mutations sit behind `adminRoutes`, which enforces auth + admin role
+  before the controller runs. Verified: customer token → 403, no token → 401,
+  on every mutation path.
+- Uploads keep the existing magic-byte MIME sniffing; `purpose: 'slot'` is
+  admin-only because `mediaController` already restricts non-admins to `review`
+  and `avatar`. Verified: customer uploading `purpose=slot` → 403.
+- A `/uploads/` URL that has no `media_files` row is rejected
+  (`MEDIA_NOT_FOUND`), so a slot cannot be pointed at a dangling reference.
+- Image mutations verify the image belongs to the named slot, so an image id
+  from another slot returns 404 rather than silently succeeding.
+- **Upload ceiling left at 5 MB** as instructed. Character art renders at
+  76–250 px wide, so a lower ceiling or upload-time resizing is worth
+  considering — documented here rather than changed silently.
+- No `.env` committed, no secrets introduced, no production database touched.
+
+## 27.7 Verification
+
+| Command | Result |
+|---|---|
+| `backend: npx tsc --noEmit` | ✅ clean |
+| `backend: npx vitest run` | ✅ **303 passed** (23 files) — 22 new |
+| `admin: npx tsc -b` | ✅ clean |
+| `admin: vite build --mode dev\|staging\|prod` | ✅ all three |
+| `flutter analyze` | ✅ clean |
+| `flutter test --exclude-tags integration` | ✅ **309 passed** — 17 new |
+
+Verified against the running DEV stack with real data:
+
+- Baseline `/catalog/visuals` → `{ slots: [], timezone: "Asia/Baghdad" }`, so an
+  unconfigured install renders bundled assets.
+- Two real images uploaded with `purpose=slot`, a slot created, both attached.
+- Chosen image served `200 image/png` with `Cache-Control: public,
+  max-age=2592000, immutable`.
+- Daily rotation returned the identical URL across five consecutive reads.
+- `validUntil` = `21:00Z` = midnight Baghdad.
+- Disabling every image → slot omitted (app falls back); re-enabling → returned.
+- Dashboard page renders the slot with preview, counts, rotation and per-image
+  active state; the detail drawer shows both images with ordering and controls.
+- Flutter DEV app fetched `GET /api/catalog/visuals → 200` at splash and
+  downloaded **exactly one** image — the selected one, not the whole list.
+
+## 27.8 Not verified
+
+- **Android / iOS builds and on-device runs** — no JDK (`javac` absent), no
+  emulator, no device. This step adds `cached_network_image`, which pulls
+  `sqflite` and `path_provider` — **native plugins**. The Android and iOS builds
+  must be run on a machine with a working toolchain before this is trusted.
+- **Disk cache persistence across cold starts** — on Flutter web the browser
+  HTTP cache does the work (the immutable header covers it); the real disk cache
+  path is mobile-only and could not be exercised here.
+- **Visual comparison of migrated screens** — Flutter renders to canvas and this
+  environment cannot capture frames. Layout is unchanged by construction (same
+  widget, same size arguments, artwork swapped inside), and 309 widget tests
+  pass, but a human should look at the screens.
+
+## 27.9 Promotion status
+
+This implementation remains **DEV-only**. It is NOT ready to be promoted to
+staging until the remaining application features are complete and tested, and
+until the Android/iOS builds have been verified on a machine with a working
+toolchain.
+
+---
+
+# STEP 28 — DEV: FULL VISUAL SLOT CATALOGUE
+
+**Branch:** `dev` only. One additive migration (`029`) on the development
+database. Nothing merged, pushed, deployed, or promoted.
+
+STEP 27 built the mechanism with 16 role-based slots. This step completes the
+coverage: an exhaustive scan of the Flutter source, one slot per placement, and
+a dashboard that groups them by where they appear.
+
+## 28.1 The scan
+
+| Search | Hits |
+|---|---|
+| `Image.asset(` | 10 |
+| `AssetImage` / `ExactAssetImage` | **0** |
+| `DecorationImage` | **0** |
+| `'assets/` literals (any form) | **47** |
+
+`Image.asset` plus the named parameters (`artwork:`, `fallbackAsset:`, `asset:`,
+`art:`) are therefore the complete surface. Reusable widgets were traced to
+their call sites rather than counted once: `_Art` in onboarding serves three
+slides, `_PromoCard` serves two cards, and each now carries its own slot.
+
+47 literals = 5 permanently local + 42 managed.
+
+## 28.2 Granularity decision
+
+STEP 27 used role slots (`auth_header` for four screens). That was wrong for
+this product: the shop owner thinks "the login screen character", not "the auth
+header role". Split to **one slot per placement**.
+
+Only two slots remain shared, and both are shared *in the code* — a single
+literal serving several screens — not merged by choice:
+
+- `auth_cta_character` — one panel inside `AuthScaffold`.
+- `guest_prompt_character` — one default in `AnimeGuestPrompt`.
+
+Splitting either would require adding a parameter to a widget so that four
+screens could pass four different values for something that is visually one
+element. That is complexity bought with nothing.
+
+## 28.3 Seeding is safe
+
+Migration 029 seeds all 42 slots with label, location and group. This is the
+difference between a dashboard the owner can browse and one that demands they
+know internal Dart identifiers.
+
+It changes nothing in the app: `listPublished` requires at least one **active
+image**, so a seeded-but-empty slot is still omitted, and every screen still
+renders its bundled asset. A test asserts exactly this — published count equals
+total slots minus slots without active images.
+
+## 28.4 The silent-failure guard
+
+A slot key is a contract between two sides that never meet: the server sends
+`slot_key`, and `ManagedArtwork` asks for a Dart constant written by hand. A
+one-character typo throws nothing and logs nothing — the slot looks configured
+in the dashboard, the admin uploads an image, and the app never changes. Only
+someone diffing the two files by eye would find it.
+
+`backend/tests/visual-catalogue.test.ts` is that diff, automated: it parses
+`lib/features/visuals/domain/visual_slot.dart` with a regex and compares the
+extracted keys against `visual_slots` in both directions. It also asserts every
+row has a label, a location and a real group, and that no key contains `splash`,
+`offline`, `logo` or `brand`.
+
+## 28.5 Verification
+
+| Command | Result |
+|---|---|
+| `backend: npx tsc --noEmit` | ✅ clean |
+| `backend: npx vitest run` | ✅ **310 passed** (24 files) |
+| `admin: npx tsc -b` | ✅ clean |
+| `admin: vite build --mode dev\|staging\|prod` | ✅ all three |
+| `flutter analyze` | ✅ clean |
+| `flutter test --exclude-tags integration` | ✅ **315 passed** |
+
+Static cross-check: all 42 declared Dart constants are wired to a real call
+site, and no call site references an undeclared key (set comparison, both
+directions empty).
+
+Live against the running DEV stack:
+
+- `GET /admin/visual-slots` → 42 slots across 10 groups, each with label,
+  location and group key.
+- Dashboard renders them grouped by app area, showing «6 من 42 موضعاً مخصَّص»,
+  with plain-Arabic locations and a «مضمَّن» tag on unconfigured slots.
+- Six slots configured spanning five areas — auth, home, shopping, orders,
+  rewards — and `GET /catalog/visuals` returns exactly those six.
+- The Flutter DEV app logged
+  `▶ [web] base=http://localhost:4000/api GET .../catalog/visuals`
+  against the DEV backend.
+
+## 28.6 Not verified
+
+- **Android / iOS builds** — no JDK, no device. `cached_network_image` pulls
+  `sqflite` and `path_provider`, which are native plugins; the mobile builds
+  must be exercised on a real toolchain.
+- **Per-screen visual comparison** — Flutter renders to canvas and this
+  environment cannot capture frames. Layout is unchanged by construction (same
+  widget, same size arguments) and 315 widget tests pass, but a human should
+  look at the screens.
+- **Disk cache across cold starts** — mobile-only path.
+
+## 28.7 Promotion status
+
+**DEV-only.** Not ready for staging until the remaining application features are
+complete and the mobile builds are verified on a working toolchain.
+
+---
+
+# STEP 29 — DEV: IMAGE REPLACEMENT FIX + HOME/CATEGORIES UI
+
+**Branch:** `dev` only. Three additive migrations (`030`–`032`) on the
+development database. Nothing merged, pushed, deployed, or promoted.
+
+## 29.1 Root cause — the replaced image never appeared
+
+Reproduced before touching anything:
+
+```
+BEFORE: f145432b.png
+uploaded replacement: cae7abd9.png
+AFTER : f145432b.png      ← unchanged
+```
+
+**`fixed` rotation returns the image at `sort_order` 0. Uploading appended at
+`MAX(sort_order) + 1`.** So a "replacement" landed at the end of a list whose
+head was still the old image. The dashboard showed two images and the app kept
+serving the first one, forever.
+
+It is the worst shape a defect can take: no error, no log, nothing to notice
+except that the dashboard and the phone disagree.
+
+### The fix — replacement is now its own operation
+
+`POST /admin/visual-slots/:id/images` takes `mode`:
+
+| mode | behaviour |
+|---|---|
+| `append` | adds to the end — builds a rotation set |
+| `replace` | deactivates every existing image and inserts the new one **first** |
+
+Both happen in one transaction, so a failure midway cannot leave a slot with no
+active image. The old image is **deactivated, not deleted**: the file stays on
+disk, other things may reference it, and undo is one click.
+
+The dashboard picks the mode automatically — uploading into a slot that already
+has an active image means *replace*; "إضافة صورة إلى مجموعة التدوير" is the
+explicit second action.
+
+### Second cause — a running app never re-fetched
+
+The configuration was read once at splash. An admin changing an image while the
+app was open on a customer's phone would not be seen until a cold restart,
+which nobody performs deliberately.
+
+`VisualsRepository` now installs an `AppLifecycleListener` and re-fetches on
+resume, throttled to two minutes. And it only bumps `revision` when the new
+`version` hash differs, so a resume with no changes rebuilds nothing.
+
+### Cache
+
+Uploads mint a UUID filename, so a replacement is always a **new URL** — the
+`immutable, max-age=30d` header stays truthful and no cache-busting query
+parameter is needed. What needed a freshness signal was the *configuration*, and
+that is the new `version` field on `GET /catalog/visuals`.
+
+### Third defect, found during live verification
+
+`prefetch()` awaited each image's `ImageStream` with no timeout. On platforms
+where the listener never fires — Flutter web, which has no disk cache — the
+loop stopped at the first image and **no image was ever prefetched**. Silent
+again: no error, no log. Each warm-up now has an 8-second ceiling, and a test
+asserts `prefetch()` returns even when every URL is unreachable.
+
+## 29.2 Slot catalogue corrections
+
+| Change | Reason |
+|---|---|
+| `home_categories_backdrop` **removed** (migration 031) | Its screen section was deleted; a slot for a location that no longer renders promises something that cannot happen |
+| `social_tiktok` · `social_instagram` · `social_whatsapp` **added** (032) | The account screen used generic Material glyphs (a music note for TikTok). Brand logos cannot be bundled — they are trademarks — and no licensed icon package is present, so the shop owner uploads them |
+
+Catalogue is now **44 slots**. The parity test between the Dart constants and
+the database covers all of them, and it caught its own suite leaking throwaway
+slots during this step — which is exactly what it is for.
+
+## 29.3 Category card — the image was a background
+
+`Image.network(fit: BoxFit.cover)` inside a `Stack(fit: StackFit.expand)`, with
+a gradient veil painted over it so the text stayed readable. The uploaded
+character swallowed the whole card and half of it disappeared under the veil.
+
+Now a `Row`: text in the leading half, a dedicated 96px art area on the
+trailing side — which in this RTL layout is the physical **left**, as asked.
+`BoxFit.contain`, no veil, no background: a transparent PNG stays transparent
+over the card's own gradient and is never stretched. The watermark letter
+remains the fallback when no image is uploaded.
+
+The per-category image already existed and is managed from the Categories page.
+No parallel system was created for it.
+
+## 29.4 Home — three blocks, one source
+
+Before: hero baked into the code, promo rail baked into the code, and a
+server-driven banner carousel underneath. The admin owned the least visible of
+the three and none of the prominent ones.
+
+Migration 030 adds `placement` (`hero` | `promo`) and `subtitle` to the existing
+`banners` table, plus `anime` as a destination type.
+
+- **Hero** — the first active `hero` banner. Image, title, subtitle and tap
+  destination all come from it. Unset → the bundled design renders unchanged.
+- **Promo rail** — every active `promo` banner, in the admin's order, unlimited.
+  Empty → the two bundled cards render unchanged.
+- **The third carousel is removed** from Home, and `banner_carousel.dart` was
+  deleted rather than left as dead code. Existing banners were migrated to
+  `promo` so nothing the admin had uploaded disappeared.
+
+Destination is data, not code: a banner with no destination falls back to the
+categories tab rather than swallowing the tap silently.
+
+## 29.5 Product cards — measured, not guessed
+
+The grid reserved a fixed `mainAxisExtent: 292`. Measured content height:
+
+```
+column 190 → 259     column 165 → 272     column 132 → 285
+```
+
+So on an ordinary phone every card carried **33px of dead space** below its
+content. The constant had been sized for the narrowest phone and everyone paid
+for it.
+
+`productGridDelegate(context)` now derives the extent from the actual column
+width and the user's text scale. Narrow phones keep the room they need.
+
+## 29.6 Product image is never recoloured
+
+`ProductPhotoSlot` applied a `ColorFilter.matrix` when stock hit zero — the
+system was altering a photograph the shop owner uploaded and showing it in a
+colour nobody chose. The filter and its parameter are gone; three call sites
+were updated. Out-of-stock is stated by the existing `ProductStockPill` and a
+new "نفدت" chip over the image corner.
+
+## 29.7 Auth screens — the gap was in the wrong place
+
+The reference puts `margin-top:auto` on the footer inside a full-height flex
+column, so slack falls **between** the card and the footer. Flutter stacked the
+footer directly under the card inside a `SingleChildScrollView`, so all the
+slack collected **below** it — the reported empty space.
+
+Now `LayoutBuilder` + `ConstrainedBox(minHeight: viewport)` + `Spacer()`: the
+Flutter equivalent of that CSS. Content still scrolls when the keyboard opens.
+No authentication logic, validation, navigation or artwork placement changed.
+
+## 29.8 Verification
+
+| Command | Result |
+|---|---|
+| `backend: npx tsc --noEmit` | ✅ clean |
+| `backend: npx vitest run` | ✅ **315 passed** (24 files) |
+| `admin: npx tsc -b` | ✅ clean |
+| `admin: vite build --mode dev\|staging\|prod` | ✅ all three |
+| `flutter analyze` | ✅ clean |
+| `flutter test --exclude-tags integration` | ✅ **316 passed** |
+
+Live on the DEV stack, the full replacement chain:
+
+```
+before   f5fe…  current 2562b8b1.png   version 5fa2470f29
+upload   e9e29a2d.png, mode=replace → "استُبدلت الصورة"
+after           current e9e29a2d.png   version f5fe5909db
+served   200 image/png 344160b
+images   e9e29a2d.png active · 2562b8b1.png INACTIVE
+```
+
+Also verified live: 44 slots grouped by location in the dashboard; the reworked
+drawer showing the live image, a full-width centred drop zone and the
+replace/append distinction; the banners page showing the new placement column;
+`GET /catalog/home` returning `heroBanner` and two `promoBanners`; and the
+Flutter DEV app logging
+`▶ [web] base=http://localhost:4000/api GET .../catalog/visuals`.
+
+## 29.9 Not verified
+
+- **Android / iOS** — no JDK, no device. `cached_network_image` pulls native
+  plugins (`sqflite`, `path_provider`); the mobile builds must be run on a real
+  toolchain.
+- **Disk cache across cold starts** — mobile-only. On web there is no disk
+  cache, which is why `prefetch()` performs no downloads there (harmless: the
+  display path fetches on demand and the browser HTTP cache applies).
+- **Pixel-level comparison of the changed screens** — Flutter renders to canvas
+  and this environment cannot capture frames. The changes are structural
+  (dedicated art area, responsive extent, `Spacer`) and 316 widget tests pass,
+  but a human should look at Home, Categories, Cart, Account and the auth
+  screens.
+
+## 29.10 Promotion status
+
+**DEV-only.** Not ready for staging until the remaining features are complete
+and the mobile builds are verified on a working toolchain.
+# STEP 30 — DEV: ONBOARDING SCREEN 2 PRODUCT IMAGE
+
+## 30.1 Goal
+
+Add a real, locally-bundled image into the miniature "product card" on
+**Onboarding Screen 2** of the user app, replacing the previous neutral photo
+placeholder, so the card gives a visual hint of the real store card without
+needing any network access.
+
+## 30.2 Reference design
+
+The source of truth is `Otaku Galaxy v2.dc.html`. In its **slide 2** (ob2)
+markup the miniature product card is declared as:
+
+```
+position:absolute; bottom:214px; right:10px; width:112px; padding:9px;
+border-radius:20px; background:var(--surf); border:1px solid var(--line);
+box-shadow:var(--sh)
+  └─ .img: height:52px; border-radius:13px; background:var(--ph);
+       border:1px dashed var(--ph-line)
+```
+
+The reference card ships **no product image**: its image area is literally a
+*photo placeholder* (the `--ph` tint, a dashed photo/landscape glyph, and two
+loading bars). The reference asset tree also contains no product image at all
+— only character art (`art/opt/*.png`) and the store logo.
+
+## 30.3 Asset decision
+
+- **Requested:** a real, visible product image that is available locally.
+- **Constraint:** the onboarding runs fully offline (screen is documented
+  "محلّية بالكامل — لا شبكة ولا خادم"); the shared real store card
+  (`ProductPhotoSlot`) loads a **network** image, which is not acceptable here.
+- **Local assets actually bundled** (registered in `pubspec.yaml`):
+  `assets/art/opt/*.png` (anime character art) and
+  `assets/branding/otaku-galaxy-logo.jpg`. The `assets/images/` folder holds
+  uncutated downloaded anime images but is **not** registered in `pubspec.yaml`,
+  so it is not bundled and was not used.
+- **Chosen:** `assets/art/opt/a-luffy-kid.png` — an already-registered,
+  locally-bundled anime figure render that reads as a compact merchandise
+  visual inside the 112×52px mini card.
+
+## 30.4 Files changed
+
+- `lib/features/onboarding/presentation/widgets/onboarding_slides.dart`
+  — in `OnboardingSlideTwo`, the mini product card's image area
+  (previously a `Container` with the `Icons.image_outlined` placeholder)
+  now renders the bundled asset via `Image.asset` wrapped in a
+  `ClipRRect(borderRadius: 13)` + `ColoredBox(photoSlot)` + `SizedBox`.
+  The `BoxFit.cover` crops to the fixed 52px card height, the photo-slot
+  backdrop remains beneath while loading, and an `errorBuilder` keeps it
+  silent if the asset were ever removed. Card dimensions, radius, padding,
+  floating animation and the two loading bars are unchanged.
+- `PROJECT_FEATURE_SPEC.md` — this step.
+
+## 30.5 Where the image was placed
+
+Onboarding Screen 2 → "كل ما يخص عالمك، بمكان واحد" → floating mini product
+card (start side, `bottom`-anchored) → the image area that occupies the top
+of the card (52px tall, radius 13).
+
+## 30.6 Verification
+
+- `flutter analyze` → **No issues found!**
+- `flutter test test/onboarding_screen_test.dart` → **11/11 passed** (6 RTL
+  overflow checks across 3 sizes × light/dark, slide-1 content & indicators,
+  advancing to slides 2–3, single `ابدأ التسوق` CTA, persistence).
+- Programmatic slide-2 probe (throwaway test, since removed): the
+  `Image.asset('assets/art/opt/a-luffy-kid.png')` was present on slide 2,
+  rendered at non-zero size with no layout exception.
+- `flutter build web --release` → built; asset confirmed bundled at
+  `build/web/assets/assets/art/opt/a-luffy-kid.png`.
+
+## 30.7 Runtime visual verification
+
+**NO.** Flutter web renders to a `<canvas>` with no DOM text/click surface, and
+screenshots of the continuously-animating onboarding (floating surfaces) are
+torn, so the image could not be visually confirmed in a real renderer in this
+environment. The change is verified structurally (asset bundled, present on
+slide 2, non-zero size, no overflow) via widget tests and the web build only —
+a human should confirm it visually on a device/emulator.
+
+## 30.8 Scope / design note
+
+Per the confirmed decision, a bundled anime art asset was used as the visible
+mini-card image. This intentionally deviates from:
+- the reference's literal *photo placeholder* (the reference simply provides
+  no product image here), and
+- the store's "no anime art inside product-image slots" rule, which governs the
+  **real** product cards (`anime_product_card.dart`, `product_photo_slot.dart`)
+  and does not apply to this decorative onboarding hint.
+
+## 30.9 Promotion status
+
+**DEV-only.** Not promoted; no commit/push/merge/deploy/staging/prod touched.
+
+---
+
+# STEP 31 — DEV: ONBOARDING 2 PRODUCT IMAGE RE-APPLIED + TWO WORKING-TREE PROBLEMS FOUND
+
+**Date:** 2026-09-01. **Branch:** `dev`. No commit, push, merge, or deployment. Only
+`onboarding_slides.dart` and this file changed.
+
+## 31.1 Why this step exists — STEP 30's code change was not in the tree
+
+STEP 30 documents this exact task (product image in the Onboarding-2 mini card, asset
+`assets/art/opt/a-luffy-kid.png`). **That change was not present in the source when this step
+began**: `OnboardingSlideTwo` still rendered the neutral placeholder —
+`Container(...) → Center(child: Icon(Icons.image_outlined))`. Only the documentation survived.
+
+The change was therefore re-applied. STEP 30's asset decision was **kept, not overridden**: its
+text records `a-luffy-kid.png` as a confirmed decision, and an independent render comparison showed
+both it and the alternative read acceptably at slot size, so there was no reason to substitute a
+personal preference for a decision already taken with the user.
+
+## 31.2 Implementation
+
+Reference geometry (`Otaku Galaxy v2.dc.html`, slide 2) preserved exactly — card `112px` wide,
+`padding:9`, `radius:20`; image slot `height:52`, `radius:13`. Only the slot's *content* changed
+from placeholder glyph to a real image:
+
+```dart
+Container(
+  height: 52,
+  width: double.infinity,          // المرجع: عنصر كتلة يملأ عرض محتوى البطاقة
+  decoration: BoxDecoration(
+    color: context.themeColors.photoSlot,
+    borderRadius: BorderRadius.circular(13),
+    border: Border.all(color: theme.colorScheme.outlineVariant),
+  ),
+  clipBehavior: Clip.antiAlias,     // الصورة تتبع نصف قطر الفتحة
+  child: Image.asset(
+    'assets/art/opt/a-luffy-kid.png',
+    fit: BoxFit.cover,              // يملأ بلا تشويه النسب
+    alignment: Alignment.topCenter, // يُبقي الوجه داخل القصّ
+    filterQuality: FilterQuality.medium,
+    errorBuilder: ...,              // أصلٌ مفقود يعيد الرمز لا يُسقط الشريحة
+  ),
+)
+```
+
+`width: double.infinity` is the faithful translation of the reference's block-level `div`, and is
+what makes the slot deterministic — without it the `Container` would size to the image's intrinsic
+width instead of the card's content box.
+
+**Local, never network** — onboarding runs before the first successful API call and may open with no
+connectivity at all; a network image here means an empty card on first launch.
+
+## 31.3 Verification — actually rendered, not inferred
+
+The widget tree was rendered via `RepaintBoundary.toImage()` and the output inspected:
+
+- Measured image rect: **90 × 50 px** — exactly the 94 × 52 slot minus the 1 px borders of the
+  floating surface and the slot itself. It fills the content box precisely; no overflow.
+- Visible, correctly clipped to the 13 px radius, face in frame under `topCenter`.
+- Confirmed in **light**, **dark**, and on a **320 × 640** small screen — identical, since the card
+  is fixed-width by reference design.
+
+**A pitfall worth recording:** the first render showed the slot *empty* — and so did the slide's
+main `trio-l` art. That was not a bug: `Image.asset` decoding is asynchronous and does not complete
+under `tester.pump()`. Wrapping `precacheImage` in `tester.runAsync()` before capturing made both
+appear. Anyone verifying images in widget tests will hit this and may wrongly conclude the image is
+invisible.
+
+| Command | Result |
+|---|---|
+| `flutter analyze` | ✅ clean, 0 issues |
+| `flutter test --exclude-tags integration` | **387 passed, 1 failed** — the failure is pre-existing, see §31.4 |
+
+## 31.4 [PRE-EXISTING] A failing test that this step did not cause
+
+`test/onboarding_screen_test.dart › slide one … shows the brand header, title, body, chip and CTA`
+fails: it expects `'أهلاً بك في مجرة الأوتاكو'`, but `onboarding_slides.dart:294` now reads
+`'أهلاً بك في متجر مجرة الأوتاكو'` (the word «متجر» was added).
+
+**Proven not caused by this step:** the change was isolated by temporarily reverting *only* this
+step's image hunk and re-running — the test failed identically. The copy edit is someone else's
+in-flight change sitting in the working tree.
+
+The reference (`obTitles[0]`, line 2726) says **`'أهلاً بك في مجرة الأوتاكو'` — without «متجر»**,
+so the code currently diverges from the reference and the test still encodes the reference. **Left
+untouched deliberately**: reverting the wording would undo another session's intentional edit, and
+updating the test would ratify a copy change whose intent is not this step's to decide. The fix is
+one line either way, once the owner of that edit decides which is correct.
+
+## 31.5 [DATA LOSS] `PROJECT_FEATURE_SPEC.md` was truncated by something outside this step
+
+Earlier in the same working session this file was **8044 lines, ending at STEP 41**. It is now
+**5481 lines, ending at STEP 30** (mtime `2026-08-31 09:38`). STEPs 31–41 — the engineering-quality
+audit, the DEV→STAGING readiness audit, phone E.164 normalization, deployment infrastructure, the
+real Docker verification, the restock/notification-preferences integration, and the splash work —
+are **gone from the file**.
+
+They were never committed (this branch has had zero commits throughout), so git cannot restore
+them; they exist only in this session's transcript. The standing instruction across all these tasks
+has been *append only, never rewrite history* — that instruction was violated by whatever replaced
+this file, not by an append.
+
+**Recommended:** commit `PROJECT_FEATURE_SPEC.md` soon so history stops being reconstructible only
+from chat, and so a concurrent overwrite is recoverable.
+
+## 31.6 Files changed
+
+- `lib/features/onboarding/presentation/widgets/onboarding_slides.dart` — mini-card image slot only.
+- `PROJECT_FEATURE_SPEC.md` — this step (appended).
+
+Card geometry, radius, padding, float animation, the two loading bars, both other slides, and all
+startup/routing logic are untouched.
+
+## 31.7 Runtime visual verification
+
+**NO — not on a device or emulator.** Verified by rendering the real widget tree offscreen and
+inspecting the pixels (§31.3), which is stronger than static inspection but is not a device run.
+
+Attempts made this session and why they failed: **Linux desktop** — build fails, `libsecret-1`
+missing for `flutter_secure_storage_linux` (installing system packages was out of scope).
+**Android** (a real device *is* connected, `EEFMR4OJ794LCQNV`) — Gradle's Kotlin compile daemon
+could not start; the machine had ~1.2 GiB RAM free with swap nearly exhausted. **Flutter web** —
+built successfully and served, but the pane capture did not complete before this step concluded.
+
+## 31.8 Promotion status
+
+**DEV only.** Nothing committed, pushed, merged, or deployed; `staging`, `prod`, and `master`
+untouched.
+
+---
+
+# STEP 32 — DEV: PUSH NOTIFICATIONS + CART EMPTY STATE + AUDIT OF THREE ALREADY-DONE ITEMS
+
+**Date:** 2026-09-01. **Branch:** `dev`. No commit, push, merge, or deployment. `staging`/`prod`/
+`master` untouched. No provider credentials created or committed.
+
+Five items were requested. **Two were already fully implemented, one was already satisfied, and two
+needed real work.** Inspecting first — as instructed — avoided building duplicates of working
+systems.
+
+## 32.1 Kurdish localization — infrastructure ALREADY COMPLETE, but unused
+
+Already present and correctly wired, not built by this step:
+`AppLanguage.kurdish` (`ckb`), a full `_ckb` translation map, `LocaleCubit` with
+`SharedPreferences` persistence, the selector in `personalize_screen.dart`, and in
+`app/view/app.dart`: `locale`, `supportedLocales`, the three `GlobalMaterialLocalizations`
+delegates, and a `localeResolutionCallback` that falls back to Arabic Material strings (Flutter
+ships no `ckb` bundle). Switching language updates the UI immediately; both languages are RTL so
+layout does not change.
+
+**The real gap, measured:** `AppStrings` defines 34 keys but `context.strings` has **zero call
+sites**, while `lib/` contains **~747 hardcoded Arabic string literals**. The translation layer is
+complete and unreachable — switching to Kurdish changes almost nothing on screen.
+
+**Not closed in this step, deliberately.** Routing ~747 literals across ~40 screens through the
+localization layer and translating each is a multi-session migration with regression risk on every
+screen, and it is a different task from the four others requested here. What was added instead is
+the guard that makes such a migration safe: `AppStrings.keys` plus a test asserting **every** Arabic
+key has a distinct Kurdish translation — a missing key silently falls back to Arabic (`call()`), so
+without this a half-translated screen looks correct and reports nothing.
+
+## 32.2 Social media icons from Admin — ALREADY COMPLETE
+
+Verified end-to-end, nothing built:
+
+| Layer | State |
+|---|---|
+| Backend | `updateSettingsSchema` validates `social_tiktok`, `social_instagram`, `social_whatsapp`; URLs must be `http(s)://` or empty; WhatsApp additionally accepts an international number |
+| Admin | `SettingsPage.tsx` has all three fields with their icons and placeholders |
+| Flutter | `StoreSettingsRepository` fetches them; `account_screen.dart` renders `links.tiktok/.instagram/.whatsapp` — **no hardcoded URL anywhere** |
+| Refresh | Loaded on splash via `StoreSettingsRepository.refresh()`; an admin change needs no new app build |
+| Empty/invalid | Empty means "unset" and the row keeps safe behaviour; the scheme check blocks `javascript:`/`data:` |
+
+The social **icons** themselves are additionally dashboard-managed through the visual-slot system
+(`VisualSlots.socialTiktok/socialInstagram/socialWhatsapp`).
+
+## 32.3 Empty cart — CENTERED (real change), and a bug the code read would have missed
+
+`AnimeEmptyState` gained an opt-in `centered` flag; `cart_screen.dart` passes `centered: true`.
+
+**Opt-in, not a default change:** this component is shared by **11 screens**, and the side layout
+(artwork breaking the panel edge, action pinned bottom-start) is what the reference specifies for
+the rest. Flipping it globally would have redesigned ten screens nobody asked about.
+
+**Bug found by measuring, not reading:** the first implementation rendered the "centered" column
+**hugging the right edge** (centre at x=229 instead of 206). Cause: a non-positioned child of a
+`Stack` is aligned to `AlignmentDirectional.topStart` — under RTL that is top-**right** — and gets
+loose constraints, so it took the width of its widest child rather than the panel's. "Centred inside
+a box that is itself stuck to the edge" is not centred. Fixed with `Positioned.fill`.
+
+Verified by rendering the real widget: image `159–253` and button `101–311` both centre on **206.0**
+= the panel centre exactly, with the image above the button.
+
+## 32.4 Home header — ALREADY has no container
+
+`_buildBrandHeaderWithSearch()` wraps its content in a `Container` whose decoration is
+`const BoxDecoration()` — fully transparent, padding only. Logo, store name, search and bell already
+sit directly on the Home background, for guests and authenticated users alike.
+
+The only rectangular surfaces in that area are the **search CTA** and the **notification bell**
+(`42×42, radius 15` — the reference's own numbers). Both are the interactive controls the request
+explicitly said to keep. **Nothing was changed**, because the described container does not exist and
+removing the two that do exist would delete Search and Notifications' affordances. If something
+else was meant, pointing at it will make it a one-line change.
+
+## 32.5 Push notifications — full architecture built, provider deliberately not connected
+
+Nothing existed before (`grep` for firebase/fcm/push/device_token found nothing in either
+`pubspec.yaml` or `backend/src`). The existing in-app system was **extended, not replaced** — its
+`BroadcastResult` already reserved a `push` field as `null`, which now carries a real result.
+
+### Database — migration `038_device_tokens.sql`
+
+`device_tokens(id, user_id → users ON DELETE CASCADE, token UNIQUE, platform, is_active,
+last_seen_at, created_at, updated_at)` + partial index `(user_id) WHERE is_active`.
+
+**`UNIQUE` is on `token`, not `(user_id, token)`** — the security-relevant choice. Providers recycle
+tokens between devices and apps; inserting a second row would leave the previous owner's row active
+and deliver *their* notifications to *someone else's* phone. `ON CONFLICT (token) DO UPDATE`
+transfers ownership instead. Rejected tokens are **deactivated, not deleted**, so a device that
+stopped receiving leaves a trace.
+
+### Backend
+`deviceTokenRepo`, `pushService`, `services/push/index.ts` (a `PushProvider` interface mirroring the
+SMS provider: `console` / `noop` / `fcm`, with `console`/`noop` **refusing to boot** in
+staging/prod), validators, controller, and routes `GET|POST /api/devices` and
+`POST /api/devices/unregister`.
+
+**Security:** no endpoint accepts a client-supplied user id — every operation uses `req.auth!.id`.
+The token itself is **never returned** in any response. Broadcasting stays behind `requireAdmin`.
+Push failure never fails the request: the in-app record is written **first** and remains the source
+of truth, since a push is a best-effort transient alert.
+
+### Flutter
+`PushTokenRepository` (talks to the backend — the token is **not** kept only in local storage),
+`PushRegistrar` (permission → token → register → follow refresh; `onLogin`/`onLogout` wired into the
+existing `AuthCubit` listener in `app/view/app.dart`), and `PushTokenSource`, the single seam to the
+provider.
+
+**Why `firebase_messaging` is not in `pubspec.yaml`:** it pulls the google-services Gradle plugin,
+which hard-fails without `android/app/google-services.json`. That file is absent, and the app has
+three flavors (`.dev`, `.staging`, production) with different application ids, so it needs one per
+flavor. Adding the package now would have **broken the Android build for everyone** on the next
+pull. `UnconfiguredPushTokenSource` returns no token and no error, so the whole system runs and is
+tested without a provider — and does not pretend to deliver anything.
+
+Logout unregisters **before** the session is cleared: the route is authenticated, so doing it after
+would 401 and leave the device bound to the account that just logged out.
+
+## 32.6 Provider configuration — required, not supplied
+
+Added to `.env.staging.example` and `.env.prod.example` (placeholders only, **no secret committed**):
+`PUSH_PROVIDER=fcm`, `FCM_PROJECT_ID`, `FCM_CLIENT_EMAIL`, `FCM_PRIVATE_KEY`, `PUSH_TIMEOUT_MS`.
+
+Still required before a phone can receive anything:
+1. A Firebase project; `google-services.json` per flavor into `android/app/src/{dev,staging,prod}/`.
+2. Add `firebase_core` + `firebase_messaging` and the google-services Gradle plugin.
+3. Implement `FirebasePushTokenSource` against the existing `PushTokenSource` interface.
+4. Complete `FcmPushProvider.obtainAccessToken()` (service-account JWT → OAuth2), or swap the class
+   for `firebase-admin`. It currently **throws explicitly** rather than returning a fake token.
+5. Android 13+ `POST_NOTIFICATIONS` runtime permission; iOS APNs key if iOS ships.
+
+## 32.7 Tests
+
+| Suite | Result |
+|---|---|
+| `backend: tsc --noEmit` | ✅ clean |
+| `backend: vitest run` | ✅ **401 passed (37 files)** — 12 new in `push-devices.test.ts` |
+| `flutter analyze` | ✅ clean |
+| `flutter test` | **398 passed, 1 failed** — the failure is pre-existing, see §32.8 |
+| `admin: tsc -b` / `lint` / `vitest` / 3 builds | ✅ clean / 0 warnings / 22 passed / all three |
+
+New tests: device-token ownership, token recycling transferring owner, multi-device, cross-user
+unregister refused, invalid platform/short token rejected, dead-token deactivation, admin-only
+broadcast, in-app record written independent of push; Flutter push lifecycle (login/logout/refresh/
+permission-denied/network-failure) and Kurdish key completeness; cart centring measured
+geometrically.
+
+**One existing test was updated, not weakened:** `admin-audience` asserted `push: null` from when no
+provider existed. Its intent — never conflate "in-app record written" with "push delivered" — is
+unchanged and now guarded more strongly: `recipients: 1` while `push.delivered: 0` for a customer
+with no registered device, which proves the two numbers are independent rather than one derived
+from the other.
+
+## 32.8 Pre-existing failure, not from this step
+
+`onboarding_screen_test.dart › slide one … brand header` expects
+`'أهلاً بك في مجرة الأوتاكو'`; the code says `'أهلاً بك في متجر مجرة الأوتاكو'`. Documented in
+STEP 31 §31.4, where it was isolated by reverting that step's change and observing the identical
+failure. Someone's in-flight copy edit; the reference file agrees with the test.
+
+## 32.9 Real-device push verification
+
+**NO.** No notification was delivered to any device, and none could be: no Firebase project, no
+credentials, no `google-services.json`, and the FCM access-token step throws by design. What was
+verified is the code path up to the provider boundary — token registration, ownership, recycling,
+deactivation, admin authorization, and that the in-app record is written independently of push.
+
+## 32.10 Files changed
+
+**Backend (new):** `migrations/038_device_tokens.sql`, `repositories/deviceTokenRepo.ts`,
+`services/pushService.ts`, `services/push/index.ts`, `validators/push.ts`,
+`controllers/pushController.ts`, `tests/push-devices.test.ts`.
+**Backend (modified):** `config/index.ts`, `services/notificationsService.ts`, `routes/customer.ts`,
+`vitest.config.ts`, `tests/admin-audience.test.ts`, `.env.staging.example`, `.env.prod.example`.
+
+**Flutter (new):** `features/notifications/data/push_token_repository.dart`,
+`features/notifications/data/push_registrar.dart`, `test/push_and_locale_test.dart`,
+`test/cart_empty_state_test.dart`.
+**Flutter (modified):** `core/di/injection_container.dart`, `app/view/app.dart`,
+`core/l10n/app_strings.dart`, `core/design_system/components/feedback/anime_empty_state.dart`,
+`features/cart/presentation/screens/cart_screen.dart`.
+
+**Admin:** none — social settings already complete.
+
+## 32.11 Promotion status
+
+**DEV only.** No commit, push, merge, or deployment; no staging/prod configuration touched; no
+provider credentials created or stored.
+
+---
+
+# STEP 33 — DEV: FORCED APP UPDATE + RESPONSIVE MOBILE/TABLET LAYOUT
+
+**Date:** 2026-09-01. **Branch:** `dev`. No commit, push, merge, or deployment. `staging`/`prod`/
+`master` untouched. No secrets created or committed.
+
+Two features. The first is new end-to-end; the second extends existing code rather than adding a
+parallel system — no new settings store, no new HTTP client, no new routing, no new responsive
+framework.
+
+## 33.1 Forced update — backend
+
+**Extended, not duplicated.** `store_settings` already existed with a validated allow-list; five
+text keys were added to it (`app_min_supported_version`, `app_latest_version`,
+`app_android_store_url`, `app_ios_store_url`, `app_update_message`) beside the existing social and
+business groups. No new table, no migration — the keys are rows.
+
+| Piece | File |
+|---|---|
+| Semantic comparison | `utils/semver.ts` |
+| Config + verdict + cache | `services/appVersionService.ts` |
+| Server-side enforcement | `middleware/app-version.ts` |
+| Public read | `GET /api/catalog/app-version` |
+| Admin write | `GET\|PATCH /api/admin/settings/app-version` |
+
+**The minimum is raised from the dashboard with no backend build and no app build.** That is the
+whole point of putting it in the database; a constant in code would make every forced update a
+server release.
+
+**Caching:** the middleware reads this config on every protected request, so a 30-second TTL cache
+sits in front of it; saving from the dashboard invalidates it immediately, so a change takes effect
+at once rather than after the TTL.
+
+## 33.2 Semantic version comparison — not string comparison
+
+`'1.10.0' < '1.9.0'` is **true** as strings, because `'1' < '9'` character-wise. That single fact is
+why this is its own tested module in both languages: the failure is silent — it either lets a dead
+version through or locks out someone on the newest build, with nothing in the logs.
+
+Implemented to SemVer 2.0.0 precedence: major → minor → patch → pre-release, where a pre-release
+sorts **below** its stable counterpart, numeric identifiers sort below alphanumeric ones, and build
+metadata (`+1`) is excluded from precedence — which is exactly where Flutter's `version: 1.0.0+1`
+build number lands, so two builds of one version compare equal.
+
+**Every "don't know" answers `false`.** An unparseable version, an unset minimum, a version the
+platform channel could not read — none of them block. Blocking closes the whole app; it is only ever
+decided on a comparison that actually happened between two valid values.
+
+### The flavor-suffix trap
+
+`android/app/build.gradle.kts` sets `versionNameSuffix = "-dev"` and `"-staging"`. So a dev build
+reports `1.0.0-dev`, which by SemVer rule is **lower** than `1.0.0` — meaning the moment a minimum
+equal to the current version were set, every dev and staging build would be blocked, correctly by
+the spec and absurdly in practice.
+
+`normalizeInstalledVersion()` strips exactly those two Gradle-added suffixes at the platform
+boundary where Gradle added them. They are channel labels, not releases the team manages; the app's
+real version is `version:` in `pubspec.yaml`. Genuine pre-release identifiers (`-beta.1`) are left
+untouched and compared by the rules. Both behaviours are tested.
+
+## 33.3 Forced update — Flutter
+
+`Splash → load config → compare → block or continue`, with the check running **in parallel** with
+the splash, never delaying it.
+
+`ForceUpdateGate` sits in `MaterialApp.builder`, above `OfflineGate` and above the router.
+
+**It replaces the tree; it does not cover it.** When an update is required the router is not built
+at all. A layer painted over a live router is still bypassable — a deep link or a back press moves
+what is underneath while you believe you are blocking. With no router in the tree there is no route
+to reach:
+
+| Bypass attempt | What stops it |
+|---|---|
+| Back button | `PopScope(canPop: false)` inside the gate's own `Navigator` — without a `Navigator` a `PopScope` never registers |
+| Direct route / deep link | No router is built |
+| Guest mode, logout/login | The gate never reads auth state |
+| Restart the app | The last verdict is persisted and read before any network call |
+| Return from background | Re-checked on every resume |
+| Editing the APK | The server rejects the request — §33.4 |
+
+**Network failure does not block, and does not unblock.** A dead server must not close the app on
+every user at once; the app falls back to the last successful config, and if none exists, no block
+at all. But once a **successful** response has said the version is below minimum, the verdict is
+persisted and survives restart and airplane mode — otherwise turning off Wi-Fi would be a two-line
+bypass. A later successful response saying otherwise clears it.
+
+## 33.4 Server-side enforcement
+
+`X-App-Version` is attached to every request by the `ApiClient` interceptor, read synchronously from
+a value primed once during DI before the client is constructed (the interceptor cannot await a
+platform channel, and deferring it would leave the startup requests — the ones that matter —
+without the header). Requests below the minimum get **426 Upgrade Required** with code
+`APP_UPDATE_REQUIRED`.
+
+**A missing header passes, deliberately.** Blocking on absence would break every already-installed
+client the instant this shipped — that is an API outage, not a forced update. So the effect on
+existing clients is nil until a minimum is set. Mounted on `/api` customer routes only: `/api/auth`
+stays open, `/api/catalog` is public and carries the version endpoint itself, and `/api/admin` is a
+browser dashboard with no app version.
+
+**The version endpoint is outside the check.** A blocked user needs precisely that route to learn
+why they are blocked and where to go; gating it would make the block a closed loop.
+
+## 33.5 Store URLs
+
+Both are dashboard-configured; the client picks by platform and falls back to the other when only
+one is set — a button that opens a slightly wrong store beats a dead button on a screen with no
+other exit. When neither is set the screen says so instead of silently doing nothing.
+
+## 33.6 The update screen
+
+`features/app_update/presentation/screens/force_update_screen.dart` — branding row, illustration,
+message, current/required versions, and one button.
+
+**No "Skip", "Later", or "Continue".** Any of them voids the point: the block exists because the old
+version no longer works against the server, so "later" means a broken screen, not a deferred
+experience. A test asserts none of those labels can appear. The layout follows `OfflineGate` so the
+app's two blocking screens share one visual language, and it scrolls so a small phone with enlarged
+text cannot overflow it.
+
+## 33.7 Responsive strategy
+
+**The negative guarantee first: everything below 600 pt is pixel-identical to the reference.** The
+phone layout was built against `Otaku Galaxy v2.dc.html` precisely; responsiveness is an addition
+for wider screens, not a re-tuning of it. Every constraint added is a `maxWidth` — inert on phones.
+
+`tokens/app_breakpoints.dart` is the single responsive utility (no `flutter_screenutil` in this
+project, and none introduced):
+
+| Token | Value | Why |
+|---|---|---|
+| `Breakpoints.compact` | 360 | below: small phone |
+| `Breakpoints.medium` | 600 | the width at which a third grid column first fits at a readable card size |
+| `Breakpoints.expanded` | 840 | two panes fit side by side |
+| `kFormMaxWidth` | 480 | beyond this the caret drifts from its label |
+| `kReadingMaxWidth` | 720 | line-length limit for comfortable reading |
+| `kGridMaxWidth` | 1100 | grids are made of cards, not lines |
+| `kSheetMaxWidth` / `kNavBarMaxWidth` | 560 | a sheet stays a sheet; a nav bar stays in thumb reach |
+
+`context.screenClass` measures the **shortest side**, not the current width. A large phone in
+landscape is 932 pt wide and would otherwise be treated as a tablet — tablet columns and tablet
+padding on a 430 pt-tall screen. The short side is what stays constant through rotation.
+
+## 33.8 Product grid
+
+Column count is derived from the **card's usable width**, never from a device name, and from the
+**available width**, not the screen width — the same grid may render inside a constrained frame.
+
+```
+phone 393 → 2 columns, card 172.0  ← identical to the reference, to the pixel
+small 320 → 2 columns
+large 430 → 2 columns, card 190.5
+600      → 3 columns
+tablet 834 → 4 columns
+landscape 1194 → 5 columns
+```
+
+Bounded by `kProductCardMinWidth = 150` (below which names and prices break) and
+`kProductCardMaxWidth = 230`, capped at 5 columns per spec. Above ~1200 pt of available width the
+cap means cards widen instead of a sixth column appearing — reachable only outside `kGridMaxWidth`,
+which frames content first. All four grid call sites and the loading skeleton inherit this from
+`productGridDelegate`, so skeleton and real grid stay in lockstep and content does not jump when
+data arrives.
+
+## 33.9 Navigation
+
+**The information architecture does not change: the same five destinations at every width**, with
+the reference design intact. The only change is that the floating bar stops stretching — five items
+spread across 1200 pt become lost icons in vast gaps, and far from the thumb. It is capped and
+centred. On phones the bar is unchanged (screen width − 28, exactly the reference's 14 pt padding).
+
+## 33.10 Shared components made responsive
+
+`ProductGrid` (columns), `OtakuBottomNav` (max width), `OtakuSheet` and `LoginGateSheet` (max width,
+with `heightFactor: 1` — an `Align` without it expands to the full available height and the sheet
+grows a gap above its own content, a bug on **every** device, not just tablets), `AuthScaffold`
+(form card and footer at `kFormMaxWidth`, gradient header still full-bleed), plus
+`ResponsiveContentFrame` as the new shared primitive. No component was duplicated for tablets.
+
+**Dialogs:** this design uses no `AlertDialog` anywhere — every confirmation is an `OtakuSheet`, so
+capping the sheet covers the "dialogs become excessively wide" case entirely.
+
+## 33.11 Screens framed
+
+`MainNavigationScreen` (one frame covering all five tabs) plus, individually: orders, order detail,
+notifications, galaxy points, settings, order data, order review, write review, rate order, product
+detail — at `kReadingMaxWidth`; favorites, category products, search, collection detail — at
+`kGridMaxWidth`, so the grid keeps room for more columns. Auth screens at `kFormMaxWidth`.
+
+## 33.12 Tests
+
+| Suite | Result |
+|---|---|
+| `backend: tsc --noEmit` | ✅ clean |
+| `backend: vitest run` | ✅ **419 passed (38 files)** — 18 new in `app-version.test.ts` |
+| `flutter analyze` | ✅ clean |
+| `flutter test --exclude-tags integration` (CI's own command) | ✅ **609 passed, 1 failed** — pre-existing, §33.14 |
+| `flutter test` integration tag | **9 passed, 2 skipped, 1 failed** — dev-data, §33.14 |
+| `admin: tsc -b` / `oxlint` / `vitest` / builds | ✅ clean / 0 warnings / 26 passed / dev+staging+prod |
+
+New: `backend/tests/app-version.test.ts` (18), `test/force_update_test.dart` (18),
+`test/force_update_gate_test.dart` (10), `test/responsive_layout_test.dart` (36),
+`admin/src/types/appVersion.test.ts` (4).
+
+Covered explicitly: below minimum → blocked; equal → allowed; above → allowed; `1.10.0` vs `1.9.0`
+in all three languages; response parsing; per-platform store URL; the screen offering no bypass;
+`PopScope` blocking back; the verdict surviving restart with the network down; network failure not
+blocking; a malformed minimum rejected before it can be written; only an admin able to set it; the
+`X-App-Version` header present and absent.
+
+Existing size-swept suites gained `tablet` (834×1112) and `tablet-landscape` (1194×834): auth
+screens (48 pass), the design-system smoke sweep (290 pass, both themes), onboarding, splash,
+personalize.
+
+**Two existing tests were updated, both for intentional changes, neither weakened.**
+`product_grid_parity_test` modelled 2 columns by hand at every width; it now derives the count from
+`productGridColumns`, keeping its actual purpose (skeleton height == real grid height, so content
+does not jump) and additionally asserting 3 columns at 600 pt. `api_integration_test` expected the
+pre-E.164 phone format `07748366119` where the server now canonicalises to `+9647748366119`; it now
+asserts the canonical contract — the old expectation measured "does the server echo my input"
+rather than "does it return the same number in its canonical form", and breaks on any correct
+normalisation.
+
+## 33.13 Two defects found while testing
+
+**`/health` was behind the global rate limiter.** Registered after `globalRateLimiter()`, it shared
+the 300-per-15-minutes bucket with real traffic, so a burst made the liveness probe return 429 —
+Docker and nginx read that as a dead container and restart a healthy server, turning load into an
+outage. It surfaced here for real: back-to-back suite runs consumed the bucket and the integration
+tests reported "server is down" while it was serving. Fixed by registering `/health` before the
+limiter; confirmed by the `RateLimit-*` headers disappearing from its response.
+
+**`api_integration_test` fails instead of skipping when the backend is down.** `setUpAll` calls
+`markTestSkipped` and returns, but the tests still run and die on `LateInitializationError`. Left
+alone — out of scope, and noted here so the next reader does not mistake it for a real failure.
+
+## 33.14 Failures that are not from this step
+
+**`onboarding_screen_test` — slide-one title.** Expects `'أهلاً بك في مجرة الأوتاكو'`; the code says
+`'أهلاً بك في متجر مجرة الأوتاكو'`. Documented in STEP 31 §31.4, where it was isolated by reverting
+that step's change and observing the identical failure. The reference file agrees with the test.
+
+**`api_integration_test` — accessories subcategories.** The test requires every subcategory to
+contain at least one product. Queried directly against the dev database: `أساور`,
+`إكسسوارات أخرى`, `ساعة يد / ساعة جيب`, `قلائد`, `ميداليات` all hold **0** products. None exist in
+`scripts/seed.ts` — they were added through the dashboard without products. This is dev catalogue
+data, not code, and populating it is not this step's call.
+
+**`db:seed` no longer creates an admin** (it requires `SEED_ADMIN_PHONE` / `SEED_ADMIN_PASSWORD` —
+the correct hardening), so the seed-admin integration test asserted a credential the project
+deliberately stopped creating. It now skips with a message naming those variables instead of
+failing; no hardcoded credential was re-introduced.
+
+## 33.15 Formatting churn — disclosed
+
+`dart format` was run over the touched feature directories and reformatted **51 files**, most of
+which this step did not otherwise change. The drift came from uncommitted edits in earlier steps
+(the committed versions are format-clean); the changes are whitespace and line-wrapping only, they
+cannot alter behaviour, and `flutter analyze` plus the full suite were re-run after. Noted because
+it widens this step's diff beyond its scope.
+
+## 33.16 What still needs a real device or store
+
+Not verified, and not verifiable here:
+
+- No run on a physical phone or tablet — no Android build was produced (the Kotlin compile daemon
+  cannot start in this environment, STEP 31), and the Linux desktop target is missing `libsecret-1`.
+  Everything above was verified through the widget-test renderer at the stated sizes.
+- No real store listing: `androidStoreUrl` / `iosStoreUrl` are unset, so the button was tested
+  through an injected opener, not by launching Play or the App Store.
+- `package_info_plus` was added and reads `version:` from `pubspec.yaml` through the platform, but
+  the platform channel itself was never exercised on a device — tests use an injected version
+  source. Its Android side needs no configuration file (unlike Firebase), and the project's
+  `compileSdk 37` / Java 17 satisfy it.
+- No landscape rotation on real hardware, no notch/cutout device, no physical keyboard overlap.
+
+## 33.17 Files changed
+
+**Backend (new):** `utils/semver.ts`, `services/appVersionService.ts`, `middleware/app-version.ts`,
+`tests/app-version.test.ts`.
+**Backend (modified):** `app.ts`, `repositories/settingsRepo.ts`, `services/settingsService.ts`,
+`validators/franchises.ts`, `controllers/publicExtrasController.ts`,
+`controllers/adminExtrasController.ts`, `routes/catalog.ts`, `routes/admin.ts`.
+
+**Flutter (new):** `features/app_update/domain/app_version.dart`,
+`domain/app_version_config.dart`, `data/installed_version.dart`, `data/app_version_repository.dart`,
+`presentation/force_update_gate.dart`, `presentation/screens/force_update_screen.dart`,
+`core/design_system/tokens/app_breakpoints.dart`, `test/force_update_test.dart`,
+`test/force_update_gate_test.dart`, `test/responsive_layout_test.dart`.
+**Flutter (modified):** `pubspec.yaml` (+`package_info_plus`), `app/view/app.dart`,
+`core/di/injection_container.dart`, `core/network/api_client.dart`,
+`core/constants/api_endpoints.dart`, `core/design_system/design_system.dart`,
+`components/layout/product_grid.dart`, `components/navigation/otaku_bottom_nav.dart`,
+`components/sheets/otaku_sheet.dart`, `components/sheets/login_gate_sheet.dart`,
+`features/auth/presentation/widgets/auth_scaffold.dart`, `main_navigation_screen.dart`, and the
+14 screens listed in §33.11; five existing test files re-swept at tablet sizes.
+
+**Admin (new):** `types/appVersion.ts`, `api/appVersionApi.ts`, `types/appVersion.test.ts`.
+**Admin (modified):** `pages/SettingsPage.tsx` — a version card with semver validation and an
+explicit warning that raising the minimum blocks every older install immediately, plus a check that
+refuses a minimum above the declared latest version (the setting that would block everyone).
+
+## 33.18 Promotion status
+
+**DEV only.** No commit, push, merge, or deployment; `staging`, `prod` and `master` untouched; no
+secrets created or stored.
+
+---
+
+# STEP 34 — DEV: SOCIAL ICONS · FAVORITES EMPTY STATE · HOME HEADER SURFACE · CLASSIC SEARCH ICON
+
+**Date:** 2026-09-01. **Branch:** `dev`. No commit, push, merge, or deployment. `staging`/`prod`/
+`master` untouched. Kurdish localization **not** touched — explicitly postponed.
+
+Four items. One was already built and needed verifying, not rebuilding; three were real changes. The
+third turned out to have a cause nothing in the code read like.
+
+## 34.1 Social icons — the system already existed; it was verified, not duplicated
+
+Inspecting first found the whole feature in place, so nothing was rebuilt:
+
+| Layer | What already exists |
+|---|---|
+| Backend | Migration `032_social_icon_slots.sql` seeds `social_tiktok`, `social_instagram`, `social_whatsapp` into `visual_slots` (group `account`) |
+| Admin | `VisualSlotsPage.tsx` (`/visuals`) lists every slot with upload, activate, reorder, delete |
+| Flutter | `_SocialRow` in `account_screen.dart` renders `ManagedArtwork.orWidget(slot: …, fallback: Icon(…))` |
+| Caching | `cached_network_image`, the project's existing image cache |
+| Propagation | `VisualsRepository` refreshes on splash **and** on app resume (2-minute throttle), pushing a `ValueNotifier` revision that rebuilds only the affected artwork |
+
+**Why no separate table was added:** the icon is a *managed image*, which is exactly what
+`visual_slots` already is. `store_settings` holds the **URLs** (text), and the two stay separate on
+purpose — merging them would mean clearing an icon could clear the link with it. A test now pins
+that independence in both directions.
+
+**Verified against the running dev backend, not by reading code** — `tests/social-icons.test.ts`
+drives the real admin API: the three slots are listed for an admin; an admin sets an icon on each
+and the public `/api/catalog/visuals` (the exact route the app reads) then serves those URLs; with
+nothing configured the slots are **absent** from the payload, which is the app's "unconfigured"
+signal and the path to the Material fallback; setting or clearing an icon leaves the social URL
+untouched, and vice versa; a non-admin gets 403; a malformed URL is rejected before it is written.
+
+Two facts the tests surfaced that reading the code would not have:
+- The server refuses to bind a slot to a file that was never uploaded (`MEDIA_NOT_FOUND`), so the
+  test has to upload first — a real guard against an icon pointing at a missing file.
+- The dev database currently has all three slots present with **0** active images, i.e. every
+  platform is on the fallback icon today.
+
+**The one gap that was real — discoverability.** The icons are managed under «رسوم الشخصيات»
+(character artwork); an admin looking for a TikTok icon has no reason to look there. Fixed with a
+cross-reference on the Settings page pointing at the exact slots. Copying the upload UI into
+Settings instead would have created a second parallel upload system.
+
+## 34.2 Favorites empty state — the cart's centred pattern, reused
+
+`favorites_screen.dart` passes `centered: true` to the shared `AnimeEmptyState` — the same opt-in
+flag STEP 32 added for the cart. No new widget, no fork of the component.
+
+**Opt-in, still not a default.** The component is shared by eleven screens; the side layout
+(artwork breaking the panel edge, action pinned to the start) is what the reference specifies for
+the rest. Flipping the default would silently redesign nine screens nobody asked about — a test now
+asserts the side layout survives for a caller that does not opt in.
+
+Verified by measurement at three widths — small phone (320), phone (412), tablet (834): the artwork
+sits above the button, and both centre on the panel's centre within 6 px, under RTL. The measurement
+is repeated rather than assumed because this is exactly where the RTL `Stack` trap bit last time: a
+non-positioned `Stack` child aligns to `AlignmentDirectional.topStart`, which in Arabic is the
+**right** edge, so a column can be "centred" inside a box that is itself glued to the edge.
+
+## 34.3 Home header — the surrounding rectangle, and what actually caused it
+
+**Found, and it was not a container.** The header's `Container` really did carry
+`decoration: const BoxDecoration()` — empty, no colour, no surface. Reading the code stops there and
+concludes there is nothing to remove. That conclusion was wrong.
+
+The rectangle came from two lines working together:
+
+```dart
+Container(clipBehavior: Clip.hardEdge, …          // ← the hard edge
+  child: Stack(children: [
+    PositionedDirectional(top: -96, end: -70,     // ← a 250×250 radial glow,
+      child: … RadialGradient(primary @20% → 0)   //   deliberately out of bounds
+```
+
+A soft circular glow, positioned outside its parent and then **clipped flat**. `Stack` clips its own
+overflow by default, so the glow was cut to the Stack's bounds — which are precisely the header's
+content box. A gradient meant to fade away became a hard-edged tinted rectangle around the logo,
+store name, bell and search together.
+
+**Both were removed**; the `Container` became a plain `Padding`. Nothing else moved: same padding
+(18/18/18/0), same children in the same order, same 15 px gap before the search card. The bell keeps
+its own 42×42 surface and the search card keeps its own — those are the two interactive controls,
+not the parent surface, and removing them would strip Search and Notifications of their affordance.
+
+### Proved by pixels, and proved to actually detect the fault
+
+`test/home_header_surface_test.dart` renders the **real** `HomeScreen`, captures the frame through a
+`RepaintBoundary`, and asserts that the band between the identity row and the search card (y 71–82,
+where no widget is painted) is nothing but the background colour, in both light and dark.
+
+The band was chosen by measuring row by row, not guessed — and the first attempt sampled the wrong
+one. The top strip (above the 18 px padding) is clean in **both** versions, because the glow was
+clipped by the `Stack`, which starts after the padding, not by the outer `Container`. A test built
+on that strip would have passed on the broken code and proved nothing.
+
+The finished test was then run against the original code with the glow and clip restored: it
+**fails** there in both themes, and passes after the removal. Measured: 67 tinted pixels in that band
+before, 0 after.
+
+Two further pieces of test hygiene this needed:
+- **The project's real fonts are loaded** via `FontLoader`. Without them `flutter test` measures text
+  with a fallback font whose glyphs are all one width, which mis-measures Arabic badly — it reported
+  a 44 px overflow that shrank to 3 px once the real fonts were in.
+- **The home request is left pending**, so the `FutureBuilder` stays in its loading state and the
+  header is measured alone, uncontaminated by an unrelated defect in the body (§34.6).
+
+## 34.4 Classic search icon — one constant, applied globally
+
+Audited every search representation in `lib/`. There were exactly two, both `Icons.search_rounded`:
+the gradient circle in the home header, and the header action on the category-products screen. The
+search screen's own field has no leading icon (only a clear button), and no other screen or shared
+component draws one.
+
+There was no shared icon constant, so the two were independent copies. Added
+`core/design_system/tokens/app_icons.dart` with `AppIcons.search = Icons.search` — the standard
+Material magnifying glass rather than the rounded-stroke variant — exported from the design-system
+barrel and used at both sites. Size, colour, padding and hit area are unchanged at both.
+
+A test walks every `.dart` file under `lib/` and fails if any writes `Icons.search` (or
+`manage_search` / `travel_explore`) outside the constant's own file, so a third site cannot quietly
+reintroduce a second search icon. Writing that check had its own trap worth recording: the naive
+pattern `Icons\.search` matches `AppIcons.search` as a substring, so the check reported the fix as
+the fault; it needs a `(?<![A-Za-z])` guard.
+
+## 34.5 Tests
+
+| Suite | Result |
+|---|---|
+| `flutter analyze` (lib **and** test) | ✅ clean |
+| `flutter test --exclude-tags integration` | ✅ **625 passed, 1 failed** — pre-existing, §34.7 |
+| `backend: tsc --noEmit` | ✅ clean |
+| `backend: vitest run` | ✅ **425 passed (39 files)** — three consecutive clean runs, §34.7 |
+| `admin: tsc -b` / `oxlint` / `vitest` / builds | ✅ clean / 0 warnings / 26 passed / dev+staging+prod |
+
+New: `tests/social-icons.test.ts` (6), `test/home_header_surface_test.dart` (6),
+`test/favorites_empty_state_test.dart` (4), `test/search_icon_and_social_icons_test.dart` (6).
+
+Also fixed, both introduced by STEP 33 and caught here: an `oxlint` warning in
+`admin/src/types/appVersion.test.ts` (a literal-vs-literal comparison written to demonstrate the
+string-comparison trap — now via variables, same demonstration), and a
+`curly_braces_in_flow_control_structures` info in `test/force_update_gate_test.dart`. STEP 33
+reported `flutter analyze` clean having run it on `lib/` only; run over the whole project it was not.
+
+## 34.6 A real overflow found in passing — reported, not fixed
+
+Rendering `HomeScreen` in a test for the first time exposed a genuine `RenderFlex` overflow in
+`home_compositions.dart` — the promo card's text column overflows its fixed 66 px content box by
+**3.0 px** with the real fonts loaded (44 px with the test fallback font, which is the misleading
+number). It reproduces on the ordinary path where no banners are configured, so it is not
+test-only.
+
+**Not fixed:** it is in a different widget on a screen this task only touched the header of, and the
+brief says not to change unrelated screens. It is recorded here with its measurement so the next
+person does not have to rediscover it. STEP 33's responsive audit did not catch it because no test
+rendered `HomeScreen` at all.
+
+## 34.7 Failures that are not from this step
+
+**`onboarding_screen_test` — slide-one title.** Expects `'أهلاً بك في مجرة الأوتاكو'`; the code says
+`'أهلاً بك في متجر مجرة الأوتاكو'`. Documented in STEP 31 §31.4, isolated there by reverting that
+step's change and observing the identical failure. The reference file agrees with the test.
+
+**Two red backend runs — cause identified, and it was self-inflicted.** One run reported 11 failures
+across 2 files and another 6 across 5. Both happened while a *second* suite was running against the
+**same dev database** — the Flutter suite in one case, a second `vitest run` in the other. The
+backend suite shares test users, `store_settings` and `visual_slots` with whatever else is talking
+to that database, so two concurrent runs delete each other's fixtures.
+
+Run sequentially on identical code the suite is **green three times in a row: 425/425 (39 files)**.
+So this is not test-order dependence and not a defect introduced here — it is that the suite is not
+safe to run concurrently against a shared database, which is worth knowing before anyone wires it
+into a parallel CI job.
+
+## 34.8 Files changed
+
+**Flutter:**
+- `features/home/presentation/screens/home_screen.dart` — removed the clipped glow and the clipping
+  container (§34.3); search icon now from the shared constant.
+- `features/favorites/presentation/screens/favorites_screen.dart` — `centered: true`.
+- `features/cart/presentation/screens/cart_screen.dart` — comment only; it claimed the cart was the
+  only centred empty state, which is no longer true.
+- `features/categories/presentation/screens/category_products_screen.dart` — shared search constant.
+- `core/design_system/tokens/app_icons.dart` — **new**, the shared icon constant.
+- `core/design_system/design_system.dart` — export it.
+- `test/home_header_surface_test.dart`, `test/favorites_empty_state_test.dart`,
+  `test/search_icon_and_social_icons_test.dart` — **new**.
+- `test/force_update_gate_test.dart` — analyze fix.
+
+**Backend:** `tests/social-icons.test.ts` — **new**. No production backend file changed; the social
+icon system already existed and needed no extension.
+
+**Admin:** `src/pages/SettingsPage.tsx` — cross-reference to where the icons are managed.
+`src/types/appVersion.test.ts` — lint fix.
+
+## 34.9 What could not be tested here
+
+- **No real device or physical screen.** Every visual claim above is from the widget-test renderer
+  at the stated sizes with the project's real fonts. No Android build was produced (the Kotlin
+  compile daemon cannot start in this environment, STEP 31) and the Linux desktop target is missing
+  `libsecret-1`.
+- **No real social icon was uploaded through the dashboard UI.** The admin *API* path was exercised
+  end to end, but the browser flow (file picker → `/api/uploads` → assign to slot) was not clicked
+  through; the dev database still shows all three slots with 0 images.
+- **Propagation was verified through the endpoint the app reads, not on a device.** That the app
+  re-fetches on resume is established by `VisualsRepository`'s existing lifecycle listener, not by
+  observing a running phone update its icon.
+- **The classic search icon's appearance** is asserted as the correct `IconData`, not compared
+  visually against a rendered glyph.
+
+## 34.10 Promotion status
+
+**DEV only.** No commit, push, merge, or deployment; `staging`, `prod` and `master` untouched; no
+secrets created or stored. Kurdish localization untouched.
+
+---
+
+# STEP 35 — DEV: BOTTOM-NAV SURROUND · PROMO CARD OVERFLOW · CATEGORY HEADER SURFACE
+
+**Date:** 2026-09-01. **Branch:** `dev`. No commit, push, merge, or deployment. `staging`/`prod`/
+`master` untouched. Kurdish localization not touched.
+
+Three UI fixes. In each case the visible symptom was not where it looked like it was, so each was
+located by rendering the real screen and reading pixels — then each fix was re-verified by restoring
+the old code and confirming the new test fails on it.
+
+**No backend or admin change was needed or made.**
+
+## 35.1 Bottom navigation — the surrounding light surface
+
+**The nav bar was innocent.** `MainNavigationScreen` uses `Scaffold(extendBody: true)`, which makes
+Scaffold report a bottom `MediaQuery` padding equal to the nav bar's height so the body can paint
+behind it. Any tab that wraps its content in a default `SafeArea` **consumes** that padding — its
+content then stops above the bar, and the empty strip left behind shows the scaffold background as a
+light surface framing the floating bar.
+
+Four of the five tabs already passed `bottom: false`:
+
+| Tab | before |
+|---|---|
+| Categories, Community, Cart, Account | `SafeArea(bottom: false, …)` ✅ |
+| **Home** | `SafeArea(…)` — default `bottom: true` ❌ |
+
+Home alone was the outlier — which is exactly why the request described the goal as "match the
+behaviour already implemented successfully on the Categories screen". One line, in the tab, not in
+the navigation component: `bottom: false`.
+
+**Verified by pixels.** `test/bottom_nav_surface_test.dart` builds the production shell
+(`extendBody: true` + the real `OtakuBottomNav` + the real `HomeScreen`) and asserts that the left
+margin beside the floating bar is **not** uniformly `scaffoldBackgroundColor` — i.e. screen content
+reaches it. With `bottom: false` reverted, both light and dark fail; with it, both pass.
+
+A first attempt asserted on `HomeScreen`'s own rect and **passed on the broken code** — `extendBody`
+gives the body full height either way, so that measured nothing. The test now measures the content
+column *inside* the `SafeArea`, which is what the padding actually moves.
+
+The bar keeps its own surface, its five destinations and their labels — a test pins all five plus
+the fact that the bar's own fill still differs from the page behind it.
+
+## 35.2 Promo card — the 3 px overflow, and its arithmetic
+
+Reported in STEP 34 §34.6, fixed here. The reference (`Otaku Galaxy v2.dc.html` line 609–615) says:
+
+```
+container: padding:14px 18px 0        ← the 14 is OUTSIDE the card
+card:      width:196px; height:112px  ← the card itself is 112
+inner:     padding:16px 16px 16px 76px
+```
+
+The implementation had `SizedBox(height: 112)` around the whole rail, and the `ListView` then took
+14 of it as top padding. So the card got **98**, not 112, and its text box **66**, not 80 — while the
+two lines of text need 69. Hence 3 px.
+
+**The reference number had been applied to the row instead of the card.** The fix restores the
+reference geometry literally: the rail is `card + 14`, and the card is given its own height. No
+clipping, no smaller type, no `overflow: hidden`. A test asserts the card measures exactly
+**196 × 112** with **14 px** above it, so a future "fix" that grows the rail while leaving the card
+squeezed cannot pass.
+
+**One more real case was found while testing:** at a 1.2× text scale the card still overflowed,
+because a fixed height cannot hold growing text. The height now follows the text scale the same way
+`productCardExtentFor` already does for product cards — padding stays fixed, only the text portion
+scales, clamped at 1.6×. At scale 1.0 the result is exactly 112, so nothing about the design changes
+for anyone who has not enlarged their font.
+
+Covered at five widths (320 / 412 / 430 / 834 / 1194), both themes, with and without
+dashboard-managed banners, and with only one card (no active discounts).
+
+## 35.3 Category products — the header surface
+
+The faded strip behind the category title was `OtakuScreenHeader.gradient`: a container filled with
+the category's gradient, with a 28 % black scrim painted over it for text contrast. The scrim is what
+made a vivid palette read as a dull, washed rectangle cutting across the page under the title.
+
+Replaced with the plain `OtakuScreenHeader` variant, which paints **no background at all** — the
+same architecture `CategoriesScreen` already uses (`.tab`). No new component, no screen-specific
+workaround. The header's ink follows `colorScheme.onSurface` automatically once `_onGradient` is
+false, so the back and search buttons stay legible without a per-screen colour. The now-unused
+`_category` field and its assignment were removed.
+
+**This deliberately departs from the reference design, on an explicit request.** Line 4345 of the
+reference sets `catHeadStyle` to `background:${grad}` for this header. The category's identity colour
+is therefore gone from this screen; it still distinguishes the category on its card and in the home
+rail.
+
+**Verified by pixels** across both themes and three title lengths — `حقائب`, `إكسسوارات`,
+`ملابس وقمصان الأنمي المطبوعة` — plus a tablet width: the band above the title must contain nothing
+but the page's own background colour. Restoring the gradient header fails 7 of the 8 cases. Title,
+back navigation, search action and the product grid all still render.
+
+## 35.4 Tests
+
+| Suite | Result |
+|---|---|
+| `flutter analyze` (whole project) | ✅ clean |
+| `flutter test --exclude-tags integration` | ✅ **653 passed, 1 failed** — pre-existing, §35.5 |
+| backend / admin | **not run — nothing in either was changed** |
+
+New: `test/bottom_nav_surface_test.dart` (6), `test/home_promo_rail_overflow_test.dart` (14),
+`test/category_header_background_test.dart` (8), and `test/support/render_harness.dart` — the shared
+font-loading and pixel-snapshot helper, extracted rather than copied a fourth time.
+
+**Every one of the three fixes was verified against its own old code**: the previous implementation
+was restored, the new test observed to fail, then the fix put back and the test observed to pass.
+A pixel test that has never been shown to fail proves nothing.
+
+`loadProjectFonts()` is used by all three. Without the project's real fonts `flutter test` measures
+Arabic with a fixed-width fallback: the same promo card reported **44 px** of overflow under the
+fallback and **3 px** under the real fonts.
+
+## 35.5 Pre-existing failure, not from this step
+
+`onboarding_screen_test` — slide one expects `'أهلاً بك في مجرة الأوتاكو'`; the code says
+`'أهلاً بك في متجر مجرة الأوتاكو'`. Documented in STEP 31 §31.4, where it was isolated by reverting
+that step's change and observing the identical failure. The reference agrees with the test.
+
+## 35.6 Files changed
+
+| File | Why |
+|---|---|
+| `features/home/presentation/screens/home_screen.dart` | `SafeArea(bottom: false)` so content passes behind the nav bar, as the other four tabs already do |
+| `features/home/presentation/widgets/home_compositions.dart` | rail height = card + the reference's 14 px outer padding; card height follows text scale |
+| `features/categories/presentation/screens/category_products_screen.dart` | plain header instead of the gradient one; removed the `_category` field it was the only user of |
+| `test/support/render_harness.dart` | **new** — shared font loading + pixel snapshot |
+| `test/bottom_nav_surface_test.dart` | **new** |
+| `test/home_promo_rail_overflow_test.dart` | **new** |
+| `test/category_header_background_test.dart` | **new** |
+
+Nothing else was touched — no backend, no admin, no social icons, no favorites empty state, no home
+header, no search icon.
+
+## 35.7 What was tested, and how
+
+**Actually executed:** `flutter analyze` over the whole project; the full Flutter suite; each of the
+three new test files run individually against both the fixed and the pre-fix code.
+
+**Verified through widget/pixel tests** (real widgets rendered, real fonts, frames captured through
+a `RepaintBoundary` and read pixel by pixel): the absence of a surface around the nav bar in light
+and dark; Home and Categories content reaching the bottom of the shell; the five destinations still
+present; the promo card at five widths, two themes, both banner paths and two text scales, and its
+196 × 112 geometry; the absence of a surface behind the category title in two themes, three title
+lengths and two widths. All under RTL — Arabic locale with the localization delegates, or an
+explicit `Directionality`.
+
+**Verified by source guard, not by rendering:** that the Community, Cart and Account tabs pass
+`bottom: false`. Building those three screens needs cubits unrelated to this change; the guard fails
+if any tab reverts to a default `SafeArea`, which is the regression that matters.
+
+**Not tested on a physical device:** nothing here ran on real hardware. No Android build was
+produced (the Kotlin compile daemon cannot start in this environment, STEP 31) and the Linux desktop
+target is missing `libsecret-1`. Specifically unverified on device: how the removed surfaces look on
+a real display, behaviour with a real gesture-navigation home indicator or a notch, and the promo
+card at system font scales set from Android/iOS settings rather than an injected `TextScaler`.
+
+## 35.8 Promotion status
+
+**DEV only.** No commit, push, merge, or deployment; `staging`, `prod` and `master` untouched.
+
+---
+
+# STEP 36 — DEV: CATEGORY HEADER KEEPS ITS COLOUR, LOSES THE BLACK SCRIM
+
+**Date:** 2026-09-01. **Branch:** `dev`. No commit, push, merge, or deployment. `staging`/`prod`/
+`master` untouched. Kurdish localization not touched.
+
+Corrects STEP 35 §35.3, which removed the wrong thing.
+
+## 36.1 Root cause
+
+`OtakuScreenHeader` painted `ColoredBox(Colors.black, alpha: 0.28)` across the full header
+(`Positioned.fill`, above the gradient and below everything else) whenever the gradient variant was
+used. The category's identity gradient was intact underneath; the scrim on top is what made the same
+colour look darker and duller inside its own header than on the category card or the home rail.
+
+The scrim was not from the design. The reference sets `catHeadStyle` to `background:${grad}` alone
+(line 4345) with `color:#fff` text; the white glow at 14 % and the `rgba(0,0,0,.24)` chips behind the
+back and search buttons are in the reference and stay.
+
+STEP 35 read the dull result and removed the **gradient**, leaving a plain header. That fixed the
+dullness by deleting the colour — the opposite of the intent. This step restores the colour and
+removes only the scrim.
+
+## 36.2 What changed
+
+**`core/design_system/components/navigation/otaku_screen_header.dart`** — deleted the
+`Positioned.fill` scrim and the `_gradientScrim` constant. Nothing else: the gradient container,
+the clip, the white glow, the padding, the ink colours, the variants and the buttons are untouched.
+This is the only file where the scrim existed, and `OtakuScreenHeader.gradient` has exactly one
+caller, so no other screen is affected.
+
+**`features/categories/presentation/screens/category_products_screen.dart`** — restored
+`OtakuScreenHeader.gradient` with `AnimeCategoryCard.gradientForCategory(...)`, the same function
+the category card and the home rail already use. **No new colour is defined anywhere**; the palette
+remains the five gradients in `AnimeCategoryCard.gradients`. The `_category` field is back so the
+gradient uses the loaded category once it arrives, and a stand-in carrying the same **id** is used
+before then — the derivation is by id, not list order, so the colour is right from the first frame
+and cannot shift when an admin adds or disables a category.
+
+Back button, search action, title, subtitle, padding, sizing, RTL and the responsive frame are all
+as they were.
+
+## 36.3 The cost, measured and recorded
+
+The scrim was added for contrast, and removing it gives that back. White ink on the palette,
+computed per WCAG:
+
+| gradient colour | no scrim | with 28 % scrim |
+|---|---|---|
+| `#FFB02E` amber | **1.83:1** | 3.46:1 |
+| `#FF9A5A` | 2.10:1 | 3.91:1 |
+| `#4EA8FF` | 2.51:1 | 4.57:1 |
+| `#FF6F91` | 2.65:1 | 4.80:1 |
+| `#22B07D` | 2.77:1 | 4.99:1 |
+| `#FF3D8F` | 3.32:1 | 5.86:1 |
+| `#7C5CFF` | 4.35:1 | 7.24:1 |
+
+WCAG AA for large text is 3:1. Without the scrim **eight of the ten palette endpoints fall below
+it**, worst case 1.83:1. The decision to accept this is explicit and the reference agrees, so it is
+implemented as asked — and pinned by a test asserting the worst case is 1.83:1 and below 3.0, so the
+trade-off is tracked rather than forgotten. If contrast is wanted later, the remedy that does not
+re-dull the colour is a shadow on the title text, or a scrim confined behind the title line alone —
+not a layer over the whole gradient.
+
+## 36.4 Tests
+
+`test/category_header_gradient_test.dart` — **new, 10 tests**, replacing STEP 35's
+`category_header_background_test.dart`, which asserted the opposite (that the header had no surface)
+and was deleted rather than left to contradict this step.
+
+The central test does not look for a `ColoredBox`: it renders the real screen, renders the **same
+gradient alone** in a reference box measured to the header's own size, and compares the two at the
+same pixel. Any layer over the gradient — black at any alpha, or anything else — makes them differ.
+
+Covered: all five gradients (the sample set is derived by the app's own id-hash so it is proven to
+reach every one), both themes, phone and tablet widths, three title lengths, RTL throughout, plus
+guards that the header is still coloured rather than page-coloured, that the colour follows the id
+and not the name, and that title, back and search survive.
+
+Two measurement traps were hit and fixed while writing it, both of which would have made the test
+lie: the reference box must be sized to the header's **measured** height, since a linear gradient
+interpolates across its box and a 200 px reference gives a different colour at the same y than a
+148 px header; and the `RepaintBoundary` keys must be created per render, since reusing a
+`GlobalKey` across successive pumps captures an image from the previous build and compares one
+category's colour with another's.
+
+| Suite | Result |
+|---|---|
+| `flutter analyze` (whole project) | ✅ clean |
+| `flutter test --exclude-tags integration` | ✅ **655 passed, 1 failed** — pre-existing, §36.5 |
+| backend / admin | not run — neither was changed |
+
+**Verified against the old code:** re-adding the 28 % scrim fails 4 of the 10 tests; removing it
+again passes all 10.
+
+## 36.5 Pre-existing failure, not from this step
+
+`onboarding_screen_test` — slide one expects `'أهلاً بك في مجرة الأوتاكو'`; the code says
+`'أهلاً بك في متجر مجرة الأوتاكو'`. Documented in STEP 31 §31.4, isolated there by reverting that
+step's change and observing the identical failure.
+
+## 36.6 Unrelated issue found, not fixed
+
+The reference's own back/search chips use `rgba(0,0,0,.24)` behind white icons — an 8.6:1 contrast
+for the icon, so those are fine. But the **subtitle** (`Colors.white` at 94 % alpha, 12.5 px) is
+small text, which WCAG AA requires 4.5:1 for; on the amber gradient it is now well under. It was
+under 3:1 even with the scrim for several colours, so this is pre-existing rather than caused here,
+and it is not part of the requested change.
+
+## 36.7 Promotion status
+
+**DEV only.** No commit, push, merge, or deployment; `staging`, `prod` and `master` untouched.
+
+---
+
+# STEP 37 — DEV: SNACKBAR PARITY · 16-HOUR REVIEW WINDOW · SYSTEM BOTTOM AREA
+
+**Date:** 2026-09-01. **Branch:** `dev`. No commit, push, merge, or deployment. `staging`/`prod`/
+`master` untouched. Kurdish localization not touched.
+
+## 37.1 Snackbar parity — root cause
+
+The restock button built its **own** `SnackBar` rather than reusing the cart one. Every difference
+was a real behavioural difference, not a styling one:
+
+| | add-to-cart | restock (before) |
+|---|---|---|
+| duration | 1500 ms | framework default **4 s** |
+| `persist` | `false`, explicitly | **unset** |
+| tap to dismiss | yes | **no** |
+| shape / border | radius + outline | none |
+| background | `surface` | solid green fill |
+| margin | `all(18)` | `all(screenHorizontalPadding)` |
+| icon | check chip | none |
+
+`persist` is the one that bites hardest. Since Flutter 3.29 it defaults to `action != null`, so any
+snackbar carrying an action stays on screen forever: the timer runs, sees `persist == true` on
+expiry, and returns without hiding. The cart snackbar was fixed for this once; the restock copy
+never was, and would have inherited the bug the moment anyone added an action to it.
+
+**Fix — one mechanism, not three.** `core/design_system/components/feedback/otaku_snack.dart`
+now owns the entire configuration; `showAddedToCartSnack` and the restock button both call it and
+pass only message, tone and (for the cart) the action. Nothing about behaviour is decided at a call
+site any more, so a future caller cannot reintroduce the divergence — or the `persist` trap.
+
+Tone changes the icon and its chip colour and nothing else, which is exactly the "only the
+message/icon may differ" requirement.
+
+## 37.2 Review eligibility — verified before it was changed
+
+**The 24-hour rule was already enforced on the server.** Verified by reading the path and then by
+running it:
+
+- `orders.rating_available_at` is stamped when the order goes **out for delivery**, from the
+  business setting, inside the same transaction.
+- `ratingAvailable` is computed in SQL as `rating_available_at <= now()` — the **database's** clock,
+  never the device's.
+- `reviewsService.submit` refuses with `409 RATING_NOT_YET_AVAILABLE` when it is false.
+- The tests call the HTTP API directly, so they *are* the bypass attempt: there is no Flutter in the
+  path at all. Flutter merely reads `ratingAvailable` and shows «التقييم يُفتح قريباً»; it computes
+  nothing.
+
+No fix was required. The verification is now permanent rather than a one-off check.
+
+## 37.3 16 hours
+
+`config.orders.ratingDelayHours` default 24 → **16**, and the rejection message now says
+«التقييم يُفتح بعد ١٦ ساعة من استلام الطلب».
+
+The value stays a **default**, not a constant: `order_rating_delay_hours` in the business settings
+overrides it from the dashboard, and it is read and frozen into `rating_available_at` at dispatch —
+so changing the setting never moves the window of an order already on its way.
+
+Boundary cases, all measured against the database clock:
+
+| elapsed | result |
+|---|---|
+| 0 | rejected — `RATING_NOT_YET_AVAILABLE` |
+| 15 h 59 m | rejected |
+| exactly 16 h | **accepted**, review created as `pending` |
+| 20 h | accepted |
+
+A test also asserts `rating_available_at - dispatched_at == 16 h` in the database directly, so the
+number is checked where it is actually enforced.
+
+**Wording swept.** No user-facing "24 hours" remained in Flutter — the screen reads the server's
+`ratingAvailableAt` and shows the real remaining time. Only a stale code comment said ٢٤; it now
+describes the setting instead of a number. The two remaining ٢٤ mentions are inside migration
+`022`, which documents what the rule was when that migration ran — history, not to be rewritten.
+
+## 37.4 Review moderation state machine — verified, not rewritten
+
+Already enforced on both sides; the task asked for tests rather than a rewrite, and that is what was
+added.
+
+| state | server | Flutter |
+|---|---|---|
+| none | `submit` allowed once eligible | «قيّم المنتج» |
+| `pending` | second `submit` → `409 REVIEW_EXISTS`; `resubmit` → `400 REVIEW_NOT_REJECTED` | «تقييمك قيد المراجعة», no button at all |
+| `approved` | both refused, same codes | «تقييمك منشور», no button |
+| `rejected` | `resubmit` accepted, returns to `pending` | «عدّل وأعد الإرسال» |
+
+**No duplicate pending review is possible** — `findForOrderProduct` blocks on *any* existing review
+for that order+product, whatever its status, and resubmission goes through the review's own id.
+
+**Survives restart** because there is no local flag: `RateOrderScreen` asks `/api/reviews/find` on
+every open. The Flutter test proves this by rebuilding the screen from scratch with a fresh key and
+asserting the repository was queried again — a rebuilt widget that reuses its `State` would have
+passed while proving nothing, which is the trap that version of the test first fell into.
+
+## 37.5 System bottom area
+
+`bootstrap.dart` set `systemNavigationBarColor: Colors.white` — an **opaque white fill painted into
+Android's navigation area**, which is precisely the light strip that looked like part of the app
+below its own nav bar. Three faults in one line:
+
+1. Opaque where it must be transparent. The app runs `SystemUiMode.edgeToEdge`, whose entire purpose
+   is to let app content run under the system bars.
+2. Set once at boot, so it stayed white in dark theme; `statusBarIconBrightness` was likewise pinned
+   to `dark`, making status icons invisible on a dark background.
+3. `systemNavigationBarContrastEnforced` left at its default, which lets Android paint its own
+   translucent scrim behind the bar — another unwanted layer.
+
+**Fix.** `core/design_system/system_overlay.dart` derives the whole style from a `Brightness`:
+transparent bars, transparent divider, contrast enforcement off, icon brightness inverted from the
+background, and `statusBarBrightness` (which iOS reads as the *background's* brightness) set
+correctly too. It is applied through an `AnnotatedRegion` in `app/view/app.dart` **above the router,
+the gates and every sheet and dialog**, so it covers every screen and follows theme changes — the
+boot call is only the safe default before the tree exists.
+
+**No fixed bottom padding anywhere.** Spacing still comes from `MediaQuery.viewPadding` via the
+`SafeArea` inside `OtakuBottomNav`, so it adapts to gesture navigation, three-button navigation and
+devices with no inset alike. A test proves it by rendering the bar at insets of 0, 24 and 48 and
+asserting its height tracks each — a hardcoded pad would fail all three.
+
+`SafeArea` was **not** removed anywhere. STEP 35 already settled which insets each tab consumes:
+`bottom: false` on all five tabs so content paints through, while the nav bar itself consumes the
+inset to stay above the gesture area.
+
+## 37.6 Tests
+
+| Suite | Result |
+|---|---|
+| `flutter analyze` (whole project) | ✅ clean |
+| `flutter test --exclude-tags integration` | ✅ **674 passed, 1 failed** — pre-existing, §37.7 |
+| `backend: tsc --noEmit` | ✅ clean |
+| `backend: vitest run` | ✅ **437 passed (40 files)** |
+| `admin: tsc -b` / `oxlint` / `vitest` | ✅ clean / 0 warnings / 26 passed |
+
+New: `tests/review-eligibility-16h.test.ts` (12), `test/snackbar_parity_test.dart` (5),
+`test/review_button_state_test.dart` (6), `test/system_bottom_area_test.dart` (8).
+
+**Four existing backend tests were updated, all for the intended change** — they asserted the
+24-hour constant (`toBe(24)`, `23 * 60 * 60 * 1000`, and a title naming "the 24h"). Their intent is
+untouched: the window still opens in the future rather than at delivery, is still anchored to
+dispatch, and is still not restarted by the customer's confirmation tap. Only the number moved.
+
+The snackbar test compares the **built `SnackBar` objects'** fields — behaviour, shape, margin,
+duration, `persist`, background — between the cart, subscribe and cancel paths, then separately
+proves each disappears on its own and on tap. Comparing rendered appearance alone would have passed
+a snackbar that looked identical and lingered for four seconds.
+
+## 37.7 Pre-existing failure
+
+`onboarding_screen_test` — slide one expects `'أهلاً بك في مجرة الأوتاكو'`; the code says
+`'أهلاً بك في متجر مجرة الأوتاكو'`. Documented in STEP 31 §31.4, isolated there by reverting that
+step's change and observing the identical failure.
+
+## 37.8 Not verifiable here
+
+- **No physical device.** Every claim about the system bottom area is from the declared
+  `SystemUiOverlayStyle` and from inset-driven layout measurements in the widget-test renderer. What
+  Android actually draws — gesture pill, three-button bar, cutouts, per-OEM behaviour, Android 15's
+  forced edge-to-edge — was **not** observed on hardware. No Android build was produced (the Kotlin
+  compile daemon cannot start in this environment, STEP 31), and the Linux desktop target is missing
+  `libsecret-1`.
+- **Landscape** was exercised only as a widget-test viewport; `bootstrap` locks the app to portrait,
+  so landscape does not occur in the real app.
+- **The 16-hour window was tested by moving database timestamps**, not by waiting 16 real hours —
+  the correct method, but it does not exercise a genuine 16-hour-old row.
+- The snackbar's real entry/exit animation was verified by frame pumping, not watched.
+
+## 37.9 Files changed
+
+**Flutter**
+| File | Why |
+|---|---|
+| `core/design_system/components/feedback/otaku_snack.dart` | **new** — the single snackbar definition |
+| `core/design_system/components/components.dart` | export it |
+| `features/cart/presentation/cart_actions.dart` | delegate to it; keep message + action only |
+| `features/restock/presentation/restock_notify_button.dart` | delete the private `SnackBar`, delegate to it |
+| `core/design_system/system_overlay.dart` | **new** — theme-derived transparent system bars |
+| `core/design_system/design_system.dart` | export it |
+| `bootstrap.dart` | drop the opaque white nav bar; use the shared style as boot default |
+| `app/view/app.dart` | apply the style app-wide via `AnnotatedRegion` |
+| `features/orders/presentation/screens/order_detail_screen.dart` | comment: the delay is a setting, not 24 |
+| `test/snackbar_parity_test.dart`, `test/review_button_state_test.dart`, `test/system_bottom_area_test.dart` | **new** |
+
+**Backend**
+| File | Why |
+|---|---|
+| `config/index.ts` | default rating delay 24 → 16 |
+| `services/reviewsService.ts` | rejection message says ١٦ ساعة |
+| `tests/review-eligibility-16h.test.ts` | **new** |
+| `tests/order-rating-lifecycle.test.ts` | four expectations moved 24 → 16 |
+
+**Admin:** none — no review or admin code was affected.
+
+## 37.10 Promotion status
+
+**DEV only.** No commit, push, merge, or deployment; `staging`, `prod` and `master` untouched.
+
+---
+
+# STEP 38 — DEV: ONBOARDING COPY · CANONICAL CATEGORY ORDER · DETERMINISTIC CATEGORY COLOURS
+
+**Date:** 2026-09-01. **Branch:** `dev`. No commit, push, merge, or deployment. `staging`/`prod`/
+`master` untouched. **Flutter only — no backend or admin change was needed.**
+
+The Flutter suite is now **fully green (695/695)**; the long-standing onboarding failure carried
+since STEP 31 is resolved at its root.
+
+## 38.1 Onboarding — one real UI bug, three stale expectations
+
+The single failing test bundled four assertions about slide one. They did not have one cause, and
+treating them as one would have meant either patching a real bug away or rewriting correct copy.
+
+**The title was a genuine UI defect.** The screen said `'أهلاً بك في متجر مجرة الأوتاكو'`. Three
+independent sources disagreed with it: the reference (`obTitles[0]`), the test, and — decisively —
+**the widget's own doc comment eleven lines above the string**, which reads
+`«أهلاً بك في مجرة الأوتاكو»`. «متجر» was inserted into the literal and nowhere else. «متجر مجرة
+الأوتاكو» is not a name the product uses anywhere. **The screen was fixed**, not the test.
+
+**Three body/chip expectations were stale.** The copy has deliberately moved away from the reference:
+
+| | reference / old test | current screen |
+|---|---|---|
+| body | «متجر **عربي** متكامل» | «متجر **عراقي** متكامل» |
+| body tail | «بتصاميم مختارة» | «بتصاميم الانمي» |
+| chip line 2 | «حقائب، اكسسوارات، ملابس» | «حقائب، اكسسوارات، ملابس**، وأكثر.**» |
+
+«عراقي» is the correct terminology for this product, not a slip: the app takes Iraqi phone numbers,
+ships to Iraqi governorates, prices in IQD and speaks Iraqi dialect on every screen. These
+expectations were updated to the current contract **without weakening them** — the chip is still an
+exact `find.text` on the full line, and the body still matches the whole distinctive phrase. The
+group carries a note recording which divergence was intentional and which was the bug, so the next
+reader does not have to re-derive it.
+
+**Noted, not changed:** the body writes «بتصاميم الانمي» without the hamza while the rest of the app
+writes «الأنمي». Copy correction, outside this task.
+
+## 38.2 Canonical category order
+
+The requested order is now enforced in one place for every screen:
+
+```
+قرطاسية · الحقائب · إكسسوارات · ملابس · مجسمات وهدايا · منتجات أنمي متنوعة
+```
+
+`features/products/domain/entities/category_order.dart` holds the list and
+`sortByCanonicalOrder()`. It is applied at the **two points where category lists enter the app** —
+`FetchCategoriesUsecase` (the door for the Categories screen, Community filters and the
+category-products lookup) and `HomeData.fromJson` — rather than at each render site, so a screen
+cannot be forgotten.
+
+Not insertion order, not UUID order, not alphabetical: the sort is a table lookup, and a test proves
+the same six come out in the same order from a reversed list, a shuffled list and an alphabetically
+sorted list.
+
+**The admin keeps its freedom.** This is a customer-facing presentation order, not a constraint on
+the dashboard: `sort_order` still works, categories can still be added and removed, and anything
+outside the six appears after them **keeping the server's relative order** (a stable sort). No
+backend or admin change was required, so none was made.
+
+## 38.3 Identity: why the name, not the id
+
+The stable key is the **normalized name**, not the UUID.
+
+`categories.name` is `UNIQUE` in the schema (migration 002) and identical across environments. The
+UUID is generated per database — `حقائب` is `55871f9f…` in dev and something else in production — so
+any table in Flutter keyed by id is correct in one environment and wrong in another.
+
+Names are written inconsistently, so `canonicalCategoryKey()` normalizes: alef hamzas (أ إ آ ٱ → ا),
+ta marbuta (ة → ه), alef maqsura (ى → ي), hamza carriers (ؤ ئ), diacritics and tatweel, the definite
+article «ال», and whitespace. That is what makes «الحقائب» = «حقائب», «إكسسوارات» = «اكسسوارات» and
+«متنوعة» = «متنوعه» resolve to one category.
+
+**A trap this hit during implementation, worth recording:** the ordered list and the colour map were
+first written with keys already normalized by hand. Normalizing the hamza carrier turns «حقائب» into
+«حقايب», which no longer matched the hand-written key — so Bags silently dropped out of both the
+order and the colour table with no error at all. Both tables now hold **natural spellings** and are
+normalized through the same function at load, so the constants can never drift from the normalizer.
+
+## 38.4 Category colours — the collision was guaranteed
+
+`gradientForCategory` hashed the UUID into a **five**-entry palette. With **six** categories that is
+the pigeonhole principle: some pair always collides. *Which* pair depends on the UUIDs, i.e. on the
+environment — measured against the dev database the collision was **قرطاسية + ملابس**, while the
+store owner reported **الحقائب + ملابس**. One defect, two faces.
+
+Fixed by giving the six fixed slots keyed by identity, and adding a sixth gradient:
+
+| category | gradient | source |
+|---|---|---|
+| قرطاسية | `#FF9A5A → #FF3D8F` | reference `CATS[stationery]` |
+| الحقائب | `#22B07D → #4EA8FF` | reference `CATS[bags]` |
+| إكسسوارات | `#FF3D8F → #7C5CFF` | reference `CATS[accessories]` |
+| ملابس | `#4EA8FF → #7C5CFF` | reference `CATS[clothing]` |
+| مجسمات وهدايا | `#7C5CFF → #22B07D` | **new** |
+| منتجات أنمي متنوعة | `#FFB02E → #FF6F91` | reference `CATS[decor]` |
+
+Five come from the design reference's own per-category gradients, so the app's colours match the
+design where the design has an opinion. The reference defines only five categories; the real store
+has six, so the sixth is composed from two colours **already in the palette** (violet + green) —
+no invented colour, and no new worst case for the contrast figure recorded in STEP 36 §36.3.
+
+Colour follows identity, so: reordering does not change it, restarting does not change it, a
+different environment does not change it, and spelling variants do not change it. Categories outside
+the six keep the id hash — deterministic per category, and documented as possibly sharing a colour
+with one of the six, which is acceptable because the requirement is that the **six** be mutually
+distinct.
+
+**One colour source only.** `AnimeCategoryCard.gradientForCategory` was modified in place; no second
+colour system exists. The category card and the category-products header both call it, and a test
+pins that.
+
+## 38.5 STEP 36's header fix is intact
+
+The category header still carries its gradient, still reads it from the same function as the card,
+and still has **no black scrim** — `category_header_gradient_test.dart` passes all 10 assertions,
+including the pixel comparison against the bare gradient. Back button, search, title, subtitle, RTL
+and responsiveness unchanged.
+
+One test in that file was updated for an **intentional contract change**: it asserted "same id ⇒
+same colour" when identity was the id. It now asserts the stronger property — the same category in
+two different environments (different UUIDs) resolves to the same colour, and two different
+categories sharing a UUID resolve to different colours.
+
+## 38.6 Tests
+
+| Suite | Result |
+|---|---|
+| `flutter analyze` (whole project) | ✅ clean |
+| `flutter test --exclude-tags integration` | ✅ **695 passed, 0 failed** |
+| backend / admin | not run — neither was changed |
+
+New: `test/category_identity_test.dart` (20). It does not check that six strings exist: it asserts
+the resolved order from reversed, shuffled and alphabetical inputs; that all six gradients are
+mutually distinct; that Bags and Clothing differ specifically; that colours survive reordering and a
+changed UUID; that spelling variants resolve identically; that the palette has ≥6 mutually distinct
+entries; that four assignments match the reference exactly; and it renders all six cards in light
+and dark at phone and tablet widths under RTL, asserting their **vertical order on screen** and that
+the card starts from the right.
+
+The category fixtures use the **real dev UUIDs**, because the old hash collided on those specific
+values — invented ids might not have reproduced it.
+
+## 38.7 Files changed
+
+| File | Why |
+|---|---|
+| `features/onboarding/presentation/widgets/onboarding_slides.dart` | removed «متجر» from the slide-one title — the UI was wrong |
+| `features/products/domain/entities/category_order.dart` | **new** — canonical key, canonical order, stable sort |
+| `features/products/domain/usecases/fetch_categories_usecase.dart` | apply the order at the single door every screen uses |
+| `features/products/domain/entities/home_data.dart` | apply the order to the home payload |
+| `core/design_system/components/cards/anime_category_card.dart` | sixth gradient; identity-keyed slots replacing the colliding hash |
+| `test/onboarding_screen_test.dart` | three stale copy expectations updated to the current contract |
+| `test/category_header_gradient_test.dart` | identity contract updated from id to name |
+| `test/category_identity_test.dart` | **new** |
+
+**Backend:** none. **Admin:** none.
+
+## 38.8 Not verified on a device
+
+No physical device. All colour and ordering claims come from the widget-test renderer and from
+direct assertions on the resolving functions. The dev database was read to obtain the real category
+rows and UUIDs, but nothing was written to it. The store owner's own environment was not inspected —
+the reported Bags/Clothing pair is inferred from the pigeonhole argument plus the measured dev
+collision, not observed on their device.
+
+## 38.9 Promotion status
+
+**DEV only.** No commit, push, merge, or deployment; `staging`, `prod` and `master` untouched.
+
+---
+
+# STEP 39 — DEV: ARABIC COPY CONVERTED TO MODERN STANDARD ARABIC
+
+**Date:** 2026-09-01. **Branch:** `dev`. No commit, push, merge, or deployment. `staging`/`prod`/
+`master` untouched.
+
+## 39.1 How the surface was audited
+
+Not by eye and not by keyword substitution. Every Arabic **string literal** in `lib/` was extracted
+programmatically with its file and line, comments excluded — **786 literals across 73 files** — and
+read. A second pass flagged colloquial markers (شنو · شلون · هسه · راح · ما بيه · تكدر · اللي · لسه ·
+تلكي · خلّينا · وياك · فاضي · يلا · كمّل …). The same extractor was re-run after editing as the
+acceptance check.
+
+**Result: 0 colloquial literals remain** in `lib/`. That is a measured claim, not an impression.
+
+Excluded from rewriting, deliberately: governorate names (`locations.dart`), category names
+(`category_order.dart`, which are **identity keys** — see STEP 38), brand names, and the Kurdish
+map.
+
+## 39.2 What changed — 70 strings across 31 screens and components
+
+| area | before | after |
+|---|---|---|
+| Search empty | «ما لكينا شي» | «لا توجد نتائج» |
+| Search hint | «دوّر على أي شي يخطر ببالك» | «ابحث عمّا يخطر ببالك» |
+| Home CTA | «دوّر على أي منتج تحبه…» | «ابحث عن منتجك المفضّل…» |
+| Cart empty | «خذ جولة بالمتجر واختار اللي يعجبك، السلة راح تنتظرك.» | «تصفّح المتجر واختر ما يعجبك — ستنتظرك السلة.» |
+| Cart remove | «راح نشيل «X» من سلتك. تريد تكمل؟» | «سيُزال «X» من سلتك. هل تريد المتابعة؟» |
+| Favorites | «مفضلتك لسه فاضية» · «وراح يستناك هنا» | «مفضلتك فارغة» · «ليُحفظ هنا» |
+| Offline | «ما بيه اتصال بالإنترنت» | «لا يوجد اتصال بالإنترنت» |
+| Category empty | «هذا القسم فاضي حالياً — جرّب قسم ثاني» | «القسم فارغ حالياً — تصفّح قسماً آخر» |
+| Restock | «راح نعلمك أول ما يتوفر 🔔» | «سنُعلمك فور توفّره 🔔» |
+| Review prompt | «شنو رأيك بالمنتج؟» | «ما رأيك في المنتج؟» |
+| Rate rules | «تكدر تقيّم كل منتج مرة وحدة» | «لكل منتج تقييم واحد، ويُراجَع قبل نشره» |
+| Order rejected | «ما تم قبول هذا الطلب. تقدر تتواصل معنا أو تسوي طلب جديد.» | «لم يُقبل هذا الطلب. يمكنك التواصل معنا أو إنشاء طلب جديد.» |
+| Force update | «لازم تحدّث التطبيق» · «هذي النسخة ما عادت مدعومة» | «يلزم تحديث التطبيق» · «لم تعد هذه النسخة مدعومة» |
+| Onboarding CTAs | «يلا نبدأ» · «كمّل» | «لنبدأ» · «متابعة» |
+| Personalize | «خلّينا نضبط تجربتك» · «المظهر اللي يناسبك … تقدر تغيّرهم» | «لنُهيّئ تجربتك» · «المظهر المناسب لك … يمكنك تغييرهما» |
+
+**A spelling correction, not a style change:** the stock pill said «نفذ المخزون». نَفِدَ means *ran
+out*; نَفَذَ means *went through / was executed* — the wrong verb. Now «نفد المخزون» everywhere,
+matching what the product card already used.
+
+Sentences were rewritten whole where a word-swap would have read as translated dialect — e.g.
+«راح نتواصل معك … وبعد الموافقة يصير الطلب قيد التجهيز» became «سنتواصل معك … وبعد الموافقة يبدأ
+تجهيز الطلب»: the future particle and the verb both had to move, not just «راح».
+
+## 39.3 Text removed because it had no customer value
+
+**«المزايا يحددها المتجر من لوحة الإدارة.»** (Galaxy Points) — the example named in the brief. It
+describes *who operates a dashboard*, which is of no use to a customer standing in front of a level
+ladder. Replaced with what actually concerns them: **«كلما زادت نقاطك ارتفع مستواك، وتصبح مزايا
+المستوى متاحة لك تلقائياً.»**
+
+**«سيظهر هنا كل قسم فور إضافته إلى المتجر.»** (Categories empty) — describes store operations, not
+the customer's situation. → «لا توجد أقسام متاحة حالياً — عد لاحقاً.»
+
+**«تعذّر جلب تفضيلاتك — ما يظهر قد لا يطابق المحفوظ.»** (Settings) — leaks a cache-vs-server sync
+detail the customer can neither act on nor understand. → «تعذّر تحميل تفضيلاتك، أعد المحاولة.»
+
+**«تفضيلات الإشعارات محفوظة بحسابك في مجرة الأوتاكو.»** — kept but made useful rather than
+tautological: **«تُحفظ تفضيلات الإشعارات في حسابك وتُطبَّق على كل أجهزتك.»** — that is a fact the
+customer benefits from knowing.
+
+Nothing was deleted merely for being a secondary line; in each case the slot was refilled with
+information the customer can use.
+
+## 39.4 Galaxy Points — rewritten against the real rules
+
+The implementation was traced before a word was changed: `orderService` (award on `COMPLETED`),
+`reviewsService` (award on approval, revoke on rejection), `businessConfigService`, `pointsRepo`,
+`loyaltyRepo`, and the dev database rows.
+
+**What the system actually does:**
+
+| action | points | conditions |
+|---|---|---|
+| Order received | `points_order_received` — default **20** | once per order; a unique `(user_id, order_id)` index prevents a second award |
+| Published review | `points_review_approved` — default **1** | awarded when the review is approved, not when submitted |
+| Published review **with photo** | `points_review_with_photo` — default **5** | **instead of** the 1, not in addition |
+
+Also true and now reflected: points are **revoked** if an approved review is later rejected; the
+amount is written into the ledger at award time, so changing a setting never re-prices past entries;
+and one review per product per order.
+
+**There is no redemption.** Nothing in the codebase spends points on a purchase or discount. Points
+raise the customer's level on the ladder, and each level carries a reward the store defines. The
+screen now says exactly that and **does not invent a redemption feature**.
+
+**The numbers are not written in the app.** All three amounts are admin-configurable, so
+`pointsService.summary` now returns `earnRates` and the screen renders them. A screen with «٢٠ نقطة»
+in its source becomes a lie the day the setting changes — and the customer would see a different
+number in their own ledger. A rule showing `0` is hidden rather than displayed as a rule that gives
+nothing.
+
+Two other places hardcoded «٥ نقاط» for photo reviews (order detail, write review). Both now say
+«نقاط مجرّة أكثر» — true regardless of configuration — because neither screen has the rates.
+
+The generic «شرح لنقاط المجرة» / «تجمع نقاط من كل طلب…» block is replaced by: what the points are,
+a labelled row per earning action with its real number, and the two real conditions (review is
+awarded after moderation; one review per product per order).
+
+## 39.5 Localization
+
+`AppStrings` (ar/ckb) was **not** bypassed and no second mechanism was created. Its Arabic entries
+were already Modern Standard Arabic and correct, so none needed changing; **the Kurdish map was not
+touched at all** — verified: the only diff in `core/l10n/app_strings.dart` is the `keys` getter added
+back in STEP 32, and no `_ckb` value differs.
+
+The ~747 hardcoded Arabic literals were **not** migrated into `AppStrings` as part of this task. That
+migration is its own multi-session job across ~40 screens (recorded as an open item in STEP 32
+§32.1); folding it into a copy pass would have mixed a mechanical refactor with judgement-heavy
+rewriting and made both harder to review. The copy is now correct where it lives, which is what a
+future migration will carry across.
+
+## 39.6 Consistency
+
+Checked for competing phrasings of the same action: «اكتشف المنتجات» is now the single form (cart
+said «استكشف المنتجات», favorites «اكتشف منتجات»); «مجموعاتك خاصة بك ولا تظهر لأحد» is one sentence
+in both places that used to differ; «سجّل دخولك أولاً» was already uniform across all 8 sites and was
+left alone. Correct wording was not churned for its own sake.
+
+## 39.7 Tests
+
+| Suite | Result |
+|---|---|
+| `flutter analyze` (whole project) | ✅ clean |
+| `flutter test --exclude-tags integration` | ✅ **695 passed, 0 failed** |
+| `backend: tsc --noEmit` | ✅ clean |
+| `backend: vitest run` | ✅ **437 passed (40 files)** |
+| admin | not run — not changed |
+
+**Eleven tests failed on the new copy and were updated, none weakened.** Each was an exact-string
+expectation on wording that changed intentionally: the home search CTA, the two onboarding CTAs, the
+restock snackbar message, and the stock pill. The stock-pill test's *intent* — that the app says the
+item ran out rather than «غير متوفر», which would suggest it is discontinued — is unchanged and now
+carries a note explaining the نفد/نفذ correction. No test was deleted or loosened, and no failure was
+a functional regression.
+
+## 39.8 Left unchanged on purpose
+
+- **Kurdish** — untouched, as required.
+- **Proper nouns** — «مجرة الأوتاكو», «نقاط المجرّة», category names, governorate names, brand names.
+- **Category names as identity keys** — `category_order.dart` and the gradient map key on these
+  strings (STEP 38); editing them for style would silently break ordering and colours.
+- **Developer-only output** — the placeholder-API warning in `main_common.dart` is `debugPrint`, never
+  shown to a customer.
+- **«رمز التجربة»** in OTP — gated to debug + dev builds, never in a release.
+- **Order status labels** — already Modern Standard Arabic and matched to backend statuses; changing
+  them would be churn.
+- **Level names and reward text** — «مزايا خصم تُعلن عنها الإدارة.» sits in the dev **database**
+  (`loyalty_levels.reward_description`), not in code. It has the same fault as §39.3 and should be
+  edited from the dashboard; this step does not write to dev data.
+
+## 39.9 Files changed
+
+**36 files.** Flutter copy (25): notifications · order review · order success · order data ·
+category products · categories · forgot password · register · collection detail · collections tab ·
+add-to-collection sheet · community · personalize · settings · favorites · cart · restock button ·
+offline gate · search · home · product detail · rate order · write review · product reviews section ·
+force update · stock pill · onboarding · order detail.
+Galaxy Points (3): screen, cubit, repository (`PointsEarnRates`).
+Backend (1): `services/pointsService.ts` — `earnRates` added to the summary.
+Tests (4): home header surface, onboarding, restock contract, snackbar parity.
+
+## 39.10 Not verified on a device
+
+No physical device. The copy was verified by reading every extracted literal, by the re-run of the
+colloquial detector, and by the rendered widget tests that assert specific strings. How the new
+sentences wrap on a real phone at a real font scale was not observed on hardware.
+
+## 39.11 Promotion status
+
+**DEV only.** No commit, push, merge, or deployment; `staging`, `prod` and `master` untouched.
+
+---
+
+# STEP 40 — DEV: GALAXY POINTS FIXED RULES · LEVEL REWARDS · GENDER-AWARE ARABIC
+
+Galaxy Points stops being configurable and becomes a fixed business rule; the ladder gains one-time
+rewards; and the app learns the customer's gender so Arabic copy agrees with them grammatically.
+
+## 40.1 What was configurable, and why that was wrong
+
+Three point values lived in `store_settings` (`points_order_received`, `points_review_approved`,
+`points_review_with_photo`) and the whole level ladder lived in a `loyalty_levels` table with full
+CRUD from the dashboard. That was the right answer to an earlier problem — a value baked into the
+Flutter app needed a store release to change. But it made the *business rule itself* undefined:
+what a customer earns depended on who last opened the dashboard, and there was no single place to
+read the rule from.
+
+Three concrete defects it also carried:
+
+- **Order points were flat.** A 10,000 IQD order and a 1,000,000 IQD order both awarded the same 20
+  points. Spend had no effect on reward.
+- **Review points were either/or.** A written review with a photo earned 5, not 6 — the photo
+  *replaced* the comment point instead of adding to it.
+- **Repeat purchases re-opened reviews.** The uniqueness constraint was `(order_id, product_id)`, so
+  buying the same cheap product twice let the same customer review it twice and earn twice.
+
+## 40.2 Purchase points
+
+**5 points per 10,000 IQD of eligible purchase value.**
+
+```
+eligiblePurchaseValue = max(0, products_total − discount)
+purchasePoints        = floor(eligible / 10,000) × 5
+```
+
+| Eligible value | Points |
+|---:|---:|
+| 10,000 | 5 |
+| 50,000 | 25 |
+| 100,000 | 50 |
+| 500,000 | 250 |
+| 1,000,000 | 500 |
+| 2,000,000 | 1,000 |
+
+**Rounding: the remainder is discarded and never carried forward.** 19,999 IQD earns 5 points, not
+10, and the leftover 9,999 does not accumulate toward a later order. Carrying it would require a
+second balance beside the ledger that remembers fractions — exactly the duplicated state this system
+avoids (the balance is the sum of the ledger, nothing else).
+
+**Delivery is excluded entirely** — both the fee and the delivery promo discount. Delivery is a
+service, not a purchase; awarding points on it rewards living far from the store.
+
+**Discounts are subtracted** because the customer did not pay them, and because the level discount
+reward is itself funded by points: including it would let points mint points.
+
+Awarded once per order at `COMPLETED`, guarded by the existing `uq_points_order_received` index. An
+order whose eligible value is under 10,000 writes no ledger row at all — the ledger rejects zero, and
+a "+0" line in a customer's history means nothing.
+
+## 40.3 Review points
+
+| Situation | Points |
+|---|---:|
+| No comment, no photo | 0 |
+| Written comment only | 1 |
+| 1–5 photos, no comment | 5 |
+| Comment + any number of photos | 6 |
+
+**The photo reward is a flat 5, not 5 per photo.** One photo and five photos earn the same. The point
+is to encourage attaching a photo at all, not to buy points by uploading the same shot five times.
+Comment and photos now *add* rather than replace, so the maximum for one review is 6.
+
+**Maximum 5 photos per review**, enforced in three places: the Zod schema, the service guard, and a
+`CHECK (cardinality(photo_urls) <= 5)` constraint in the database. The Flutter cap is UX only.
+
+Points are awarded **on approval only**. Resubmitting a rejected review returns it to pending and
+awards nothing; rejection after approval deletes the ledger rows (it does not write negative
+entries, so a review that never earned cannot "lose" anything).
+
+## 40.4 The 20-point per-order review cap
+
+Total review points for one order never exceed **20**. Purchase points are outside this cap and add
+on top of it.
+
+Without the cap, twenty cheap products in one order yield 120 review points — the reward stops
+tracking the order's value entirely.
+
+**Race safety.** Approving two reviews from the same order concurrently used to let each read
+"awarded so far" before the other wrote. The moderation transaction now takes
+`SELECT id FROM orders WHERE id = $1 FOR UPDATE` before reading the ledger, serialising them.
+
+**Partial photo bonuses are never awarded.** The remaining allowance is filled with the comment point
+first, then the flat photo bonus only if the full 5 fits. Four 6-point reviews on one order therefore
+total **19**, not 20 — the cap is a ceiling, not a target, and awarding "2" of a 5-point flat bonus
+would write a ledger line matching no published rule.
+
+Revoking an approval frees its allowance again, because the cap is computed from the ledger rather
+than from a counter.
+
+## 40.5 One review per customer per product — forever
+
+The constraint moved from `(order_id, product_id)` to a partial unique index on
+`(user_id, product_id) WHERE product_id IS NOT NULL`.
+
+Buying the same product again does not open a second review and does not pay a second reward. The
+first review remains that customer's review for that product. `findForOrderProduct` still takes an
+order id (the app asks from an order's context) but ignores it: "have I reviewed this product?" does
+not change with the order.
+
+The migration **refuses to run** if any customer already holds two reviews for one product, listing
+the offending pairs. Deleting a customer's review to let a migration pass is destroying real data
+over a decision that belongs to a person. *(Verified: the dev database had none.)*
+
+## 40.6 The fixed ladder
+
+Seven levels, in code (`backend/src/domain/galaxyPoints.ts`), not in a table. No badges.
+
+| Key | Points | مذكّر | مؤنّث | محايد | Reward |
+|---|---:|---|---|---|---|
+| `beginner` | 0 | مبتدئ المجرة | مبتدئة المجرة | المستوى المبتدئ | — |
+| `explorer` | 100 | مستكشف المجرة | مستكشفة المجرة | مستوى الاستكشاف | 3% discount, max 5,000 IQD |
+| `voyager` | 250 | رحّالة المجرة | رحّالة المجرة | مستوى الترحال | Gift worth 5,000 IQD |
+| `warrior` | 400 | محارب المجرة | محاربة المجرة | مستوى القتال | 5% discount, max 10,000 IQD |
+| `champion` | 600 | بطل المجرة | بطلة المجرة | مستوى البطولة | Gift worth 10,000 IQD |
+| `star` | 800 | نجم المجرة | نجمة المجرة | مستوى النجومية | 10% discount, max 20,000 IQD |
+| `legend` | 1,000 | أسطورة المجرة | أسطورة المجرة | مستوى الأسطورة | Gift worth 25,000 IQD |
+
+`رحّالة` and `أسطورة` are identical in both genders in Modern Standard Arabic; the forms are
+deliberately the same rather than mechanically derived (appending a taa would produce «أسطورةة»).
+
+**Existing balances are not rewritten.** No ledger row was touched and no history recalculated. A
+customer holding 160 points — the old top level — now reads as `explorer` and can unlock the
+100-point reward. Unlocked is not claimed: no historical reward was auto-marked as taken.
+
+## 40.7 One-time rewards
+
+`loyalty_reward_redemptions` with **`UNIQUE (user_id, level_key)`**. That constraint, not a check in
+the service, is what makes a reward one-time: "read then insert" lets two concurrent requests through,
+and a double tap or a network retry *is* two real requests.
+
+A duplicate claim is **not an error**. It returns the row created the first time. The customer sees
+success for something that already succeeded.
+
+Claiming does **not** spend points — the balance is a threshold, not a currency, so no balance can go
+negative through this path. What is recorded is that the reward was taken.
+
+The customer sees three distinct states: **unlocked** (button shown), **claimed** (reserved — the
+discount awaits the next order, the gift awaits the store), and **consumed/fulfilled** (finished).
+
+## 40.8 Discount rewards
+
+Explicit claim, then automatic use at the next checkout — reusing the birthday-discount architecture
+rather than building a coupon subsystem.
+
+```
+Unlock → customer taps "claim" → reserved → next order consumes it → consumed_order_id recorded
+```
+
+The amount is computed server-side as `min(floor(products_total × percent / 100), cap)`; no amount is
+ever read from the client. Reservation happens *inside* the order transaction with `FOR UPDATE`, so a
+concurrent order cannot take the same reward, and an order that fails for any later reason (stock ran
+out, birthday discount already used) rolls the reservation back — a discount is never burned on an
+order that was not created.
+
+**Correction found by the test suite and fixed in migration 042.** `consumed_order_id` is
+`ON DELETE SET NULL`, so deleting an order both violated the paired CHECK *and* — because "open" was
+defined as "no order link" — would have returned an already-spent discount to the available pool.
+`consumed_at` is now the single source of truth for consumption; the order link is audit provenance
+that may legitimately go missing, exactly as `points_ledger.order_id` does.
+
+## 40.9 Gift rewards
+
+Gifts are real store gifts, not credit. Claiming records a one-time redemption and notifies the
+customer; the administrator fulfils it by hand from the dashboard queue.
+
+```
+CLAIMED  →  (admin action)  →  FULFILLED
+```
+
+`fulfilled_at` stays `NULL` until an explicit click. Fulfilment is guarded by
+`WHERE fulfilled_at IS NULL`, so two administrators clicking at once produce one fulfilment and one
+409. Gifts never flow through the checkout discount path, and **no claim expires** — an unfulfilled
+claim is a debt the store owes, and debts do not lapse because the customer did not order again.
+
+A new notification type `rewardClaimed` carries both the claim confirmation and the delivery
+confirmation. It is deliberately not `promotion`: that category is off by default in the customer's
+preferences, and hiding a confirmation the customer asked for behind an advertising switch they
+turned off is wrong.
+
+## 40.10 Removed configuration
+
+Deleted, not hidden:
+
+| Layer | Removed |
+|---|---|
+| Backend | `POINTS_AWARDS`; the three `points_*` specs in `businessConfigService`; the same keys in `settingsRepo` and `EMPTY_SETTINGS`; the three fields in `adminBusinessSettingsSchema`; `loyaltyRepo` entirely; `pointsService` level CRUD; the four `/admin/loyalty-levels` routes and handlers; `loyaltyLevelCreate/Update/Id` schemas |
+| Database | `loyalty_levels` table, `assert_base_loyalty_level()`, its two triggers, and the three `store_settings` rows |
+| Dashboard | `LoyaltyLevelsCard.tsx` deleted; level CRUD removed from `pointsApi.ts` and `types/points.ts` |
+| Flutter | `PointsEarnRates` — the summary no longer ships earn rates |
+
+`GET /api/admin/galaxy-points/rules` replaces them with a **read-only** view. Showing the rules is
+not a contradiction of fixing them: the administrator is asked about them daily, and hiding them
+would leave them guessing.
+
+**Kept deliberately:** `businessConfigService`, `settingsRepo` and `store_settings` still serve
+`birthday_discount_percent` and `order_rating_delay_hours` — unrelated features that remain genuinely
+configurable. Their card moved from the Points page to Settings and was renamed
+`StoreBusinessSettingsCard`.
+
+## 40.11 Galaxy Points screen order
+
+The vertical order is now, and must remain:
+
+```
+LEVELS  →  SHORT EXPLANATION  →  POINTS HISTORY
+```
+
+Previously the history came first and the levels sat in the middle, so a customer began at a list of
+transactions before knowing what they meant.
+
+The explanation is short fixed MSA stating the real rules: 5 points per 10,000 IQD, 1 point for a
+written review, 5 points for attaching photos, one review per product. The numbers are written in the
+screen now **because they are fixed** — sending them from the server was the correct answer while
+they were configurable.
+
+The trailing sentence «المزايا يحددها المتجر من لوحة الإدارة» is gone: it described an internal
+mechanism that never concerned the customer, and is now false besides.
+
+## 40.12 Gender
+
+`users.gender TEXT CHECK (gender IS NULL OR gender IN ('male','female'))`.
+
+**Required for new registrations**, validated server-side by a closed Zod enum. **Nullable forever**
+for existing accounts: no migration fills it and nothing infers it from a name. A wrong guess
+addresses the customer in the wrong form in every sentence, while "unknown" is handled gracefully.
+
+Selection is two icon cards (`GenderSelector`), never a text field — free text would accept «ذكر»,
+«m» and «رجل», none of which conjugate. The register screen starts with **no** pre-selection: a
+pre-filled choice would create half the accounts with a value nobody intended. The same widget is
+reused in Settings → الجنس.
+
+## 40.13 Gender-aware Arabic
+
+One mechanism, `lib/core/l10n/gender.dart`: `AppGender { male, female, unknown }`, a `Gendered`
+triple, and `context.g(...)`. Business logic never touches these strings; technical identifiers stay
+English.
+
+**Unknown gets neutral wording, not masculine.** Defaulting every unknown to masculine addresses half
+the customers in a form that is not theirs merely because they were never asked. Where a natural
+neutral exists it is written explicitly — usually the verbal noun instead of the imperative
+(«إضافة إلى السلة» rather than «أضف»), and a level-describing phrase instead of a person-describing
+one («مستوى البطولة» rather than «بطل المجرة»). Where no natural neutral exists, the masculine is
+used as the least confusing fallback, and that is recorded in the field's documentation rather than
+left as an unexamined default.
+
+Converted where Arabic grammar actually requires agreement: imperatives (`أضف/أضيفي`, `اختر/اختاري`,
+`أدخل/أدخلي`, `أكمل/أكملي`, `سجّل/سجّلي`, `قيّم/قيّمي`), level names, and second-person sentences
+across auth, cart, favorites, checkout, orders, reviews, search, collections, settings and account.
+
+**Left neutral on purpose:** `السلة`, `المفضلة`, `طلباتي`, `الإعدادات` and other nouns. Gendering
+what Arabic does not gender damages the language without helping anyone.
+
+Kurdish (Sorani) has no grammatical gender and is unaffected.
+
+`context.gender` degrades to `unknown` when no `AuthCubit` is in the tree rather than throwing: this
+is display text, and an isolated subtree should not crash over a label. No business decision passes
+through it, so nothing is hidden by the leniency.
+
+## 40.14 Tests
+
+**Backend — 43 files, 513 tests, all passing.** New: `galaxy-points-rules` (29), `loyalty-rewards`
+(29), `galaxy-levels` (10, replacing `loyalty-levels`), `gender` (16). Covers the purchase table and
+remainder behaviour, delivery exclusion, the review matrix, the 6-photo rejection, duplicate and
+repeat-purchase reviews, the 20-point cap including concurrent approvals, every threshold and its
+boundaries, one-time claims under 10 concurrent requests, discount caps, failed-order rollback,
+gift values and duplicate fulfilment, and gender validation and serialisation.
+
+Crowbar coverage: client-supplied balances in the claim payload, manipulated level keys
+(`../admin`, `godmode`, empty), manipulated redemption ids, another user's gift fulfilment, customer
+access to the admin queue, oversized photo arrays, and threshold bypass.
+
+**Flutter — 730 tests, all passing** (`--exclude-tags integration`). New: `gender_text_test` (19) and
+`galaxy_points_screen_test` (13). The screen-order test mounts the **real** `GalaxyPointsScreen` and
+measures actual vertical positions — an earlier draft asserted against a re-created copy of the
+layout, which would only have confirmed the test's own ordering.
+
+## 40.15 Pre-existing failure, not from this step
+
+`api_integration_test.dart` › «أقسام الإكسسوارات والحقائب» fails against the dev server because the
+`ميداليات` subcategory holds 0 products in the dev database. A catalog seeding gap, unrelated to
+points or gender. The other 10 integration tests pass once the dev API is running.
+
+## 40.16 Files changed
+
+Backend (23): `domain/galaxyPoints.ts` (new); migrations 039–042 (new); `services/` — points,
+loyaltyRewards (new), reviews, order, businessConfig, auth; `repositories/` — rewardRedemption (new),
+points, reviews, order, user, settings, `loyaltyRepo` deleted; `controllers/` — community,
+adminExtras; `routes/` — customer, admin; `validators/` — community, admin, auth; `types/index.ts`.
+
+Flutter (25): `core/l10n/gender.dart` (new); `design_system/components/inputs/gender_selector.dart`
+(new); points — `level_reward.dart` (new), `otaku_level`, repository, cubit, screen; auth — entity,
+repository, impl, two usecases, cubit, register screen; reviews — entity, repository, impl, cubit,
+write-review screen; settings, account, notifications entity + screen; and the copy sweep across
+favorites, cart, checkout, orders, search, product detail, collections, login, forgot-password.
+
+Dashboard (9): `GalaxyRulesCard.tsx` and `GiftClaimsCard.tsx` (new), `LoyaltyLevelsCard.tsx` deleted,
+`PointsSettingsCard.tsx` → `StoreBusinessSettingsCard.tsx`, `pointsApi.ts`, `types/points.ts`,
+`types/businessSettings.ts`, `PointsPage.tsx`, `SettingsPage.tsx`.
+
+Tests (16): 4 new backend suites, 1 removed; 2 new Flutter suites, `support/auth_stub.dart` (new),
+and updated stubs across 9 existing Flutter suites plus 5 backend suites.
+
+## 40.17 Not verified on a device
+
+No physical device. Layout was verified by widget tests at 320/390/430/834 px and by analyzer and
+suite runs; how the new Arabic sentences wrap at a real font scale on hardware was not observed.
+
+## 40.18 Promotion status
+
+**DEV only.** No commit, push, merge, or deployment; `staging`, `prod` and `master` untouched.
+Migrations 039–042 were applied to the local dev and test databases only.
+
+---
+
+# STEP 41 — DEV: BIRTHDAY DISCOUNT FIXED AT 5% · REVIEW OPENS ON RECEIPT
+
+Two more business rules stop being dashboard settings, and the review delay is
+removed outright rather than made fixed.
+
+## 41.1 Birthday discount — fixed at 5%
+
+The percentage was read from `store_settings.birthday_discount_percent` and
+edited from the dashboard, so what a customer received on their birthday
+depended on who last opened the settings page. It is now
+`BIRTHDAY_DISCOUNT_PERCENT = 5` in `backend/src/domain/birthday.ts`.
+
+**Only the source of the percentage changed.** Everything else is untouched:
+
+- Eligibility (at least one completed order + a registered birth date).
+- Once per calendar year, guarded by `UNIQUE (user_id, used_year)` on
+  `birthday_discount_usage`.
+- Applied to the product subtotal at order creation, inside the same transaction.
+- `Math.round` rounding, kept literally — changing the rounding rule while fixing
+  the percentage would have silently moved order totals nobody asked to move.
+
+The feature itself was **not** removed. `GET /api/birthday` still reports
+`discountPercent: 5` and the discount still applies (verified live).
+
+## 41.2 Review opens on receipt — the delay is gone, not fixed
+
+The delay was not made a constant; it was **deleted**. There is no waiting period
+between confirming receipt and reviewing.
+
+| | Before | After |
+|---|---|---|
+| Eligibility | `rating_available_at <= now()`, where the timestamp was dispatch + an admin-set delay | `delivered_at IS NOT NULL` |
+| API field | `ratingAvailable` + `ratingAvailableAt` | `canReview` |
+| Configurable | `order_rating_delay_hours` in the dashboard | nothing |
+
+The old rule asked customers for an opinion on a package they had already put
+away. Confirming «استلمت طلبي» now opens the review in the same response — the
+`confirm-receipt` payload itself carries `canReview: true`, so the app never
+needs a second call to find out.
+
+The `POST /api/orders/:id/confirm-receipt` endpoint was **reused**, not
+duplicated. Its ownership check, its transition guard, its points award and its
+idempotency (`ALREADY_CONFIRMED` on a repeat) are unchanged; only what
+`markDelivered` writes changed.
+
+## 41.3 Why `rating_available_at` was renamed, not dropped
+
+[CRITICAL] The column served **two** jobs, and only one was being removed:
+
+1. The review-eligibility gate — deleted.
+2. The schedule for the «شلونها المنتجات؟» reminder — a live notification
+   feature read by `dispatchDueRatingReminders`, `rescheduleReminder`, and the
+   dashboard's "send now" button.
+
+Dropping it would have taken the reminders with it. Keeping the name would have
+left a column called "rating available at" that has nothing to do with when
+rating is available — a name that lies, and the first thing a future reader
+would wire eligibility back to. Migration 043 renames it to
+`rating_reminder_at`, along with its two constraints.
+
+The reminder delay survives as `config.orders.reviewReminderDelayHours`
+(env `ORDER_REVIEW_REMINDER_DELAY_HOURS`, default 16) — an operational constant
+for a notification, not a business setting in a browser. Rescheduling the
+reminder provably does not change review eligibility.
+
+## 41.4 The business-settings subsystem is gone
+
+After this step no numeric business setting remained: the three Galaxy Points
+values went in STEP 40, the birthday percentage is now fixed, and the review
+delay no longer exists. An endpoint serving an empty list and accepting writes
+would be a door with no room behind it, so the whole path was removed:
+
+`businessConfigService.ts` · `BUSINESS_SETTING_KEYS` · `adminBusinessSettingsSchema` ·
+`getBusinessSettings`/`updateBusinessSettings` · `GET|PATCH /admin/settings/business` ·
+`StoreBusinessSettingsCard.tsx` · `businessSettingsApi.ts` · `types/businessSettings.ts`.
+
+`settingsRepo` and `store_settings` remain — they still hold social links and app
+version settings, which are text data, not business rules.
+
+## 41.5 Per-order review action
+
+The review action belongs to a specific order and nothing else. `AnimeOrderCard`
+gained an `onReview` callback that renders «قيّم طلبك» **inside that order's
+card**, shown only when `order.canReview` is true. There is no global review
+button and no route that opens reviewing outside an eligible order.
+
+`canReview` is computed by the server and sent ready. The app does not derive it
+from status, timestamps, or the device clock — a regression test asserts that a
+`COMPLETED` order with a `deliveredAt` still reads "closed" if the server says so,
+and a source guard fails the build if `ratingAvailable`, `ratingAvailableAt`,
+`timeUntilRating`, or a hard-coded delay reappears in the orders/reviews code.
+
+Hiding the button is not the guard. `reviewsService.submit` reads `canReview`
+from the order row and rejects `ORDER_NOT_COMPLETED` for anything else —
+verified by calling the API directly with no UI involved.
+
+## 41.6 Galaxy Points unchanged
+
+`eligiblePurchaseValue = max(0, products_total − discount)` and
+`floor(value / 10,000) × 5` are untouched. The birthday discount remains part of
+`discount`, so a 100,000 IQD order with a 5,000 birthday discount still yields 45
+points, not 50 — asserted directly. Delivery fees and delivery discounts remain
+excluded. Review points, the 20-point per-order cap, one-review-per-product,
+the fixed ladder, one-time rewards, gift claims and gender handling were not
+touched and their suites still pass.
+
+## 41.7 Tests
+
+**Backend — 45 files, 519 tests, all passing.** New:
+`birthday-fixed-discount` (8) and `review-delay-removed` (5).
+`review-eligibility-16h.test.ts` → `review-eligibility-on-receipt.test.ts` (11),
+its delay tests replaced with receipt tests and its review-lifecycle tests kept
+untouched. `order-rating-lifecycle` (43) rewritten where the premise changed.
+`fastForwardRatingWindow` was deleted from the shared helpers — there is no
+window to fast-forward; the reminder suite keeps a local equivalent.
+
+The removal tests are adversarial, not cosmetic: one inserts
+`order_rating_delay_hours = 999` directly into `store_settings` and proves the
+review still opens immediately — the difference between "removed from the UI"
+and "removed".
+
+**Flutter — 735 tests, all passing.** `rating_window_contract_test.dart` →
+`review_eligibility_contract_test.dart` (13).
+
+## 41.8 Files changed
+
+Backend (13): `domain/birthday.ts` (new); migration 043 (new);
+`businessConfigService.ts` deleted; `orderRepo`, `orderService`,
+`reviewsService`, `birthdayRepo`, `settingsRepo`, `ratingReminderJob`,
+`config/index.ts`, `types/index.ts`, `adminExtrasController`, `routes/admin.ts`,
+`validators/admin.ts`.
+
+Flutter (5): `orders/domain/entities/order.dart`, `order_detail_screen.dart`,
+`orders_screen.dart`, `anime_order_card.dart`, `core/l10n/gender.dart`.
+
+Dashboard (4): `StoreBusinessSettingsCard.tsx`, `businessSettingsApi.ts`,
+`types/businessSettings.ts` deleted; `SettingsPage.tsx`.
+
+Tests (8): 2 new backend suites, 1 renamed+rewritten, 2 rewritten, helpers
+trimmed; 1 Flutter suite replaced, 1 stub updated.
+
+## 41.9 Promotion status
+
+**DEV only.** No commit, push, merge, or deployment; `staging`, `prod` and
+`master` untouched. Migration 043 applied to the local dev and test databases only.
+
+---
+
+# STEP 42 — DEV: EXPECTED RESTOCK DATE · AUTOMATIC SUBSCRIBER NOTICES · READ-ONLY WAITING STATE
+
+The admin could already record an expected restock date, but it was inert: no
+customer was told, and the app showed it as a grey caption beside a button that
+still invited a click. This step makes the date do its job.
+
+## 42.1 No new column, no new subscription field
+
+`products.restock_at TIMESTAMPTZ` has existed since migration 034 and means
+exactly "expected back on…". It is reused as-is. Migration 044 adds nothing but a
+notification type.
+
+[CRITICAL] The date is **not** copied into `restock_subscriptions`. It is a
+property of the product, not of a subscription: snapshotting it per row would
+mean an admin editing the date leaves a hundred stale copies that keep being
+shown to customers after the real date moved. `listMine` joins `products` on
+every read, so the customer always sees the current date.
+
+## 42.2 Notifications — only when the date actually changes
+
+A new `restockScheduled` notification type. `backInStock` is left alone: "expected
+to return" and "has returned" are different events, and reusing the latter would
+tell customers a still-empty product is available — and would consume their
+subscription, which the expected-date notice must not do.
+
+| Transition | Behaviour |
+|---|---|
+| `NULL → 15 Sep` | notify subscribers — «متوقّع توفره بتاريخ 15 سبتمبر» |
+| `15 Sep → 20 Sep` | notify subscribers — «تم تحديث موعد توفر … إلى 20 سبتمبر» |
+| `20 Sep → 20 Sep` | **nothing** |
+| `20 Sep → NULL` | nothing — clearing a date is not news |
+
+Idempotency is decided by comparing **instants**, not strings:
+`2026-09-15T00:00:00Z` and `2026-09-15T03:00:00+03:00` are the same moment, and
+announcing a "change" between them would be a lie. Pressing Save on an unchanged
+form notifies nobody — verified with six consecutive identical saves producing
+one notification.
+
+One type, two texts. "Set" and "updated" are distinguished by the sentence the
+customer reads, not by a database category — both open the same product.
+
+## 42.3 Subscribing to a product that already has a date
+
+The subscribe endpoint was reused, not duplicated. When a date already exists and
+the subscription is **new**, the notice is written in the same transaction that
+creates it — no background job needed to tell the customer something already
+stored.
+
+[CRITICAL] Conditioned on `!alreadySubscribed`. A double tap, or a retry after a
+dropped connection, reaches the server as genuine repeated requests; a notice per
+request is noise. The `UNIQUE (user_id, product_id)` index already made the
+subscription itself idempotent — verified with six concurrent subscribes yielding
+one row and one notice.
+
+## 42.4 The waiting state is read-only
+
+| Product state | Customer sees |
+|---|---|
+| In stock | «إضافة إلى السلة» (existing cart path) |
+| Out of stock, not subscribed | «أعلمني عند توفر المنتج» |
+| Out of stock, subscribed, no date | «بانتظار التوفر — إلغاء التنبيه» (unchanged) |
+| Out of stock, subscribed, date set | **«بانتظار توفيره بتاريخ 15 سبتمبر» — display only** |
+
+The date state is not a disabled button; it is a surface with no `onTap` at all.
+A disabled button invites a press and then refuses — this is a state with no
+action in it. The customer cannot resubscribe, cancel by accident, change the
+date, or provoke another notification by tapping. Marked `readOnly` for screen
+readers.
+
+The existing cancel affordance is preserved in the state that still has one
+(subscribed, no date). No new cancellation flow was introduced.
+
+## 42.5 Real availability wins
+
+When stock returns, the existing path runs untouched: `backInStock` notices are
+written and subscriptions consumed. Two additions:
+
+- `restock_at` is cleared in the same transaction — the expectation was met, and
+  a leftover "expected 15 Sep" on an in-stock product becomes false the next day
+  and would resurface if it sold out again.
+- A single save that both adds stock **and** sets a date sends only the
+  back-in-stock notice. Telling someone a product they can buy right now is
+  "expected on the 20th" is a contradiction.
+
+The app never re-derives availability: `product.inStock` (`stock > 0`) is the one
+definition, and `listMine` also reports `inStock` so a subscription lingering
+against an available product cannot render a waiting state.
+
+## 42.6 Concurrency
+
+`updateProduct` now takes `SELECT id FROM products WHERE id = $1 FOR UPDATE`
+before reading. Every decision in that transaction is a comparison against the
+previous value — did stock return? did the date change? — and two admins saving
+together would otherwise both read the same old value and either double-notify or
+not notify at all.
+
+Verified live: six concurrent identical saves → one notification; two concurrent
+different dates → serialised, and the **last notification matches the stored
+date**, which is the invariant that matters to the customer.
+
+## 42.7 Date formatting
+
+`formatShortArabicDate` in `lib/core/utils/formatters.dart` and
+`formatExpectedRestockDate` in the backend service. Month names live in exactly
+one place per side; writing them in the widget that needs them would guarantee a
+second copy that drifts.
+
+Both render in the store's timezone, not UTC: a date set at 22:00 UTC on the 14th
+is the 15th in Baghdad, and the customer must read the day the admin meant.
+No English month names, no per-screen string concatenation.
+
+## 42.8 Dashboard
+
+Already complete before this step — «التوفر المتوقّع» in طلبات التوفر supports
+set, edit and clear through `PATCH /admin/products/:id`, with a past-date guard.
+Left as-is rather than rebuilt; no second endpoint was added for a column the
+product update route already accepts. Only tests were added.
+
+## 42.9 Security
+
+Setting, changing and clearing the date is admin-only (`requireAdmin` on
+`/api/admin`) — a customer token gets 403, no token 401, and the stored date is
+unchanged in both cases. Customers may read the date and subscribe for
+themselves; the server derives the user from the token, so a `userId` in the body
+is ignored. Malformed dates are rejected at the edge by the existing Zod
+`datetime({ offset: true })` rule — `«15 سبتمبر»`, `2026-13-45`, `not-a-date`,
+date-only `2026-09-15`, numbers and booleans all return 400.
+
+## 42.10 Tests
+
+**Backend — 46 files, 542 tests, all passing.** New `restock-schedule.test.ts`
+(23) covers the date-change matrix, both subscription cases, idempotency under
+repeat and concurrency, real-availability precedence, authorization and date
+validation.
+
+**Flutter — 747 tests, all passing.** New `restock_schedule_ui_test.dart` (12)
+covers the three states, the read-only guarantee (no button, no `InkWell`, taps
+change nothing), immediate transition after subscribing, date changes, and the
+in-stock override.
+
+**Dashboard — 6 files, 31 tests, all passing.** New `restockApi.test.ts` (5)
+asserts set/edit/clear route through the product endpoint and that clearing sends
+an explicit `null` rather than omitting the field.
+
+## 42.11 Files changed
+
+Backend (6): migration 044 (new), `restockService`, `restockRepo`,
+`adminService`, `types/index.ts`.
+Flutter (4): `formatters.dart`, `restock_repository.dart`,
+`restock_notify_button.dart`, `core/l10n/gender.dart`.
+Dashboard (1 test only — the UI already existed).
+Tests (3 new files).
+
+## 42.12 Promotion status
+
+**DEV only.** No commit, push, merge, or deployment; `staging`, `prod` and
+`master` untouched. Migration 044 applied to the local dev and test databases only.
+
+---
+
+# STEP 43 — DEV: OFFERS READ FROM THE ADMIN API · GENDERED SELECTOR COLOURS · ADMIN CUSTOMER GENDER & PHONE · GALAXY POINTS READABILITY
+
+Six unrelated-looking reports turned out to share one shape: a screen was reading
+from a source that was never meant to serve it. The offers screen read the public
+catalogue, the level name read a single ellipsised line, and the explanation read
+its text colour from a border token. This step fixes each at the source rather
+than at the symptom.
+
+## 43.1 Offers — the admin screen was served by the public catalogue
+
+The reported error («تعذر تحميل المنتجات» over «تعذر الاتصال بالخادم») is the
+status-0 branch of `admin/src/api/client.ts` and means exactly what it says: no
+response arrived. The mapping was already correct — 401/403/404/422/500 each map
+to their own message and the server's own `message` wins when present — so no
+error-handling change was warranted (§16 verified, not altered).
+
+Tracing the flow end to end surfaced two real defects underneath.
+
+**Defect 1 — the tabs read a public endpoint.** «العروض» and «المختارة» called
+`GET /api/catalog/products?offer=true`. That endpoint is the storefront: its
+first WHERE clause is `p.is_active = TRUE`. So a **deactivated product still
+flagged as an offer was invisible on the very screen that manages offers**, and
+could not be removed from the offers list at all. The page documented this as a
+caveat in an on-screen `Alert` rather than fixing it.
+
+The fix strengthens authorization rather than weakening it: `offer` and
+`selected` were added to `adminProductsQuerySchema`, `adminService.listProducts`
+forwards them to the shared `productRepo.list` alongside `includeInactive: true`,
+and all three tabs now call `GET /api/admin/products` — behind `authenticate` +
+`requireAdmin`. The public endpoint is untouched and still hides inactive
+products from customers.
+
+**Defect 2 — flag toggling round-tripped through the public endpoint.**
+`patchProductFlags` fetched the product from `/catalog/products/:id` and
+re-sent its `images` and `options` alongside the flag. The comment above it
+claimed the admin update route "fills images and options with [] on any update
+sent without them". That has not been true since the product-save fix:
+`adminService.updateProduct` only touches `images`/`options` when the key is
+actually present. The workaround outlived its cause and cost three things — an
+extra request, a DELETE-and-reinsert of every image and option row on each
+toggle, and outright failure on inactive products, where the public route
+returns 404 and the dashboard converted it into a fabricated 409 «لا يمكن تغيير
+حالاته» describing a server rule that does not exist. It is now a plain
+`PATCH /admin/products/:id` carrying the flag alone, and the switches are no
+longer disabled for inactive products.
+
+## 43.2 Gender selector — colour is per-option, from semantic tokens
+
+`GenderSelector` (used by **both** registration and Settings — one widget, no
+second copy) now takes an accent per card: male `colors.info` (blue), female
+`colors.error` (red). The accent paints the selected card's border and icon plus
+a 10% tint blended onto the surface. The unselected card stays neutral, and no
+colour reaches the rest of the screen.
+
+The values are semantic tokens, never literals, so both themes follow
+automatically — `info` is `#2B79C2` light / `#4EA8FF` dark. Colour is not the
+only signal: the selected border thickens (1.5 vs 1) and `Semantics.selected` is
+set, so the state survives for anyone who cannot distinguish the two hues.
+
+## 43.3 Galaxy Points — a border token was being used as a text colour
+
+`colorScheme.outline` is defined as `Color(0x1F1C103A)` — **12% alpha**, because
+it is a *border* token. Four texts in the Galaxy Points screen used it as their
+colour. Blended over `surfaceContainerHighest` that measures **1.28:1**, which is
+the reported "light text on a light background" precisely. They now use
+`onSurfaceVariant`: **4.79:1** light, **6.38:1** dark.
+
+Measuring the rest of the screen found a second, wider problem. `success`,
+`error` and `info` are tuned as **indicators** — icons, badges, borders, where
+the bar is 3:1. Used as text on a light surface they measure 2.52:1, 2.72:1 and
+4.13:1, all below the 4.5:1 AA bar for text. Three text-weight tokens were added
+to the design system — `successText`, `errorText`, `infoText` — dark enough to
+pass while holding the same hue. The dark theme needs no darkening (its light
+variants already measure 5.92:1 and 6.45:1 on dark surfaces), so it maps them to
+the existing values.
+
+| Where | Before | After |
+|---|---|---|
+| Explanation body & closing paragraph | `outline` · 1.28:1 | `onSurfaceVariant` · 4.79:1 |
+| Rule badges `+٥` on `successPale` | `success` · 2.48:1 | `successText` · 4.77:1 |
+| History amounts (+/−) | `success`/`error` | `successText`/`errorText` |
+| Reward status pills | `success`/`info` | `successText`/`infoText` |
+
+Dividers stay deliberately light (1.23:1 light, 1.35:1 dark): AA's 3:1 covers
+non-text content that *carries meaning*, and a separator carries none.
+
+## 43.4 The level name is no longer cut
+
+The account card showed `المستوى ٢ — مستكشفة المج…` on small phones: one line
+with `TextOverflow.ellipsis`. The level name **is** the reward being displayed,
+so truncating it empties it. It now wraps to two lines with a 1.35 line height,
+verified un-truncated via `RenderParagraph.didExceedMaxLines` — not merely
+present in the tree — at 320, 390 and 834 px wide, for the longest feminine
+names.
+
+The 🌌 mark now sits beside the account name, reusing the identity already used
+in the points header rather than introducing an icon. The name flexes and the
+mark does not, so a long name shrinks before the mark moves, and
+`Semantics(label: 'نقاط المجرّة')` gives the glyph a meaning a screen reader can
+speak.
+
+## 43.5 Admin customer management — gender and full phone
+
+`GET /api/admin/users` now returns `gender` and accepts `gender=male|female|unknown`.
+Filtering happens in SQL (`u.gender IS NULL` for `unknown`), and counts come from
+one extra query computed over **everything matching the current search**, not the
+page on screen:
+
+```sql
+COUNT(*) FILTER (WHERE u.gender = 'male')   AS male,
+COUNT(*) FILTER (WHERE u.gender = 'female') AS female,
+COUNT(*) FILTER (WHERE u.gender IS NULL)    AS unknown
+```
+
+[CRITICAL] `NULL` is displayed as «غير محدد» and counted in its own column. It is
+never folded into «ذكر». Accounts created before migration 040 have no gender and
+the store does not get to invent one for them. No admin route writes the field —
+gender is set at registration and edited by its owner in Settings.
+
+The phone is shown in full (`+9647XXXXXXXXX`, copyable, LTR), with a «واتساب»
+action that opens `https://wa.me/<digits>` — a chat window only, no prefilled
+text and no message sent; contacting a customer stays an explicit human act, and
+no messaging backend was added.
+
+`toPublicUser` carries `phone` and `gender`, and an audit confirmed it is called
+from `authService` only — register, login, verify, `/auth/me`, profile update.
+Every one of those is the account's own owner reading their own row, so despite
+the name it is a *self* DTO, not a public one. No catalogue, review, community or
+notification payload carries either field.
+
+## 43.6 Arabic audit
+
+1,586 unique user-facing Arabic strings were extracted from Flutter, the
+dashboard and the backend (string literals only — comments excluded) and checked
+against 50 rules covering همزات, التاء المربوطة, الألف المقصورة, تنوين النصب,
+verb/noun agreement, and punctuation. Two genuine errors were found and fixed:
+
+| File | Was | Now | Why |
+|---|---|---|---|
+| `backend/src/validators/auth.ts` | «اختر ذكر أو أنثى» | «اختر ذكراً أو أنثى» | مفعول به منصوب — matches «اختر محافظة صالحة» and «اختر زبوناً واحداً» in the same file |
+| `lib/core/constants/app_strings.dart` | «ابحث عن منتج...» | «ابحث عن منتج…» | Arabic ellipsis, as used everywhere else |
+
+Everything else the scanner flagged was a false positive from the scanner's own
+word boundaries (تنوين marks read as word breaks made «جداً» match a rule for
+«جدا»). Correct text was not rewritten for style.
+
+---
+
+# STEP 44 — DEV: PRODUCT-LEVEL DELIVERY DISCOUNT · EXCESS RETAINED FOR THE STORE
+
+The per-product delivery discount already existed and was already correct on the
+customer's side. What was missing was the other half of the arithmetic: when the
+promotion exceeded the delivery fee, `Math.min` discarded the difference and no
+record of it survived anywhere.
+
+## 44.1 What was already there
+
+Migration 016 added `products.has_delivery_promo`; migration 019 turned it into a
+real amount (`delivery_promo_amount NUMERIC(12,2)`, per unit) and snapshotted the
+applied figure onto `orders.delivery_discount`, with
+`CHECK (delivery_discount <= delivery_fee)`. The dashboard product form already
+had the switch and the amount field, and the app already previewed the capped
+value. **None of that was duplicated.**
+
+## 44.2 The gap
+
+```
+rawDeliveryDiscount = Σ(quantity × delivery_promo_amount)
+deliveryDiscount    = min(raw, deliveryFee)     ← kept
+excess              = max(0, raw − deliveryFee) ← computed nowhere
+```
+
+Fee 5,000 · 1,000/unit · 6 units ⇒ raw 6,000, customer receives 5,000, delivery
+becomes 0, **and 1,000 vanished**.
+
+## 44.3 The split now happens in exactly one place
+
+`orderService.create` stops pre-capping. It passes the **raw** sum, and
+`orderRepo.create` performs the split:
+
+```ts
+const deliveryPromoRaw       = Math.max(input.deliveryPromoRaw ?? 0, 0);
+const deliveryDiscount       = Math.min(deliveryPromoRaw, input.deliveryFee);
+const deliveryDiscountExcess = Math.max(0, deliveryPromoRaw - input.deliveryFee);
+```
+
+Two values derived from one input cannot disagree. Had the service kept computing
+the cap and the repo computed the excess, a future edit to either could credit the
+store an excess while the customer still paid for delivery.
+
+The customer total is untouched and remains:
+
+```
+total = max(0, productsTotal + (deliveryFee − deliveryDiscount) − discount)
+```
+
+`productsTotal` and `discount` never see the excess. It is not a product
+discount, not a customer discount, and not loyalty, birthday or Galaxy Points.
+
+## 44.4 Migration 045 — and the invariant the database enforces
+
+`orders.delivery_discount_excess NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (>= 0)`,
+following the per-order money-snapshot pattern already used by `products_total`,
+`delivery_fee`, `discount`, `loyalty_discount` and `delivery_discount`.
+
+[CRITICAL] The second constraint is the real guard:
+
+```sql
+CHECK (delivery_discount_excess = 0 OR delivery_discount = delivery_fee)
+```
+
+An excess can only exist once the fee is fully consumed. A row crediting the
+store while the customer still pays delivery cannot be written at all — the
+invariant does not depend on application code staying correct.
+
+## 44.5 The excess is admin-only
+
+`mapOrder` is an explicit whitelist read by **both** the customer and admin
+paths, so the excess was not added to it. A separate `mapAdminOrder` /
+`AdminOrderWithItems` carries it, reached only through
+`orderRepo.findByIdForAdmin` from `adminService.getOrder` — i.e. `GET
+/api/admin/orders/:id` behind `requireAdmin`. Verified: the field appears in no
+customer order response, no order list, and no public catalogue payload.
+
+The dashboard shows it **outside** the totals table, as a labelled notice —
+«مبلغ محتفَظ به للمتجر — لم يُخصم من الزبون ولا يدخل إجمالي الطلب» — because
+placing it in the totals column would read as one more discount, the opposite of
+its meaning. The customer UI is unchanged: fee, capped discount, «توصيل مجاني»
+when the charge reaches zero, and the total. No internal accounting term is
+shown to customers.
+
+## 44.6 Validation
+
+`deliveryPromoAmount` now rejects negatives with a specific message, caps at
+1,000,000, and allows at most two decimals (the column is `NUMERIC(12,2)`; a
+finer value was being silently rounded, so the store saved a number the admin did
+not type). A `superRefine` lifts the existing database invariant
+(`products_delivery_promo_amount_positive`) to the edge so enabling with 0
+returns «فعّلت خصم التوصيل — أدخل قيمة أكبر من صفر» instead of the generic
+«قيمة غير صالحة لأحد حقول المنتج». The CHECK constraint remains the real guard.
+
+An amount larger than any delivery fee is **accepted**: fees vary by governorate
+and zone and change after the product is configured, so the cap is a decision
+made at order time, not at configuration time.
+
+## 44.7 Historical consistency
+
+Nothing reads `products.delivery_promo_amount` after the order exists. Editing or
+disabling a product's promotion later leaves `delivery_discount` and
+`delivery_discount_excess` on past orders exactly as written — verified by
+doubling the amount, then disabling the promotion entirely, and asserting the
+whole financial row is byte-identical.
+
+## 44.8 Store-side accounting — what exists and what does not
+
+[CRITICAL] **This step records the excess per order. It does not introduce a
+store ledger, and none exists.**
+
+An audit of all 33 tables found no store revenue, wallet, balance, payout or
+accounting model. The only ledger is `points_ledger`, whose `amount` is an
+`INTEGER` scoped to a `user_id` under
+`CHECK (reason IN ('order_received','review_approved','review_with_photo','manual'))`
+— loyalty **points**, not money. Writing IQD into it would corrupt customer
+balances and level placement.
+
+So the excess is recorded the way every other money figure on an order is
+recorded: an auditable `NUMERIC(12,2)` column on `orders`, tied to its order,
+constrained, and queryable:
+
+```sql
+SELECT SUM(delivery_discount_excess) FROM orders WHERE status = 'COMPLETED';
+```
+
+A running store balance, a double-entry ledger, or a payout/settlement model
+would be a **new financial subsystem**, and building one for a single figure is a
+business decision — not one to make silently inside this task. What it would need
+before implementation is listed in the report accompanying this step.
+
+---
+
+# STEP 45 — DEV: RESTOCK PHONE FOR AUTHORIZED ADMINS · `outline` RETIRED AS A TEXT COLOUR
+
+Two leftovers from the previous audits, unrelated to each other except that both
+were cases of a value being correct in one role and wrong in another.
+
+## 45.1 Restock phone — the mask was never guarding a public surface
+
+`restockRepo.adminDemand` masked the subscriber's phone in SQL:
+
+```sql
+substr(u.phone, 1, 5) || '****' || right(u.phone, 3)
+```
+
+Tracing the flow settled what it was protecting: `adminDemand` is called only by
+`restockService.adminDemand`, reached only from `GET /api/admin/restock/demand`,
+which is mounted under `app.use('/api/admin', authenticate, requireAdmin, …)`.
+**It was never a customer-facing endpoint.** The mask was data minimisation
+inside an already-authorized context, not a privacy boundary.
+
+Its rationale has since expired: the whole point of the screen is that staff
+contact people waiting on a product, and a number missing four digits cannot be
+dialled. The field is now `phone`, full and unmasked — the same representation
+`userRepo.listCustomers` already returns to admins (STEP 43), so there is one
+admin phone shape, not two, and no second masking rule to drift.
+
+**What did not change** is the boundary that actually matters. The customer-facing
+restock routes never carried a phone at all — `listMine` does not join `users` —
+and they still don't. The new suite asserts this by scanning the **entire
+response body** for the subscriber's digits rather than checking a named field,
+because the next leak will arrive in a field nobody thought to assert on.
+
+The dashboard shows the number copyable in LTR with a WhatsApp icon that opens
+`wa.me/<digits>` — reusing `admin/src/utils/phone.ts` from STEP 43. It opens a
+chat and sends nothing.
+
+## 45.2 `colorScheme.outline` is an outline token, not a text token
+
+Light theme defines it as `Color(0x1F1C103A)` — **12% alpha**. Dark theme defines
+it as `Color(0xFF7D739E)` — fully opaque. So the same token measured **1.29:1**
+in light and 4.13:1 in dark: a bug that only existed in one theme, which is
+exactly the kind that survives review.
+
+29 occurrences were audited one by one:
+
+| Role | Count | Verdict |
+|---|---:|---|
+| Text | 17 | **fixed** → `onSurfaceVariant` (5.28:1 light / 7.13:1 dark), one → `onSurface` |
+| Meaningful icons | 9 | **fixed** → `onSurfaceVariant`; at 1.29:1 they were below the 3:1 bar of WCAG 1.4.11 |
+| `BorderSide` on inputs | 2 | **kept** — correct token in its correct role, and the field's boundary is carried by `filled: true` + `fillColor`, not the border |
+| Carousel dot fill | 1 | **kept** — decorative pagination; the active dot differs by colour *and* by being 3× wider |
+
+The one `onSurface` exception is the "not yet rated" status pill: `OtakuStatusPill`
+uses a single colour for its 14%-alpha background, its dot **and** its label, so
+`onSurfaceVariant` lands at 4.40:1 — just under AA. `onSurface` gives 13.22:1
+light / 11.28:1 dark without touching the shared component's alpha, which every
+other pill colour depends on.
+
+## 45.3 The same defect, found again in the status colours
+
+Auditing for hard-coded and mis-roled text colours turned up 18 more places where
+`success` / `error` — tuned as **indicators**, where the bar is 3:1 — were painting
+text: field validation errors (`errorStyle` in both `app_theme.dart` and two field
+widgets), rejection reasons, the error empty-state, "لم يتم قبول تقييمك", the
+logout label, delivery confirmations, and the "✓ اشترى هذا المنتج" badge.
+
+Measured on the surfaces they actually sit on, they ranged **2.39–3.00:1**. All 18
+now use the `successText` / `errorText` tokens added in STEP 43, measuring
+**4.61–5.68:1** in light and **5.38–8.88:1** in dark — every surface passing AA.
+
+Four of them used `AppColors.error` / `AppColors.success` — the *static light*
+constants — so the dark theme was being served light-theme values regardless of
+mode. Those now read through the theme extension.
+
+## 45.4 The rule, and the tripwire that enforces it
+
+**`colorScheme.outline` is reserved for outline and border semantics. Text colours
+come from the centralized semantic tokens** — `onSurface` for primary,
+`onSurfaceVariant` for secondary, `onSurfaceDisabled` for disabled, and
+`successText` / `errorText` / `infoText` for status text.
+
+`test/semantic_text_colors_test.dart` enforces this at the system level rather
+than per-screen, so it does not break when a screen is redesigned. It scans every
+file in `lib/` and fails when a colour assignment inside a `TextStyle` /
+`textTheme` / `hintStyle` / `labelStyle` context uses `outline`, uses a bare
+`success` / `error` / `info` indicator token, or hard-codes a hex literal. It then
+measures every text token against every surface it is drawn on, in both themes,
+and asserts AA. It was verified to fail — naming the exact file and line — by
+reintroducing the original defect, then verified to pass again once reverted.

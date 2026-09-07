@@ -66,7 +66,9 @@ class AppTheme {
         suffixIconColor: colors.onSurfaceVariant,
         hintStyle: text.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
         labelStyle: text.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
-        errorStyle: text.bodySmall?.copyWith(color: colors.error),
+        // نصّ خطأ الحقل يقرأه المستخدم — الصيغة النصّية لا المؤشِّرة
+        // (`colors.error` مضبوط للحدود: 3.0:1 على الأبيض).
+        errorStyle: text.bodySmall?.copyWith(color: brand.errorText),
         border: _inputBorder(colors.outline),
         enabledBorder: _inputBorder(colors.outlineVariant),
         focusedBorder: _inputBorder(colors.primary, width: 2),
@@ -282,10 +284,7 @@ class AppTheme {
       bodyLarge: base.copyWith(fontSize: 16),
       bodyMedium: base.copyWith(fontSize: 14),
       bodySmall: base.copyWith(fontSize: 12),
-      labelLarge: base.copyWith(
-        fontSize: 14,
-        fontWeight: AppDimens.weightBold,
-      ),
+      labelLarge: base.copyWith(fontSize: 14, fontWeight: AppDimens.weightBold),
       labelMedium: base.copyWith(
         fontSize: 12,
         fontWeight: AppDimens.weightMedium,

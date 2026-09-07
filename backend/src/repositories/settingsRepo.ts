@@ -11,31 +11,46 @@ export const SOCIAL_SETTING_KEYS = [
   'social_tiktok',
   'social_instagram',
   'social_whatsapp',
+  'social_description',
 ] as const;
 
 /**
- * إعدادات الأعمال الرقمية.
+ * [NOTE] `BUSINESS_SETTING_KEYS` حُذفت بالكامل.
  *
- * [CRITICAL] هذه إعدادات **تجارية** لا أمنية. أي ثابت أمني (دورات bcrypt،
- * عمر الـJWT، عمر رمز التحقق، حدود المعدّل، سقف حجم الرفع) يبقى في الكود
- * والبيئة عمداً: تحويله إلى إعداد يُحرّره المسؤول من المتصفح يجعل ضعف
- * المنظومة الأمني قابلاً للضبط بنقرة، وهو ما لا يجوز أن يكون ممكناً أصلاً.
+ * كانت تحمل خمسة مفاتيح: ثلاثة لقيم نقاط المجرّة (صارت قواعد ثابتة)، ونسبة
+ * خصم الميلاد (صارت ثابتة في `domain/birthday.ts`)، ومهلة فتح التقييم (أُلغيت
+ * أصلاً — التقييم يُفتح بالاستلام). لم يبقَ إعداد أعمال رقمي واحد، فبقاءُ
+ * القائمة فارغةً مع خدمتها ونقطتها في الـAPI يترك باباً مفتوحاً بلا غرفة
+ * خلفه.
+ *
+ * ما بقي في `store_settings` بياناتٌ نصّية لا قيم أعمال: روابط التواصل
+ * وإعدادات نسخة التطبيق.
  */
-export const BUSINESS_SETTING_KEYS = [
-  'points_order_received',
-  'points_review_approved',
-  'points_review_with_photo',
-  'birthday_discount_percent',
-  'order_rating_delay_hours',
+
+/**
+ * إعدادات نسخة التطبيق — يضبطها المسؤول من لوحة التحكم.
+ *
+ * [CRITICAL] وجودها في القاعدة لا في الكود هو كل الفائدة: رفعُ الحدّ الأدنى
+ * المدعوم بعد نشر نسخة جديدة يصير تغييرَ حقلٍ في اللوحة، لا بناءَ خادم
+ * ونشرَه. لو كانت ثابتاً في الكود لاحتاج كل إجبارِ تحديثٍ إصدارَ خادم.
+ *
+ * نصّية لا رقمية: النسخة `1.10.0` ليست رقماً، والرابط ليس رقماً.
+ */
+export const APP_VERSION_SETTING_KEYS = [
+  'app_min_supported_version',
+  'app_latest_version',
+  'app_android_store_url',
+  'app_ios_store_url',
+  'app_update_message',
 ] as const;
 
 export const SETTING_KEYS = [
   ...SOCIAL_SETTING_KEYS,
-  ...BUSINESS_SETTING_KEYS,
+  ...APP_VERSION_SETTING_KEYS,
 ] as const;
 
 export type SocialSettingKey = (typeof SOCIAL_SETTING_KEYS)[number];
-export type BusinessSettingKey = (typeof BUSINESS_SETTING_KEYS)[number];
+export type AppVersionSettingKey = (typeof APP_VERSION_SETTING_KEYS)[number];
 export type SettingKey = (typeof SETTING_KEYS)[number];
 
 export type StoreSettings = Record<SettingKey, string>;
@@ -51,11 +66,12 @@ const EMPTY_SETTINGS: StoreSettings = {
   social_tiktok: '',
   social_instagram: '',
   social_whatsapp: '',
-  points_order_received: '',
-  points_review_approved: '',
-  points_review_with_photo: '',
-  birthday_discount_percent: '',
-  order_rating_delay_hours: '',
+  social_description: '',
+  app_min_supported_version: '',
+  app_latest_version: '',
+  app_android_store_url: '',
+  app_ios_store_url: '',
+  app_update_message: '',
 };
 
 export const settingsRepo = {

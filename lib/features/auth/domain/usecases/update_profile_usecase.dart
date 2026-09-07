@@ -1,7 +1,7 @@
 import '../entities/user.dart';
 import '../repositories/auth_repository.dart';
 
-/// تحديث الملف الشخصي (الاسم / الصورة) عبر PATCH /auth/me.
+/// تحديث الملف الشخصي (الاسم / الصورة / الجنس) عبر PATCH /auth/me.
 class UpdateProfileUsecase {
   const UpdateProfileUsecase(this._repository);
 
@@ -11,9 +11,11 @@ class UpdateProfileUsecase {
     String? username,
     String? avatarUrl,
     bool clearAvatar = false,
+    String? gender,
   }) => _repository.updateProfile(
     username: username,
     avatarUrl: avatarUrl,
     clearAvatar: clearAvatar,
+    gender: gender,
   );
 }

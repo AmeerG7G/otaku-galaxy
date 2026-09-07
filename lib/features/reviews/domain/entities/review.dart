@@ -16,7 +16,7 @@ class Review {
     required this.orderId,
     required this.rating,
     required this.comment,
-    this.photoUrl,
+    this.photoUrls = const [],
     required this.status,
     this.rejectionReason,
     required this.customerName,
@@ -34,8 +34,15 @@ class Review {
   final int rating;
   final String comment;
 
-  /// صورة اختيارية أرفقها العميل مع التقييم.
-  final String? photoUrl;
+  /// صور التقييم — من صفر إلى خمس، بترتيب إضافتها.
+  ///
+  /// كانت صورةً واحدة (`photoUrl`). المكافأة مقطوعة (خمس نقاط للتقييم مهما
+  /// بلغ العدد)، والسقف يفرضه الخادم والقاعدة معاً لا هذه الطبقة.
+  final List<String> photoUrls;
+
+  /// أول صورة أو `null` — للشاشات التي تعرض صورة واحدة (المجتمع، بطاقة
+  /// التقييم). حقلٌ مشتقّ لا مصدرٌ ثانٍ.
+  String? get photoUrl => photoUrls.isEmpty ? null : photoUrls.first;
 
   final ReviewStatus status;
 
@@ -49,13 +56,13 @@ class Review {
   final String? categoryId;
   final String? categoryName;
 
-  bool get hasPhoto => photoUrl != null && photoUrl!.trim().isNotEmpty;
+  bool get hasPhoto => photoUrls.isNotEmpty;
 
   Review copyWith({
     int? rating,
     String? comment,
-    String? photoUrl,
-    bool clearPhoto = false,
+    List<String>? photoUrls,
+    bool clearPhotos = false,
     ReviewStatus? status,
     String? rejectionReason,
     bool clearRejectionReason = false,
@@ -67,7 +74,7 @@ class Review {
       orderId: orderId,
       rating: rating ?? this.rating,
       comment: comment ?? this.comment,
-      photoUrl: clearPhoto ? null : (photoUrl ?? this.photoUrl),
+      photoUrls: clearPhotos ? const [] : (photoUrls ?? this.photoUrls),
       status: status ?? this.status,
       rejectionReason: clearRejectionReason
           ? null
@@ -84,7 +91,7 @@ class Review {
     'orderId': orderId,
     'rating': rating,
     'comment': comment,
-    'photoUrl': photoUrl,
+    'photoUrls': photoUrls,
     'status': status.name,
     'rejectionReason': rejectionReason,
     'customerName': customerName,
@@ -98,7 +105,12 @@ class Review {
     orderId: json['orderId'] as String,
     rating: json['rating'] as int,
     comment: json['comment'] as String,
-    photoUrl: resolveMediaUrl(json['photoUrl'] as String?),
+    // كل مرجع يُحلّ إلى الأصل الفعّال الآن؛ الفارغ يسقط بدل أن يصير رابطاً
+    // مكسوراً في شبكة الصور.
+    photoUrls: [
+      for (final raw in (json['photoUrls'] as List? ?? const []))
+        ?resolveMediaUrl(raw?.toString()),
+    ],
     status: ReviewStatus.values.byName(json['status'] as String),
     rejectionReason: json['rejectionReason'] as String?,
     customerName: json['customerName'] as String,

@@ -6,9 +6,7 @@ export function formatCurrency(value: number): string {
   return `${NUMBER_FORMATTER.format(value)} د.ع`
 }
 
-export function formatNumber(value: number): string {
-  return NUMBER_FORMATTER.format(value)
-}
+
 
 export function formatDateTime(value: string): string {
   return new Intl.DateTimeFormat('ar', {

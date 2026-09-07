@@ -1,5 +1,6 @@
 import type pg from 'pg';
-import { BIRTHDAY_DISCOUNT_PERCENT, type BirthdayStatusDto } from '../types/index.js';
+import { BIRTHDAY_DISCOUNT_PERCENT } from '../domain/birthday.js';
+import { type BirthdayStatusDto } from '../types/index.js';
 
 type BirthdayRow = {
   birth_day: number | null;

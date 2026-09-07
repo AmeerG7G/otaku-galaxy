@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import { config } from './config/index.js';
 import { uploadsRoot } from './storage/index.js';
 import { authenticate, requireAdmin } from './middleware/auth.js';
+import { requireSupportedAppVersion } from './middleware/app-version.js';
 import { errorHandler, globalRateLimiter, notFoundHandler } from './middleware/error-handler.js';
 import { adminRoutes } from './routes/admin.js';
 import { authRoutes } from './routes/auth.js';
@@ -35,9 +36,22 @@ export function createApp() {
     }),
   );
   app.use(express.json({ limit: '1mb' }));
-  app.use(globalRateLimiter());
 
+  /**
+   * فحص الحياة — **قبل** حدّ المعدّل عمداً.
+   *
+   * [CRITICAL] كان مسجَّلاً بعده فيُحتسب في الدلو نفسه الذي يستهلكه المرور
+   * الحقيقي. ونتيجته أن ازدحاماً عابراً يجعل `/health` يردّ 429، فيقرأ
+   * Docker/nginx ذلك «الحاوية ميّتة» ويعيد تشغيل خادمٍ سليم — أي أن الحمل
+   * الزائد يتحوّل إلى انقطاع بدل أن يُمتصّ. فحصُ الحياة يجب أن يجيب دائماً.
+   *
+   * وقد ظهر هذا فعلاً أثناء الاختبار: تشغيلٌ متتالٍ للمجموعة استهلك الحدّ،
+   * فصار `/health` يردّ 429 وأعلنت اختبارات التكامل أن «الخادم متوقف» وهو
+   * يعمل.
+   */
   app.get('/health', (_req, res) => res.json({ success: true, data: { status: 'ok' } }));
+
+  app.use(globalRateLimiter());
 
   // الصور المرفوعة تُقدَّم كملفات ثابتة (سائق القرص المحلي).
   app.use(
@@ -47,7 +61,15 @@ export function createApp() {
 
   app.use('/api/auth', authRoutes);
   app.use('/api/catalog', catalogRoutes);
-  app.use('/api', authenticate, customerRoutes);
+  /**
+   * عمليات العميل المحميّة — تمرّ بفحص نسخة التطبيق قبل المصادقة.
+   *
+   * الفحص هنا وحده: `/api/auth` يبقى مفتوحاً (المحجوب قد يحتاج تسجيل خروج)،
+   * و`/api/catalog` عامّ ويحمل مسار النسخة نفسه، و`/api/admin` لوحةُ متصفّح
+   * لا تطبيقَ هاتف فلا نسخة لها. والرأس الغائب يمرّ في كل الأحوال — انظر
+   * `requireSupportedAppVersion`.
+   */
+  app.use('/api', requireSupportedAppVersion, authenticate, customerRoutes);
   app.use('/api/admin', authenticate, requireAdmin, adminRoutes);
 
   app.use(notFoundHandler);

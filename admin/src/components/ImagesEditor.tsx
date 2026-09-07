@@ -1,4 +1,4 @@
-import { resolveMediaUrl } from '../utils/media'
+import { isValidImageRef, resolveMediaUrl } from '../utils/media'
 import { useState } from 'react'
 import { App, Button, Form, Image, Input, Space, Upload } from 'antd'
 import { DeleteOutlined, PlusOutlined, UploadOutlined } from '@ant-design/icons'
@@ -11,11 +11,6 @@ const PLACEHOLDER_IMAGE =
   encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"><rect width="48" height="48" fill="#f0f0f0"/><text x="24" y="28" font-size="12" text-anchor="middle" fill="#999">صورة</text></svg>',
   )
-
-/** رابط مطلق أو مسار يخدمه الخادم نفسه تحت /uploads. */
-function isValidImageRef(value: string) {
-  return /^https?:\/\/.+/.test(value) || value.startsWith('/uploads/')
-}
 
 export default function ImagesEditor({
   purpose = 'product',

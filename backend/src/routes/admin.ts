@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { adminController } from '../controllers/adminController.js';
 import { adminExtrasController } from '../controllers/adminExtrasController.js';
 import { mediaController } from '../controllers/mediaController.js';
+import { adminVisualsController } from '../controllers/visualsController.js';
 import { uploadSingleImage } from '../middleware/upload.js';
 
 /** مسارات الإدارة — تتطلب مصادقة + دور admin. */
@@ -25,6 +26,9 @@ adminRoutes.post('/banners', adminController.createBanner);
 adminRoutes.patch('/banners/:id', adminController.updateBanner);
 adminRoutes.delete('/banners/:id', adminController.deleteBanner);
 
+// ── طلبات «أخبرني عند توفره» ──
+adminRoutes.get('/restock/demand', adminController.restockDemand);
+
 adminRoutes.get('/governorates', adminController.listGovernorates);
 adminRoutes.post('/governorates', adminController.createGovernorate);
 adminRoutes.patch('/governorates/:id', adminController.updateGovernorate);
@@ -43,6 +47,15 @@ adminRoutes.get('/users', adminController.listUsers);
 // ── نقاط المجرّة (قراءة فقط — لا تعديل يدوي للدفتر) ──
 adminRoutes.get('/points/summary', adminController.pointsSummary);
 adminRoutes.get('/customers/:id/points', adminController.customerPoints);
+
+// ── قواعد نقاط المجرّة (قراءة فقط) ومزاياها ──
+//
+// [NOTE] حلّت هذه محل `/loyalty-levels` بأفعالها الأربعة. السلّم وقيم المنح
+// قرار تجاري ثابت لا إعداد، فلا مسار يكتبه. ما بقي: قراءةُ القواعد، وإدارةُ
+// الهدايا التي طالب بها الزبائن فعلاً.
+adminRoutes.get('/galaxy-points/rules', adminExtrasController.galaxyPointsRules);
+adminRoutes.get('/loyalty-rewards', adminExtrasController.listGiftClaims);
+adminRoutes.post('/loyalty-rewards/:id/fulfil', adminExtrasController.fulfilGiftClaim);
 
 // ── الإشعارات (قراءة فقط) ──
 adminRoutes.get('/notifications/stats', adminController.notificationStats);
@@ -76,12 +89,29 @@ adminRoutes.delete('/zones/:id', adminExtrasController.deleteZone);
 adminRoutes.get('/settings', adminExtrasController.getSettings);
 adminRoutes.patch('/settings', adminExtrasController.updateSettings);
 
-// ── إعدادات الأعمال (قيم تجارية — لا أمنية) ──
-adminRoutes.get('/settings/business', adminExtrasController.getBusinessSettings);
-adminRoutes.patch('/settings/business', adminExtrasController.updateBusinessSettings);
+// إعدادات نسخة التطبيق — إجبار التحديث يُضبط من هنا بلا نشر خادم.
+adminRoutes.get('/settings/app-version', adminExtrasController.getAppVersionSettings);
+adminRoutes.patch('/settings/app-version', adminExtrasController.updateAppVersionSettings);
+
+// [NOTE] أُزيل `/settings/business` بفعليه. لم يبقَ إعداد أعمال رقمي: قيم
+// نقاط المجرّة ونسبة خصم الميلاد قواعد ثابتة، ومهلة فتح التقييم أُلغيت.
 
 // ── إشعار يدوي ──
 adminRoutes.post('/notifications', adminExtrasController.createNotification);
+
+// ── بثّ إشعار لجمهور (الكل / زبائن محدَّدون / شريحة) ──
+adminRoutes.post('/notifications/broadcast', adminExtrasController.broadcastNotification);
+adminRoutes.post('/notifications/audience', adminExtrasController.audiencePreview);
+
+// ── الرسوم المُدارة (فتحات الشخصيات) ──
+adminRoutes.get('/visual-slots', adminVisualsController.list);
+adminRoutes.post('/visual-slots', adminVisualsController.createSlot);
+adminRoutes.patch('/visual-slots/:id', adminVisualsController.updateSlot);
+adminRoutes.delete('/visual-slots/:id', adminVisualsController.deleteSlot);
+adminRoutes.post('/visual-slots/:id/images', adminVisualsController.addImage);
+adminRoutes.patch('/visual-slots/:id/images/reorder', adminVisualsController.reorderImages);
+adminRoutes.patch('/visual-slots/:id/images/:imageId', adminVisualsController.updateImage);
+adminRoutes.delete('/visual-slots/:id/images/:imageId', adminVisualsController.deleteImage);
 
 // ── رفع صور المنتجات والبنرات والأنمي ──
 adminRoutes.post('/uploads', uploadSingleImage, mediaController.upload);

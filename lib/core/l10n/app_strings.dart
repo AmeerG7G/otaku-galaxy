@@ -57,6 +57,13 @@ class AppStrings {
   static const arabic = AppStrings._(_ar);
   static const kurdish = AppStrings._(_ckb);
 
+  /// كل المفاتيح المعرَّفة — يستعملها اختبار اكتمال الترجمة.
+  ///
+  /// المفتاح الذي بلا ترجمة كردية يسقط بهدوء إلى العربية (انظر [call])، فلا
+  /// شيء يُنبّه إلى نقصه: الشاشة تظهر نصفَ مترجمة وتبدو سليمة. الاختبار
+  /// يقارن اللغتين مفتاحاً مفتاحاً بدل انتظار أن يلاحظ أحدٌ ذلك.
+  static Iterable<String> get keys => _ar.keys;
+
   static AppStrings of(AppLanguage language) =>
       language == AppLanguage.kurdish ? kurdish : arabic;
 

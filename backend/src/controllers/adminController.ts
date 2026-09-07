@@ -16,8 +16,10 @@ import {
   adminBannerSchema,
   adminBannerUpdateSchema,
   adminCategoryIdSchema,
+  adminBirthdayQuerySchema,
   adminCategorySchema,
   adminCustomerIdSchema,
+  adminCustomersQuerySchema,
   adminNotificationQuerySchema,
   adminSubcategoryIdSchema,
   adminSubcategoryUpdateSchema,
@@ -25,6 +27,7 @@ import {
   adminGovernorateSchema,
   adminProductCreateSchema,
   adminProductIdSchema,
+  adminProductsQuerySchema,
   adminProductUpdateSchema,
   adminSubcategorySchema,
   adminUserIdSchema,
@@ -68,9 +71,8 @@ export const adminController = {
   }) as RequestHandler,
 
   listProducts: (async (req, res) => {
-    const { page, limit } = parse(paginationSchema, { page: req.query.page, limit: req.query.limit });
-    const data = await adminService.listProducts(page, limit);
-    return ok(res, data);
+    const query = parse(adminProductsQuerySchema, req.query);
+    return ok(res, await adminService.listProducts(query));
   }) as RequestHandler,
 
   updateProduct: (async (req, res) => {
@@ -117,6 +119,11 @@ export const adminController = {
   listBanners: (async (_req, res) => {
     const data = await adminService.listBanners();
     return ok(res, { items: data });
+  }) as RequestHandler,
+
+  /** طلبات «أخبرني عند توفره» — المنتجات النافدة وسجل طلباتها. */
+  restockDemand: (async (_req, res) => {
+    return ok(res, await adminService.restockDemand());
   }) as RequestHandler,
 
   createBanner: (async (req, res) => {
@@ -216,9 +223,8 @@ export const adminController = {
 
   // ===== المستخدمون =====
   listUsers: (async (req, res) => {
-    const { page, limit } = parse(paginationSchema, { page: req.query.page, limit: req.query.limit });
-    const data = await adminService.listUsers(page, limit);
-    return ok(res, data);
+    const query = parse(adminCustomersQuerySchema, req.query);
+    return ok(res, await adminService.listUsers(query));
   }) as RequestHandler,
 
   deleteGovernorate: (async (req, res) => {
@@ -248,17 +254,15 @@ export const adminController = {
     return ok(res, await adminService.notificationStats());
   }) as RequestHandler,
 
+  /**
+   * الزبائن حسب حالة عيد الميلاد.
+   *
+   * الافتراضي يبقى المسجَّلين وحدهم حتى لا يتبدّل ما تعرضه الشاشة الحالية
+   * بلا طلب؛ بقية المرشِّحات (اليوم/قريباً/مؤخّراً/غير مسجّل) صريحة.
+   */
   listBirthdayCustomers: (async (req, res) => {
-    const { page, limit } = parse(paginationSchema, {
-      page: req.query.page,
-      limit: req.query.limit,
-    });
-    // `filter=pending` يعرض المؤهَّلين الذين لم يسجّلوا بعد؛ الافتراضي
-    // يبقى المسجَّلين وحدهم حتى لا يتغيّر ما تعرضه اللوحة الحالية بلا طلب.
-    const raw = String(req.query.filter ?? 'registered');
-    const filter = raw === 'all' || raw === 'pending' ? raw : 'registered';
-    const data = await adminService.listBirthdayCustomers(page, limit, filter);
-    return ok(res, data);
+    const query = parse(adminBirthdayQuerySchema, req.query);
+    return ok(res, await adminService.listBirthdayCustomers(query));
   }) as RequestHandler,
 
   toggleUserActive: (async (req, res) => {

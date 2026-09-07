@@ -1,4 +1,4 @@
-import { resolveMediaUrl } from '../utils/media'
+import { isValidImageRef } from '../utils/media'
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -6,20 +6,18 @@ import {
   App,
   Button,
   Card,
-  Flex,
   Form,
-  Image,
   Input,
   InputNumber,
   Modal,
+  Segmented,
   Select,
   Space,
+  Switch,
   Table,
   Tag,
-  Typography,
 } from 'antd'
 import {
-  DeleteOutlined,
   EditOutlined,
   PlusOutlined,
   ReloadOutlined,
@@ -36,27 +34,29 @@ import { ApiError } from '../api/client'
 import type {
   AdminBanner,
   BannerDestinationType,
+  BannerPlacement,
 } from '../types/banners'
+import { PLACEMENT_HINTS, PLACEMENT_LABELS } from '../types/banners'
 import type { AdminCategory } from '../types/categories'
 import type { Product } from '../types/products'
 import EmptyState from '../components/EmptyState'
-import ImageUploadField, { isValidImageRef } from '../components/ImageUploadField'
-
-const NO_IMAGE_PLACEHOLDER =
-  'data:image/svg+xml;utf8,' +
-  encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="#f5f5f5"/><text x="32" y="36" font-size="12" text-anchor="middle" fill="#aaa">لا صورة</text></svg>',
-  )
+import ImageUploadField from '../components/ImageUploadField'
+import { MediaThumb } from '../components/ui/MediaThumb'
+import { PageHeader } from '../components/ui/PageHeader'
+import { ConfirmDangerButton } from '../components/ui/ConfirmDangerButton'
 
 const DESTINATION_LABELS: Record<BannerDestinationType, string> = {
   product: 'منتج',
   category: 'قسم',
   subcategory: 'قسم فرعي',
+  anime: 'أنمي',
   none: 'بدون وجهة',
 }
 
 interface BannerFormValues {
   imageUrl: string
+  subtitle?: string
+  placement: BannerPlacement
   title?: string
   destinationType: BannerDestinationType
   destinationValue?: string
@@ -64,7 +64,7 @@ interface BannerFormValues {
 }
 
 export default function BannersPage() {
-  const { message, modal } = App.useApp()
+  const { message } = App.useApp()
   const queryClient = useQueryClient()
   const [editor, setEditor] = useState<{ banner?: AdminBanner } | null>(null)
 
@@ -100,14 +100,24 @@ export default function BannersPage() {
   })
 
   const updateMutation = useMutation({
-    mutationFn: (input: { id: string; values: BannerFormValues }) =>
-      updateBanner(input.id, {
-        imageUrl: input.values.imageUrl,
-        title: input.values.title?.trim() || null,
-        destinationType: input.values.destinationType,
-        destinationValue: input.values.destinationValue ?? null,
-        sortOrder: input.values.sortOrder,
-      }),
+    // تعديل جزئي: الحقول الغائبة تعني «لا تغيير» كما في PATCH. مفتاح
+    // التفعيل يرسل `isActive` وحده بلا أن يعيد كتابة بقية البنر.
+    mutationFn: (input: {
+      id: string
+      values: BannerFormValues | { isActive: boolean }
+    }) =>
+      'isActive' in input.values && !('imageUrl' in input.values)
+        ? updateBanner(input.id, { isActive: input.values.isActive })
+        : updateBanner(input.id, {
+            imageUrl: (input.values as BannerFormValues).imageUrl,
+            title: (input.values as BannerFormValues).title?.trim() || null,
+            subtitle: (input.values as BannerFormValues).subtitle ?? '',
+            placement: (input.values as BannerFormValues).placement,
+            destinationType: (input.values as BannerFormValues).destinationType,
+            destinationValue:
+              (input.values as BannerFormValues).destinationValue ?? null,
+            sortOrder: (input.values as BannerFormValues).sortOrder,
+          }),
     onSuccess: (result) => {
       message.success(result.message)
       setEditor(null)
@@ -129,30 +139,17 @@ export default function BannersPage() {
     },
   })
 
-  function confirmDelete(banner: AdminBanner) {
-    modal.confirm({
-      title: 'حذف البنر؟',
-      content: 'سيُحذف البنر نهائياً من قاعدة البيانات ولا يمكن التراجع.',
-      okText: 'حذف',
-      okButtonProps: { danger: true },
-      cancelText: 'إلغاء',
-      onOk: () => deleteMutation.mutateAsync(banner.id),
-    })
-  }
-
   const columns = [
     {
       title: 'الصورة',
       key: 'image',
       width: 110,
       render: (_: unknown, banner: AdminBanner) => (
-        <Image
-          src={resolveMediaUrl(banner.imageUrl)}
+        <MediaThumb
+          reference={banner.imageUrl}
           width={88}
           height={48}
-          style={{ objectFit: 'cover', borderRadius: 4 }}
-          preview={false}
-          fallback={NO_IMAGE_PLACEHOLDER}
+          radius={6}
         />
       ),
     },
@@ -161,6 +158,18 @@ export default function BannersPage() {
       dataIndex: 'title',
       key: 'title',
       render: (value: string | null) => value ?? '—',
+    },
+    {
+      // الموضع أول ما يحتاج المسؤول معرفته: بنر في «الشريط الترويجي» لا
+      // يظهر في اللوحة الكبيرة مهما كان ترتيبه.
+      title: 'الموضع',
+      key: 'placement',
+      width: 140,
+      render: (_: unknown, banner: AdminBanner) => (
+        <Tag color={banner.placement === 'hero' ? 'purple' : 'blue'}>
+          {PLACEMENT_LABELS[banner.placement]}
+        </Tag>
+      ),
     },
     {
       title: 'الوجهة',
@@ -177,11 +186,25 @@ export default function BannersPage() {
       width: 90,
     },
     {
-      title: 'الحالة',
+      title: 'مفعّل',
       dataIndex: 'isActive',
       key: 'isActive',
-      render: (value: boolean) =>
-        value ? <Tag color="green">نشط</Tag> : <Tag color="default">غير نشط</Tag>,
+      width: 100,
+      // الخادم يقبل `isActive` في PATCH منذ البداية؛ كانت الشاشة تقول إنه
+      // لا يقبله وتطلب الحذف وإعادة الإنشاء لتغيير الحالة.
+      render: (value: boolean, banner: AdminBanner) => (
+        <Switch
+          size="small"
+          checked={value}
+          loading={updateMutation.isPending && updateMutation.variables?.id === banner.id}
+          onChange={(checked) =>
+            updateMutation.mutate({
+              id: banner.id,
+              values: { isActive: checked },
+            })
+          }
+        />
+      ),
     },
     {
       title: 'الإجراءات',
@@ -189,21 +212,20 @@ export default function BannersPage() {
       width: 170,
       render: (_: unknown, banner: AdminBanner) => (
         <Space size={4}>
-          <Button
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => setEditor({ banner })}
-          >
+          <Button icon={<EditOutlined />} onClick={() => setEditor({ banner })}>
             تعديل
           </Button>
-          <Button
-            size="small"
-            danger
-            icon={<DeleteOutlined />}
-            onClick={() => confirmDelete(banner)}
+          <ConfirmDangerButton
+            title="حذف البنر؟"
+            description="سيُحذف البنر نهائياً من قاعدة البيانات ولا يمكن التراجع."
+            confirmText="حذف"
+            confirmLoading={
+              deleteMutation.isPending && deleteMutation.variables === banner.id
+            }
+            onConfirm={() => deleteMutation.mutate(banner.id)}
           >
             حذف
-          </Button>
+          </ConfirmDangerButton>
         </Space>
       ),
     },
@@ -211,38 +233,34 @@ export default function BannersPage() {
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Flex align="center" justify="space-between" wrap gap={12}>
-        <div>
-          <Typography.Title level={3} style={{ margin: 0 }}>
-            البنرات
-          </Typography.Title>
-          <Typography.Text type="secondary">
-            البنرات الإعلانية المعروضة في الصفحة الرئيسية. البنر الجديد يُنشأ نشطاً.
-          </Typography.Text>
-        </div>
-        <Space>
-          <Button
-            icon={<ReloadOutlined />}
-            loading={bannersQuery.isFetching}
-            onClick={() => bannersQuery.refetch()}
-          >
-            تحديث
-          </Button>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => setEditor({})}
-          >
-            إضافة بنر
-          </Button>
-        </Space>
-      </Flex>
+      <PageHeader
+        title="البنرات"
+        description="البنرات الإعلانية المعروضة في الصفحة الرئيسية. البنر الجديد يُنشأ نشطاً."
+        extra={
+          <Space>
+            <Button
+              icon={<ReloadOutlined />}
+              loading={bannersQuery.isFetching}
+              onClick={() => bannersQuery.refetch()}
+            >
+              تحديث
+            </Button>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => setEditor({})}
+            >
+              إضافة بنر
+            </Button>
+          </Space>
+        }
+      />
 
       <Alert
         type="info"
         showIcon
-        message="لا يوفر خادم الإدارة تفعيل/تعطيل بنر قائم."
-        description="البنر النشط فقط يظهر في المتجر؛ لتغيير الحالة احذف البنر وأنشئه من جديد بعد الحذف."
+        message="موضعان في الرئيسية"
+        description="«اللوحة الكبيرة» أعلى الرئيسية وتُعرض منها واحدة فقط — الأولى ترتيباً بين المفعّلة. «الشريط الترويجي» تحتها ويقبل عدداً مفتوحاً بترتيبك. البنر الموقوف يبقى هنا ولا يظهر في التطبيق."
       />
 
       <Card>
@@ -309,6 +327,8 @@ export default function BannersPage() {
             initialValues={{
               imageUrl: editor.banner.imageUrl,
               title: editor.banner.title ?? undefined,
+              subtitle: editor.banner.subtitle,
+              placement: editor.banner.placement,
               destinationType: editor.banner.destinationType,
               destinationValue: editor.banner.destinationValue ?? undefined,
               sortOrder: editor.banner.sortOrder,
@@ -351,6 +371,8 @@ function BannerForm({
 }: BannerFormProps) {
   const [form] = Form.useForm<BannerFormValues>()
   const destinationType = Form.useWatch('destinationType', form) ?? 'none'
+  const placement: BannerPlacement =
+    Form.useWatch('placement', form) ?? 'promo'
 
   const subcategories = categories.flatMap((category) =>
     category.subcategories.map((subcategory) => ({
@@ -398,11 +420,31 @@ function BannerForm({
         <ImageUploadField purpose="banner" />
       </Form.Item>
       <Form.Item
+        name="placement"
+        label="موضع العرض"
+        rules={[{ required: true, message: 'اختر الموضع' }]}
+        extra={PLACEMENT_HINTS[placement]}
+      >
+        <Segmented
+          block
+          options={(Object.keys(PLACEMENT_LABELS) as BannerPlacement[]).map(
+            (key) => ({ value: key, label: PLACEMENT_LABELS[key] }),
+          )}
+        />
+      </Form.Item>
+      <Form.Item
         name="title"
         label="العنوان"
         rules={[{ max: 100, message: 'العنوان يجب ألا يتجاوز 100 حرف' }]}
       >
-        <Input placeholder="اختياري" />
+        <Input placeholder="موسم جديد من عالم الأنمي" />
+      </Form.Item>
+      <Form.Item
+        name="subtitle"
+        label="السطر الثاني"
+        rules={[{ max: 160, message: 'السطر الثاني يجب ألا يتجاوز 160 حرفاً' }]}
+      >
+        <Input placeholder="تشكيلة جديدة" />
       </Form.Item>
       <Form.Item
         name="destinationType"

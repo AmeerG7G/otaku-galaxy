@@ -11,6 +11,8 @@ import '../../../auth/presentation/cubit/auth_state.dart';
 import '../../../reviews/presentation/cubit/reviews_cubit.dart';
 import '../../../products/domain/entities/category.dart';
 import '../../../products/domain/usecases/fetch_categories_usecase.dart';
+import '../../../visuals/domain/visual_slot.dart';
+import '../../../visuals/presentation/managed_artwork.dart';
 
 /// المجتمع بتصميم Otaku Galaxy v2.
 ///
@@ -133,7 +135,11 @@ class _CommunityScreenState extends State<CommunityScreen> {
             child: IgnorePointer(
               child: Opacity(
                 opacity: 0.16,
-                child: Image.asset('assets/art/opt/a-i0.png', width: 120),
+                child: const ManagedArtwork(
+                  slot: VisualSlots.communityGallery,
+                  fallbackAsset: 'assets/art/opt/a-i0.png',
+                  width: 120,
+                ),
               ),
             ),
           ),
@@ -232,9 +238,10 @@ class _CommunityScreenState extends State<CommunityScreen> {
       // فلتر مفعّل بلا نتائج ≠ مجتمع فارغ — الرسالة تختلف والإجراء كذلك.
       if (_categoryId != null) {
         return AnimeEmptyState(
-          title: 'ما في صور بهذا القسم بعد',
-          subtitle: 'جرّب قسماً ثانياً أو تصفّح كل الصور.',
+          title: 'لا توجد صور في هذا القسم بعد',
+          subtitle: 'جرّب قسماً آخر أو تصفّح كل الصور.',
           artwork: 'assets/art/opt/a-i1.png',
+          artworkSlot: VisualSlots.communityHeader,
           actionLabel: 'كل الأقسام',
           onAction: () {
             setState(() => _categoryId = null);
@@ -252,6 +259,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
         subtitle:
             'شارك صورة لمنتجك بعد استلام طلبك، وقد تظهر هنا بعد مراجعتها.',
         artwork: 'assets/art/opt/a-i4.png',
+        artworkSlot: VisualSlots.communityEmpty,
         actionLabel: isLoggedIn ? 'شارك تجربتك' : null,
         onAction: isLoggedIn
             ? () => context.router.push(const OrdersRoute())
@@ -348,7 +356,7 @@ class _MyPhotoStatusBanners extends StatelessWidget {
                   tone: context.themeColors.warning,
                   glyph: '◔',
                   title: 'صورتك قيد المراجعة',
-                  body: 'راح تظهر بالمجتمع وبصفحة المنتج بعد الموافقة.',
+                  body: 'ستظهر في المجتمع وفي صفحة المنتج بعد الموافقة.',
                 ),
               ),
             if (rejected != null)

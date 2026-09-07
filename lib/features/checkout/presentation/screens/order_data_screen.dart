@@ -29,6 +29,7 @@ class _OrderDataScreenState extends State<OrderDataScreen> {
   String? _governorateId;
   String? _province;
   double? _deliveryCost;
+
   /// خصم عيد الميلاد كما يقرّره الخادم. هذه معاينة للعرض فقط — الخادم
   /// يعيد حسابه وتطبيقه عند إنشاء الطلب، والتطبيق لا يمنح خصماً أبداً.
   double _discountFor(double productsTotal) {
@@ -110,9 +111,9 @@ class _OrderDataScreenState extends State<OrderDataScreen> {
       _zonesFailed = false;
     });
     try {
-      final zones = await context
-          .read<FetchGovernoratesUsecase>()
-          .zones(governorateId);
+      final zones = await context.read<FetchGovernoratesUsecase>().zones(
+        governorateId,
+      );
       if (!mounted) return;
       setState(() => _zones = zones);
     } catch (_) {
@@ -142,8 +143,7 @@ class _OrderDataScreenState extends State<OrderDataScreen> {
     final cart = context.read<CartCubit>().state;
     final items = cart.items;
     // رسم المنطقة يسبق رسم المحافظة متى وُجدت مناطق.
-    final effectiveDelivery =
-        _selectedZone?.deliveryFee ?? _deliveryCost ?? 0;
+    final effectiveDelivery = _selectedZone?.deliveryFee ?? _deliveryCost ?? 0;
 
     final orderData = OrderData(
       governorateId: _governorateId ?? '',
@@ -168,66 +168,71 @@ class _OrderDataScreenState extends State<OrderDataScreen> {
     final deliveryCost = _effectiveDeliveryCost ?? 0;
 
     return Scaffold(
-      body: Form(
-        key: _formKey,
-        child: Column(
-          children: [
-            OtakuScreenHeader(
-              title: 'بيانات الطلب',
-              subtitle: 'الخطوة ١ من ٢',
-              onBack: () => context.router.maybePop(),
-            ),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // قسم بيانات التوصيل
-                    _buildDeliverySection(),
+      // عمودٌ موسَّط بعرض القراءة على اللوح — القائمة الممتدّة بعرض
+      // ١٣٦٦ بكسل تصير صفوفاً فارغة الوسط. لا أثر له على الهاتف.
+      body: ResponsiveContentFrame(
+        maxWidth: kReadingMaxWidth,
+        child: Form(
+          key: _formKey,
+          child: Column(
+            children: [
+              OtakuScreenHeader(
+                title: 'بيانات الطلب',
+                subtitle: 'الخطوة ١ من ٢',
+                onBack: () => context.router.maybePop(),
+              ),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // قسم بيانات التوصيل
+                      _buildDeliverySection(),
 
-                    const SizedBox(height: 13),
+                      const SizedBox(height: 13),
 
-                    // خصم عيد الميلاد — يظهر فقط يوم الميلاد وقبل استخدامه.
-                    const BirthdayDiscountCard(),
+                      // خصم عيد الميلاد — يظهر فقط يوم الميلاد وقبل استخدامه.
+                      const BirthdayDiscountCard(),
 
-                    // ملخص الطلب
-                    BlocBuilder<CartCubit, CartState>(
-                      builder: (context, state) {
-                        final subtotal = state.total;
-                        final deliveryDiscount = state.deliveryDiscountFor(
-                          deliveryCost,
-                        );
-                        final total =
-                            subtotal +
-                            (deliveryCost - deliveryDiscount) -
-                            _discountFor(subtotal);
-                        return _buildOrderSummary(
-                          subtotal,
-                          deliveryCost,
-                          total,
-                          deliveryDiscount,
-                        );
-                      },
-                    ),
+                      // ملخص الطلب
+                      BlocBuilder<CartCubit, CartState>(
+                        builder: (context, state) {
+                          final subtotal = state.total;
+                          final deliveryDiscount = state.deliveryDiscountFor(
+                            deliveryCost,
+                          );
+                          final total =
+                              subtotal +
+                              (deliveryCost - deliveryDiscount) -
+                              _discountFor(subtotal);
+                          return _buildOrderSummary(
+                            subtotal,
+                            deliveryCost,
+                            total,
+                            deliveryDiscount,
+                          );
+                        },
+                      ),
 
-                    const SizedBox(height: 13),
-                  ],
+                      const SizedBox(height: 13),
+                    ],
+                  ),
                 ),
               ),
-            ),
 
-            // زر الاستمرار
-            BlocBuilder<CartCubit, CartState>(
-              builder: (context, state) {
-                final total =
-                    state.total +
-                    (deliveryCost - state.deliveryDiscountFor(deliveryCost)) -
-                    _discountFor(state.total);
-                return _buildContinueButton(total);
-              },
-            ),
-          ],
+              // زر الاستمرار
+              BlocBuilder<CartCubit, CartState>(
+                builder: (context, state) {
+                  final total =
+                      state.total +
+                      (deliveryCost - state.deliveryDiscountFor(deliveryCost)) -
+                      _discountFor(state.total);
+                  return _buildContinueButton(total);
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -338,7 +343,7 @@ class _OrderDataScreenState extends State<OrderDataScreen> {
             errorText,
             style: Theme.of(
               context,
-            ).textTheme.labelSmall?.copyWith(color: colors.error),
+            ).textTheme.labelSmall?.copyWith(color: colors.errorText),
           ),
         ],
       ],
@@ -394,10 +399,12 @@ class _OrderDataScreenState extends State<OrderDataScreen> {
             // تعذّر تحميل المناطق: لا نُكمل بصمت على رسم المحافظة.
             if (_zonesFailed) ...[
               const SizedBox(height: 12),
-              _ZonesRetryNotice(onRetry: () {
-                final id = _governorateId;
-                if (id != null) _loadZones(id);
-              }),
+              _ZonesRetryNotice(
+                onRetry: () {
+                  final id = _governorateId;
+                  if (id != null) _loadZones(id);
+                },
+              ),
             ],
 
             // منطقة التوصيل — تظهر فقط للمحافظات المقسّمة، وإلزامية عندها.
@@ -462,7 +469,7 @@ class _OrderDataScreenState extends State<OrderDataScreen> {
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           fontSize: 12.5,
                           fontWeight: AppDimens.weightSemiBold,
-                          color: context.themeColors.success,
+                          color: context.themeColors.successText,
                         ),
                       ),
                     ),
@@ -471,7 +478,7 @@ class _OrderDataScreenState extends State<OrderDataScreen> {
                       textDirection: TextDirection.ltr,
                       style: Theme.of(context).textTheme.titleSmall?.copyWith(
                         fontWeight: AppDimens.weightBlack,
-                        color: context.themeColors.success,
+                        color: context.themeColors.successText,
                       ),
                     ),
                   ],
@@ -847,7 +854,7 @@ class _OrderDataScreenState extends State<OrderDataScreen> {
             )
           : _governoratesError != null
           ? AnimeErrorState(
-              message: 'تعذر تحميل المحافظات — جرّب مجدداً',
+              message: 'تعذّر تحميل المحافظات — أعد المحاولة',
               onAction: () {
                 Navigator.of(context).pop();
                 _loadGovernorates();
@@ -945,7 +952,7 @@ class _ZonesRetryNotice extends StatelessWidget {
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
                 fontSize: 12,
                 height: 1.6,
-                color: colors.error,
+                color: colors.errorText,
               ),
             ),
           ),

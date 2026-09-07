@@ -21,6 +21,8 @@ export interface OrderWithItems {
   phone: string;
   productsTotal: number;
   discount: number;
+  /** ما جاء من مزيّة مستوى ضمن `discount` — للعرض والتدقيق. */
+  loyaltyDiscount: number;
   /** خصم التوصيل المطبَّق وقت الطلب (لقطة تاريخية). */
   deliveryDiscount: number;
   total: number;
@@ -38,12 +40,18 @@ export interface OrderWithItems {
   /** لحظة تأكيد الاستلام؛ null قبل الاستلام. */
   deliveredAt: Date | null;
   /** لحظة فتح التقييم (الاستلام + المهلة)؛ null قبل الاستلام. */
-  ratingAvailableAt: Date | null;
   /**
-   * هل صار التقييم مسموحاً الآن؟ يُحسب على الخادم من `rating_available_at`
+   * موعد إرسال تذكير التقييم — **ليس** موعد فتح التقييم.
+   *
+   * التقييم يُفتح بالاستلام (انظر [canReview]). هذا الحقل يخصّ إشعار
+   * «شلونها المنتجات؟» وحده.
+   */
+  ratingReminderAt: Date | null;
+  /**
+   * هل يستطيع صاحب الطلب تقييم منتجاته الآن؟
    * لا في التطبيق — الواجهة تعرض القرار ولا تتخذه.
    */
-  ratingAvailable: boolean;
+  canReview: boolean;
   /** لحظة إرسال تذكير التقييم؛ null إن لم يُرسل بعد. */
   ratingReminderSentAt: Date | null;
   /** سجل انتقالات الحالة بأوقاتها (بلا هوية من غيّرها — لا تُكشف للعميل). */
@@ -84,8 +92,10 @@ const ORDER_WITH_CUSTOMER = `
             WHERE h.order_id = o.id),
            '[]'::json
          ) AS status_history,
-         (o.rating_available_at IS NOT NULL AND o.rating_available_at <= now())
-           AS rating_available,
+         -- [CRITICAL] الأهلية من الاستلام لا من مؤقّت. كان الشرط يقارن
+         -- rating_available_at بالساعة، أي مهلةً يضبطها المسؤول تفصل بين
+         -- ضغطة «استلمت طلبي» وفتح التقييم. صارت: استُلم الطلب ⇒ يُقيَّم.
+         (o.delivered_at IS NOT NULL) AS can_review,
          (SELECT h.note FROM order_status_history h
           WHERE h.order_id = o.id AND h.status = 'REJECTED'
           ORDER BY h.created_at DESC LIMIT 1) AS rejection_reason,
@@ -95,6 +105,22 @@ const ORDER_WITH_CUSTOMER = `
           ORDER BY h.created_at DESC LIMIT 1) AS delivery_note
   FROM orders o
   LEFT JOIN users u ON u.id = o.user_id`;
+
+/**
+ * الطلب كما تراه الإدارة — يضيف المحاسبة الداخلية إلى ما يراه العميل.
+ *
+ * [CRITICAL] نوعٌ منفصل لا حقلٌ اختياري على `OrderWithItems`: `mapOrder`
+ * قائمةُ سماحٍ صريحة يقرأها مسارُ العميل ومسارُ الإدارة معاً، وإضافة الفائض
+ * إليها كانت تكشف رقماً محاسبياً داخلياً لكل زبون يفتح طلبه.
+ */
+export interface AdminOrderWithItems extends OrderWithItems {
+  /**
+   * ما تجاوز رسوم التوصيل من ترويج المنتجات — محتفَظ به للمتجر.
+   *
+   * ليس خصماً للزبون ولا يدخل `total`. يُقرأ من مسارات `/admin` وحدها.
+   */
+  deliveryDiscountExcess: number;
+}
 
 function mapOrder(row: Record<string, unknown>): OrderWithItems {
   return {
@@ -108,6 +134,7 @@ function mapOrder(row: Record<string, unknown>): OrderWithItems {
     productsTotal: Number(row.products_total),
     discount: Number(row.discount),
     deliveryDiscount: Number(row.delivery_discount ?? 0),
+    loyaltyDiscount: Number(row.loyalty_discount ?? 0),
     total: Number(row.total),
     customer: (row.customer as OrderWithItems['customer']) ?? null,
     createdAt: new Date(row.created_at as string),
@@ -117,10 +144,10 @@ function mapOrder(row: Record<string, unknown>): OrderWithItems {
     rejectionReason: (row.rejection_reason as string | null) ?? null,
     dispatchedAt: row.dispatched_at ? new Date(row.dispatched_at as string) : null,
     deliveredAt: row.delivered_at ? new Date(row.delivered_at as string) : null,
-    ratingAvailableAt: row.rating_available_at
-      ? new Date(row.rating_available_at as string)
+    ratingReminderAt: row.rating_reminder_at
+      ? new Date(row.rating_reminder_at as string)
       : null,
-    ratingAvailable: row.rating_available === true,
+    canReview: row.can_review === true,
     ratingReminderSentAt: row.rating_reminder_sent_at
       ? new Date(row.rating_reminder_sent_at as string)
       : null,
@@ -135,7 +162,34 @@ function mapOrder(row: Record<string, unknown>): OrderWithItems {
   };
 }
 
+/** يضيف الفائض المحاسبي إلى الشكل الذي يراه العميل — لمسارات الإدارة وحدها. */
+function mapAdminOrder(row: Record<string, unknown>): AdminOrderWithItems {
+  return {
+    ...mapOrder(row),
+    deliveryDiscountExcess: Number(row.delivery_discount_excess ?? 0),
+  };
+}
+
 export const orderRepo = {
+  /**
+   * قفل صفّ الطلب داخل معاملة.
+   *
+   * [CRITICAL] هذا ما يجعل سقفَ نقاط التقييم لكل طلب صحيحاً تحت التزامن.
+   * اعتمادُ تقييمين من الطلب نفسه في اللحظة ذاتها يقرأ كلٌّ منهما «المُنح
+   * حتى الآن» قبل أن يكتب الآخر، فيمنحان معاً أكثر من السقف. القفل يُسلسل
+   * الاعتمادَين: الثاني ينتظر ثم يقرأ ما كتبه الأول فعلاً.
+   *
+   * القفل على `orders` لا على `points_ledger` عمداً: السقف تعريفُه «لكل
+   * طلب»، والصفّ الذي يمثّل الطلب هو نقطة التسلسل الطبيعية الموجودة أصلاً.
+   */
+  async lockForUpdate(client: pg.PoolClient, orderId: string) {
+    const { rows } = await client.query<{ id: string }>(
+      'SELECT id FROM orders WHERE id = $1 FOR UPDATE',
+      [orderId],
+    );
+    return rows[0]?.id ?? null;
+  },
+
   /** إنشاء الطلب داخل المعاملة: لقطات + تنزيل المخزون + سجل الحالة. */
   async create(
     db: pg.PoolClient,
@@ -152,8 +206,17 @@ export const orderRepo = {
       zoneName?: string | null;
       /** خصم مطبَّق عند الإنشاء (خصم عيد الميلاد حالياً). */
       discount?: number;
-      /** خصم التوصيل المحسوب على الخادم — لقطة تاريخية لا تتغيّر لاحقاً. */
-      deliveryDiscount?: number;
+      /** الجزء الآتي من مزيّة مستوى — تفصيلٌ للتدقيق داخل `discount`. */
+      loyaltyDiscount?: number;
+      /**
+       * مجموع ترويج التوصيل **قبل السقف**: Σ(الكمية × مبلغ المنتج).
+       *
+       * [CRITICAL] يُمرَّر الخام لا المسقوف، والقسمة تقع هنا وحدها:
+       * `min` للزبون و`max(0, الخام − الرسوم)` للمتجر. تمرير القيمتين
+       * محسوبتين من الخدمة كان يعني موضعين قد يتباعدان، فيُقيَّد للمتجر
+       * فائضٌ لا يقابله خصمٌ بلغ الرسوم — وهو بالضبط ما يمنعه قيد القاعدة.
+       */
+      deliveryPromoRaw?: number;
     },
   ): Promise<OrderWithItems> {
     const { rows: numRows } = await db.query<{ number: string }>(
@@ -163,10 +226,23 @@ export const orderRepo = {
 
     const productsTotal = input.items.reduce((sum, item) => sum + item.lineTotal, 0);
     const discount = Math.min(input.discount ?? 0, productsTotal);
-    // خصم التوصيل مسقوف برسوم التوصيل — يُخزَّن كما طُبِّق وقت الطلب.
-    const deliveryDiscount = Math.min(
-      Math.max(input.deliveryDiscount ?? 0, 0),
-      input.deliveryFee,
+    // الجزء لا يتجاوز الكل: لو قُصّ الخصم الكلي عند مجموع المنتجات وجب أن
+    // يُقصّ معه تفصيلُه، وإلا رفض القيدُ `loyalty_discount <= discount` الصفَّ.
+    const loyaltyDiscount = Math.min(Math.max(input.loyaltyDiscount ?? 0, 0), discount);
+    // ═══ قسمة ترويج التوصيل ═══
+    //
+    // الخام يُقسم قسمين لا ثالث لهما، ومجموعهما يساوي الخام دائماً:
+    //   • ما يناله الزبون  = min(الخام، الرسوم)      → `delivery_discount`
+    //   • ما يُقيَّد للمتجر = max(0, الخام − الرسوم) → `delivery_discount_excess`
+    //
+    // [CRITICAL] الفائض لا يمسّ `productsTotal` ولا `discount` ولا `total`.
+    // نقلُه إلى أيٍّ منها يحوّل مبلغاً محتفَظاً به للمتجر إلى خصمٍ إضافي
+    // للزبون — وهو عكس المطلوب تماماً.
+    const deliveryPromoRaw = Math.max(input.deliveryPromoRaw ?? 0, 0);
+    const deliveryDiscount = Math.min(deliveryPromoRaw, input.deliveryFee);
+    const deliveryDiscountExcess = Math.max(
+      0,
+      deliveryPromoRaw - input.deliveryFee,
     );
     const payableDelivery = input.deliveryFee - deliveryDiscount;
     // لا يُسمح بإجمالي سالب مهما بلغ الخصم.
@@ -176,11 +252,11 @@ export const orderRepo = {
       `INSERT INTO orders (
          number, user_id, governorate_id, province, delivery_fee, full_address,
          phone, products_total, discount, total, status, zone_id, zone_name,
-         delivery_discount
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'PENDING_ADMIN_CONFIRMATION', $11, $12, $13)
+         delivery_discount, loyalty_discount, delivery_discount_excess
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'PENDING_ADMIN_CONFIRMATION', $11, $12, $13, $14, $15)
        RETURNING id, number, status, province, delivery_fee, full_address,
                  phone, products_total, discount, total, created_at, zone_name,
-                 delivery_discount`,
+                 delivery_discount, loyalty_discount, delivery_discount_excess`,
       [
         orderNumber,
         input.userId,
@@ -195,6 +271,8 @@ export const orderRepo = {
         input.zoneId ?? null,
         input.zoneName ?? null,
         deliveryDiscount,
+        loyaltyDiscount,
+        deliveryDiscountExcess,
       ],
     );
     const order = rows[0]!;
@@ -226,6 +304,23 @@ export const orderRepo = {
       status_history: [],
       rating_available: false,
     });
+  },
+
+  /**
+   * الطلب لمسار الإدارة — مثل [findById] مع الفائض المحاسبي.
+   *
+   * دالةٌ مستقلة عمداً: `findById` يخدم العميل أيضاً، وتوسيعُه كان يسرّب
+   * الرقم من حيث لا يقصد أحد.
+   */
+  async findByIdForAdmin(
+    db: pg.Pool | pg.PoolClient,
+    id: string,
+  ): Promise<AdminOrderWithItems | null> {
+    const { rows } = await db.query<Record<string, unknown>>(
+      `${ORDER_WITH_CUSTOMER} WHERE o.id = $1`,
+      [id],
+    );
+    return rows[0] ? mapAdminOrder(rows[0]) : null;
   },
 
   async findById(db: pg.Pool | pg.PoolClient, id: string): Promise<OrderWithItems | null> {
@@ -345,12 +440,12 @@ export const orderRepo = {
   },
 
   /**
-   * تثبيت لحظة الإرسال للتوصيل وفتح نافذة التقييم منها.
+   * تثبيت لحظة الإرسال للتوصيل، وجدولة تذكير التقييم منها.
    *
-   * **مرجع النافذة هو فعل الإدارة لا ضغطة العميل.** كان الحساب يجري عند
-   * COMPLETED، وCOMPLETED في مسار العميل هو لحظة ضغطه «استلمت الطلب» —
-   * فيبدأ المؤقّت من عنده. الآن يُثبَّت الموعد ساعةَ يخرج الطلب للتوصيل،
-   * فلا يؤجّله تأخّرُ العميل في التأكيد ولا يُعيده تأكيدُه.
+   * [NOTE] هذه المهلة لم تعد تفتح التقييم ولا تؤخّره — التقييم يُفتح
+   * بالاستلام. ما تجدوله هنا هو **إشعار** «شلونها المنتجات؟» لمن استلم ولم
+   * يقيّم. مرجعه فعل الإدارة (الخروج للتوصيل) لا ضغطة العميل، فلا يؤجّله
+   * تأخّرُ العميل في التأكيد.
    *
    * `dispatched_at IS NULL` يجعلها تُنفَّذ مرة واحدة: إعادة تطبيق
    * OUT_FOR_DELIVERY لا تُزحزح الموعد. الوقت يُحسب في القاعدة (`now()`).
@@ -358,39 +453,44 @@ export const orderRepo = {
   async markDispatched(
     db: pg.Pool | pg.PoolClient,
     id: string,
-    ratingDelayHours: number,
+    reminderDelayHours: number,
   ): Promise<boolean> {
     const { rowCount } = await db.query(
       `UPDATE orders
           SET dispatched_at = now(),
-              rating_available_at = now() + make_interval(hours => $2)
+              rating_reminder_at = now() + make_interval(hours => $2)
         WHERE id = $1 AND dispatched_at IS NULL`,
-      [id, Math.max(0, Math.trunc(ratingDelayHours))],
+      [id, Math.max(0, Math.trunc(reminderDelayHours))],
     );
     return (rowCount ?? 0) > 0;
   },
 
   /**
-   * تثبيت لحظة تأكيد الاستلام.
+   * تثبيت لحظة تأكيد الاستلام — وهي وحدها ما يفتح التقييم.
    *
-   * لا تمسّ `rating_available_at` إطلاقاً — ذلك الموعد مِلك لحظةِ الإرسال.
-   * الاحتياط الوحيد: طلب بلا `dispatched_at` (بيانات قديمة) يأخذ نافذته
-   * من لحظة الاستلام حتى لا يبقى بلا موعد أصلاً.
+   * [CRITICAL] لا مهلة بعدها. الكتابة في `delivered_at` تجعل `can_review`
+   * صحيحاً في نفس اللحظة، فضغطة «استلمت طلبي» تفتح التقييم فوراً.
+   *
+   * `reminderDelayHours` يخصّ الإشعار فقط، ويُستعمل احتياطاً لطلبٍ بلا
+   * `dispatched_at` (بيانات قديمة) حتى لا يبقى بلا موعد تذكير أصلاً.
+   *
+   * `delivered_at IS NULL` يجعلها مرة واحدة: إعادة تطبيق COMPLETED لا
+   * تُزحزح لحظة الاستلام.
    */
   async markDelivered(
     db: pg.Pool | pg.PoolClient,
     id: string,
-    ratingDelayHours: number,
+    reminderDelayHours: number,
   ): Promise<boolean> {
     const { rowCount } = await db.query(
       `UPDATE orders
           SET delivered_at = now(),
-              rating_available_at = COALESCE(
-                rating_available_at,
+              rating_reminder_at = COALESCE(
+                rating_reminder_at,
                 now() + make_interval(hours => $2)
               )
         WHERE id = $1 AND delivered_at IS NULL`,
-      [id, Math.max(0, Math.trunc(ratingDelayHours))],
+      [id, Math.max(0, Math.trunc(reminderDelayHours))],
     );
     return (rowCount ?? 0) > 0;
   },
@@ -410,7 +510,7 @@ export const orderRepo = {
   ): Promise<boolean> {
     const { rowCount } = await db.query(
       `UPDATE orders
-          SET rating_available_at = GREATEST($2::timestamptz, dispatched_at)
+          SET rating_reminder_at = GREATEST($2::timestamptz, dispatched_at)
         WHERE id = $1
           AND dispatched_at IS NOT NULL
           AND rating_reminder_sent_at IS NULL`,

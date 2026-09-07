@@ -4,7 +4,7 @@ import { config } from '../config/index.js';
 import { db } from '../database/pool.js';
 import { mediaRepo } from '../repositories/mediaRepo.js';
 import { userRepo, toPublicUser, type UserRow } from '../repositories/userRepo.js';
-import type { AuthUser, PublicUser } from '../types/index.js';
+import type { AuthUser, Gender, PublicUser } from '../types/index.js';
 import { Errors } from '../utils/errors.js';
 import { sendVerificationCode, verifyCode } from './otpService.js';
 
@@ -54,7 +54,12 @@ export const authService = {
    * إنشاء حساب جديد». الآن التسجيل على حساب غير محقَّق يستأنفه: يحدّث الاسم
    * وكلمة المرور ويرسل رمزاً جديداً. الرقم المحقَّق وحده هو المأخوذ فعلاً.
    */
-  async register(input: { username: string; phone: string; password: string }) {
+  async register(input: {
+    username: string;
+    phone: string;
+    password: string;
+    gender: Gender;
+  }) {
     const existing = await userRepo.findByPhone(db, input.phone);
     const passwordHash = await bcrypt.hash(input.password, config.bcryptRounds);
 
@@ -66,6 +71,9 @@ export const authService = {
       // يكون صدر لهذه المحاولة المهجورة قبل أن يملكها شخص آخر.
       const updated = await userRepo.update(db, existing.id, {
         username: input.username,
+        // الاستئناف يحدّث الاختيار أيضاً: من عاد ليُكمل تسجيلاً معلّقاً قد
+        // يكون صحّح اختياره، والقيمة الأحدث هي الصحيحة.
+        gender: input.gender,
         passwordHash,
         bumpTokenVersion: true,
       });
@@ -77,6 +85,7 @@ export const authService = {
       username: input.username,
       phone: input.phone,
       passwordHash,
+      gender: input.gender,
     });
     await sendVerificationCode(db, input.phone, 'register');
     return { user: toPublicUser(user) };
@@ -158,13 +167,17 @@ export const authService = {
     return toPublicUser(user);
   },
 
-  async updateProfile(auth: AuthUser, input: { username?: string; avatarUrl?: string | null }) {
+  async updateProfile(
+    auth: AuthUser,
+    input: { username?: string; avatarUrl?: string | null; gender?: Gender },
+  ) {
     const user = await userRepo.findById(db, auth.id);
     if (!user) throw Errors.unauthorized('الحساب غير موجود');
     const avatarUrl = await assertOwnedAvatar(input.avatarUrl);
     const updated = await userRepo.update(db, auth.id, {
       username: input.username,
       avatarUrl,
+      gender: input.gender,
     });
     return toPublicUser(updated);
   },

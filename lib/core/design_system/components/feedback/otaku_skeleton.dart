@@ -80,6 +80,12 @@ class _OtakuSkeletonState extends State<OtakuSkeleton>
 }
 
 /// بطاقة منتج هيكلية — تطابق شبكة المنتجات أثناء التحميل.
+///
+/// خلية الشبكة ([SliverGridDelegateWithFixedCrossAxisCount.mainAxisExtent])
+/// تُقاس من `productCardExtentFor` فيحصل هيكلٌ أقصر من الخلية على فراغ خلفه
+/// يكبر مع ضيق الشاشة، ويقفز المحتوى عند وصول البيانات. البطاقة الآن تملأ
+/// الخلية عبر `Spacer` وتحاكي كتلة النص الحقيقية فيبدأ السّطران حيث يقعان
+/// فعلاً (الصورة ١٣٠ في الأعلى كالبطاقة الحقيقية).
 class OtakuProductSkeletonCard extends StatelessWidget {
   const OtakuProductSkeletonCard({super.key, this.photoHeight = 130});
 
@@ -100,22 +106,31 @@ class OtakuProductSkeletonCard extends StatelessWidget {
         children: [
           OtakuSkeleton.box(height: photoHeight, radius: 0),
           Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
+                // العنوان: صندوق بارتفاع ٣٦ الثابت في البطاقة الحقيقية.
                 const FractionallySizedBox(
                   widthFactor: 0.84,
-                  child: OtakuSkeleton(height: 9),
+                  child: OtakuSkeleton(height: 36),
                 ),
-                const SizedBox(height: 9),
+                const SizedBox(height: AppDimens.space2),
                 const FractionallySizedBox(
-                  widthFactor: 0.5,
-                  child: OtakuSkeleton(height: 9),
+                  widthFactor: 0.45,
+                  child: OtakuSkeleton(height: 21),
+                ),
+                const SizedBox(height: AppDimens.space2),
+                const FractionallySizedBox(
+                  widthFactor: 0.72,
+                  child: OtakuSkeleton(height: 21),
                 ),
               ],
             ),
           ),
+          // يملأ ما تبقّى من ارتفاع الخلية فيتطابق الهيكل مع البطاقة الحقيقية.
+          const Spacer(),
         ],
       ),
     );
@@ -139,7 +154,16 @@ class OtakuProductSkeletonGrid extends StatelessWidget {
       padding: padding,
       physics: const NeverScrollableScrollPhysics(),
       shrinkWrap: true,
-      gridDelegate: kProductGridDelegate,
+      // الشبكة نفسها التي تستعملها الشبكات الحقيقية — لا الثابتة.
+      // الهيكل الذي يقيس ٢٨٨ بينما الشبكة الحقيقية تقيس ٢٧٥ يُقفز المحتوى
+      // ١٣ نقطة لحظةَ وصول البيانات، تحت إصبع المستخدم وهو يهمّ بالنقر.
+      // والفجوة تتسع مع تكبير الخط لأن الثابتة لا تراه أصلاً.
+      gridDelegate: productGridDelegate(
+        context,
+        // حشوة المستدعي هي المعتبرة: تمريرُ ١٨ دائماً يعيد الخطأ نفسه
+        // لأي شبكة تُبنى بحشوة مختلفة.
+        horizontalPadding: padding.resolve(Directionality.of(context)).left,
+      ),
       itemCount: count,
       itemBuilder: (_, _) => const OtakuProductSkeletonCard(),
     );

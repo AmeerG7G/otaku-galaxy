@@ -11,8 +11,11 @@ export const catalogService = {
     const DISCOVER_SEED = 'home';
     const DISCOVER_LIMIT = 10;
 
-    const [banners, offers, selected, categories, discover] = await Promise.all([
+    const [banners, heroBanners, promoBanners, offers, selected, categories, discover] =
+      await Promise.all([
       bannerRepo.listActive(db),
+      bannerRepo.listActive(db, 'hero'),
+      bannerRepo.listActive(db, 'promo'),
       productRepo.list(db, { page: 1, limit: 8, isOffer: true }),
       productRepo.list(db, { page: 1, limit: 8, isSelected: true }),
       categoryRepo.list(db),
@@ -23,6 +26,15 @@ export const catalogService = {
 
     return {
       banners,
+      /**
+       * لوحة البطل — واحدة تُعرض: الأولى ترتيباً.
+       *
+       * الموضع واحد في التصميم، فإرسال قائمة كان سيترك التطبيق يقرّر أيّها
+       * يعرض — قرارٌ يخصّ المسؤول لا الجهاز. الترتيب في اللوحة هو الجواب.
+       */
+      heroBanner: heroBanners[0] ?? null,
+      /** الشريط الترويجي — عدد مفتوح بترتيب المسؤول. */
+      promoBanners,
       offers: offers.items,
       selectedProducts: selected.items,
       categories,

@@ -2,6 +2,15 @@
 
 export type Role = 'customer' | 'admin';
 
+/**
+ * جنس صاحب الحساب — لتصريف الخطاب العربي لا لأي منطق تجاري.
+ *
+ * `null` حالةٌ مشروعة دائمة: الحسابات التي أُنشئت قبل هذا الحقل لم تُسأل،
+ * ولا يجوز أن يُخمَّن لها شيء. طبقةُ العرض تخاطبها بصيغة محايدة.
+ */
+export const GENDERS = ['male', 'female'] as const;
+export type Gender = (typeof GENDERS)[number];
+
 export type OrderStatus =
   | 'PENDING_ADMIN_CONFIRMATION'
   | 'CONFIRMED'
@@ -10,15 +19,57 @@ export type OrderStatus =
   | 'COMPLETED'
   | 'REJECTED';
 
-/** انتقالات الحالة المسموح بها (المفتاح → الحالات المقبولة). */
+/**
+ * انتقالات الحالة المسموح بها (المفتاح → الحالات المقبولة).
+ *
+ * [CRITICAL] `CONFIRMED` و`PREPARING` لم تعودا مرحلةً تشغيلية يمرّ بها طلب جديد.
+ *
+ * الدمج الأول: ضغطتا «تأكيد» ثم «بدء التجهيز» كانتا لا تنتجان شيئاً، فصار
+ * التأكيد ينقل مباشرةً إلى التجهيز.
+ * الدمج الثاني: «قيد التجهيز» هي النشاط الذي يقوله المسؤول بالضربة نفسها —
+ * القبول ثم بدء العمل فعلان في نفس اللحظة عند كل متجر فعلي. لذلك صار القبول
+ * ينقل الطلب مباشرةً إلى `OUT_FOR_DELIVERY`؛ تُثبَّت نافذة التقييم ويرسل
+ * إشعار القبول في نفس الانتقال.
+ *
+ * الحالتان تبقَيان قيمتين مشروعتين في القاعدة ولهما انتقالهما الخارج، لأن
+ * طلبات سابقة توقّفت عندهما فعلاً؛ حذفهما كان سيترك صفوفاً في حالة لا
+ * تعرفها آلة الحالات ولا سبيل لتحريكها. ولا مسار جديد ينتجهما بعد اليوم.
+ */
 export const ORDER_STATUS_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
-  PENDING_ADMIN_CONFIRMATION: ['CONFIRMED', 'REJECTED'],
+  // القبول يرسل للتوضيب مباشرةً — لا مرحلة «قيد التجهيز» منفصلة في الواجهة.
+  PENDING_ADMIN_CONFIRMATION: ['OUT_FOR_DELIVERY', 'REJECTED'],
   CONFIRMED: ['PREPARING', 'REJECTED'],
   PREPARING: ['OUT_FOR_DELIVERY', 'REJECTED'],
   OUT_FOR_DELIVERY: ['COMPLETED', 'REJECTED'],
   COMPLETED: [],
   REJECTED: [],
 };
+
+/**
+ * الحالات التي يمرّ بها طلبٌ جديد اليوم — ما تعرضه لوحة التحكم كمراحل.
+ *
+ * تُقصي `CONFIRMED` و`PREPARING` (مرحلتان موروثتان) و`REJECTED` (نهاية لا
+ * مرحلة). القبول اليوم يغادر الانتظار إلى التوصيل مباشرةً.
+ */
+export const ACTIVE_ORDER_STAGES = [
+  'PENDING_ADMIN_CONFIRMATION',
+  'OUT_FOR_DELIVERY',
+  'COMPLETED',
+] as const satisfies readonly OrderStatus[];
+
+/**
+ * الحالات التي يجوز للعميل إلغاء طلبه فيها.
+ *
+ * `PREPARING` مدرجة عمداً: قبل دمج «تم تأكيده» كان العميل يملك الإلغاء بعد
+ * قبول الإدارة مباشرةً، وحذف تلك المرحلة كان سيسحب منه هذا الحق في اللحظة
+ * نفسها التي يضغط فيها المسؤول «تأكيد». الدمج تبسيطٌ لعمل الإدارة، لا
+ * تضييقٌ على العميل.
+ */
+export const CUSTOMER_CANCELLABLE_STATUSES = [
+  'PENDING_ADMIN_CONFIRMATION',
+  'CONFIRMED',
+  'PREPARING',
+] as const satisfies readonly OrderStatus[];
 
 export interface AuthUser {
   id: string;
@@ -33,6 +84,8 @@ export interface PublicUser {
   phone: string;
   avatarUrl: string | null;
   role: Role;
+  /** `null` لمن لم يُسأل بعد — لا افتراض. */
+  gender: Gender | null;
   /** هل أثبت المستخدم ملكية رقمه؟ التطبيق يوجّه غير المحقَّق لشاشة الرمز. */
   isPhoneVerified: boolean;
   createdAt: string;
@@ -96,15 +149,32 @@ export type ProductRow = {
   previous_price: string | number | null;
   has_delivery_promo: boolean;
   delivery_promo_amount: string | number;
+  /** موعد التوفر القادم الذي يحدده المسؤول — معلومة إرشادية لا تغيّر المخزون. */
+  restock_at: Date | string | null;
   created_at: Date | string;
   updated_at: Date | string;
 };
+
+/** أين يظهر البنر في الرئيسية. */
+export const BANNER_PLACEMENTS = ['hero', 'promo'] as const;
+export type BannerPlacement = (typeof BANNER_PLACEMENTS)[number];
+
+export const BANNER_DESTINATIONS = [
+  'product',
+  'category',
+  'subcategory',
+  'anime',
+  'none',
+] as const;
+export type BannerDestination = (typeof BANNER_DESTINATIONS)[number];
 
 export type BannerRow = {
   id: string;
   image_url: string;
   title: string | null;
-  destination_type: 'product' | 'category' | 'subcategory' | 'none';
+  subtitle: string;
+  placement: BannerPlacement;
+  destination_type: BannerDestination;
   destination_value: string | null;
   sort_order: number;
   is_active: boolean;
@@ -178,7 +248,8 @@ export type ReviewRow = {
   product_name: string;
   rating: number;
   comment: string;
-  photo_url: string | null;
+  /** من صفر إلى خمس صور — السقف تفرضه القاعدة لا الواجهة. */
+  photo_urls: string[];
   status: ReviewStatus;
   rejection_reason: string | null;
   customer_name: string;
@@ -199,6 +270,15 @@ export interface ReviewDto {
   orderId: string;
   rating: number;
   comment: string;
+  /** صور التقييم بترتيب إضافتها (صفر إلى خمس). */
+  photoUrls: string[];
+  /**
+   * أول صورة، أو `null`.
+   *
+   * حقلٌ مشتقّ للعرض لا مصدرٌ ثانٍ: شاشة المجتمع وبطاقةُ التقييم في اللوحة
+   * تعرضان صورةً واحدة، فتقرآن هذا بدل أن يعرف كلٌّ منهما أن الأولى هي
+   * المقصودة.
+   */
   photoUrl: string | null;
   status: ReviewStatus;
   rejectionReason: string | null;
@@ -217,13 +297,10 @@ export type PointsReason =
   | 'review_with_photo'
   | 'manual';
 
-/** مقادير المنح — مصدر الحقيقة الوحيد لقيم النقاط. */
-export const POINTS_AWARDS = {
-  // مطابق لمصدر تصميم v2: استلام الطلب يمنح ٢٠ نقطة.
-  orderReceived: 20,
-  reviewApproved: 1,
-  reviewWithPhoto: 5,
-} as const;
+/**
+ * [NOTE] `POINTS_AWARDS` حُذف. مقادير المنح لم تعد إعداداً ولا ثابتاً هنا:
+ * القواعد الثابتة كلها في `src/domain/galaxyPoints.ts` وهي مصدرها الوحيد.
+ */
 
 export type PointsLedgerRow = {
   id: string;
@@ -271,7 +348,9 @@ export type NotificationType =
   | 'reviewApproved'
   | 'reviewRejected'
   | 'backInStock'
-  | 'promotion';
+  | 'promotion'
+  | 'rewardClaimed'
+  | 'restockScheduled';
 
 export const NOTIFICATION_TYPES = [
   'orderAccepted',
@@ -282,6 +361,8 @@ export const NOTIFICATION_TYPES = [
   'reviewRejected',
   'backInStock',
   'promotion',
+  'rewardClaimed',
+  'restockScheduled',
 ] as const satisfies readonly NotificationType[];
 
 export type NotificationRow = {
@@ -316,6 +397,8 @@ export interface NotificationDto {
 export type FranchiseRow = {
   id: string;
   name: string;
+  /** مرادفات الاسم — يطابقها البحث. فارغة لا `null` (القيد NOT NULL). */
+  alt_names: string[];
   image_url: string | null;
   sort_order: number;
   is_active: boolean;
@@ -352,8 +435,10 @@ export interface BirthdayStatusDto {
   discountPercent: number;
 }
 
-/** نسبة خصم عيد الميلاد — مصدر الحقيقة على الخادم. */
-export const BIRTHDAY_DISCOUNT_PERCENT = 5;
+/**
+ * [NOTE] `BIRTHDAY_DISCOUNT_PERCENT` انتقل إلى `src/domain/birthday.ts`.
+ * النسبة قاعدة تجارية ثابتة، ومكانها طبقةُ القواعد لا ملفُّ أنواع الـAPI.
+ */
 
 // ═══════════════ الوسائط ═══════════════
 
@@ -363,7 +448,9 @@ export type MediaPurpose =
   | 'avatar'
   | 'banner'
   | 'franchise'
-  | 'category';
+  | 'category'
+  // رسوم الشخصيات المُدارة من لوحة التحكم (فتحات بصرية).
+  | 'slot';
 
 export const MEDIA_PURPOSES = [
   'product',
@@ -372,6 +459,7 @@ export const MEDIA_PURPOSES = [
   'banner',
   'franchise',
   'category',
+  'slot',
 ] as const satisfies readonly MediaPurpose[];
 
 // ═══════════════ ترتيب المنتجات ═══════════════

@@ -6,6 +6,7 @@ import '../../../../core/design_system/design_system.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../products/domain/entities/category.dart';
 import '../../../products/domain/usecases/fetch_categories_usecase.dart';
+import '../../../visuals/domain/visual_slot.dart';
 
 /// تبويب الأقسام بتصميم Otaku Galaxy v2.
 ///
@@ -61,6 +62,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
             title: 'الأقسام',
             subtitle: 'تصفّح المتجر حسب ما تحتاجه',
             artwork: 'assets/art/opt/a-i2.png',
+            artworkSlot: VisualSlots.categoriesHeader,
           ),
           Expanded(child: _buildBody()),
         ],
@@ -84,8 +86,9 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     if (_categories.isEmpty) {
       return const AnimeEmptyState(
         title: 'لا توجد أقسام بعد',
-        subtitle: 'سيظهر هنا كل قسم فور إضافته إلى المتجر.',
+        subtitle: 'لا توجد أقسام متاحة حالياً — عد لاحقاً.',
         artwork: 'assets/art/opt/a-i2.png',
+        artworkSlot: VisualSlots.emptyCategories,
       );
     }
 

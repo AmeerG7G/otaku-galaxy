@@ -6,6 +6,7 @@ import '../../../../core/design_system/design_system.dart';
 import '../../../../core/router/app_router.dart';
 import '../../domain/entities/collection.dart';
 import '../cubit/collections_cubit.dart';
+import '../../../visuals/domain/visual_slot.dart';
 
 /// تبويب «مجموعاتي» بتصميم Otaku Galaxy v2.
 ///
@@ -43,37 +44,43 @@ class _CollectionsTabState extends State<CollectionsTab> {
 
   Future<void> _renameCollection(Collection collection) async {
     final controller = TextEditingController(text: collection.name);
-    final name = await showOtakuSheet<String>(
-      context: context,
-      builder: (sheetContext) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
-        ),
-        child: OtakuSheet(
-          title: 'إعادة تسمية المجموعة',
-          titleSize: 19,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AnimeTextField(
-                controller: controller,
-                label: 'اسم المجموعة',
-                hint: 'مثلاً: أريد شراءها لاحقاً',
-                prefixIcon: Icons.collections_bookmark_outlined,
-              ),
-              const SizedBox(height: 20),
-              AnimePrimaryButton(
-                label: 'حفظ',
-                onPressed: () =>
-                    Navigator.of(sheetContext).pop(controller.text),
-              ),
-            ],
+    // الورقة تُغلق بحفظ أو بسحب أو بزر الرجوع، و`finally` يغطّي الثلاثة.
+    // المتحكّم هنا محلّي لا حقل في الصنف، فلا يمرّ على `dispose` أعلاه.
+    try {
+      final name = await showOtakuSheet<String>(
+        context: context,
+        builder: (sheetContext) => Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+          ),
+          child: OtakuSheet(
+            title: 'إعادة تسمية المجموعة',
+            titleSize: 19,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AnimeTextField(
+                  controller: controller,
+                  label: 'اسم المجموعة',
+                  hint: 'مثلاً: أريد شراءها لاحقاً',
+                  prefixIcon: Icons.collections_bookmark_outlined,
+                ),
+                const SizedBox(height: 20),
+                AnimePrimaryButton(
+                  label: 'حفظ',
+                  onPressed: () =>
+                      Navigator.of(sheetContext).pop(controller.text),
+                ),
+              ],
+            ),
           ),
         ),
-      ),
-    );
-    if (name == null || name.trim().isEmpty || !mounted) return;
-    await context.read<CollectionsCubit>().rename(collection.id, name.trim());
+      );
+      if (name == null || name.trim().isEmpty || !mounted) return;
+      await context.read<CollectionsCubit>().rename(collection.id, name.trim());
+    } finally {
+      controller.dispose();
+    }
   }
 
   Future<void> _deleteCollection(Collection collection) async {
@@ -81,7 +88,7 @@ class _CollectionsTabState extends State<CollectionsTab> {
       context: context,
       title: 'حذف المجموعة',
       message:
-          'راح نحذف «${collection.name}». المنتجات نفسها راح تبقى بمفضلتك.',
+          'سيُحذف «${collection.name}»، وتبقى المنتجات في مفضلتك.',
       confirmLabel: 'حذف',
       cancelLabel: 'إلغاء',
       destructive: true,
@@ -128,8 +135,9 @@ class _CollectionsTabState extends State<CollectionsTab> {
                 title: 'أنشئ مجموعتك الأولى',
                 body:
                     'جمّع منتجاتك بمجموعات مثل «أشياء أريدها» أو «للدراسة» '
-                    'حتى تلكيها بسرعة.',
+                    'لتصل إليها بسرعة.',
                 artwork: 'assets/art/opt/a-luffy-kid.png',
+                artworkSlot: VisualSlots.collectionsTab,
                 margin: EdgeInsets.zero,
                 minHeight: 200,
                 artHeight: 150,
@@ -189,11 +197,11 @@ class _CollectionsTabState extends State<CollectionsTab> {
             ),
             const SizedBox(height: 13),
             Text(
-              'مجموعاتك خاصة بك ولا يراها أحد غيرك.',
+              'مجموعاتك خاصة بك ولا تظهر لأحد.',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodySmall?.copyWith(
                 fontSize: 11.5,
-                color: theme.colorScheme.outline,
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
           ],
@@ -241,7 +249,7 @@ class _CollectionRow extends StatelessWidget {
                     child: Icon(
                       Icons.collections_bookmark_outlined,
                       size: 18,
-                      color: theme.colorScheme.outline,
+                      color: theme.colorScheme.onSurfaceVariant,
                     ),
                   )
                 : Stack(
@@ -306,7 +314,7 @@ class _CollectionRow extends StatelessWidget {
               child: Icon(
                 Icons.more_horiz_rounded,
                 size: 20,
-                color: theme.colorScheme.outline,
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
           ),

@@ -124,10 +124,12 @@ class AuthCubit extends Cubit<AuthState> {
     required String username,
     required String phone,
     required String password,
+    required String gender,
   }) => registerUsecase.call(
     username: username,
     phone: phone,
     password: password,
+    gender: gender,
   );
 
   /// إرسال رمز التحقق إلى رقم الهاتف.
@@ -154,12 +156,14 @@ class AuthCubit extends Cubit<AuthState> {
     String? username,
     String? avatar,
     bool clearAvatar = false,
+    String? gender,
   }) async {
     if (_user == null) return;
     final updated = await updateProfileUsecase.call(
       username: username,
       avatarUrl: avatar,
       clearAvatar: clearAvatar,
+      gender: gender,
     );
     _user = updated;
     await localStorage.updateUser(jsonEncode(updated.toJson()));

@@ -152,6 +152,36 @@ export const notificationRepo = {
     };
   },
 
+  /**
+   * إنشاء إشعار واحد لكل مستهدَف في جملة واحدة.
+   *
+   * جملة واحدة لا حلقة: بثٌّ إلى ألف زبون بألف رحلة ذهاب وإياب إلى القاعدة
+   * يستغرق دهراً ويترك الجدول نصف ممتلئ إن انقطع في المنتصف. `UNNEST`
+   * يجعلها إدراجاً واحداً متذرّياً.
+   *
+   * [NOTE] هذا يُنشئ **سجلّ إشعار داخل التطبيق** فقط. لا علاقة له بتسليم
+   * إشعار دفع (Push) — لا مزوّد مربوطاً بعد. العدد المُعاد هو عدد السجلات
+   * المكتوبة، لا عدد الأجهزة التي وصلها شيء.
+   */
+  async createMany(
+    db: pg.Pool | pg.PoolClient,
+    input: {
+      userIds: string[];
+      type: NotificationType;
+      title: string;
+      body?: string;
+      productId?: string | null;
+    },
+  ) {
+    if (input.userIds.length === 0) return 0;
+    const { rowCount } = await db.query(
+      `INSERT INTO notifications (user_id, type, title, body, product_id)
+       SELECT id, $2, $3, $4, $5 FROM UNNEST($1::uuid[]) AS t(id)`,
+      [input.userIds, input.type, input.title, input.body ?? '', input.productId ?? null],
+    );
+    return rowCount ?? 0;
+  },
+
   /** إنشاء إشعار — يُستدعى من خدمات الطلبات والتقييمات. */
   async create(
     db: pg.Pool | pg.PoolClient,

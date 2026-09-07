@@ -8,7 +8,7 @@ import { db } from '../database/pool.js';
  * لماذا جدولة على الخادم لا مؤقّت في التطبيق: المطلوب أن يصل التذكير بعد
  * يوم من الاستلام حتى لو أغلق العميل التطبيق، أو أعاد تشغيل هاتفه، أو بقي
  * بلا إنترنت، أو لم يفتح التطبيق إلا بعد أسبوع. `setTimeout` في الواجهة
- * يموت مع العملية؛ العمود `rating_available_at` في قاعدة البيانات لا يموت.
+ * يموت مع العملية؛ العمود `rating_reminder_at` في قاعدة البيانات لا يموت.
  *
  * الاستحقاق مشتقّ من حالة قاعدة البيانات لا من ذاكرة العملية، فإعادة تشغيل
  * الخادم لا تُضيّع أي تذكير ولا تُكرّره: `rating_reminder_sent_at` هو
@@ -38,9 +38,9 @@ export async function dispatchDueRatingReminders(
           SELECT id FROM orders
            WHERE status = 'COMPLETED'
              AND rating_reminder_sent_at IS NULL
-             AND rating_available_at IS NOT NULL
-             AND rating_available_at <= now()
-           ORDER BY rating_available_at
+             AND rating_reminder_at IS NOT NULL
+             AND rating_reminder_at <= now()
+           ORDER BY rating_reminder_at
            LIMIT $1
            FOR UPDATE SKIP LOCKED
         )

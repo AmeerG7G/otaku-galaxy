@@ -6,13 +6,35 @@ import { config } from '../src/config/index.js';
 const MIGRATIONS_DIR = path.resolve(import.meta.dirname, '../src/database/migrations');
 
 /**
+ * مفتاح قفل استشاري ثابت لهذا المشروع.
+ *
+ * أي رقم يصلح ما دام ثابتاً؛ المهم أن يتفق عليه كل من يُهاجر نفس القاعدة.
+ */
+const MIGRATION_LOCK_KEY = 8_274_119_305_461_022;
+
+/**
  * مهاجرات بسيطة: تطبّق ملفات SQL بالترتيب وتبقّي أثرها في schema_migrations.
  * كل ملف يُنفَّذ داخل معاملة (Transaction).
+ *
+ * [CRITICAL] المُهاجِر محميّ بقفل استشاري — التزامن يكسره بلا ذلك.
+ *
+ * `CREATE TABLE IF NOT EXISTS` ليس آمناً تحت التزامن في PostgreSQL: عمليتان
+ * تجتازان الفحص معاً ثم تصطدمان على فهرس فهرس النظام
+ * (`pg_class_relname_nsp_index` / `pg_type_typname_nsp_index`). أُعيد إنتاج
+ * ذلك محلياً بمُشغّلَين متزامنين على مخطّط فارغ، وهو نفسه سبب فشل خطوة
+ * الاختبارات في CI على قاعدة جديدة.
+ *
+ * `pg_advisory_lock` يُسلسل المُشغّلين: الثاني ينتظر ثم يجد كل شيء مطبَّقاً
+ * فلا يفعل شيئاً. القفل مربوط بالجلسة ويُحرَّر في `finally` ومع إغلاقها.
  */
 export async function runMigrations(url: string): Promise<string[]> {
   const client = new pg.Client({ connectionString: url });
   await client.connect();
+  let locked = false;
   try {
+    await client.query('SELECT pg_advisory_lock($1)', [MIGRATION_LOCK_KEY]);
+    locked = true;
+
     await client.query(
       `CREATE TABLE IF NOT EXISTS schema_migrations (
         id SERIAL PRIMARY KEY,
@@ -48,6 +70,10 @@ export async function runMigrations(url: string): Promise<string[]> {
     }
     return appliedNow;
   } finally {
+    if (locked) {
+      // تحرير صريح قبل الإغلاق — لا نتّكل على انتهاء الجلسة وحده.
+      await client.query('SELECT pg_advisory_unlock($1)', [MIGRATION_LOCK_KEY]).catch(() => undefined);
+    }
     await client.end();
   }
 }

@@ -1,6 +1,9 @@
-import { get } from './client'
+import { get, post } from './client'
 import type {
   AdminNotificationList,
+  BroadcastAudience,
+  BroadcastPayload,
+  BroadcastResult,
   NotificationStats,
   NotificationType,
 } from '../types/notifications'
@@ -22,4 +25,18 @@ export function listNotifications(
 
 export function getNotificationStats(): Promise<NotificationStats> {
   return get<NotificationStats>('/admin/notifications/stats')
+}
+
+/** بثّ إشعار إلى جمهور: الكل، زبائن محدَّدون، أو شريحة. */
+export function broadcastNotification(
+  payload: BroadcastPayload,
+): Promise<BroadcastResult> {
+  return post<BroadcastResult>('/admin/notifications/broadcast', payload)
+}
+
+/** حجم الجمهور قبل الإرسال — لا بثّ أعمى. */
+export function previewAudience(
+  audience: BroadcastAudience,
+): Promise<{ recipients: number }> {
+  return post<{ recipients: number }>('/admin/notifications/audience', audience)
 }

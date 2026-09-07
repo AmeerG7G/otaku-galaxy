@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/design_system/design_system.dart';
+import '../../../../core/l10n/gender.dart';
 import '../../../../core/di/injection_container.dart';
 import '../../../../core/errors/app_exception.dart';
 import '../../../../core/router/app_router.dart';
@@ -12,7 +13,6 @@ import '../../../birthday/data/birthday_storage.dart';
 import '../../../birthday/presentation/birthday_prompt.dart';
 import '../../../favorites/presentation/cubit/favorites_cubit.dart';
 import '../../../favorites/presentation/cubit/favorites_state.dart';
-import '../../../points/domain/entities/otaku_level.dart';
 import '../../../points/presentation/cubit/points_cubit.dart';
 import '../../../settings/data/store_settings_repository.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -20,6 +20,8 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/constants/api_endpoints.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/foundation.dart';
+import '../../../visuals/domain/visual_slot.dart';
+import '../../../visuals/presentation/managed_artwork.dart';
 
 /// تبويب الحساب بتصميم Otaku Galaxy v2.
 ///
@@ -138,15 +140,6 @@ class AccountScreen extends StatelessWidget {
               onTap: () => context.router.push(const SettingsRoute()),
             ),
           ],
-          const SizedBox(height: 10),
-          OtakuSettingRow(
-            icon: Icons.info_outline,
-            iconColor: AppColors.success,
-            label: 'حول التطبيق',
-            value: 'إصدار 1.0.0',
-            showChevron: false,
-            // صفّ عرض فقط — بلا onTap حتى لا يعطي تموّجاً يوحي بوجهة.
-          ),
         ],
       ),
     );
@@ -229,6 +222,7 @@ class AccountScreen extends StatelessWidget {
           ),
           _SocialRow(
             icon: Icons.music_note_rounded,
+            slot: VisualSlots.socialTiktok,
             name: 'تيك توك',
             subtitle: 'جديد المنتجات والعروض',
             tint: const Color(0xFF1C1B22),
@@ -237,6 +231,7 @@ class AccountScreen extends StatelessWidget {
           const SizedBox(height: 10),
           _SocialRow(
             icon: Icons.camera_alt_outlined,
+            slot: VisualSlots.socialInstagram,
             name: 'إنستغرام',
             subtitle: 'صور المنتجات ولقطات المتجر',
             tint: const Color(0xFFE1306C),
@@ -245,6 +240,7 @@ class AccountScreen extends StatelessWidget {
           const SizedBox(height: 10),
           _SocialRow(
             icon: Icons.chat_bubble_outline,
+            slot: VisualSlots.socialWhatsapp,
             name: 'واتساب',
             subtitle: 'تواصل مباشر مع خدمة العملاء',
             tint: const Color(0xFF25D366),
@@ -401,7 +397,11 @@ class _GuestCard extends StatelessWidget {
             bottom: -10,
             end: -16,
             child: IgnorePointer(
-              child: Image.asset('assets/art/opt/a-i0.png', height: 175),
+              child: const ManagedArtwork(
+                slot: VisualSlots.account,
+                fallbackAsset: 'assets/art/opt/a-i0.png',
+                height: 175,
+              ),
             ),
           ),
           Padding(
@@ -422,7 +422,7 @@ class _GuestCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'سجّل الدخول لتتابع طلباتك وتحفظ مفضلتك ومجموعاتك.',
+                  context.g(GenderedStrings.loginToFollow),
                   textAlign: TextAlign.center,
                   style: theme.textTheme.bodySmall?.copyWith(
                     fontSize: 12.5,
@@ -496,9 +496,11 @@ class _ProfileCardState extends State<_ProfileCard> {
 
     return BlocBuilder<PointsCubit, PointsState>(
       builder: (context, state) {
-        final level = OtakuLevel.forPoints(state.balance);
-        final progress = level.progress(state.balance);
-        final remaining = level.pointsToNext(state.balance);
+        // المستوى وتقدّمه يأتيان محسوبين من الخادم — العتبات بيانات
+        // يديرها المسؤول، ولا نسخة منها في التطبيق تحسبها من جديد.
+        final level = state.level;
+        final progress = state.levelProgress;
+        final remaining = state.pointsToNextLevel;
 
         return InkWell(
           onTap: widget.onOpenPoints,
@@ -552,26 +554,67 @@ class _ProfileCardState extends State<_ProfileCard> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text(
-                                widget.name?.trim().isNotEmpty == true
-                                    ? widget.name!
-                                    : 'اسم المستخدم',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.titleLarge?.copyWith(
-                                  fontFamily: 'Tajawal',
-                                  fontWeight: AppDimens.weightExtraBold,
-                                  fontSize: 19,
-                                  color: Colors.white,
-                                ),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  // الاسم يتقلّص قبل العلامة: العلامة عرضها
+                                  // ثابت صغير، والاسم هو ما قد يطول.
+                                  Flexible(
+                                    child: Text(
+                                      widget.name?.trim().isNotEmpty == true
+                                          ? widget.name!
+                                          : 'اسم المستخدم',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: theme.textTheme.titleLarge
+                                          ?.copyWith(
+                                            fontFamily: 'Tajawal',
+                                            fontWeight:
+                                                AppDimens.weightExtraBold,
+                                            fontSize: 19,
+                                            color: Colors.white,
+                                          ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  // علامة نقاط المجرّة بجانب الاسم — نفس
+                                  // العلامة المستعملة في ترويسة شاشة النقاط
+                                  // وفي عنوان الرصيد أدناه، لا أيقونة جديدة.
+                                  //
+                                  // `Semantics` لأن الرمز وحده لا يُقرأ:
+                                  // القارئ الصوتي يقول اسم المحارف بدل
+                                  // المعنى، فيُعلَن المعنى صراحةً.
+                                  Semantics(
+                                    label: 'نقاط المجرّة',
+                                    child: const Text(
+                                      '🌌',
+                                      style: TextStyle(fontSize: 17),
+                                    ),
+                                  ),
+                                ],
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                'المستوى ${level.number} — ${level.title}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                                // قبل وصول السلّم من الخادم لا نخترع مستوى.
+                                level == null
+                                    ? 'نقاط المجرّة'
+                                    // الاسم مصرَّف بجنس صاحب الحساب: «بطل
+                                    // المجرة» أو «بطلة المجرة»، وصيغة محايدة
+                                    // لمن لم يختر بعد.
+                                    : 'المستوى ${level.number} — '
+                                          '${level.nameFor(context.gender)}',
+                                // [CRITICAL] لا اقتطاع لاسم المستوى.
+                                //
+                                // كان سطراً واحداً بـ`ellipsis`، فيقرأ صاحب
+                                // الهاتف الصغير «المستوى ٢ — مستكشفة المج…».
+                                // اسمُ المستوى هو المكافأة المعروضة؛ قصُّه
+                                // يُفرغها. يلتفّ الآن إلى سطرين ويصغر خطّه
+                                // قليلاً عند الحاجة بدل أن يختفي.
+                                maxLines: 2,
+                                softWrap: true,
                                 style: theme.textTheme.bodyMedium?.copyWith(
                                   fontSize: 13,
+                                  height: 1.35,
                                   fontWeight: AppDimens.weightBold,
                                   color: Colors.white.withValues(alpha: 0.92),
                                 ),
@@ -638,7 +681,7 @@ class _ProfileCardState extends State<_ProfileCard> {
                     Text(
                       remaining > 0
                           ? 'باقي $remaining نقطة للمستوى التالي'
-                          : 'وصلت لأعلى مستوى 🎉',
+                          : context.g(GenderedStrings.reachedTopLevel),
                       style: theme.textTheme.bodySmall?.copyWith(
                         fontSize: 12.5,
                         fontWeight: AppDimens.weightBold,
@@ -771,6 +814,7 @@ class _AvatarBusy extends StatelessWidget {
 class _SocialRow extends StatelessWidget {
   const _SocialRow({
     required this.icon,
+    required this.slot,
     required this.name,
     required this.subtitle,
     required this.tint,
@@ -778,6 +822,13 @@ class _SocialRow extends StatelessWidget {
   });
 
   final IconData icon;
+
+  /// فتحة الأيقونة المُدارة — يرفع المسؤول شعار المنصة الحقيقي.
+  ///
+  /// لا شعار مضمَّن في الحزمة: شعارات المنصات علامات تجارية لا يجوز
+  /// تضمينها اعتباطاً، ولا حزمة أيقونات مرخَّصة في المشروع تحملها. فأيقونة
+  /// Material تبقى بديلاً معقولاً حتى يرفع المسؤول الشعار الرسمي.
+  final String slot;
   final String name;
   final String subtitle;
   final Color tint;
@@ -798,7 +849,13 @@ class _SocialRow extends StatelessWidget {
               color: tint.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(13),
             ),
-            child: Icon(icon, size: 17, color: tint),
+            child: Padding(
+              padding: const EdgeInsets.all(9),
+              child: ManagedArtwork.orWidget(
+                slot: slot,
+                fallback: Icon(icon, size: 17, color: tint),
+              ),
+            ),
           ),
           const SizedBox(width: 13),
           Expanded(
@@ -827,7 +884,7 @@ class _SocialRow extends StatelessWidget {
           Icon(
             Icons.north_east_rounded,
             size: 16,
-            color: theme.colorScheme.outline,
+            color: theme.colorScheme.onSurfaceVariant,
           ),
         ],
       ),
@@ -899,7 +956,7 @@ class _LogoutButton extends StatelessWidget {
           style: theme.textTheme.labelLarge?.copyWith(
             fontSize: 14,
             fontWeight: AppDimens.weightBold,
-            color: AppColors.error,
+            color: context.themeColors.errorText,
           ),
         ),
       ),

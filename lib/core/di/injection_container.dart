@@ -6,6 +6,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/app_config.dart';
 import '../network/api_client.dart';
+import '../../features/app_update/data/app_version_repository.dart';
+import '../../features/app_update/data/installed_version.dart';
 import '../network/media_url.dart';
 import '../router/app_router.dart';
 import '../../features/auth/data/datasources/auth_local_storage.dart';
@@ -60,6 +62,11 @@ import '../../features/products/domain/usecases/search_products_usecase.dart';
 import '../../features/settings/presentation/cubit/locale_cubit.dart';
 import '../../features/settings/presentation/cubit/theme_cubit.dart';
 import '../../features/settings/data/store_settings_repository.dart';
+import '../../features/visuals/data/visuals_repository.dart';
+import '../../features/notifications/data/push_registrar.dart';
+import '../../features/notifications/data/push_token_repository.dart';
+import '../../features/restock/data/restock_repository.dart';
+import '../../features/settings/data/notification_prefs_repository.dart';
 import '../../features/settings/data/notification_prefs_storage.dart';
 import '../../features/settings/data/personalize_storage.dart';
 import '../../features/search/data/search_history_storage.dart';
@@ -115,10 +122,21 @@ Future<void> init({AppConfig? config}) async {
 /// تهيئة الاعتماديات الخارجية (عمليات غير متزامنة).
 Future<void> _initExternalDependencies() async {
   final sharedPreferences = await SharedPreferences.getInstance();
+
+  // [CRITICAL] تُقرأ النسخة **قبل** بناء `ApiClient` وتُنتظر مرة واحدة.
+  // معترِض الطلبات متزامن فلا يستطيع انتظار قناة المنصّة؛ لو تُركت القراءة
+  // للاحق لخرجت أوائل الطلبات بلا رأس النسخة — وهي بالضبط طلبات الإقلاع.
+  final installedVersion = PackageInfoVersion();
+  try {
+    await installedVersion.version();
+  } catch (_) {
+    // تعذّرت قناة المنصّة: نسخة مجهولة لا تُعلَن ولا تُحجب.
+  }
   final authStorage = AuthLocalStorage();
   await authStorage.load();
   sl
     ..registerLazySingleton<SharedPreferences>(() => sharedPreferences)
+    ..registerLazySingleton<InstalledVersionSource>(() => installedVersion)
     ..registerLazySingleton<AuthLocalStorage>(() => authStorage)
     ..registerLazySingleton<OnboardingStorage>(
       () => OnboardingStorage(sharedPreferences),
@@ -128,7 +146,11 @@ Future<void> _initExternalDependencies() async {
 
 /// تهيئة الاعتماديات الأساسية (المستودعات وحالات الاستخدام).
 void _initCore() {
-  final apiClient = ApiClient(config: sl<AppConfig>());
+  final apiClient = ApiClient(
+    config: sl<AppConfig>(),
+    // قراءة متزامنة من الذاكرة — القيمة مهيّأة في `_initExternal`.
+    appVersionProvider: () => sl<InstalledVersionSource>().cached,
+  );
   // [CRITICAL]: كل مستودع يجب أن يستقبل عميل الـ API المشترك.
   // البناء الافتراضي (`.new` بلا وسائط) كان يُنشئ عميلاً جديداً بلا
   // `tokenProvider`، فتخرج كل الطلبات المحمية بلا ترويسة Authorization
@@ -187,14 +209,45 @@ void _initEngagementFeatures() {
     ..registerLazySingleton<BirthdayStorage>(
       () => BirthdayStorage(api: sl<ApiClient>()),
     )
+    ..registerLazySingleton<AppVersionRepository>(
+      () => AppVersionRepository(
+        sl<ApiClient>(),
+        sl<InstalledVersionSource>(),
+        sl<SharedPreferences>(),
+      ),
+    )
     ..registerLazySingleton<StoreSettingsRepository>(
       () => StoreSettingsRepository(api: sl<ApiClient>()),
+    )
+    ..registerLazySingleton<VisualsRepository>(
+      () => VisualsRepository(api: sl<ApiClient>()),
     )
     ..registerLazySingleton<PersonalizeStorage>(
       () => PersonalizeStorage(sl<SharedPreferences>()),
     )
     ..registerLazySingleton<NotificationPrefsStorage>(
       () => NotificationPrefsStorage(sl<SharedPreferences>()),
+    )
+    // الإشعارات الفورية: المصدر غير مضبوط ما دام Firebase غير مربوط، وبقية
+    // المنظومة تعمل حوله بلا عطل (انظر `PushTokenSource`).
+    ..registerLazySingleton<PushTokenSource>(
+      () => const UnconfiguredPushTokenSource(),
+    )
+    ..registerLazySingleton<PushTokenRepository>(
+      () => PushTokenRepository(sl<ApiClient>()),
+    )
+    ..registerLazySingleton<PushRegistrar>(
+      () => PushRegistrar(sl<PushTokenSource>(), sl<PushTokenRepository>()),
+    )
+    ..registerLazySingleton<RestockRepository>(
+      () => RestockRepository(sl<ApiClient>()),
+    )
+    // التفضيلات تُقرأ وتُكتب على الخادم؛ التخزين المحلي ذاكرة عرضٍ فقط.
+    ..registerLazySingleton<NotificationPrefsRepository>(
+      () => NotificationPrefsRepository(
+        sl<ApiClient>(),
+        sl<NotificationPrefsStorage>(),
+      ),
     )
     ..registerLazySingleton<SearchHistoryStorage>(
       () => SearchHistoryStorage(sl<SharedPreferences>()),

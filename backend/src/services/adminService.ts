@@ -1,3 +1,4 @@
+import type pg from 'pg';
 import { db, withTransaction } from '../database/pool.js';
 import {
   categoryRepo,
@@ -8,10 +9,18 @@ import { notificationRepo } from '../repositories/notificationsRepo.js';
 import { orderRepo } from '../repositories/orderRepo.js';
 import { pointsRepo } from '../repositories/pointsRepo.js';
 import { bannerRepo, governorateRepo } from '../repositories/storefrontRepo.js';
-import { userRepo } from '../repositories/userRepo.js';
+import {
+  userRepo,
+  type BirthdayFilter,
+  type CustomerSort,
+} from '../repositories/userRepo.js';
+import { config } from '../config/index.js';
 import type { NotificationType, OrderStatus } from '../types/index.js';
+import type { Gender } from '../types/index.js';
 import { Errors } from '../utils/errors.js';
 import { orderService } from './orderService.js';
+import { restockService } from './restockService.js';
+import { renumberPlacement, type AssignedOrder, type PlacementRow } from '../utils/bannerOrder.js';
 import { franchiseRepo } from '../repositories/franchisesRepo.js';
 
 /** إدارة المتجر للمشرف (لوحة تحكم React مستقبلية). */
@@ -37,6 +46,56 @@ function mapProductConstraintError(error: unknown): never {
   throw error;
 }
 
+/**
+ * مجموعة البنرات النشطة لموضعٍ ما، مقفولة (FOR UPDATE) كي تتسلسل تعديلات
+ * الموضع المتزامنة. تُستقى بعد التحديث فيضمّ البنرُ بنفسه حتى عند تنقّله
+ * من موضعه أو تفعيله للتو.
+ */
+async function bannerPlacementGroup(
+  tx: pg.PoolClient,
+  placement: string,
+): Promise<PlacementRow[]> {
+  const { rows } = await tx.query<{ id: string; sort_order: number; created_at: Date }>(
+    `SELECT id, sort_order, created_at FROM banners
+      WHERE placement = $1 AND is_active = TRUE
+      ORDER BY sort_order, created_at
+      FOR UPDATE`,
+    [placement],
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    sortOrder: row.sort_order,
+    createdAt: row.created_at,
+  }));
+}
+
+/**
+ * تطبيق أوامر الترقيم على دفعة واحدة — على مرحلتين.
+ *
+ * جلستنا الأولى صفاً صفاً ثم دفعةٌ واحدة، كلاهما اصطدم بالفهرس الفريد
+ * الجزئي (هجرة ٠٣٥): بوستغرِس يفحص الفائدة بعد كل صفٍّ داخل الجملة نفسها،
+ * فتبادل ترتيبين يعني لحظةً يصطفّ فيها اثنان على نفس الترتيب. الحل مرحلتان:
+ * (١) إزاحة الجميع بمقدار ثابت كبير — إزاحة متزاحة تحفظ التمييز فلا تصادم؛
+ * (٢) تثبيت القيم النهائية الصغيرة على ساحة بلا عشّاقٍ سابقين.
+ */
+async function applyBannerOrders(tx: pg.PoolClient, assignments: AssignedOrder[]) {
+  if (assignments.length === 0) return;
+  const clauses = assignments
+    .map((_, index) => `($${index * 2 + 1}::uuid, $${index * 2 + 2}::int)`)
+    .join(', ');
+  const params: unknown[] = [];
+  for (const assignment of assignments) {
+    params.push(assignment.id, assignment.sortOrder);
+  }
+  const values = `FROM (VALUES ${clauses}) AS v(id, sort_order) WHERE b.id = v.id`;
+  const offsetParam = params.length + 1;
+  await tx.query(
+    `UPDATE banners b SET sort_order = b.sort_order + $${offsetParam} ${values}`,
+    [...params, assignments.length + 1_000_000],
+  );
+  await tx.query(`UPDATE banners b SET sort_order = v.sort_order ${values}`, params);
+}
+
 export const adminService = {
   // ===== المنتجات =====
   async createProduct(input: {
@@ -54,15 +113,16 @@ export const adminService = {
     hasDeliveryPromo?: boolean;
     deliveryPromoAmount?: number;
     franchiseIds?: string[];
+    restockAt?: string | null;
   }) {
     return withTransaction(async (tx) => {
       const { rows } = await tx.query(
         `INSERT INTO products (
            name, description, price, category_id, subcategory_id, stock,
            is_offer, is_selected, previous_price, has_delivery_promo,
-           delivery_promo_amount
+           delivery_promo_amount, restock_at
          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
          RETURNING *`,
         [
           input.name,
@@ -78,6 +138,7 @@ export const adminService = {
           // القيد في القاعدة يرفض «مفعَّل بمبلغ صفر»، فنُصفّر المبلغ متى
           // كان الترويج مطفأً بدل تمرير قيمة متناقضة.
           input.hasDeliveryPromo ? (input.deliveryPromoAmount ?? 0) : 0,
+          input.restockAt ?? null,
         ],
       );
       const product = rows[0]!;
@@ -100,8 +161,30 @@ export const adminService = {
     });
   },
 
-  async listProducts(page: number, limit: number) {
-    return productRepo.list(db, { page, limit, includeInactive: true });
+  /**
+   * منتجات الإدارة — بما فيها الموقوفة، مع ترشيح اختياري بالقسم.
+   *
+   * الترشيح على الخادم لا في المتصفح: قائمة مرقَّمة تُرشَّح بعد جلبها تعرض
+   * منتجات الصفحة الحالية فقط، فيبدو القسم الفرعي فارغاً وفيه عشرات
+   * المنتجات على الصفحة الثانية.
+   */
+  async listProducts(options: {
+    page: number;
+    limit: number;
+    categoryId?: string;
+    subcategoryId?: string;
+    offer?: boolean;
+    selected?: boolean;
+  }) {
+    // `includeInactive` هو الفارق عن القائمة العامة: المسؤول يدير المنتجات
+    // المعطّلة أيضاً — بما فيها المرفوعة كعروض — لا النشطة وحدها.
+    const { offer, selected, ...rest } = options;
+    return productRepo.list(db, {
+      ...rest,
+      ...(offer !== undefined ? { isOffer: offer } : {}),
+      ...(selected !== undefined ? { isSelected: selected } : {}),
+      includeInactive: true,
+    });
   },
 
   async updateProduct(
@@ -124,11 +207,23 @@ export const adminService = {
       hasDeliveryPromo?: boolean;
       deliveryPromoAmount?: number;
       franchiseIds?: string[];
+      /** موعد التوفر القادم — معلومة إرشادية، لا يغيّر المخزون. */
+      restockAt?: string | null;
     },
   ) {
     return withTransaction(async (tx) => {
+      // [CRITICAL] قفل صفّ المنتج قبل قراءته.
+      //
+      // القرارات التالية كلها مبنيّة على المقارنة بين القديم والجديد: هل
+      // عاد المخزون؟ هل تغيّر موعد التوفر؟ مسؤولان يحفظان معاً كانا يقرآن
+      // القيمة القديمة نفسها ثم يكتبان، فيُرسل إشعارُ «تغيّر الموعد» مرتين
+      // أو لا يُرسل إطلاقاً بحسب ترتيب الكتابة. القفل يُسلسلهما.
+      await tx.query('SELECT id FROM products WHERE id = $1 FOR UPDATE', [id]);
+
       const existing = await productRepo.findById(tx, id);
       if (!existing) throw Errors.notFound('المنتج غير موجود');
+      const previousStock = Number(existing.stock);
+      const previousRestockAt = existing.restockAt;
 
       const fields = [
         'name',
@@ -145,6 +240,7 @@ export const adminService = {
         'previous_price',
         'has_delivery_promo',
         'delivery_promo_amount',
+        'restock_at',
       ] as const;
       const map: Record<string, unknown> = {
         name: input.name,
@@ -163,6 +259,11 @@ export const adminService = {
         delivery_promo_amount: input.hasDeliveryPromo === false
           ? 0
           : input.deliveryPromoAmount,
+        // التحديث لا يمسّ تاريخ الإعادة إلا إن حُدّد صراحةً — لا يحذفه أي
+        // حفظٍ لاحقٍ لسعر أو مخزون.
+        ...(input.restockAt !== undefined
+          ? { restock_at: input.restockAt ?? null }
+          : {}),
       };
       const sets: string[] = [];
       const values: unknown[] = [id];
@@ -174,6 +275,42 @@ export const adminService = {
       }
       if (sets.length > 0) {
         await tx.query(`UPDATE products SET ${sets.join(', ')} WHERE id = $1`, values);
+      }
+
+      // عودة المخزون من صفر إلى ما فوق: إشعارات المشتركين وفراغ اشتراكاتهم
+      // داخل معاملة التحديث نفسها — إمّا كاملة أو لا شيء.
+      const cameBackInStock =
+        input.stock !== undefined && previousStock === 0 && Number(input.stock) > 0;
+
+      if (cameBackInStock) {
+        await restockService.notifyRestocked(tx, id, existing.name);
+        // الموعد المتوقَّع تحقّق، فلا معنى لبقائه: تركُه يترك في القاعدة
+        // «متوقَّع أن يتوفر يوم كذا» عن منتج متوفر الآن — بيانات تصير كاذبة
+        // بمرور اليوم، وقد تُعرض ثانيةً لو نفد المخزون لاحقاً.
+        await tx.query('UPDATE products SET restock_at = NULL WHERE id = $1', [id]);
+      } else if (input.restockAt !== undefined) {
+        // ═══ تغيّر موعد التوفر المتوقَّع ═══
+        //
+        // [CRITICAL] الإشعار مشروط بتغيّر **فعلي** في القيمة، لا بضغطة حفظ.
+        // المسؤول الذي يفتح الصفحة ويحفظ نفس التاريخ لم يُحدث شيئاً يستحق
+        // إزعاج مئة زبون به. المقارنة على اللحظة نفسها، فحفظُ اليوم ذاته
+        // يُنتج القيمة ذاتها ولا يُشعر.
+        //
+        // ولا يقع هذا في نفس الحفظ الذي أعاد المخزون: هناك يفوز «عاد
+        // للتوفر»، وهو الخبر الصحيح — لا موعدٌ متوقَّع لشيء صار متاحاً.
+        const nextRestockAt = input.restockAt ?? null;
+        const changed = !sameInstant(previousRestockAt, nextRestockAt);
+
+        // إفراغ الموعد (تاريخ → لا شيء) لا يُشعر أحداً: ليس خبراً يُبلَّغ،
+        // والحالة المعروضة للزبون تعود إلى «بانتظار التوفر» من تلقائها.
+        if (changed && nextRestockAt !== null) {
+          await restockService.notifyExpectedRestock(tx, {
+            productId: id,
+            productName: input.name ?? existing.name,
+            restockAt: nextRestockAt,
+            updated: previousRestockAt !== null,
+          });
+        }
       }
 
       if (input.franchiseIds !== undefined) {
@@ -278,22 +415,88 @@ export const adminService = {
   },
 
   // ===== البانرات والمحافظات =====
+  /** البنرات مع ترتيبها — منها يبني لوحة التحكم قائمة «الترتيب» القابلة للتعديل. */
   async listBanners() {
     return bannerRepo.listAll(db);
+  },
+
+  /** طلبات «أخبرني عند توفره» من وجهة الإدارة — المنتجات النافدة وعليها اشتراكات. */
+  async restockDemand() {
+    return restockService.adminDemand();
   },
 
   async createBanner(input: {
     imageUrl: string;
     title?: string | null;
-    destinationType: 'product' | 'category' | 'subcategory' | 'none';
+    subtitle?: string;
+    placement?: 'hero' | 'promo';
+    destinationType: 'product' | 'category' | 'subcategory' | 'anime' | 'none';
     destinationValue?: string | null;
     sortOrder?: number;
   }) {
-    return bannerRepo.create(db, input);
+    return withTransaction(async (tx) => {
+      const placement = input.placement ?? 'promo';
+      // قفلُ صفّي الموضع يسلسل إدراجين متزامنين.
+      await tx.query(
+        'SELECT id FROM banners WHERE placement = $1 AND is_active = TRUE FOR UPDATE',
+        [placement],
+      );
+      const group = await bannerPlacementGroup(tx, placement);
+      const occupied = new Set(group.map((row) => row.sortOrder));
+      const requested = input.sortOrder ?? 0;
+
+      // إدراجٌ لا يصطدم بالفهرس الفريد الجزئي: القيمة الأقصى بالزيادة.
+      const safeOrder =
+        group.reduce((max, row) => Math.max(max, row.sortOrder), -1) + 1;
+      const banner = await bannerRepo.create(tx, {
+        ...input,
+        placement,
+        sortOrder: safeOrder,
+      });
+
+      // الإنشاء لا يزاحم أحداً: الترتيب الحر يُثبَّت كما طلبه المسؤول، والترتيب
+      // المحجوز يُبقيه في مؤخرة الموضع. إعادةُ الترقيم شأنُ «النقلة» فقط
+      // (تحديث البنر الموجود بترتيب جديد) — لا مصادفة خلف إنشاءٍ عابر.
+      if (banner.isActive && !occupied.has(requested) && requested !== safeOrder) {
+        await tx.query('UPDATE banners SET sort_order = $2 WHERE id = $1', [
+          banner.id,
+          requested,
+        ]);
+      }
+      return banner;
+    });
   },
 
   async updateBanner(id: string, input: Record<string, unknown>) {
-    return bannerRepo.update(db, id, input as never);
+    return withTransaction(async (tx) => {
+      const { rows } = await tx.query<{ id: string; placement: string; is_active: boolean }>(
+        'SELECT id, placement, is_active FROM banners WHERE id = $1 FOR UPDATE',
+        [id],
+      );
+      if (rows.length === 0) throw Errors.notFound('البنر غير موجود');
+      const before = rows[0]!;
+
+      // الترتيب يُحسم بإعادة الترقيم الذرّية لا كحقل تحديثٍ قد يصطدم
+      // بصفٍّ آخر على نفس الموضع وهو لا يزال واقفاً في مكانه.
+      const { sortOrder, ...fields } = input as Record<string, unknown> & { sortOrder?: number };
+      const banner = await bannerRepo.update(tx, id, fields as never);
+
+      // إعادة الترقيم فقط متى تغيّر انتماءُ البنر أو ترتيبه — تعديلُ الصورة
+      // وحدها يبقى كما هو تماماً، فلا يُعاد خلط ترتيب موضعٍ لا مساس به.
+      const membershipChanged =
+        sortOrder !== undefined ||
+        before.placement !== banner?.placement ||
+        !before.is_active;
+      if (banner?.isActive && membershipChanged) {
+        const assigned = renumberPlacement(
+          await bannerPlacementGroup(tx, banner.placement),
+          banner.id,
+          sortOrder ?? banner.sortOrder,
+        );
+        await applyBannerOrders(tx, assigned);
+      }
+      return banner;
+    });
   },
 
   async deleteBanner(id: string) {
@@ -303,7 +506,7 @@ export const adminService = {
   },
 
   async listGovernorates() {
-    return governorateRepo.listActive(db);
+    return governorateRepo.listAll(db);
   },
 
   async createGovernorate(input: { name: string; deliveryFee: number }) {
@@ -345,7 +548,9 @@ export const adminService = {
   },
 
   async getOrder(orderId: string) {
-    const order = await orderRepo.findById(db, orderId);
+    // المسار الإداري يقرأ الشكل الإداري: يحمل الفائض المحاسبي الذي لا
+    // يخرج في استجابة العميل.
+    const order = await orderRepo.findByIdForAdmin(db, orderId);
     if (!order) throw Errors.notFound('الطلب غير موجود');
     return order;
   },
@@ -360,31 +565,72 @@ export const adminService = {
   },
 
   // ===== المستخدمون =====
-  async listUsers(page: number, limit: number) {
-    const { items, total } = await userRepo.listCustomers(db, page, limit);
+  /**
+   * قائمة الزبائن للإدارة — البحث والترشيح يجريان في القاعدة.
+   *
+   * الشكل المُعاد يحمل ما تحتاجه شاشة الزبائن للقرار (النقاط، عدد الطلبات،
+   * آخر طلب) لا الصفَّ الخام: `password_hash` و`token_version` لا يخرجان
+   * من هذه الطبقة أبداً.
+   */
+  async listUsers(options: {
+    page: number;
+    limit: number;
+    search?: string;
+    isActive?: boolean;
+    hasBirthday?: boolean;
+    hasOrders?: boolean;
+    minPoints?: number;
+    maxPoints?: number;
+    gender?: Gender | 'unknown';
+    sort?: CustomerSort;
+  }) {
+    // العدّادات تُحسب على كامل المطابق للبحث لا على الصفحة المعروضة، وتُرسل
+    // مع كل صفحة ليبقى تصنيف اللوحة صحيحاً مهما تنقّل المسؤول.
+    const [{ items, total }, genderCounts] = await Promise.all([
+      userRepo.listCustomers(db, options),
+      userRepo.genderCounts(db, {
+        ...(options.search !== undefined ? { search: options.search } : {}),
+        ...(options.isActive !== undefined ? { isActive: options.isActive } : {}),
+      }),
+    ]);
     return {
-      items: items.map((u) => ({
-        id: u.id,
-        username: u.username,
-        phone: u.phone,
-        avatarUrl: u.avatar_url,
-        isActive: u.is_active,
-        createdAt: u.created_at,
-      })),
-      page,
-      limit,
+      items,
+      page: options.page,
+      limit: options.limit,
       total,
+      hasMore: options.page * options.limit < total,
+      genderCounts,
     };
   },
 
-  /** العملاء الذين سجّلوا تاريخ ميلادهم — قسم مستقل في لوحة التحكم. */
-  async listBirthdayCustomers(
-    page: number,
-    limit: number,
-    filter: 'all' | 'registered' | 'pending' = 'registered',
-  ) {
-    const { items, total } = await userRepo.listBirthdayCustomers(db, page, limit, filter);
-    return { items, page, limit, total, hasMore: page * limit < total };
+  /**
+   * العملاء حسب حالة عيد الميلاد — قسم مستقل في لوحة التحكم.
+   *
+   * «اليوم» و«قريباً» تُحسبان بمنطقة المتجر الزمنية لا بساعة الخادم، وإلا
+   * وصلت تهنئةُ الغد قبل منتصف ليل صاحبها بثلاث ساعات.
+   */
+  async listBirthdayCustomers(options: {
+    page: number;
+    limit: number;
+    filter?: BirthdayFilter;
+    windowDays?: number;
+  }) {
+    const [{ items, total }, counts] = await Promise.all([
+      userRepo.listBirthdayCustomers(db, {
+        ...options,
+        timezone: config.storeTimezone,
+      }),
+      userRepo.birthdayCounts(db, config.storeTimezone, options.windowDays ?? 7),
+    ]);
+    return {
+      items,
+      page: options.page,
+      limit: options.limit,
+      total,
+      hasMore: options.page * options.limit < total,
+      counts,
+      timezone: config.storeTimezone,
+    };
   },
 
   /**
@@ -463,3 +709,15 @@ export const adminService = {
     return { id: updated.id, isActive: updated.is_active };
   },
 };
+
+/**
+ * هل يشير التاريخان إلى اللحظة نفسها؟ (`null` يساوي `null`.)
+ *
+ * المقارنة على اللحظة لا على النصّ: `2026-09-15T00:00:00Z` و
+ * `2026-09-15T03:00:00+03:00` نصّان مختلفان للحظة واحدة، وإشعارٌ بـ«تغيّر
+ * الموعد» بينهما كذبٌ على الزبون.
+ */
+function sameInstant(a: string | null, b: string | null): boolean {
+  if (a === null || b === null) return a === b;
+  return new Date(a).getTime() === new Date(b).getTime();
+}

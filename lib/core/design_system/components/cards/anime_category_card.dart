@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../features/products/domain/entities/category.dart';
+import '../../../../features/products/domain/entities/category_order.dart';
 import '../../tokens/app_dimens.dart';
 import '../../tokens/app_theme_colors.dart';
 
@@ -37,13 +38,43 @@ class AnimeCategoryCard extends StatelessWidget {
   final bool rail;
 
   /// تدرّجات الأقسام كما وردت في مصدر التصميم (زاوية ١٤٠ درجة).
+  /// لوحة تدرّجات الأقسام.
+  ///
+  /// الخمسة الأولى من مرجع التصميم حرفياً (`CATS[].grad`). السادس مضاف
+  /// لأن المتجر الحقيقي فيه ستة أقسام والمرجع يعرف خمسة — وهو مركَّب من
+  /// لونين موجودين في اللوحة نفسها (البنفسجي والأخضر) فلا لون جديد يُخترع.
   static const List<List<Color>> gradients = [
-    [Color(0xFFFF9A5A), Color(0xFFFF3D8F)],
-    [Color(0xFF4EA8FF), Color(0xFF7C5CFF)],
-    [Color(0xFF22B07D), Color(0xFF4EA8FF)],
-    [Color(0xFFFF3D8F), Color(0xFF7C5CFF)],
-    [Color(0xFFFFB02E), Color(0xFFFF6F91)],
+    [Color(0xFFFF9A5A), Color(0xFFFF3D8F)], // 0 — قرطاسية (المرجع)
+    [Color(0xFF4EA8FF), Color(0xFF7C5CFF)], // 1 — ملابس (المرجع)
+    [Color(0xFF22B07D), Color(0xFF4EA8FF)], // 2 — حقائب (المرجع)
+    [Color(0xFFFF3D8F), Color(0xFF7C5CFF)], // 3 — إكسسوارات (المرجع)
+    [Color(0xFFFFB02E), Color(0xFFFF6F91)], // 4 — منتجات أنمي متنوعة (المرجع)
+    [Color(0xFF7C5CFF), Color(0xFF22B07D)], // 5 — مجسمات وهدايا
   ];
+
+  /// تدرّج ثابت لكل قسم رئيسي، مفتاحه هويةُ القسم لا موضعُه.
+  ///
+  /// [CRITICAL] هذا ما يجعل اللون لا يتحرّك: إعادةُ ترتيب الأقسام من اللوحة،
+  /// أو إضافةُ قسمٍ قبلها، أو إعادةُ تشغيل التطبيق — لا شيء منها يمسّ
+  /// المفتاح، فلا يمسّ اللون.
+  ///
+  /// والتوزيع يتبع المرجع حيث يعرفه (أربعة من الخمسة)، فيبقى لون القسم في
+  /// التطبيق هو لونه في التصميم.
+  /// تُكتب بالإملاء الطبيعي وتُطبَّع مرة واحدة في [_gradientByKey] — لا
+  /// مفاتيح مطبَّعة يدوياً تنفصل بصمت عن [canonicalCategoryKey].
+  static const Map<String, int> _mainCategoryGradient = {
+    'قرطاسية': 0,
+    'ملابس': 1,
+    'الحقائب': 2,
+    'إكسسوارات': 3,
+    'منتجات أنمي متنوعة': 4,
+    'مجسمات وهدايا': 5,
+  };
+
+  static final Map<String, int> _gradientByKey = {
+    for (final entry in _mainCategoryGradient.entries)
+      canonicalCategoryKey(entry.key): entry.value,
+  };
 
   /// تدرّج القسم حسب ترتيبه في القائمة.
   ///
@@ -52,14 +83,29 @@ class AnimeCategoryCard extends StatelessWidget {
   static List<Color> gradientFor(int index) =>
       gradients[index % gradients.length];
 
-  /// تدرّج القسم مشتقّاً من معرّفه — ثابت لا يتبع الترتيب.
+  /// تدرّج القسم — ثابت، لا يتبع الترتيب، ولا يتصادم بين الأقسام الستة.
   ///
-  /// المعرّف لا يتغيّر، فيتطابق اللون بين شريط الرئيسية وشاشة الأقسام
-  /// وترويسة تفاصيل القسم بلا تنسيق بينها، ولا ينقلب عند إعادة الترتيب.
+  /// [CRITICAL] الأقسام الرئيسية تُقرأ من جدول ثابت مفتاحه الاسمُ المطبَّع
+  /// ([canonicalCategoryKey])، لا من تجزئة المعرّف.
+  ///
+  /// التجزئة وحدها كانت **تضمن** التصادم: ستة أقسام على خمسة تدرّجات لا
+  /// يمكن أن تتوزّع بلا تكرار (مبدأ الحمام). وأيُّ قسمين يتصادمان يتوقّف
+  /// على قيم الـUUID، أي على البيئة — ففي قاعدة التطوير اصطدمت «قرطاسية»
+  /// بـ«ملابس»، وعلى جهاز صاحب المتجر اصطدمت «الحقائب» بـ«ملابس». العطب
+  /// واحد وإن اختلف الزوج الظاهر.
+  ///
+  /// ولماذا الاسم لا المعرّف: الـUUID يولَّد لكل بيئة على حدة، فجدولٌ مبنيّ
+  /// عليه يصحّ في التطوير ويخطئ في الإنتاج. الاسم `UNIQUE` في الجدول
+  /// وثابتٌ بين البيئات.
+  ///
+  /// [NOTE] الأقسام خارج الستة تعود إلى تجزئة المعرّف: ثابتة لكل قسم، وقد
+  /// تشارك أحدَ الستة لونَه. المطلوب أن تتمايز الستة فيما بينها، وهو مضمون.
   static List<Color> gradientForCategory(Category category) {
+    final slot = _gradientByKey[canonicalCategoryKey(category.name)];
+    if (slot != null) return gradients[slot];
+
     final id = category.id;
     if (id.isEmpty) return gradients.first;
-    // مجموع بايتات المعرّف: ثابت، رخيص، وموزَّع كفايةً على خمسة تدرّجات.
     var sum = 0;
     for (final unit in id.codeUnits) {
       sum = (sum + unit) % gradients.length;
@@ -82,6 +128,8 @@ class AnimeCategoryCard extends StatelessWidget {
     final count = category.subcategories.length;
 
     final radius = rail ? AppDimens.radiusMd : AppDimens.radiusLg;
+    // منطقة الرسم: مساحة مخصَّصة بعرض ثابت، لا خلفية للبطاقة كلها.
+    final artWidth = rail ? 56.0 : 96.0;
 
     return InkWell(
       onTap: onTap,
@@ -100,101 +148,149 @@ class AnimeCategoryCard extends StatelessWidget {
           boxShadow: rail ? colors.shadowXSoft : colors.shadowSoft,
         ),
         clipBehavior: Clip.antiAlias,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            // صورة القسم تملأ البطاقة، ويعلوها حجاب متدرّج يحفظ قراءة النص
-            // فوق أي صورة مهما كانت فاتحة.
-            if (hasImage) ...[
-              Image.network(
-                imageUrl,
-                fit: BoxFit.cover,
-                // فشل التحميل يعود للحرف المائي بدل أيقونة كسر.
-                errorBuilder: (_, _, _) => const SizedBox.shrink(),
-                loadingBuilder: (context, child, progress) =>
-                    progress == null ? child : const SizedBox.shrink(),
-              ),
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      palette.first.withValues(alpha: 0.82),
-                      palette.last.withValues(alpha: 0.62),
-                    ],
-                    begin: Alignment.topRight,
-                    end: Alignment.bottomLeft,
-                  ),
-                ),
-              ),
-            ],
-            // الحرف المائي الضخم خلف النص — بديل الصورة حين لا توجد.
-            if (!hasImage)
-            PositionedDirectional(
-              bottom: rail ? null : -30,
-              top: rail ? -14 : null,
-              end: rail ? 2 : 6,
-              child: IgnorePointer(
-                child: Text(
-                  mark,
-                  style: TextStyle(
-                    fontFamily: 'Tajawal',
-                    fontWeight: AppDimens.weightBlack,
-                    fontSize: rail ? 74 : 110,
-                    height: 1,
-                    color: Colors.white.withValues(alpha: rail ? 0.24 : 0.22),
-                  ),
-                ),
-              ),
-            ),
-            Align(
-              alignment: rail
-                  ? AlignmentDirectional.bottomStart
-                  : AlignmentDirectional.centerStart,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    category.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontFamily: 'Tajawal',
-                      // الشريط الأفقي: ٨٠٠ مع ظل نصّي يفصل الاسم عن التدرّج؛
-                      // بطاقة القسم الكاملة: ٩٠٠ بلا ظل، كما في التصميم.
-                      fontWeight: rail
-                          ? AppDimens.weightExtraBold
-                          : AppDimens.weightBlack,
-                      fontSize: rail ? 14 : 20,
-                      height: 1.25,
-                      color: Colors.white,
-                      shadows: rail
-                          ? const [
-                              Shadow(
-                                color: Color(0x47000000),
-                                blurRadius: 8,
-                                offset: Offset(0, 2),
-                              ),
-                            ]
-                          : null,
-                    ),
-                  ),
-                  if (!rail) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      count > 0 ? '$count قسم فرعي' : 'تصفّح القسم',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        fontSize: 12,
-                        color: Colors.white.withValues(alpha: 0.85),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ],
-        ),
+        child: rail
+            ? _railBody(theme, mark, hasImage, imageUrl)
+            : _wideBody(theme, mark, count, hasImage, imageUrl, artWidth),
       ),
     );
   }
+
+  /// البطاقة العريضة: النص في جهة البداية، ومنطقة الرسم في جهة النهاية.
+  ///
+  /// [CRITICAL] الرسم **ليس خلفية**. كان يُرسم بـ`BoxFit.cover` فوق البطاقة
+  /// كلها ثم يُغطّى بحجاب متدرّج ليبقى النص مقروءاً — أي أن صورة القسم كانت
+  /// تبتلع البطاقة ويختفي نصفها تحت الحجاب. الآن لها مساحتها الخاصة:
+  /// `BoxFit.contain` بلا حجاب وبلا خلفية، فتبقى شفافية PNG كما هي ولا
+  /// يُمطّ الرسم.
+  Widget _wideBody(
+    ThemeData theme,
+    String mark,
+    int count,
+    bool hasImage,
+    String? imageUrl,
+    double artWidth,
+  ) {
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                category.name,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontFamily: 'Tajawal',
+                  fontWeight: AppDimens.weightBlack,
+                  fontSize: 20,
+                  height: 1.25,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                count > 0 ? '$count قسم فرعي' : 'تصفّح القسم',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontSize: 12,
+                  color: Colors.white.withValues(alpha: 0.85),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 12),
+        SizedBox(
+          width: artWidth,
+          height: double.infinity,
+          child: _art(mark, hasImage, imageUrl, markSize: 84),
+        ),
+      ],
+    );
+  }
+
+  /// نسخة الشريط الأفقي — الرسم خلف الاسم كما في التصميم.
+  Widget _railBody(
+    ThemeData theme,
+    String mark,
+    bool hasImage,
+    String? imageUrl,
+  ) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        PositionedDirectional(
+          top: -6,
+          end: -4,
+          width: 56,
+          height: 56,
+          child: IgnorePointer(
+            child: _art(mark, hasImage, imageUrl, markSize: 54),
+          ),
+        ),
+        Align(
+          alignment: AlignmentDirectional.bottomStart,
+          child: Text(
+            category.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontFamily: 'Tajawal',
+              fontWeight: AppDimens.weightExtraBold,
+              fontSize: 14,
+              height: 1.25,
+              color: Colors.white,
+              shadows: const [
+                Shadow(
+                  color: Color(0x47000000),
+                  blurRadius: 8,
+                  offset: Offset(0, 2),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// محتوى منطقة الرسم: صورة القسم، أو الحرف المائي حين لا توجد صورة.
+  Widget _art(
+    String mark,
+    bool hasImage,
+    String? imageUrl, {
+    required double markSize,
+  }) {
+    if (hasImage) {
+      return Image.network(
+        imageUrl!,
+        // `contain` لا `cover`: الشخصية تُعرض كاملةً بنسبها الأصلية بدل أن
+        // تُقتطع لتملأ المساحة.
+        fit: BoxFit.contain,
+        alignment: Alignment.bottomCenter,
+        // فشل التحميل يعود للحرف المائي بدل أيقونة كسر.
+        errorBuilder: (_, _, _) => _watermark(mark, markSize),
+        loadingBuilder: (context, child, progress) =>
+            progress == null ? child : _watermark(mark, markSize),
+      );
+    }
+    return _watermark(mark, markSize);
+  }
+
+  Widget _watermark(String mark, double size) => FittedBox(
+    fit: BoxFit.scaleDown,
+    alignment: Alignment.bottomCenter,
+    child: Text(
+      mark,
+      style: TextStyle(
+        fontFamily: 'Tajawal',
+        fontWeight: AppDimens.weightBlack,
+        fontSize: size,
+        height: 1,
+        color: Colors.white.withValues(alpha: 0.22),
+      ),
+    ),
+  );
 }

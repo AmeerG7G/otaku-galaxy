@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/design_system/design_system.dart';
+import '../../../../core/l10n/gender.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../auth/presentation/cubit/auth_cubit.dart';
 import '../../../auth/presentation/cubit/auth_state.dart';
@@ -11,6 +12,7 @@ import '../../../home/presentation/widgets/product_card.dart';
 import '../../../main_navigation/presentation/screens/main_navigation_screen.dart';
 import '../cubit/favorites_cubit.dart';
 import '../cubit/favorites_state.dart';
+import '../../../visuals/domain/visual_slot.dart';
 
 /// تبويب المفضلة بتصميم Otaku Galaxy v2.
 ///
@@ -35,44 +37,50 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
     );
 
     return Scaffold(
-      body: SafeArea(
-        child: BlocBuilder<FavoritesCubit, FavoritesState>(
-          builder: (context, state) {
-            return Column(
-              children: [
-                OtakuScreenHeader(
-                  title: 'المفضلة',
-                  onBack: () => context.router.maybePop(),
-                  subtitle: !isLoggedIn
-                      ? 'سجّل الدخول لتحفظ ما يعجبك'
-                      : state.products.isEmpty
-                      ? 'لسه ما حفظت أي منتج'
-                      : '${state.products.length} منتج محفوظ',
-                ),
-                if (!isLoggedIn)
-                  Expanded(
-                    child: AnimeGuestPrompt(
-                      title: 'أنت تتصفح كزائر',
-                      body: 'سجّل الدخول لتتابع طلباتك وتحفظ مفضلتك ومجموعاتك.',
-                      icon: Icons.favorite_outline,
-                      onLogin: () => context.router.push(const LoginRoute()),
+      // إطار الشبكة: يمنع تمدّد المحتوى بلا حدّ ويترك للشبكة عرضاً
+      // يكفي أعمدةً أكثر. لا أثر له على الهاتف.
+      body: ResponsiveContentFrame(
+        maxWidth: kGridMaxWidth,
+        child: SafeArea(
+          child: BlocBuilder<FavoritesCubit, FavoritesState>(
+            builder: (context, state) {
+              return Column(
+                children: [
+                  OtakuScreenHeader(
+                    title: 'المفضلة',
+                    onBack: () => context.router.maybePop(),
+                    subtitle: !isLoggedIn
+                        ? context.g(GenderedStrings.loginToSaveFavorites)
+                        : state.products.isEmpty
+                        ? 'لم تحفظ أي منتج بعد'
+                        : '${state.products.length} منتج محفوظ',
+                  ),
+                  if (!isLoggedIn)
+                    Expanded(
+                      child: AnimeGuestPrompt(
+                        title: 'أنت تتصفح كزائر',
+                        body:
+                            context.g(GenderedStrings.loginToFollow),
+                        icon: Icons.favorite_outline,
+                        onLogin: () => context.router.push(const LoginRoute()),
+                      ),
+                    )
+                  else ...[
+                    OtakuSegmentedControl(
+                      labels: const ['المفضلة', 'مجموعاتي'],
+                      selectedIndex: _tab,
+                      onSelected: (index) => setState(() => _tab = index),
                     ),
-                  )
-                else ...[
-                  OtakuSegmentedControl(
-                    labels: const ['المفضلة', 'مجموعاتي'],
-                    selectedIndex: _tab,
-                    onSelected: (index) => setState(() => _tab = index),
-                  ),
-                  Expanded(
-                    child: _tab == 0
-                        ? _buildFavorites(state)
-                        : const CollectionsTab(),
-                  ),
+                    Expanded(
+                      child: _tab == 0
+                          ? _buildFavorites(state)
+                          : const CollectionsTab(),
+                    ),
+                  ],
                 ],
-              ],
-            );
-          },
+              );
+            },
+          ),
         ),
       ),
     );
@@ -81,14 +89,19 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
   Widget _buildFavorites(FavoritesState state) {
     if (state.products.isEmpty) {
       return AnimeEmptyState(
-        title: 'مفضلتك لسه فاضية',
-        subtitle: 'اضغط القلب على أي منتج يعجبك، وراح يستناك هنا.',
+        title: 'مفضلتك فارغة',
+        subtitle: context.g(GenderedStrings.tapHeartToSave),
         artwork: 'assets/art/opt/a-i2.png',
-        actionLabel: 'اكتشف منتجات',
+        artworkSlot: VisualSlots.emptyFavorites,
+        actionLabel: 'اكتشف المنتجات',
         onAction: () {
           context.router.maybePop();
           mainNavIndex.value = MainTab.home;
         },
+        // نفس نمط السلة الفارغة: الرسم فوق ثم الزرّ تحته، كلاهما في وسط
+        // اللوحة. الخيار صريح لا افتراضي — بقية الشاشات تبقى على التخطيط
+        // الجانبي الذي يصفه مرجع التصميم.
+        centered: true,
       );
     }
 
@@ -97,7 +110,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
       child: GridView.builder(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(18, 12, 18, 26),
-        gridDelegate: kProductGridDelegate,
+        gridDelegate: productGridDelegate(context),
         itemCount: state.products.length,
         itemBuilder: (context, index) =>
             ProductCard(product: state.products[index], compact: true),

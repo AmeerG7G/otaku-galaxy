@@ -1,31 +1,62 @@
+import type pg from 'pg';
 import { db, withTransaction } from '../database/pool.js';
+import {
+  MAX_REVIEW_PHOTOS,
+  REVIEW_POINTS_CAP_PER_ORDER,
+  isQualifyingComment,
+  reviewPointsFor,
+} from '../domain/galaxyPoints.js';
 import { mediaRepo } from '../repositories/mediaRepo.js';
 import { notificationRepo } from '../repositories/notificationsRepo.js';
 import { orderRepo } from '../repositories/orderRepo.js';
 import { pointsRepo } from '../repositories/pointsRepo.js';
 import { reviewRepo } from '../repositories/reviewsRepo.js';
 import { userRepo } from '../repositories/userRepo.js';
-import { type ReviewStatus } from '../types/index.js';
+import { type ReviewRow, type ReviewStatus } from '../types/index.js';
 import { Errors } from '../utils/errors.js';
-import { businessConfigService } from './businessConfigService.js';
 
 /** أقصى عدد صور مجتمع تُعاد للتطبيق في طلب واحد. */
 const COMMUNITY_LIMIT = 60;
 
 /**
- * صورة التقييم يجب أن تكون ملفاً رفعه العميل عبر `POST /api/uploads`.
+ * صور التقييم يجب أن تكون ملفات رفعها العميل عبر `POST /api/uploads`.
  *
- * بدون هذا الفحص يستطيع أي عميل حفظ رابط خارجي عشوائي في `photo_url`، ثم
- * يُعرض ذلك الرابط — بعد الاعتماد — لكل مستخدمي المتجر في شاشة المجتمع،
- * فيصير المتجر واجهةً لاستضافة طرف ثالث ويتسرّب عنوان كل مشاهد إليه.
+ * بدون هذا الفحص يستطيع أي عميل حفظ رابط خارجي عشوائي، ثم يُعرض ذلك الرابط —
+ * بعد الاعتماد — لكل مستخدمي المتجر في شاشة المجتمع، فيصير المتجر واجهةً
+ * لاستضافة طرف ثالث ويتسرّب عنوان كل مشاهد إليه.
+ *
+ * [CRITICAL] كل عنصر يُفحص، لا الأول وحده: مصفوفةٌ أول عنصرها سليم وباقيها
+ * روابط خارجية كانت ستمرّ لو اكتفى الفحص بواحد. والسقف يُعاد فرضه هنا رغم
+ * وجوده في المخطّط لأن هذه الدالة هي آخر بوابة قبل القاعدة.
  */
-async function assertOwnedPhoto(photoUrl: string | null | undefined) {
-  if (!photoUrl || !photoUrl.trim()) return null;
-  const media = await mediaRepo.findByUrl(db, photoUrl.trim());
-  if (!media) {
-    throw Errors.badRequest('صورة التقييم غير صالحة — أعد رفعها', 'INVALID_PHOTO_URL');
+async function assertOwnedPhotos(photoUrls: string[] | undefined): Promise<string[]> {
+  const urls = (photoUrls ?? []).map((url) => url.trim()).filter((url) => url.length > 0);
+  if (urls.length === 0) return [];
+  if (urls.length > MAX_REVIEW_PHOTOS) {
+    throw Errors.badRequest(
+      `الحد الأقصى ${MAX_REVIEW_PHOTOS} صور للتقييم الواحد`,
+      'TOO_MANY_PHOTOS',
+    );
   }
-  return photoUrl.trim();
+
+  // التكرار يُزال: خمس نسخ من صورة واحدة ليست خمس صور، وإبقاؤها يملأ شاشة
+  // المجتمع بنفس اللقطة. المكافأة مقطوعة أصلاً فلا أثر لهذا في النقاط.
+  const unique = [...new Set(urls)];
+  for (const url of unique) {
+    const media = await mediaRepo.findByUrl(db, url);
+    if (!media) {
+      throw Errors.badRequest('صورة التقييم غير صالحة — أعد رفعها', 'INVALID_PHOTO_URL');
+    }
+  }
+  return unique;
+}
+
+/** تعارض الفهرس الفريد على (الزبون، المنتج) — سباقٌ بين طلبَي إرسال. */
+function isDuplicateReview(error: unknown): boolean {
+  return (
+    (error as { code?: string }).code === '23505' &&
+    String((error as { constraint?: string }).constraint ?? '').includes('uq_reviews_user_product')
+  );
 }
 
 export const reviewsService = {
@@ -33,8 +64,14 @@ export const reviewsService = {
     return reviewRepo.listMine(db, userId);
   },
 
-  async findForOrderProduct(userId: string, orderId: string, productId: string) {
-    return reviewRepo.findForOrderProduct(db, userId, orderId, productId);
+  /**
+   * تقييم الزبون لمنتج — أياً كان الطلب.
+   *
+   * `orderId` يبقى في التوقيع لأن التطبيق يسأل من سياق طلب، لكنه لا يدخل
+   * البحث: الجواب عن «هل قيّمتُ هذا المنتج؟» لا يتغيّر بتغيّر الطلب.
+   */
+  async findForOrderProduct(userId: string, _orderId: string, productId: string) {
+    return reviewRepo.findForUserProduct(db, userId, productId);
   },
 
   async listApprovedForProduct(productId: string) {
@@ -50,7 +87,7 @@ export const reviewsService = {
    * - الطلب يخصّ العميل نفسه.
    * - الطلب مكتمل (لا يُقيَّم إلا ما استُلم فعلاً).
    * - المنتج ضمن هذا الطلب.
-   * - تقييم واحد لكل منتج بكل طلب.
+   * - تقييم واحد لكل منتج من كل زبون — **إلى الأبد**، لا لكل طلب.
    */
   async submit(
     userId: string,
@@ -59,7 +96,7 @@ export const reviewsService = {
       productId: string;
       rating: number;
       comment: string;
-      photoUrl?: string | null;
+      photoUrls?: string[];
     },
   ) {
     const order = await orderRepo.findById(db, input.orderId);
@@ -67,48 +104,60 @@ export const reviewsService = {
     if (order.status !== 'COMPLETED') {
       throw Errors.badRequest('لا يمكن تقييم منتجات طلب لم يُستلم بعد', 'ORDER_NOT_COMPLETED');
     }
-    // نافذة التقييم تُفتح بعد الاستلام بمهلة. الحارس هنا على الخادم لأن أي
-    // مؤقّت في التطبيق يمكن تخطّيه بتغيير ساعة الجهاز أو باستدعاء مباشر.
-    if (!order.ratingAvailable) {
+    // [CRITICAL] الأهلية تُقرأ من صفّ الطلب في القاعدة لا من الحمولة.
+    //
+    // الحارس هنا لأن الواجهة تُخفي الزرّ فقط؛ من يستدعي الـAPI مباشرةً
+    // بمعرّف طلبٍ لم يُستلم بعد لا يمرّ بأي واجهة. `canReview` مشتقّ من
+    // `delivered_at`، فلا يفتحه تغييرُ ساعة الجهاز ولا أي حالة محلية.
+    if (!order.canReview) {
       throw Errors.conflict(
-        'التقييم يُفتح بعد يوم من استلام الطلب',
-        'RATING_NOT_YET_AVAILABLE',
+        'أكّد استلام الطلب أولاً ليُفتح التقييم',
+        'ORDER_NOT_RECEIVED',
       );
     }
 
     const item = order.items.find((entry) => entry.productId === input.productId);
     if (!item) throw Errors.badRequest('هذا المنتج ليس ضمن الطلب', 'PRODUCT_NOT_IN_ORDER');
 
-    const existing = await reviewRepo.findForOrderProduct(
-      db,
-      userId,
-      input.orderId,
-      input.productId,
-    );
+    // شراء المنتج مرة ثانية لا يفتح تقييماً ثانياً: تقييمه الأول يبقى تقييمه،
+    // ولا مكافأة ثانية عن المنتج نفسه.
+    const existing = await reviewRepo.findForUserProduct(db, userId, input.productId);
     if (existing) {
-      throw Errors.conflict('سبق أن قيّمت هذا المنتج في هذا الطلب', 'REVIEW_EXISTS');
+      throw Errors.conflict('سبق أن قيّمت هذا المنتج', 'REVIEW_EXISTS');
     }
 
-    const photoUrl = await assertOwnedPhoto(input.photoUrl);
+    const photoUrls = await assertOwnedPhotos(input.photoUrls);
 
     const user = await userRepo.findById(db, userId);
-    return reviewRepo.create(db, {
-      userId,
-      orderId: input.orderId,
-      productId: input.productId,
-      productName: item.productName,
-      rating: input.rating,
-      comment: input.comment,
-      photoUrl,
-      customerName: user?.username ?? 'عميل',
-    });
+    try {
+      return await reviewRepo.create(db, {
+        userId,
+        orderId: input.orderId,
+        productId: input.productId,
+        productName: item.productName,
+        rating: input.rating,
+        comment: input.comment,
+        photoUrls,
+        customerName: user?.username ?? 'عميل',
+      });
+    } catch (error) {
+      // الفحص أعلاه يمنع الحالة العادية؛ هذا يمسك السباق: طلبان متزامنان
+      // يجتازان الفحص معاً ثم يصطدم أحدهما بالفهرس الفريد. تحويله إلى ٤٠٩
+      // يجعل النتيجة واحدة مهما كان التوقيت.
+      if (isDuplicateReview(error)) {
+        throw Errors.conflict('سبق أن قيّمت هذا المنتج', 'REVIEW_EXISTS');
+      }
+      throw error;
+    }
   },
 
-  /** تعديل تقييم مرفوض — المرفوض فقط قابل لإعادة الإرسال. */
+  /**
+   * تعديل تقييم مرفوض — المرفوض فقط قابل لإعادة الإرسال، ولا يمنح نقاطاً.
+   */
   async resubmit(
     userId: string,
     reviewId: string,
-    input: { rating: number; comment: string; photoUrl?: string | null },
+    input: { rating: number; comment: string; photoUrls?: string[] },
   ) {
     const review = await reviewRepo.findById(db, reviewId);
     if (!review) throw Errors.notFound('التقييم غير موجود');
@@ -117,10 +166,13 @@ export const reviewsService = {
       throw Errors.badRequest('لا يمكن تعديل تقييم غير مرفوض', 'REVIEW_NOT_REJECTED');
     }
 
+    // إعادة الإرسال تُعيد التقييم إلى الانتظار ولا تمنح شيئاً: الاعتماد وحده
+    // هو الحدث المؤهِّل. ولو كان التقييم قد نال نقاطاً قبل رفضه فقد سُحبت
+    // لحظة الرفض، فلا رصيد معلّق يتضاعف عند اعتماده ثانيةً.
     const updated = await reviewRepo.resubmit(db, reviewId, {
       rating: input.rating,
       comment: input.comment,
-      photoUrl: await assertOwnedPhoto(input.photoUrl),
+      photoUrls: await assertOwnedPhotos(input.photoUrls),
     });
     if (!updated) throw Errors.notFound('التقييم غير موجود');
     return updated;
@@ -133,8 +185,13 @@ export const reviewsService = {
   },
 
   /**
-   * قرار المراجعة. الاعتماد يمنح نقاط المجرّة (نقطة للتقييم، وخمس إن كان
-   * مصحوباً بصورة) ويُنشئ إشعاراً؛ الرفض يسحب النقاط الممنوحة سابقاً.
+   * قرار المراجعة. الاعتماد يمنح نقاط المجرّة ويُنشئ إشعاراً؛ الرفض يسحب
+   * النقاط الممنوحة سابقاً إن وُجدت.
+   *
+   * المكافأة: نقطة للتعليق المكتوب، وخمسٌ مقطوعة إن رُفقت صورة أو أكثر —
+   * تتجمّعان ولا تتبادلان (٦ نقاط حدّاً أقصى للتقييم الواحد). ثم يُطبَّق سقفُ
+   * الطلب: مجموع نقاط التقييم عن طلب واحد لا يتجاوز عشرين مهما بلغ عدد
+   * المنتجات فيه.
    */
   async moderate(
     adminId: string,
@@ -149,6 +206,12 @@ export const reviewsService = {
     return withTransaction(async (client) => {
       const review = await reviewRepo.findById(client, reviewId);
       if (!review) throw Errors.notFound('التقييم غير موجود');
+
+      // [CRITICAL] قفل الطلب قبل أي قراءة للدفتر. سقفُ العشرين يُحسب من
+      // «ما مُنح حتى الآن عن هذا الطلب»، واعتمادُ تقييمين من الطلب نفسه في
+      // اللحظة ذاتها كان يقرأ كلٌّ منهما الرصيد قبل كتابة الآخر فيمنحان معاً
+      // فوق السقف. القفل يُسلسلهما فيقرأ الثاني ما كتبه الأول فعلاً.
+      await orderRepo.lockForUpdate(client, review.order_id);
 
       // إعادة تطبيق نفس القرار لا تُنتج آثاراً جانبية: النقاط يحميها فهرس
       // فريد، أما الإشعار فلا — فبدونه يتكرّر إشعار «نُشر تقييمك» مع كل ضغطة.
@@ -166,19 +229,7 @@ export const reviewsService = {
       if (statusUnchanged) return updated;
 
       if (status === 'approved') {
-        const withPhoto = Boolean(updated.photo_url && updated.photo_url.trim());
-        // المبلغ يُقرأ لحظة الاعتماد ويُكتب في الدفتر؛ تغيير الإعداد لاحقاً
-        // لا يعيد تسعير تقييم اعتُمد سابقاً.
-        const points = await businessConfigService.current();
-        await pointsRepo.award(client, {
-          userId: updated.user_id,
-          label: withPhoto ? 'تقييم مصوّر منشور' : 'تقييم منشور',
-          amount: withPhoto
-            ? points.points_review_with_photo
-            : points.points_review_approved,
-          reason: withPhoto ? 'review_with_photo' : 'review_approved',
-          reviewId: updated.id,
-        });
+        await awardReviewPoints(client, updated);
         await notificationRepo.create(client, {
           userId: updated.user_id,
           type: 'reviewApproved',
@@ -208,3 +259,54 @@ export const reviewsService = {
     return reviewRepo.countPending(db);
   },
 };
+
+/**
+ * منح نقاط تقييمٍ اعتُمد، ضمن سقف الطلب.
+ *
+ * يُستدعى داخل معاملة الاعتماد وبعد قفل صفّ الطلب. حارسان مستقلان:
+ *
+ * ١) السقف — يُحسب من الدفتر لحظتَه فلا يتجاوز مجموعُ نقاط التقييم عن الطلب
+ *    الواحد عشرين نقطة. الحساب من الدفتر لا من عدّاد جانبي، فسحبُ نقاط تقييم
+ *    رُفض بعد اعتماده يعيد فتح المساحة تلقائياً.
+ *
+ * ٢) التكرار — الفهرس الفريد `(user_id, review_id, reason)` يمنع منح نفس
+ *    التقييم مرتين مهما تكرّرت ضغطة «اعتماد» أو أُعيد الطلب.
+ *
+ * الحصّة تُملأ بالتعليق أولاً ثم الصور: لو بقيت نقطة واحدة من السقف فالأولى
+ * أن تذهب لما لا يتجزّأ منطقياً (النقطة الواحدة) بدل قصّ مكافأة الصور إلى
+ * جزء لا يطابق أي قاعدة معلنة.
+ */
+async function awardReviewPoints(client: pg.PoolClient, review: ReviewRow) {
+  const award = reviewPointsFor({
+    hasComment: isQualifyingComment(review.comment),
+    photoCount: review.photo_urls?.length ?? 0,
+  });
+  if (award.total === 0) return;
+
+  const alreadyAwarded = await pointsRepo.reviewPointsForOrder(client, review.order_id);
+  let remaining = Math.max(0, REVIEW_POINTS_CAP_PER_ORDER - alreadyAwarded);
+  if (remaining === 0) return;
+
+  if (award.comment > 0 && remaining >= award.comment) {
+    await pointsRepo.award(client, {
+      userId: review.user_id,
+      label: 'تقييم منشور',
+      amount: award.comment,
+      reason: 'review_approved',
+      orderId: review.order_id,
+      reviewId: review.id,
+    });
+    remaining -= award.comment;
+  }
+
+  if (award.photos > 0 && remaining >= award.photos) {
+    await pointsRepo.award(client, {
+      userId: review.user_id,
+      label: 'تقييم مصوّر منشور',
+      amount: award.photos,
+      reason: 'review_with_photo',
+      orderId: review.order_id,
+      reviewId: review.id,
+    });
+  }
+}

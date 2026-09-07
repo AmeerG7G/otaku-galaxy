@@ -32,6 +32,8 @@ export interface ModerateReviewPayload {
 export interface Franchise {
   id: string
   name: string
+  /** أسماء بديلة يطابقها بحث العميل (عربي/إنجليزي/نقحرة). */
+  altNames: string[]
   imageUrl: string | null
   sortOrder: number
   isActive: boolean
@@ -40,12 +42,14 @@ export interface Franchise {
 
 export interface FranchiseCreatePayload {
   name: string
+  altNames?: string[]
   imageUrl?: string | null
   sortOrder?: number
 }
 
 export interface FranchiseUpdatePayload {
   name?: string
+  altNames?: string[]
   imageUrl?: string | null
   sortOrder?: number
   isActive?: boolean
@@ -78,6 +82,7 @@ export interface StoreSettings {
   social_tiktok: string
   social_instagram: string
   social_whatsapp: string
+  social_description: string
 }
 
 export type OrderStatusKey =
@@ -92,8 +97,11 @@ export interface DashboardStats {
   orders: { total: number; byStatus: Record<OrderStatusKey, number> }
   revenue: { completed: number; inProgress: number; completedThisMonth: number }
   products: { total: number; active: number; lowStock: number; outOfStock: number }
-  customers: { total: number }
+  customers: { total: number; active: number }
   reviews: { pending: number }
+  /** أعياد الميلاد بتقويم المتجر — يحسبها الخادم لا المتصفح. */
+  birthdays: { today: number; upcoming7: number; missing: number }
+  notifications: { total: number; last7Days: number }
   lowStockProducts: {
     id: string
     name: string

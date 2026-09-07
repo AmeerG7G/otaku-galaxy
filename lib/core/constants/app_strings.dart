@@ -17,7 +17,7 @@ class AppStrings {
   static const String cart = 'السلة';
   static const String account = 'الحساب';
 
-  static const String searchHint = 'ابحث عن منتج...';
+  static const String searchHint = 'ابحث عن منتج…';
   static const String offers = 'العروض';
   static const String selectedProducts = 'منتجات مختارة';
   static const String discover = 'اكتشف المنتجات';

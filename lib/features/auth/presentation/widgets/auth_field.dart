@@ -45,7 +45,10 @@ class AuthField extends StatelessWidget {
 
     final border = OutlineInputBorder(
       borderRadius: BorderRadius.circular(AppDimens.radiusSm),
-      borderSide: BorderSide(color: theme.colorScheme.outlineVariant, width: 1.5),
+      borderSide: BorderSide(
+        color: theme.colorScheme.outlineVariant,
+        width: 1.5,
+      ),
     );
 
     return Column(
@@ -79,7 +82,7 @@ class AuthField extends StatelessWidget {
             hintTextDirection: textDirection,
             hintStyle: theme.textTheme.bodyMedium?.copyWith(
               fontSize: 14.5,
-              color: theme.colorScheme.outline,
+              color: theme.colorScheme.onSurfaceVariant,
             ),
             filled: true,
             fillColor: theme.colorScheme.surfaceContainerHighest,
@@ -115,7 +118,7 @@ class AuthField extends StatelessWidget {
             ),
             errorStyle: theme.textTheme.labelSmall?.copyWith(
               fontSize: 11.5,
-              color: context.themeColors.error,
+              color: context.themeColors.errorText,
             ),
           ),
         ),

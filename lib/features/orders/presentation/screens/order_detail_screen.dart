@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/design_system/design_system.dart';
+import '../../../../core/l10n/gender.dart';
 import '../../../../core/di/injection_container.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../birthday/data/birthday_storage.dart';
@@ -82,36 +83,41 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     final order = _order;
 
     return Scaffold(
-      body: Column(
-        children: [
-          // ترويسة v2: تاريخ الطلب عنواناً وكبسولة الحالة في نهاية السطر.
-          OtakuScreenHeader.compact(
-            title: order?.createdAt != null
-                ? _formatDate(order!.createdAt!)
-                : 'تفاصيل الطلب',
-            onBack: () => context.router.maybePop(),
-            trailing: order == null
-                ? null
-                : OtakuStatusPill(
-                    label: orderStatusLabel(order.status),
-                    color: orderStatusColor(order.status),
-                  ),
-          ),
-          Expanded(
-            child: _loading
-                ? _buildLoadingState()
-                : _error != null
-                ? AnimeErrorState(message: _error!, onAction: _load)
-                : order == null
-                ? AnimeErrorState(
-                    title: 'الطلب غير موجود',
-                    message: 'تعذر العثور على تفاصيل هذا الطلب',
-                    actionLabel: 'العودة',
-                    onAction: () => context.router.maybePop(),
-                  )
-                : _buildOrderDetails(order),
-          ),
-        ],
+      // عمودٌ موسَّط بعرض القراءة على اللوح — القائمة الممتدّة بعرض
+      // ١٣٦٦ بكسل تصير صفوفاً فارغة الوسط. لا أثر له على الهاتف.
+      body: ResponsiveContentFrame(
+        maxWidth: kReadingMaxWidth,
+        child: Column(
+          children: [
+            // ترويسة v2: تاريخ الطلب عنواناً وكبسولة الحالة في نهاية السطر.
+            OtakuScreenHeader.compact(
+              title: order?.createdAt != null
+                  ? _formatDate(order!.createdAt!)
+                  : 'تفاصيل الطلب',
+              onBack: () => context.router.maybePop(),
+              trailing: order == null
+                  ? null
+                  : OtakuStatusPill(
+                      label: orderStatusLabel(order.status),
+                      color: orderStatusColor(order.status),
+                    ),
+            ),
+            Expanded(
+              child: _loading
+                  ? _buildLoadingState()
+                  : _error != null
+                  ? AnimeErrorState(message: _error!, onAction: _load)
+                  : order == null
+                  ? AnimeErrorState(
+                      title: 'الطلب غير موجود',
+                      message: 'تعذر العثور على تفاصيل هذا الطلب',
+                      actionLabel: 'العودة',
+                      onAction: () => context.router.maybePop(),
+                    )
+                  : _buildOrderDetails(order),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -133,9 +139,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   Widget _buildOrderDetails(Order order) {
     final rejected = order.status == OrderStatus.rejected;
     final completed = order.status == OrderStatus.completed;
-    final awaitingReceipt =
-        order.status == OrderStatus.delivering ||
-        order.status == OrderStatus.processing;
+    // تأكيد الاستلام مسموح على الخادم بعد خروج الطلب للتوصيل فقط
+    // (`NOT_OUT_FOR_DELIVERY`). كان الشرط يشمل التجهيز أيضاً لأن الشاشة
+    // كانت تعرض المرحلتين معاً، فيظهر زرٌّ يرفضه الخادم إن ضُغط.
+    final awaitingReceipt = order.status == OrderStatus.delivering;
 
     return CustomScrollView(
       slivers: [
@@ -251,7 +258,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           ),
           const SizedBox(height: AppDimens.space3),
           Text(
-            'أكّد الاستلام حتى تقدر تقيّم المنتجات وتكسب نقاط المجرّة.',
+            'أكّد الاستلام لتتمكّن من تقييم المنتجات وكسب نقاط المجرّة.',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
               height: 1.75,
               color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -302,7 +309,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       ..showSnackBar(
         SnackBar(
           content: const Text(
-            'خلّينا الطلب فعّال — راح نسألك مرة ثانية لاحقاً.',
+            'سيبقى الطلب قائماً — وسنسألك مرة أخرى لاحقاً.',
           ),
           behavior: SnackBarBehavior.floating,
           margin: const EdgeInsets.all(AppDimens.screenHorizontalPadding),
@@ -337,11 +344,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       await _promptBirthdayIfDue();
       if (!mounted) return;
 
-      // التقييم يُفتح في اللحظة التي قرّرها الخادم (`ratingAvailableAt`)، لا
-      // بعد ٢٤ ساعة من ضغطة الزرّ. إن كانت النافذة ما تزال مغلقة نبقى في
-      // تفاصيل الطلب حيث تعرض بطاقة التقييم الوقت المتبقي الحقيقي، بدل دفع
-      // العميل إلى شاشة كتابة سيرفض الخادمُ إرسالَها.
-      if (updated.ratingAvailable) {
+      // تأكيد الاستلام يفتح التقييم فوراً — لا مهلة بعده. `canReview` يأتي
+      // من الردّ نفسه، فالانتقال مبنيّ على حالة الخادم لا على افتراض محلي.
+      if (updated.canReview) {
         await context.router.push(RateOrderRoute(order: updated));
       }
     } catch (e) {
@@ -375,7 +380,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     final saved = await showBirthdayPrompt(
       context,
       intro:
-          'هذا أول طلب توصلك — نحب نعرف تاريخ ميلادك حتى نعطيك خصم '
+          'هذا أول طلب يصلك — أخبرنا بتاريخ ميلادك لنمنحك خصم '
           '${birthday.discountPercent}٪ على طلب واحد بيوم ميلادك. '
           'لا يمكن تغيير التاريخ بعد حفظه.',
     );
@@ -730,13 +735,13 @@ class _OrderStatusCard extends StatelessWidget {
         Icons.hourglass_top_rounded,
         [const Color(0xFFFFB02E), const Color(0xFFFF3D8F)],
       ),
-      OrderStatus.confirmed => (
+      OrderStatus.confirmed || OrderStatus.processing => (
         'تم قبول طلبك 🎉',
         'طلبك مقبول وقيد التجهيز، وسيبدأ التوصيل قريباً.',
         Icons.verified_rounded,
         [const Color(0xFF22B07D), const Color(0xFF4EA8FF)],
       ),
-      OrderStatus.processing || OrderStatus.delivering => (
+      OrderStatus.delivering => (
         'قيد التوصيل',
         'طلبك في الطريق إليك — الدفع عند الاستلام.',
         Icons.local_shipping_rounded,
@@ -744,13 +749,13 @@ class _OrderStatusCard extends StatelessWidget {
       ),
       OrderStatus.completed => (
         'تم الاستلام',
-        'نتمنى المنتجات عجبتك — شاركنا رأيك واكسب نقاط المجرّة.',
+        'نأمل أن تكون المنتجات قد نالت إعجابك — شاركنا رأيك واكسب نقاط المجرّة.',
         Icons.check_circle_rounded,
         [const Color(0xFF22B07D), const Color(0xFF7C5CFF)],
       ),
       OrderStatus.rejected => (
         'مرفوض',
-        'ما تم قبول هذا الطلب. تقدر تتواصل معنا أو تسوي طلب جديد.',
+        'لم يُقبل هذا الطلب. يمكنك التواصل معنا أو إنشاء طلب جديد.',
         Icons.cancel_rounded,
         [colors.error, colors.errorLight],
       ),
@@ -891,17 +896,21 @@ class _OrderJourney extends StatelessWidget {
   final Order order;
 
   static const _steps = [
-    ('بانتظار الموافقة', 'راجعنا الطلب وتأكيده عبر واتساب'),
-    ('تم قبول الطلب', 'الطلب مقبول وقيد التجهيز'),
+    ('بانتظار الموافقة', 'مراجعة الطلب وتأكيده عبر واتساب'),
+    ('قيد التجهيز', 'الطلب مقبول ويُجهَّز الآن'),
     ('قيد التوصيل', 'الطلب في الطريق إليك'),
     ('تم الاستلام', 'وصل الطلب — يمكنك تقييم المنتجات'),
   ];
 
   /// الحالات التي تُغذّي كل خطوة معروضة.
+  ///
+  /// «تم تأكيده» تُغذّي خطوة التجهيز لا خطوةً خاصة بها: بعد دمج المرحلتين
+  /// على الخادم لم يعد لها معنى مستقل، وطلبٌ قديم واقفٌ عندها هو عملياً
+  /// طلب مقبول قيد التجهيز.
   static const _stepStatuses = <List<OrderStatus>>[
     [OrderStatus.pending, OrderStatus.waitingAdmin],
-    [OrderStatus.confirmed],
-    [OrderStatus.processing, OrderStatus.delivering],
+    [OrderStatus.confirmed, OrderStatus.processing],
+    [OrderStatus.delivering],
     [OrderStatus.completed],
   ];
 
@@ -916,8 +925,8 @@ class _OrderJourney extends StatelessWidget {
 
   int get _currentIndex => switch (order.status) {
     OrderStatus.pending || OrderStatus.waitingAdmin => 0,
-    OrderStatus.confirmed => 1,
-    OrderStatus.processing || OrderStatus.delivering => 2,
+    OrderStatus.confirmed || OrderStatus.processing => 1,
+    OrderStatus.delivering => 2,
     OrderStatus.completed => 3,
     OrderStatus.rejected => -1,
   };
@@ -983,7 +992,7 @@ class _OrderJourney extends StatelessWidget {
                         fontSize: 12,
                         height: 1.6,
                         fontWeight: AppDimens.weightBold,
-                        color: colors.success,
+                        color: colors.successText,
                       ),
                     ),
                   ),
@@ -1110,7 +1119,7 @@ class _JourneyStep extends StatelessWidget {
                       style: Theme.of(context).textTheme.labelSmall?.copyWith(
                         fontSize: 10.5,
                         fontWeight: AppDimens.weightBold,
-                        color: Theme.of(context).colorScheme.outline,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ],
@@ -1124,12 +1133,14 @@ class _JourneyStep extends StatelessWidget {
   }
 }
 
-/// دعوة تقييم المنتجات بعد الاستلام.
-/// دعوة التقييم بعد الاستلام.
+/// دعوة تقييم منتجات هذا الطلب — تظهر بعد تأكيد الاستلام.
 ///
-/// التقييم يُفتح بعد مهلة من الاستلام، والقرار يأتي من الخادم في
-/// [Order.ratingAvailable] — لا من ساعة الجهاز ولا من مؤقّت في الواجهة،
-/// فتغيير وقت الهاتف لا يفتح التقييم مبكراً.
+/// [CRITICAL] الشرط [Order.canReview] القادم من الخادم، لا ساعةُ الجهاز ولا
+/// حالةٌ محلية. والبطاقة تخصّ هذا الطلب وحده: لا زرّ تقييم عام في التطبيق،
+/// ولا مسار يفتح التقييم بمعزل عن طلبٍ مؤهَّل.
+///
+/// لم يعد هناك «الوقت المتبقي»: التقييم يُفتح بالاستلام، فإمّا أن يكون
+/// متاحاً أو لم يُستلم الطلب بعد.
 class _ReviewInvite extends StatelessWidget {
   const _ReviewInvite({required this.order, required this.onTap});
 
@@ -1139,8 +1150,7 @@ class _ReviewInvite extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.themeColors;
-    final available = order.ratingAvailable;
-    final remaining = order.timeUntilRating;
+    final available = order.canReview;
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -1158,7 +1168,9 @@ class _ReviewInvite extends StatelessWidget {
               const SizedBox(width: AppDimens.space2),
               Expanded(
                 child: Text(
-                  available ? 'قيّم منتجات طلبك' : 'التقييم يُفتح قريباً',
+                  available
+                      ? context.g(GenderedStrings.rateOrderProducts)
+                      : 'التقييم يُفتح بعد الاستلام',
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
                     fontSize: 16,
                     fontWeight: AppDimens.weightExtraBold,
@@ -1170,12 +1182,8 @@ class _ReviewInvite extends StatelessWidget {
           const SizedBox(height: AppDimens.space2),
           Text(
             available
-                ? 'رأيك يساعد بقية العملاء — والتقييم المصوّر يعطيك ٥ نقاط مجرّة.'
-                : remaining == null
-                // لا نذكر مدّة لا نعرفها: الخادم لم يرسل موعداً بعد.
-                ? 'نفتح التقييم بعد استلام الطلب بمدّة قصيرة، وراح يوصلك تنبيه.'
-                : 'التقييم متاح بعد ${formatRemaining(remaining)} — '
-                      'راح يوصلك تنبيه وقتها.',
+                ? 'رأيك يساعد بقية العملاء — والتقييم المصوّر يمنحك نقاط مجرّة أكثر.'
+                : 'أكّد استلام طلبك ليُفتح التقييم مباشرةً.',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
               height: 1.7,
               color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -1183,7 +1191,9 @@ class _ReviewInvite extends StatelessWidget {
           ),
           const SizedBox(height: AppDimens.space4),
           AnimePrimaryButton(
-            label: available ? 'قيّم المنتجات' : 'لسه ما فتح التقييم',
+            label: available
+                ? context.g(GenderedStrings.rateProductsShort)
+                : 'لم يُؤكَّد الاستلام بعد',
             // زرّ معطّل بدل شاشة ترفض الإرسال بعد ملء التقييم كاملاً.
             onPressed: available ? onTap : null,
             height: AppDimens.buttonHeightXl,

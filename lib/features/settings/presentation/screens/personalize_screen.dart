@@ -10,6 +10,8 @@ import '../cubit/locale_cubit.dart';
 import '../cubit/theme_cubit.dart';
 import '../cubit/theme_state.dart';
 import '../widgets/personalize_cards.dart';
+import '../../../visuals/domain/visual_slot.dart';
+import '../../../visuals/presentation/managed_artwork.dart';
 
 /// شاشة التخصيص بتصميم Otaku Galaxy v2.
 ///
@@ -53,9 +55,11 @@ class PersonalizeScreen extends StatelessWidget {
             top: 44,
             end: -30,
             child: IgnorePointer(
-              child: Opacity(
+              child: const ManagedArtwork(
+                slot: VisualSlots.personalize,
+                fallbackAsset: 'assets/art/opt/a-i4.png',
+                width: 126,
                 opacity: 0.22,
-                child: Image.asset('assets/art/opt/a-i4.png', width: 126),
               ),
             ),
           ),
@@ -73,7 +77,7 @@ class PersonalizeScreen extends StatelessWidget {
                       const OtakuStoreLogoSimple(size: 42),
                       const SizedBox(height: 14),
                       Text(
-                        'خلّينا نضبط تجربتك',
+                        'لنُهيّئ تجربتك',
                         style: theme.textTheme.headlineSmall?.copyWith(
                           fontFamily: 'Tajawal',
                           fontSize: 25,
@@ -85,7 +89,7 @@ class PersonalizeScreen extends StatelessWidget {
                       FractionallySizedBox(
                         widthFactor: 0.84,
                         child: Text(
-                          'اختر لغتك والمظهر اللي يناسبك. تقدر تغيّرهم بأي وقت '
+                          'اختر لغتك والمظهر المناسب لك. يمكنك تغييرهما في أي وقت '
                           'من الإعدادات.',
                           style: theme.textTheme.bodyMedium?.copyWith(
                             fontSize: 13.5,

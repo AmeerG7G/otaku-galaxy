@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/design_system/design_system.dart';
+import '../../../visuals/domain/visual_slot.dart';
+import '../../../visuals/presentation/managed_artwork.dart';
 
 /// صفحة نجاح الطلب بتصميم Otaku Galaxy v2.
 ///
@@ -64,8 +66,9 @@ class _OrderSuccessViewState extends State<OrderSuccessView>
                           offset: Offset(0, -10 * _float.value),
                           child: child,
                         ),
-                        child: Image.asset(
-                          'assets/art/opt/a-i6.png',
+                        child: const ManagedArtwork(
+                          slot: VisualSlots.orderSuccess,
+                          fallbackAsset: 'assets/art/opt/a-i6.png',
                           width: 196,
                         ),
                       ),
@@ -122,8 +125,8 @@ class _OrderSuccessViewState extends State<OrderSuccessView>
                       ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 290),
                         child: Text(
-                          'راح نتواصل معك عبر واتساب لتأكيد التفاصيل، وبعد '
-                          'الموافقة يصير الطلب قيد التجهيز.',
+                          'سنتواصل معك عبر واتساب لتأكيد التفاصيل، وبعد '
+                          'الموافقة يبدأ تجهيز الطلب.',
                           textAlign: TextAlign.center,
                           style: theme.textTheme.bodyMedium?.copyWith(
                             fontSize: 13.5,
@@ -139,7 +142,7 @@ class _OrderSuccessViewState extends State<OrderSuccessView>
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'الخطوات الجاية',
+                              'الخطوات التالية',
                               style: theme.textTheme.titleSmall?.copyWith(
                                 fontFamily: 'Tajawal',
                                 fontSize: 14.5,

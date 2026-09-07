@@ -1,10 +1,36 @@
 import { z } from 'zod';
 import { ORDER_STATUSES } from '../types/order-status.js';
+import { normalizeIraqiPhone } from '../utils/phone.js';
+
+/**
+ * محارف التحكّم والتنسيق غير المرئية مرفوضة في النصّ الحرّ.
+ *
+ * `\n` مسموح داخل العنوان (سطر للمنطقة وسطر للمعلم القريب مثلاً)، أما بقية
+ * محارف التحكّم ومحارف قلب الاتجاه فلا تظهر للعين وتُستعمل لإخفاء محتوى
+ * داخل نصٍّ يبدو طبيعياً على شاشة الموظّف الذي يجهّز الطلب.
+ */
+const ADDRESS_TEXT = /^[^\p{Cc}\p{Cf}\n]*(\n[^\p{Cc}\p{Cf}\n]*)*$/u;
 
 export const createOrderSchema = z.object({
   governorateId: z.string().uuid('اختر محافظة صالحة'),
-  fullAddress: z.string().trim().min(5, 'العنوان قصير جداً').max(300),
-  phone: z.string().regex(/^07\d{9}$/, 'رقم الهاتف غير صالح'),
+  /**
+   * العنوان الكامل — العناوين العراقية وصفية بطبعها («المحلة، الزقاق، أقرب
+   * نقطة دالّة»)، فالحدّ ٣٠٠ حرف يتّسع لها بلا تقتير، والحدّ الأدنى يمنع
+   * «بيتي» وحدها. العربية والترقيم يمرّان كما هما.
+   */
+  fullAddress: z
+    .string()
+    .trim()
+    .min(5, 'العنوان قصير جداً')
+    .max(300, 'العنوان طويل جداً')
+    .regex(ADDRESS_TEXT, 'العنوان يحتوي محارف غير مسموحة'),
+  /** يُطبَّع إلى `+9647XXXXXXXXX` كما في مسارات المصادقة — تنفيذ واحد للتطبيع. */
+  phone: z
+    .string()
+    .refine((v) => normalizeIraqiPhone(v) !== null, {
+      message: 'رقم الهاتف غير صالح — أدخل رقم موبايل عراقي مثل 07XXXXXXXXX',
+    })
+    .transform((v) => normalizeIraqiPhone(v)!),
   /** منطقة التوصيل — إلزامية للمحافظات المقسّمة مناطق (النجف). */
   zoneId: z.string().uuid('منطقة التوصيل غير صالحة').nullish(),
 });

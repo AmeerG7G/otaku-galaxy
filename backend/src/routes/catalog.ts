@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { catalogController } from '../controllers/catalogController.js';
 import { communityController } from '../controllers/communityController.js';
 import { publicExtrasController } from '../controllers/publicExtrasController.js';
+import { publicVisualsController } from '../controllers/visualsController.js';
 
 export const catalogRoutes = Router();
 
@@ -22,5 +23,15 @@ catalogRoutes.get('/franchises', publicExtrasController.franchises);
 catalogRoutes.get('/products/:productId/reviews', communityController.listProductReviews);
 catalogRoutes.get('/community/photos', communityController.listCommunityPhotos);
 
+// رسوم الشخصيات المُدارة — يقرؤها التطبيق عند الإقلاع بلا مصادقة.
+// لا شيء هنا يخصّ زبوناً بعينه، وحجبها خلف تسجيل الدخول كان سيترك الشاشات
+// التي تسبقه (الترحيب، الدخول) بلا وصول إلى إعدادها.
+catalogRoutes.get('/visuals', publicVisualsController.list);
+
+// سلّم مستويات الأوتاكو — يقرؤه التطبيق بلا مصادقة.
+catalogRoutes.get('/loyalty-levels', publicExtrasController.loyaltyLevels);
+
 // إعدادات المتجر العامة (روابط التواصل).
 catalogRoutes.get('/settings', publicExtrasController.settings);
+// نسخة التطبيق: أول ما يقرؤه الإقلاع، وأهمّ ما يحتاجه المحجوب.
+catalogRoutes.get('/app-version', publicExtrasController.appVersion);

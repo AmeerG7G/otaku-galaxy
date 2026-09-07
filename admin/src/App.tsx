@@ -13,15 +13,16 @@ const ProductNewPage = lazy(() => import('./pages/ProductNewPage'))
 const ProductEditPage = lazy(() => import('./pages/ProductEditPage'))
 const CategoriesPage = lazy(() => import('./pages/CategoriesPage'))
 const BannersPage = lazy(() => import('./pages/BannersPage'))
-const GovernoratesPage = lazy(() => import('./pages/GovernoratesPage'))
+const DeliveryPage = lazy(() => import('./pages/DeliveryPage'))
 const CustomersPage = lazy(() => import('./pages/CustomersPage'))
 const BirthdaysPage = lazy(() => import('./pages/BirthdaysPage'))
 const PointsPage = lazy(() => import('./pages/PointsPage'))
 const NotificationsPage = lazy(() => import('./pages/NotificationsPage'))
 const OffersPage = lazy(() => import('./pages/OffersPage'))
+const RestockPage = lazy(() => import('./pages/RestockPage'))
 const ReviewsPage = lazy(() => import('./pages/ReviewsPage'))
 const FranchisesPage = lazy(() => import('./pages/FranchisesPage'))
-const DeliveryZonesPage = lazy(() => import('./pages/DeliveryZonesPage'))
+const VisualSlotsPage = lazy(() => import('./pages/VisualSlotsPage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 
 function App() {
@@ -40,15 +41,20 @@ function App() {
               <Route path="/products/:id/edit" element={<ProductEditPage />} />
               <Route path="/categories" element={<CategoriesPage />} />
               <Route path="/banners" element={<BannersPage />} />
-              <Route path="/governorates" element={<GovernoratesPage />} />
+              <Route path="/delivery" element={<DeliveryPage />} />
+              {/* المساران القديمان يوصلان إلى الشاشة الموحّدة — روابط محفوظة
+                  في متصفح المسؤول يجب ألا تنتهي إلى صفحة مفقودة. */}
+              <Route path="/governorates" element={<Navigate to="/delivery" replace />} />
+              <Route path="/zones" element={<Navigate to="/delivery" replace />} />
               <Route path="/customers" element={<CustomersPage />} />
               <Route path="/birthdays" element={<BirthdaysPage />} />
               <Route path="/points" element={<PointsPage />} />
               <Route path="/notifications" element={<NotificationsPage />} />
               <Route path="/offers" element={<OffersPage />} />
+              <Route path="/restock" element={<RestockPage />} />
               <Route path="/reviews" element={<ReviewsPage />} />
               <Route path="/franchises" element={<FranchisesPage />} />
-              <Route path="/zones" element={<DeliveryZonesPage />} />
+              <Route path="/visuals" element={<VisualSlotsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
             </Route>
           </Route>

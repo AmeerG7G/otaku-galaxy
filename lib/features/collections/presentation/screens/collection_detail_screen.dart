@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/design_system/design_system.dart';
+import '../../../../core/l10n/gender.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../products/domain/entities/product.dart';
 import '../../../products/domain/usecases/fetch_product_details_usecase.dart';
 import '../cubit/collections_cubit.dart';
+import '../../../visuals/domain/visual_slot.dart';
 
 /// تفاصيل مجموعة بتصميم Otaku Galaxy v2.
 ///
@@ -67,17 +69,22 @@ class _CollectionDetailScreenState extends State<CollectionDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Column(
-        children: [
-          OtakuScreenHeader(
-            title: widget.collectionName,
-            subtitle: _loading
-                ? 'جاري التحميل…'
-                : '${_products.length} منتج في هذه المجموعة',
-            onBack: () => context.router.maybePop(),
-          ),
-          Expanded(child: _buildBody()),
-        ],
+      // إطار الشبكة: يمنع تمدّد المحتوى بلا حدّ ويترك للشبكة عرضاً
+      // يكفي أعمدةً أكثر. لا أثر له على الهاتف.
+      body: ResponsiveContentFrame(
+        maxWidth: kGridMaxWidth,
+        child: Column(
+          children: [
+            OtakuScreenHeader(
+              title: widget.collectionName,
+              subtitle: _loading
+                  ? 'جاري التحميل…'
+                  : '${_products.length} منتج في هذه المجموعة',
+              onBack: () => context.router.maybePop(),
+            ),
+            Expanded(child: _buildBody()),
+          ],
+        ),
       ),
     );
   }
@@ -85,11 +92,12 @@ class _CollectionDetailScreenState extends State<CollectionDetailScreen> {
   Widget _buildBody() {
     if (_loading) return const OtakuListSkeleton(count: 4, height: 86);
     if (_products.isEmpty) {
-      return const AnimeEmptyState(
+      // لم تعد `const`: النصّ يُصرَّف بجنس صاحب الحساب فيُقرأ من السياق.
+      return AnimeEmptyState(
         title: 'المجموعة فارغة',
-        subtitle:
-            'أضف منتجات لهذه المجموعة من صفحة المنتج عبر «أضف إلى مجموعتك».',
+        subtitle: context.g(GenderedStrings.addProductsToCollection),
         artwork: 'assets/art/opt/a-i5.png',
+        artworkSlot: VisualSlots.emptyCollection,
       );
     }
 
@@ -114,8 +122,8 @@ class _CollectionDetailScreenState extends State<CollectionDetailScreen> {
       context: context,
       title: 'إزالة من المجموعة',
       message:
-          'راح نشيل «${product.name}» من هذه المجموعة. المنتج نفسه راح يبقى '
-          'بالمتجر ومفضلتك.',
+          'سيُزال «${product.name}» من هذه المجموعة، ويبقى المنتج '
+          'في المتجر وفي مفضلتك.',
       confirmLabel: 'إزالة',
       cancelLabel: 'إلغاء',
       destructive: true,

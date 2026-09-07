@@ -41,6 +41,17 @@ export interface ProductListResponse {
 export interface ListProductsParams {
   page?: number
   limit?: number
+  /** ترشيح بالقسم — يجري على الخادم لا في المتصفح. */
+  categoryId?: string
+  subcategoryId?: string
+  /**
+   * ترشيح العروض/المختارة — على مسار الإدارة، فيشمل المنتجات المعطّلة.
+   *
+   * نصّية لأن معايير الاستعلام نصوص، ولأن الخادم يفرّق بين «غائب» (بلا
+   * ترشيح) و«false» (المستبعَد من القسم).
+   */
+  offer?: 'true' | 'false'
+  selected?: 'true' | 'false'
 }
 
 export interface ProductOptionInput {

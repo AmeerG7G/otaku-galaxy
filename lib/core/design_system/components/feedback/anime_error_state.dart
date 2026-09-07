@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../tokens/app_colors.dart';
+import '../../tokens/app_theme_colors.dart';
 import '../../tokens/app_dimens.dart';
 import '../buttons/anime_primary_button.dart';
 import '../buttons/button_enums.dart';
@@ -59,7 +60,7 @@ class AnimeErrorState extends StatelessWidget {
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
                 fontWeight: AppDimens.weightBold,
-                color: AppColors.error,
+                color: context.themeColors.errorText,
               ),
             ),
             SizedBox(height: AppDimens.space3),

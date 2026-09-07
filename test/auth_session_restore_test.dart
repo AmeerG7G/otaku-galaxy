@@ -48,6 +48,7 @@ class _FailingAuthRepository implements AuthRepository {
     required String username,
     required String phone,
     required String password,
+    required String gender,
   }) async {}
   @override
   Future<AuthSession> verifyOtp(String phone, String code) async =>
@@ -66,6 +67,7 @@ class _FailingAuthRepository implements AuthRepository {
     String? username,
     String? avatarUrl,
     bool clearAvatar = false,
+    String? gender,
   }) async => _user;
   @override
   Future<void> changePassword({

@@ -10,6 +10,7 @@ import '../../../products/domain/entities/product.dart';
 import '../../../products/domain/usecases/fetch_categories_usecase.dart';
 import '../../../products/domain/usecases/fetch_category_products_usecase.dart';
 import '../../../products/domain/entities/product_sort.dart';
+import '../../../visuals/domain/visual_slot.dart';
 
 /// شاشة منتجات القسم — عند دخول قسم رئيسي له أقسام فرعية، تُفتح مباشرةً
 /// على أول قسم فرعي (بلا صفحة "الكل")، مع إمكانية التنقل بالسحب الأفقي
@@ -42,8 +43,8 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
   ProductSort _sort = ProductSort.newest;
   String? _error;
 
-  /// ترتيب القسم ضمن قائمة الأقسام — يحدّد تدرّج ترويسة v2.
-  /// القسم كما وصل من الخادم (لصورته وأقسامه الفرعية)؛ null قبل التحميل.
+  /// القسم كما وصل من الخادم — يُشتقّ منه تدرّج الترويسة؛ null قبل التحميل،
+  /// وعندها يُبنى قسمٌ مؤقّت بالمعرّف نفسه فيكون اللون صحيحاً منذ أول إطار.
   Category? _category;
 
   late final PageController _pageController;
@@ -129,36 +130,50 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Column(
-        children: [
-          OtakuScreenHeader.gradient(
-            title: widget.categoryName,
-            subtitle: _loading
-                ? 'جاري التحميل…'
-                : '${_products.length} منتج في هذا القسم',
-            gradient: LinearGradient(
-              // نفس دالة اللون التي تستخدمها بطاقة القسم، ومشتقّة من
-              // المعرّف لا من الترتيب — فيتطابق اللون هنا ومع الشاشتين
-              // الأخريين حتى قبل أن تصل قائمة الأقسام.
-              colors: AnimeCategoryCard.gradientForCategory(
-                _category ??
-                    Category(id: widget.categoryId, name: widget.categoryName),
+      // إطار الشبكة: يمنع تمدّد المحتوى بلا حدّ ويترك للشبكة عرضاً
+      // يكفي أعمدةً أكثر. لا أثر له على الهاتف.
+      body: ResponsiveContentFrame(
+        maxWidth: kGridMaxWidth,
+        child: Column(
+          children: [
+            // ترويسة القسم بتدرّج هويته — نفس المصدر الذي تستعمله بطاقة
+            // القسم وشريط الرئيسية (`AnimeCategoryCard.gradientForCategory`)،
+            // فلا تعريف لونٍ ثانٍ ولا لون مخترع.
+            //
+            // [CRITICAL] التدرّج يُشتقّ من **المعرّف** لا من الترتيب: ترتيب
+            // الأقسام يتغيّر متى أضاف المسؤول قسماً أو أوقفه، فينقلب لون كل
+            // قسم بعده وتختلف الشاشات التي تعرض مجموعة جزئية. والمعرّف ثابت،
+            // فيتطابق لون القسم هنا ومع الشاشتين الأخريين حتى قبل أن تصل
+            // قائمة الأقسام (`_category` ما يزال null).
+            OtakuScreenHeader.gradient(
+              title: widget.categoryName,
+              subtitle: _loading
+                  ? 'جاري التحميل…'
+                  : '${_products.length} منتج في هذا القسم',
+              gradient: LinearGradient(
+                colors: AnimeCategoryCard.gradientForCategory(
+                  _category ??
+                      Category(
+                        id: widget.categoryId,
+                        name: widget.categoryName,
+                      ),
+                ),
+                begin: Alignment.topRight,
+                end: Alignment.bottomLeft,
               ),
-              begin: Alignment.topRight,
-              end: Alignment.bottomLeft,
+              onBack: () => context.router.maybePop(),
+              actions: [
+                OtakuHeaderButton(
+                  icon: AppIcons.search,
+                  onGradient: true,
+                  tooltip: 'بحث',
+                  onTap: () => context.router.push(SearchRoute()),
+                ),
+              ],
             ),
-            onBack: () => context.router.maybePop(),
-            actions: [
-              OtakuHeaderButton(
-                icon: Icons.search_rounded,
-                onGradient: true,
-                tooltip: 'بحث',
-                onTap: () => context.router.push(SearchRoute()),
-              ),
-            ],
-          ),
-          Expanded(child: _buildContent()),
-        ],
+            Expanded(child: _buildContent()),
+          ],
+        ),
       ),
     );
   }
@@ -170,9 +185,10 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
     }
     if (_products.isEmpty) {
       return AnimeEmptyState(
-        title: 'ما بيه منتجات هنا',
-        subtitle: 'هذا القسم فاضي حالياً — جرّب قسم ثاني أو ارجع لاحقاً.',
+        title: 'لا توجد منتجات في هذا القسم',
+        subtitle: 'القسم فارغ حالياً — تصفّح قسماً آخر أو عد لاحقاً.',
         artwork: 'assets/art/a-l-detective.png',
+        artworkSlot: VisualSlots.categoryProductsHeader,
         actionLabel: 'رجوع للأقسام',
         onAction: () => context.router.maybePop(),
       );
@@ -283,9 +299,10 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
             child: SizedBox(
               height: constraints.maxHeight,
               child: const AnimeEmptyState(
-                title: 'ما بيه منتجات بهذا القسم',
-                subtitle: 'جرّب قسم فرعي ثاني — أكيد راح تلكي شي يعجبك.',
+                title: 'لا توجد منتجات هنا',
+                subtitle: 'جرّب قسماً فرعياً آخر — ستجد ما يناسبك.',
                 artwork: 'assets/art/a-l-detective.png',
+                artworkSlot: VisualSlots.emptyCategoryProducts,
               ),
             ),
           ),
@@ -297,7 +314,7 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
       child: GridView.builder(
         padding: const EdgeInsets.fromLTRB(18, 10, 18, 26),
         physics: const AlwaysScrollableScrollPhysics(),
-        gridDelegate: kProductGridDelegate,
+        gridDelegate: productGridDelegate(context),
         itemCount: products.length,
         itemBuilder: (context, index) {
           final product = products[index];

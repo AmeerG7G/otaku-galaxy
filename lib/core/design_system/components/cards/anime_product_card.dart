@@ -58,10 +58,14 @@ class AnimeProductCard extends StatelessWidget {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    ProductPhotoSlot(
-                      imageUrl: _firstImage,
-                      desaturated: !inStock,
-                    ),
+                    ProductPhotoSlot(imageUrl: _firstImage),
+                    // نفاد المخزون يُقال بشارة فوق الصورة لا بتغيير الصورة.
+                    if (!inStock)
+                      PositionedDirectional(
+                        bottom: 9,
+                        end: 9,
+                        child: _OutOfStockChip(),
+                      ),
                     // شارة العرض/المختار — أعلى جهة البداية.
                     if (_badgeLabel != null)
                       PositionedDirectional(
@@ -69,7 +73,8 @@ class AnimeProductCard extends StatelessWidget {
                         start: 9,
                         child: _Badge(
                           label: _badgeLabel!,
-                          highlighted: (product.isOffer as bool) ||
+                          highlighted:
+                              (product.isOffer as bool) ||
                               (product.discountPercent as int? ?? 0) > 0,
                         ),
                       ),
@@ -138,8 +143,9 @@ class AnimeProductCard extends StatelessWidget {
                           const SizedBox(width: 7),
                           Flexible(
                             child: Text(
-                              (product.previousPrice as double)
-                                  .toStringAsFixed(0),
+                              (product.previousPrice as double).toStringAsFixed(
+                                0,
+                              ),
                               textDirection: TextDirection.ltr,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -147,7 +153,9 @@ class AnimeProductCard extends StatelessWidget {
                                   ?.copyWith(
                                     fontSize: 11,
                                     decoration: TextDecoration.lineThrough,
-                                    color: Theme.of(context).colorScheme.outline,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
                                   ),
                             ),
                           ),
@@ -155,33 +163,35 @@ class AnimeProductCard extends StatelessWidget {
                       ],
                     ),
                     if (!compact) ...[
-                    const SizedBox(height: AppDimens.space2),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ProductStockPill(stock: product.stock as int),
-                        ),
-                        if (product.rating != null) ...[
-                          Icon(
-                            Icons.star_rounded,
-                            size: 12,
-                            color: AppColors.accent,
+                      const SizedBox(height: AppDimens.space2),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ProductStockPill(
+                              stock: product.stock as int,
+                            ),
                           ),
-                          const SizedBox(width: 2),
-                          Text(
-                            (product.rating as double).toStringAsFixed(1),
-                            textDirection: TextDirection.ltr,
-                            style: Theme.of(context).textTheme.labelSmall
-                                ?.copyWith(
-                                  fontSize: 10.5,
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.onSurfaceVariant,
-                                ),
-                          ),
+                          if (product.rating != null) ...[
+                            Icon(
+                              Icons.star_rounded,
+                              size: 12,
+                              color: AppColors.accent,
+                            ),
+                            const SizedBox(width: 2),
+                            Text(
+                              (product.rating as double).toStringAsFixed(1),
+                              textDirection: TextDirection.ltr,
+                              style: Theme.of(context).textTheme.labelSmall
+                                  ?.copyWith(
+                                    fontSize: 10.5,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
+                                  ),
+                            ),
+                          ],
                         ],
-                      ],
-                    ),
+                      ),
                     ],
                     if (!compact && _deliveryPromoLabel != null) ...[
                       const SizedBox(height: 6),
@@ -198,7 +208,7 @@ class AnimeProductCard extends StatelessWidget {
                                   ?.copyWith(
                                     fontSize: 9.5,
                                     fontWeight: AppDimens.weightBold,
-                                    color: AppColors.success,
+                                    color: context.themeColors.successText,
                                   ),
                             ),
                           ),
@@ -334,6 +344,36 @@ class _SoldOutStrip extends StatelessWidget {
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
           fontSize: 10,
           fontWeight: AppDimens.weightExtraBold,
+          color: Colors.white,
+        ),
+      ),
+    );
+  }
+}
+
+/// شارة «نفدت» فوق صورة المنتج.
+///
+/// بديل تلوين الصورة بالرمادي: الحالة تُقرأ بلمحة، والصورة تبقى كما رفعها
+/// صاحب المتجر بلا أي تعديل.
+class _OutOfStockChip extends StatelessWidget {
+  const _OutOfStockChip();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.themeColors;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: colors.error,
+        borderRadius: BorderRadius.circular(AppDimens.radiusFull),
+        boxShadow: colors.shadowXSoft,
+      ),
+      child: Text(
+        'نفدت',
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          fontSize: 9.5,
+          height: 1.3,
+          fontWeight: AppDimens.weightBold,
           color: Colors.white,
         ),
       ),

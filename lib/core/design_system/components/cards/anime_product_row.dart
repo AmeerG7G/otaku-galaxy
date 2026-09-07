@@ -45,7 +45,6 @@ class AnimeProductRow extends StatelessWidget {
               imageUrl: product.images.isNotEmpty ? product.images.first : null,
               showLabel: false,
               iconSize: 22,
-              desaturated: !product.inStock,
             ),
           ),
           const SizedBox(width: 13),

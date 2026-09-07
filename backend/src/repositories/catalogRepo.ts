@@ -66,6 +66,8 @@ export function mapProduct(
     hasDeliveryPromo: row.has_delivery_promo ?? false,
     // القيمة المعتمدة تجارياً لخصم التوصيل عن كل قطعة.
     deliveryPromoAmount: toNumber(row.delivery_promo_amount) ?? 0,
+    // موعد التوفر القادم (إن حدّده المسؤول) — عرض إرشادي على صفحة المنتج.
+    restockAt: row.restock_at ? new Date(row.restock_at).toISOString() : null,
     franchiseIds: (row.franchise_ids as string[]) ?? [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -209,7 +211,16 @@ ${PRODUCT_RELATION_COLUMNS('p')},
     };
   },
 
-  /** بحث نصي جزئي (ILIKE مع دعم العربية) — البحث في PostgreSQL لا في التطبيق. */
+  /**
+   * بحث نصي جزئي (ILIKE مع دعم العربية) — البحث في PostgreSQL لا في التطبيق.
+   *
+   * يطابق اسم المنتج **أو** اسم الأنمي المرتبط به ومرادفاته. الأنمي بُعد
+   * تصنيف مستقل عن الأقسام، فبحثٌ عن «قاتل الشياطين» يجب أن يجمع منتجاته
+   * من كل الأقسام لا أن يعود فارغاً لأن الكلمة ليست في اسم أي منتج.
+   *
+   * الامتيازات الموقوفة لا تُطابَق: إخفاء الأنمي من الواجهة يعني إخفاءه من
+   * البحث أيضاً، وإلا صار البحث باباً خلفياً لما أُخفي عمداً.
+   */
   async search(
     db: pg.Pool | pg.PoolClient,
     query: string,
@@ -217,17 +228,28 @@ ${PRODUCT_RELATION_COLUMNS('p')},
     limit: number,
   ): Promise<Paginated<ReturnType<typeof mapProduct>>> {
     const like = `%${query}%`;
+    const matches = `p.is_active = TRUE AND (
+           p.name ILIKE $1
+           OR EXISTS (
+             SELECT 1
+               FROM product_franchises pf
+               JOIN franchises f
+                 ON f.id = pf.franchise_id AND f.is_active = TRUE
+              WHERE pf.product_id = p.id
+                AND franchise_search_text(f.name, f.alt_names) ILIKE $1
+           )
+         )`;
     const [{ rows }, countRows] = await Promise.all([
       db.query<ProductRow & { images?: unknown; franchise_ids?: unknown }>(
         `${SELECT_WITH_IMAGES('p')}
-         WHERE p.is_active = TRUE AND p.name ILIKE $1
+         WHERE ${matches}
          ORDER BY (p.name ILIKE $1) DESC, p.name ASC
          LIMIT $2 OFFSET $3`,
         [like, limit, (page - 1) * limit],
       ),
       db.query<{ total: string }>(
         `SELECT COUNT(*)::text AS total FROM products p
-         WHERE p.is_active = TRUE AND p.name ILIKE $1`,
+         WHERE ${matches}`,
         [like],
       ),
     ]);
@@ -249,13 +271,18 @@ export const categoryRepo = {
       `SELECT c.*,
               COALESCE(
                 json_agg(
-                  json_build_object('id', s.id, 'name', s.name, 'sortOrder', s.sort_order)
+                  json_build_object(
+                    'id', s.id,
+                    'name', s.name,
+                    'sortOrder', s.sort_order,
+                    'isActive', s.is_active
+                  )
                   ORDER BY s.sort_order, s.name
-                ) FILTER (WHERE s.id IS NOT NULL),
+                ) FILTER (WHERE s.id IS NOT NULL ${includeInactive ? '' : 'AND s.is_active = TRUE'}),
                 '[]'
               ) AS subcategories
        FROM categories c
-       LEFT JOIN subcategories s ON s.category_id = c.id AND s.is_active = TRUE
+       LEFT JOIN subcategories s ON s.category_id = c.id
        ${where}
        GROUP BY c.id
        ORDER BY c.sort_order, c.name`,
@@ -266,7 +293,12 @@ export const categoryRepo = {
       imageUrl: row.image_url,
       sortOrder: row.sort_order,
       isActive: row.is_active,
-      subcategories: row.subcategories as { id: string; name: string; sortOrder: number }[],
+      subcategories: row.subcategories as {
+        id: string;
+        name: string;
+        sortOrder: number;
+        isActive: boolean;
+      }[],
     }));
   },
 

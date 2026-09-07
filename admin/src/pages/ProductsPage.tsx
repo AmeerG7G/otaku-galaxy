@@ -1,13 +1,10 @@
-import { resolveMediaUrl } from '../utils/media'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Alert,
   App,
   Button,
   Card,
-  Flex,
-  Image,
   Space,
   Table,
   Tag,
@@ -25,31 +22,32 @@ import { ApiError } from '../api/client'
 import type { Product } from '../types/products'
 import { formatCurrency } from '../utils/format'
 import EmptyState from '../components/EmptyState'
+import { MediaThumb } from '../components/ui/MediaThumb'
+import { PageHeader } from '../components/ui/PageHeader'
+import { useTableState } from '../hooks/useTableState'
 
 const PAGE_LIMIT = 12
 
-const NO_IMAGE_PLACEHOLDER =
-  'data:image/svg+xml;utf8,' +
-  encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="#f5f5f5"/><text x="32" y="36" font-size="12" text-anchor="middle" fill="#aaa">لا صورة</text></svg>',
-  )
-
-function readPage(value: string | null): number {
-  const parsed = Number(value)
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : 1
-}
-
 export default function ProductsPage() {
   const navigate = useNavigate()
-  const [searchParams, setSearchParams] = useSearchParams()
   const { message, modal } = App.useApp()
   const queryClient = useQueryClient()
+  const { page, setPage, value, setSearchParams } = useTableState()
 
-  const page = readPage(searchParams.get('page'))
+  // الترشيح يأتي من الرابط، فيبقى المسار «قسم ← قسم فرعي ← منتجاته» قابلاً
+  // للمشاركة والرجوع إليه بزرّ المتصفح.
+  const categoryId = value('categoryId')
+  const subcategoryId = value('subcategoryId')
 
   const productsQuery = useQuery({
-    queryKey: ['products', { page }],
-    queryFn: () => listProducts({ page, limit: PAGE_LIMIT }),
+    queryKey: ['products', { page, categoryId, subcategoryId }],
+    queryFn: () =>
+      listProducts({
+        page,
+        limit: PAGE_LIMIT,
+        ...(categoryId ? { categoryId } : {}),
+        ...(subcategoryId ? { subcategoryId } : {}),
+      }),
   })
 
   const categoriesQuery = useQuery({
@@ -65,6 +63,18 @@ export default function ProductsPage() {
       category.subcategories.map((subcategory) => [subcategory.id, subcategory.name] as const),
     ),
   )
+
+  /** وصف الترشيح الجاري — يظهر في العنوان بدل جدول يبدو ناقصاً بلا سبب. */
+  const activeScope = subcategoryId
+    ? subcategoryNames.get(subcategoryId)
+    : categoryId
+      ? categoryNames.get(categoryId)
+      : undefined
+
+  const scopeSearch = new URLSearchParams({
+    ...(categoryId ? { categoryId } : {}),
+    ...(subcategoryId ? { subcategoryId } : {}),
+  }).toString()
 
   const deactivateMutation = useMutation({
     mutationFn: (product: Product) => deleteProduct(product.id),
@@ -93,25 +103,9 @@ export default function ProductsPage() {
       title: 'الصورة',
       key: 'image',
       width: 80,
-      render: (_: unknown, product: Product) =>
-        product.images[0] ? (
-          <Image
-            src={resolveMediaUrl(product.images[0])}
-            width={56}
-            height={56}
-            style={{ objectFit: 'cover', borderRadius: 4 }}
-            preview={false}
-            fallback={NO_IMAGE_PLACEHOLDER}
-          />
-        ) : (
-          <Image
-            src={NO_IMAGE_PLACEHOLDER}
-            width={56}
-            height={56}
-            style={{ borderRadius: 4 }}
-            preview={false}
-          />
-        ),
+      render: (_: unknown, product: Product) => (
+        <MediaThumb reference={product.images[0]} size={52} />
+      ),
     },
     {
       title: 'المنتج',
@@ -214,32 +208,42 @@ export default function ProductsPage() {
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Flex align="center" justify="space-between" wrap gap={12}>
-        <div>
-          <Typography.Title level={3} style={{ margin: 0 }}>
-            المنتجات
-          </Typography.Title>
-          <Typography.Text type="secondary">
-            إدارة منتجات المتجر: إضافة، تعديل، تعطيل، والعروض والمختارات.
-          </Typography.Text>
-        </div>
-        <Space>
-          <Button
-            icon={<ReloadOutlined />}
-            loading={productsQuery.isFetching}
-            onClick={() => productsQuery.refetch()}
-          >
-            تحديث
-          </Button>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => navigate('/products/new')}
-          >
-            إضافة منتج
-          </Button>
-        </Space>
-      </Flex>
+      <PageHeader
+        title="المنتجات"
+        description={
+          activeScope
+            ? `منتجات «${activeScope}»`
+            : 'إدارة منتجات المتجر: إضافة، تعديل، تعطيل، والعروض والمختارات.'
+        }
+        extra={
+          <Space wrap>
+            {activeScope && (
+              <Button onClick={() => setSearchParams({})}>عرض كل المنتجات</Button>
+            )}
+            <Button
+              icon={<ReloadOutlined />}
+              loading={productsQuery.isFetching}
+              onClick={() => productsQuery.refetch()}
+            >
+              تحديث
+            </Button>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              // الترشيح الحالي يُمرَّر إلى نموذج الإضافة، فيبدأ المنتج الجديد
+              // في القسم الذي كان المسؤول يتصفّحه بدل أن يعيد اختياره.
+              onClick={() =>
+                navigate({
+                  pathname: '/products/new',
+                  search: scopeSearch,
+                })
+              }
+            >
+              إضافة منتج
+            </Button>
+          </Space>
+        }
+      />
 
       <Card>
         {productsQuery.isError ? (
@@ -276,8 +280,7 @@ export default function ProductsPage() {
               total: productsQuery.data?.total ?? 0,
               showSizeChanger: false,
               showTotal: (total) => `إجمالي المنتجات: ${total}`,
-              onChange: (nextPage) =>
-                setSearchParams(nextPage === 1 ? {} : { page: String(nextPage) }),
+              onChange: (nextPage) => setPage(nextPage),
             }}
           />
         )}

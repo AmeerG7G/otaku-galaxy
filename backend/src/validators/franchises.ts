@@ -1,14 +1,45 @@
 import { z } from 'zod';
+import { isValidVersionString } from '../services/appVersionService.js';
+
+/**
+ * المرادفات: أسماء بديلة يطابقها بحث العميل («قاتل الشياطين» لـDemon Slayer).
+ *
+ * تُنظَّف هنا لا في الاستعلام: الفراغات والمكرَّرات تنتفخ في العمود وتُبطئ
+ * كل بحث لاحق، وتصحيحها عند الكتابة مرة واحدة أرخص من تجاهلها كل قراءة.
+ */
+const altNames = z
+  .array(z.string().trim().min(1).max(80))
+  .max(10, 'حد المرادفات عشرة')
+  .transform((values) => [...new Set(values.filter(Boolean))]);
+
+/**
+ * صورة الأنمي: مرفوعة على الخادم أو رابط خارجي كامل.
+ *
+ * الفحص هنا هو نفسه المطبَّق على صور المنتجات والفتحات البصرية. كان هذا
+ * الحقل الوحيد الذي يقبل أي نصّ حتى ٥٠٠ حرف بلا فحص مخطَّط — فيصلح لتخزين
+ * `javascript:` أو `data:text/html`. المسار إداري، لكن اتّساق القاعدة عبر
+ * كل حقول الروابط أرخص من تذكّر أيّها استُثني ولماذا.
+ */
+const franchiseImageUrl = z
+  .string()
+  .trim()
+  .max(500)
+  .refine(
+    (value) => value === '' || value.startsWith('/uploads/') || /^https?:\/\/.+/.test(value),
+    'رابط صورة غير صالح — ارفع صورة أو أدخل رابطاً يبدأ بـ http(s)://',
+  );
 
 export const createFranchiseSchema = z.object({
   name: z.string().trim().min(1, 'اسم الأنمي مطلوب').max(80),
-  imageUrl: z.string().trim().max(500).nullish(),
+  altNames: altNames.optional(),
+  imageUrl: franchiseImageUrl.nullish(),
   sortOrder: z.coerce.number().int().min(0).optional(),
 });
 
 export const updateFranchiseSchema = z.object({
   name: z.string().trim().min(1).max(80).optional(),
-  imageUrl: z.string().trim().max(500).nullish(),
+  altNames: altNames.optional(),
+  imageUrl: franchiseImageUrl.nullish(),
   sortOrder: z.coerce.number().int().min(0).optional(),
   isActive: z.boolean().optional(),
 });
@@ -66,4 +97,33 @@ export const updateSettingsSchema = z.object({
       'أدخل رابط واتساب أو رقماً صالحاً أو اتركه فارغاً',
     )
     .optional(),
+  // سطر واحد مشترك تحت صفّ الروابط الاجتماعية (1..60 حرفاً).
+  social_description: z.string().trim().max(60).optional(),
+});
+
+// ── نسخة التطبيق ──
+
+/** نسخة دلالية صالحة أو نص فارغ (الفارغ = «لا حدّ أدنى» = لا حجب). */
+const optionalSemver = z
+  .string()
+  .trim()
+  .max(40)
+  .refine(
+    (value) => value === '' || isValidVersionString(value),
+    'أدخل نسخة بصيغة 1.2.3 أو اتركها فارغة',
+  );
+
+/**
+ * إعدادات إجبار التحديث.
+ *
+ * [CRITICAL] الفصل عن `updateSettingsSchema` مقصود: الخطأ هنا يحجب التطبيق
+ * عن كل مستخدميه، فلا يجوز أن يُحفظ حدٌّ أدنى بصيغة فاسدة لأنه مرّ ضمن
+ * دفعة روابط تواصل. التحقق من الصيغة يقع قبل الكتابة لا بعدها.
+ */
+export const updateAppVersionSettingsSchema = z.object({
+  app_min_supported_version: optionalSemver.optional(),
+  app_latest_version: optionalSemver.optional(),
+  app_android_store_url: optionalUrl.optional(),
+  app_ios_store_url: optionalUrl.optional(),
+  app_update_message: z.string().trim().max(300).optional(),
 });

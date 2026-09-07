@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../../../core/design_system/design_system.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../domain/entities/order.dart';
+import '../../../visuals/domain/visual_slot.dart';
+import '../../../visuals/presentation/managed_artwork.dart';
 
 /// نتيجة ورقة «هل استلمت طلبك؟».
 enum DeliveryConfirmationChoice {
@@ -76,11 +78,13 @@ class _DeliveryConfirmationBody extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              IgnorePointer(
-                child: Image.asset(
-                  'assets/art/opt/a-i6.png',
+              // لا `errorBuilder` هنا: [ManagedArtwork] يتولّى كل مسارات
+              // الفشل داخلياً وينتهي بها إلى الأصل المضمَّن.
+              const IgnorePointer(
+                child: ManagedArtwork(
+                  slot: VisualSlots.deliveryConfirmation,
+                  fallbackAsset: 'assets/art/opt/a-i6.png',
                   width: 74,
-                  errorBuilder: (_, _, _) => const SizedBox(width: 74),
                 ),
               ),
             ],
@@ -116,7 +120,7 @@ class _DeliveryConfirmationBody extends StatelessWidget {
                     fontFamily: 'Tajawal',
                     fontWeight: AppDimens.weightExtraBold,
                     fontSize: 14.5,
-                    color: colors.error,
+                    color: colors.errorText,
                   ),
                 ),
               ],
@@ -128,16 +132,14 @@ class _DeliveryConfirmationBody extends StatelessWidget {
           AnimePrimaryButton(
             label: 'نعم، استلمت الطلب',
             height: AppDimens.buttonHeightXl,
-            onPressed: () => Navigator.of(
-              context,
-            ).pop(DeliveryConfirmationChoice.received),
+            onPressed: () =>
+                Navigator.of(context).pop(DeliveryConfirmationChoice.received),
           ),
           const SizedBox(height: 10),
           AnimeOutlinedButton(
             label: 'لم أستلمه بعد',
-            onPressed: () => Navigator.of(
-              context,
-            ).pop(DeliveryConfirmationChoice.notYet),
+            onPressed: () =>
+                Navigator.of(context).pop(DeliveryConfirmationChoice.notYet),
           ),
         ],
       ),

@@ -2,13 +2,35 @@ import { client, get } from './client'
 import type { ApiEnvelope } from '../types/api'
 import type {
   AdminCustomerListResponse,
+  CustomerGender,
+  CustomerSort,
   ToggleUserActiveResult,
 } from '../types/customers'
-import type { BirthdayCustomerList } from '../types/birthdays'
+import type { BirthdayCustomerList, BirthdayFilter } from '../types/birthdays'
 
+/**
+ * معايير قائمة الزبائن.
+ *
+ * كلها تُرسَل إلى الخادم ولا يُرشَّح شيء في المتصفح: القائمة تنمو بلا سقف،
+ * وترشيحها هنا يعني تحميلها كاملةً على كل حرف يكتبه المسؤول.
+ */
 export interface ListCustomersParams {
   page?: number
   limit?: number
+  search?: string
+  isActive?: boolean
+  hasBirthday?: boolean
+  hasOrders?: boolean
+  minPoints?: number
+  maxPoints?: number
+  /**
+   * ترشيح الجنس — يجري في القاعدة كبقية المعايير.
+   *
+   * `unknown` تطابق `gender IS NULL`؛ لا تُحذف الحسابات القديمة من القائمة
+   * ولا تُضمّ إلى أحد الجنسين.
+   */
+  gender?: CustomerGender | 'unknown'
+  sort?: CustomerSort
 }
 
 export function listCustomers(
@@ -25,14 +47,18 @@ export async function toggleUserActive(
   )
   return { row: response.data.data!, message: response.data.message ?? '' }
 }
+
 /**
  * سجلّ أعياد الميلاد.
  *
- * `filter=pending` يعرض المؤهَّلين الذين لم يسجّلوا بعد — «من لم يسجّل»
- * سؤالٌ إداري لا يجيب عنه عرضُ المسجَّلين وحدهم.
+ * «اليوم» و«قريباً» يحسبهما الخادم بمنطقة المتجر الزمنية — لا بساعة متصفح
+ * المسؤول، وإلا اختلف ما يراه عن الجمهور الذي يستهدفه الإشعار فعلاً.
  */
-export function listBirthdayCustomers(
-  params: ListCustomersParams & { filter?: 'all' | 'registered' | 'pending' },
-): Promise<BirthdayCustomerList> {
+export function listBirthdayCustomers(params: {
+  page?: number
+  limit?: number
+  filter?: BirthdayFilter
+  windowDays?: number
+}): Promise<BirthdayCustomerList> {
   return get<BirthdayCustomerList>('/admin/customers/birthdays', { params })
 }

@@ -1,7 +1,10 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { birthdayRepo } from '../src/repositories/birthdayRepo.js';
 import { db } from '../src/database/pool.js';
-import { businessConfigService } from '../src/services/businessConfigService.js';
+import {
+  BIRTHDAY_DISCOUNT_PERCENT,
+  birthdayDiscountAmount,
+} from '../src/domain/birthday.js';
 import {
   api,
   createAdminUser,
@@ -19,14 +22,6 @@ import {
  * نفس الجداول التي يكتبها مسار العميل، لا من تجميع موازٍ.
  */
 
-/** يُفرغ الإعدادات فيعود النظام إلى القيم المخبوزة في الكود. */
-async function resetBusinessSettings() {
-  await db.query(
-    `DELETE FROM store_settings WHERE key IN
-      ('points_order_received','points_review_approved','points_review_with_photo',
-       'birthday_discount_percent','order_rating_delay_hours')`,
-  );
-}
 
 describe('لوحة التحكم — الصلاحيات', () => {
   const ADMIN_ONLY = [
@@ -38,7 +33,7 @@ describe('لوحة التحكم — الصلاحيات', () => {
   ];
 
   afterAll(async () => {
-    await purgeTestUsers('077%');
+    await purgeTestUsers();
   });
 
   it('بلا توكن → 401 على كل مسارات الإدارة الجديدة', async () => {
@@ -71,11 +66,11 @@ describe('لوحة التحكم — رؤية النقاط', () => {
   let adminToken: string;
 
   beforeAll(async () => {
-    await purgeTestUsers('077%');
+    await purgeTestUsers();
     adminToken = await createAdminUser();
   });
   afterAll(async () => {
-    await purgeTestUsers('077%');
+    await purgeTestUsers();
   });
 
   it('نقاط عميل: الرصيد والدفتر مع السبب — بلا بيانات خاصة زائدة', async () => {
@@ -153,7 +148,7 @@ describe('لوحة التحكم — الإشعارات', () => {
   let customer: Awaited<ReturnType<typeof registerAndLogin>>;
 
   beforeAll(async () => {
-    await purgeTestUsers('077%');
+    await purgeTestUsers();
     adminToken = await createAdminUser();
     customer = await registerAndLogin();
     for (const [type, title] of [
@@ -174,7 +169,7 @@ describe('لوحة التحكم — الإشعارات', () => {
     );
   });
   afterAll(async () => {
-    await purgeTestUsers('077%');
+    await purgeTestUsers();
   });
 
   it('الترشيح بالنوع', async () => {
@@ -270,12 +265,12 @@ describe('لوحة التحكم — دورة حياة الكيانات', () => {
   let catalog: Awaited<ReturnType<typeof seedTestCatalog>>;
 
   beforeAll(async () => {
-    await purgeTestUsers('077%');
+    await purgeTestUsers();
     adminToken = await createAdminUser();
     catalog = await seedTestCatalog();
   });
   afterAll(async () => {
-    await purgeTestUsers('077%');
+    await purgeTestUsers();
   });
 
   it('حذف قسم فيه منتجات مرفوض بـ409 ولا يُحذف أي منتج', async () => {
@@ -383,160 +378,80 @@ describe('لوحة التحكم — دورة حياة الكيانات', () => {
   });
 });
 
-describe('لوحة التحكم — إعدادات الأعمال', () => {
+/**
+ * إعدادات الأعمال الرقمية — أُزيلت بالكامل.
+ *
+ * كانت هذه السويت تقيس ضبطَ خمس قيم من اللوحة. صارت كلها قواعد ثابتة أو
+ * أُلغيت: قيم نقاط المجرّة الثلاث (خطوة ٤٠)، ونسبة خصم الميلاد (٥٪ ثابتة)،
+ * ومهلة فتح التقييم (أُلغيت — التقييم يُفتح بالاستلام).
+ *
+ * ما يُقاس الآن نقيضُ ما كان يُقاس: أن لا مسار يكتب أياً منها.
+ */
+describe('لوحة التحكم — لا إعدادات أعمال قابلة للضبط', () => {
   let adminToken: string;
 
   beforeAll(async () => {
-    await purgeTestUsers('077%');
+    await purgeTestUsers();
     adminToken = await createAdminUser();
   });
-  beforeEach(resetBusinessSettings);
+  // تُلفّ في دالة: `afterAll` يمرّر سياق السويت كوسيط أول، فيصير نمطَ
+  // الهاتف كائناً دائريّاً يرفضه سائق القاعدة.
   afterAll(async () => {
-    await resetBusinessSettings();
-    await purgeTestUsers('077%');
+    await purgeTestUsers();
   });
 
-  it('بلا ضبط: القيم الفعّالة هي الافتراضية المخبوزة في الكود', async () => {
-    const res = await api
-      .get('/api/admin/settings/business')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .expect(200);
-
-    const byKey = Object.fromEntries(
-      res.body.data.items.map((i: { key: string }) => [i.key, i]),
-    );
-    expect(byKey.points_order_received.value).toBeNull();
-    expect(byKey.points_order_received.usingDefault).toBe(true);
-    expect(byKey.points_order_received.effectiveValue).toBe(
-      byKey.points_order_received.defaultValue,
-    );
-    // ولا يُسرَّب أي إعداد أمني إلى هذه القائمة.
-    const keys = res.body.data.items.map((i: { key: string }) => i.key);
-    for (const forbidden of ['jwt', 'bcrypt', 'otp', 'rate_limit', 'upload']) {
-      expect(keys.some((k: string) => k.includes(forbidden))).toBe(false);
+  it('[CRITICAL] مسار إعدادات الأعمال أُزيل بفعليه', async () => {
+    for (const call of [
+      api.get('/api/admin/settings/business'),
+      api.patch('/api/admin/settings/business').send({}),
+    ]) {
+      const res = await call.set('Authorization', `Bearer ${adminToken}`);
+      expect([404, 405]).toContain(res.status);
     }
   });
 
-  it('الحفظ يثبّت القيمة ويصير النظام يعمل بها', async () => {
+  /**
+   * [CRITICAL] لا باب خلفي يعيد ضبط النسبة أو المهلة.
+   *
+   * إزالةُ حقلٍ من الواجهة لا تكفي: المسار العام للإعدادات
+   * (`PATCH /admin/settings`) يقبل مفاتيح روابط التواصل، ويجب ألّا يقبل هذه.
+   */
+  it('[CRITICAL] المسار العام للإعدادات لا يكتب النسبة ولا المهلة', async () => {
     await api
-      .patch('/api/admin/settings/business')
+      .patch('/api/admin/settings')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ points_order_received: 33 })
-      .expect(200);
+      .send({
+        birthday_discount_percent: 50,
+        order_rating_delay_hours: 99,
+      });
 
-    const config = await businessConfigService.current();
-    expect(config.points_order_received).toBe(33);
+    const { rows } = await db.query(
+      `SELECT key FROM store_settings
+        WHERE key IN ('birthday_discount_percent', 'order_rating_delay_hours')`,
+    );
+    expect(rows).toHaveLength(0);
+  });
+
+  /** ونسبة خصم الميلاد ثابتة عند ٥٪ مهما جرى. */
+  it('[CRITICAL] خصم الميلاد ثابت عند ٥٪', async () => {
+    expect(BIRTHDAY_DISCOUNT_PERCENT).toBe(5);
+    expect(birthdayDiscountAmount(100_000)).toBe(5_000);
+    expect(birthdayDiscountAmount(0)).toBe(0);
+  });
+
+  /** والإعدادات النصّية غير المتعلّقة بهذا لم تُمَس. */
+  it('روابط التواصل ما زالت قابلة للضبط', async () => {
+    await api
+      .patch('/api/admin/settings')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ social_instagram: 'https://instagram.com/otaku' })
+      .expect(200);
 
     const res = await api
-      .get('/api/admin/settings/business')
+      .get('/api/admin/settings')
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
-    const item = res.body.data.items.find(
-      (i: { key: string }) => i.key === 'points_order_received',
-    );
-    expect(item.value).toBe('33');
-    expect(item.effectiveValue).toBe(33);
-    expect(item.usingDefault).toBe(false);
-  });
-
-  it('القيم غير الصالحة مرفوضة — لا حفظ صامت', async () => {
-    const cases: Array<[string, unknown]> = [
-      ['points_order_received', -5],
-      ['points_order_received', 'abc'],
-      ['points_order_received', 1.5],
-      ['birthday_discount_percent', 500],
-      ['order_rating_delay_hours', -1],
-    ];
-    for (const [key, value] of cases) {
-      const res = await api
-        .patch('/api/admin/settings/business')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({ [key]: value });
-      expect([400, 422], `${key}=${String(value)}`).toContain(res.status);
-    }
-    // ولم يُحفظ شيء.
-    const config = await businessConfigService.current();
-    expect(config.points_order_received).toBe(20);
-  });
-
-  it('الإفراغ يعيد الإعداد إلى الافتراضي', async () => {
-    await api
-      .patch('/api/admin/settings/business')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ birthday_discount_percent: 12 })
-      .expect(200);
-    expect((await businessConfigService.current()).birthday_discount_percent).toBe(12);
-
-    await api
-      .patch('/api/admin/settings/business')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ birthday_discount_percent: null })
-      .expect(200);
-    expect((await businessConfigService.current()).birthday_discount_percent).toBe(5);
-  });
-
-  it('قيمة فاسدة في القاعدة لا تُسقط النظام — يعود للافتراضي', async () => {
-    await db.query(
-      `INSERT INTO store_settings (key, value) VALUES ('points_order_received', 'not-a-number')
-       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
-    );
-    const config = await businessConfigService.current();
-    expect(config.points_order_received).toBe(20);
-  });
-
-  it('[CRITICAL] تغيير قيمة النقاط لا يمسّ الدفتر التاريخي', async () => {
-    const { userId } = await registerAndLogin();
-
-    // منحة بالقيمة الحالية.
-    await db.query(
-      `INSERT INTO points_ledger (user_id, label, amount, reason)
-       VALUES ($1, 'منحة قديمة', $2, 'manual')`,
-      [userId, (await businessConfigService.current()).points_review_approved],
-    );
-    const before = await api
-      .get(`/api/admin/customers/${userId}/points`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .expect(200);
-    const historicAmount = before.body.data.ledger[0].amount;
-    const historicBalance = before.body.data.balance;
-
-    // رفع القيمة إلى خمسة أضعاف.
-    await api
-      .patch('/api/admin/settings/business')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ points_review_approved: 5 })
-      .expect(200);
-
-    const after = await api
-      .get(`/api/admin/customers/${userId}/points`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .expect(200);
-
-    // الصفّ القديم كما هو، والرصيد لم يُعَد حسابه بالقيمة الجديدة.
-    expect(after.body.data.ledger[0].amount).toBe(historicAmount);
-    expect(after.body.data.balance).toBe(historicBalance);
-  });
-
-  it('[CRITICAL] تغيير مهلة التقييم لا يعيد كتابة موعد طلب قائم', async () => {
-    const { rows } = await db.query<{ id: string; rating_available_at: Date | null }>(
-      `SELECT id, rating_available_at FROM orders
-        WHERE rating_available_at IS NOT NULL LIMIT 1`,
-    );
-    if (rows.length === 0) return; // لا طلب مناسب في هذه القاعدة.
-
-    const before = rows[0]!.rating_available_at?.toISOString();
-
-    await api
-      .patch('/api/admin/settings/business')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ order_rating_delay_hours: 1 })
-      .expect(200);
-
-    const { rows: after } = await db.query<{ rating_available_at: Date | null }>(
-      'SELECT rating_available_at FROM orders WHERE id = $1',
-      [rows[0]!.id],
-    );
-    expect(after[0]!.rating_available_at?.toISOString()).toBe(before);
+    expect(res.body.data.social_instagram).toBe('https://instagram.com/otaku');
   });
 });
 
@@ -544,11 +459,11 @@ describe('لوحة التحكم — أعياد الميلاد', () => {
   let adminToken: string;
 
   beforeAll(async () => {
-    await purgeTestUsers('077%');
+    await purgeTestUsers();
     adminToken = await createAdminUser();
   });
   afterAll(async () => {
-    await purgeTestUsers('077%');
+    await purgeTestUsers();
   });
 
   it('حالة التسجيل مشتقّة من العمود — ولا حقل ميلاد ثانٍ', async () => {
@@ -577,10 +492,15 @@ describe('لوحة التحكم — أعياد الميلاد', () => {
     expect(row!.birthdaySetAt).toBeTruthy();
 
     // لا عناوين ولا محتويات طلبات في هذه الاستجابة.
+    // قائمة بيضاء مقصودة: أي حقل جديد يجب أن يُضاف هنا صراحةً، فلا يتسرّب
+    // عنوانٌ أو محتوى طلب إلى هذه الاستجابة دون أن يكسر الاختبار.
+    // `nextBirthday`/`daysUntilBirthday` مشتقّان من اليوم والشهر المعروضين
+    // أصلاً — لا بيانات جديدة عن الزبون، فقط حسابُ تقويم.
     expect(Object.keys(row!).sort()).toEqual(
       [
         'avatarUrl', 'birthDay', 'birthMonth', 'birthdaySetAt', 'completedOrders',
-        'discountUsedThisYear', 'id', 'isActive', 'isRegistered', 'phone', 'username',
+        'daysUntilBirthday', 'discountUsedThisYear', 'id', 'isActive', 'isRegistered',
+        'nextBirthday', 'phone', 'username',
       ].sort(),
     );
   });
@@ -641,7 +561,7 @@ describe('لوحة التحكم — البنرات', () => {
   let categoryId: string;
 
   beforeAll(async () => {
-    await purgeTestUsers('077%');
+    await purgeTestUsers();
     adminToken = await createAdminUser();
     const catalog = await seedTestCatalog();
     categoryId = catalog.categoryId;
@@ -661,11 +581,15 @@ describe('لوحة التحكم — البنرات', () => {
 
   afterAll(async () => {
     await db.query('DELETE FROM banners WHERE id = $1', [bannerId]);
-    await purgeTestUsers('077%');
+    await purgeTestUsers();
   });
 
+  // قائمة بيضاء مقصودة: كل حقل جديد يُضاف هنا صراحةً، فلا يتسرّب شيء إلى
+  // استجابة البنر دون أن يكسر الاختبار. `subtitle` و`placement` أُضيفا مع
+  // إدارة بنرات الرئيسية (السطر الثاني، وموضع العرض: بطل أم شريط ترويجي).
   const BANNER_KEYS = [
-    'id', 'imageUrl', 'title', 'destinationType', 'destinationValue', 'sortOrder', 'isActive',
+    'id', 'imageUrl', 'title', 'subtitle', 'placement',
+    'destinationType', 'destinationValue', 'sortOrder', 'isActive',
   ].sort();
 
   it('POST و PATCH و GET تعيد الشكل نفسه (camelCase)', async () => {

@@ -1,5 +1,3 @@
-import { resolveMediaUrl } from '../utils/media'
-import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -10,29 +8,22 @@ import {
   Card,
   Descriptions,
   Flex,
-  Image,
   Space,
-  DatePicker,
-  Popconfirm,
-  Spin,
   Table,
   Timeline,
   Typography,
 } from 'antd'
 import { ArrowRightOutlined } from '@ant-design/icons'
-import type { Dayjs } from 'dayjs'
-import {
-  getOrder,
-  rescheduleReminder,
-  sendReminderNow,
-  updateOrderStatus,
-} from '../api/ordersApi'
+import { getOrder, updateOrderStatus } from '../api/ordersApi'
 import { ApiError } from '../api/client'
-import type { AdminOrder, OrderItem, OrderStatus } from '../types/orders'
+import type { OrderItem, OrderStatus } from '../types/orders'
 import { formatCurrency, formatDateTime } from '../utils/format'
 import StatusBadge from '../components/StatusBadge'
 import StatusTransitionButtons from '../components/StatusTransitionButtons'
 import { STATUS_LABELS } from '../constants/orders'
+import { MediaThumb } from '../components/ui/MediaThumb'
+import { ReminderControls } from '../components/ui/ReminderControls'
+import { LoadingState, ErrorState } from '../components/ui/States'
 
 export default function OrderDetailPage() {
   const { id = '' } = useParams()
@@ -62,25 +53,15 @@ export default function OrderDetailPage() {
   })
 
   if (orderQuery.isPending) {
-    return (
-      <Flex justify="center" style={{ paddingTop: 80 }}>
-        <Spin size="large" tip="جارٍ تحميل الطلب…">
-          <div style={{ width: 120, height: 60 }} />
-        </Spin>
-      </Flex>
-    )
+    return <LoadingState label="جارٍ تحميل الطلب…" />
   }
 
   if (orderQuery.isError) {
     return (
-      <Alert
-        type="error"
-        showIcon
+      <ErrorState
         message="تعذر تحميل الطلب"
         description={orderQuery.error.message}
-        action={
-          <Button onClick={() => orderQuery.refetch()}>إعادة المحاولة</Button>
-        }
+        onRetry={() => orderQuery.refetch()}
       />
     )
   }
@@ -92,18 +73,9 @@ export default function OrderDetailPage() {
       title: '',
       key: 'image',
       width: 64,
-      render: (_: unknown, item: OrderItem) =>
-        item.imageUrl ? (
-          <Image
-            src={resolveMediaUrl(item.imageUrl)}
-            width={48}
-            height={48}
-            style={{ objectFit: 'cover', borderRadius: 4 }}
-            preview={false}
-          />
-        ) : (
-          '—'
-        ),
+      render: (_: unknown, item: OrderItem) => (
+        <MediaThumb reference={item.imageUrl} size={44} radius={6} />
+      ),
     },
     { title: 'المنتج', dataIndex: 'productName', key: 'productName' },
     {
@@ -243,12 +215,32 @@ export default function OrderDetailPage() {
               </Typography.Text>
             </Descriptions.Item>
           )}
+          {order.deliveryDiscount > 0 && (
+            <Descriptions.Item label="التوصيل بعد الخصم">
+              {formatCurrency(order.deliveryFee - order.deliveryDiscount)}
+            </Descriptions.Item>
+          )}
           <Descriptions.Item label="الإجمالي النهائي">
             <Typography.Text strong>
               {formatCurrency(order.total)}
             </Typography.Text>
           </Descriptions.Item>
         </Descriptions>
+
+        {/*
+          مبلغ محاسبي للمتجر لا سطرٌ في فاتورة الزبون — لذلك هو خارج جدول
+          الإجماليات أعلاه ومعنون صراحةً. ضمُّه إلى الجدول كان سيقرأ كخصمٍ
+          آخر، وهو عكس معناه: الزبون لم ينله.
+        */}
+        {(order.deliveryDiscountExcess ?? 0) > 0 && (
+          <Alert
+            style={{ marginTop: 12, maxWidth: 420 }}
+            type="info"
+            showIcon
+            message={`فائض خصم التوصيل: ${formatCurrency(order.deliveryDiscountExcess ?? 0)}`}
+            description="ما تجاوز رسوم التوصيل من ترويج منتجات هذا الطلب. مبلغ محتفَظ به للمتجر — لم يُخصم من الزبون ولا يدخل إجمالي الطلب."
+          />
+        )}
       </Card>
 
       {order.dispatchedAt && (
@@ -302,126 +294,6 @@ export default function OrderDetailPage() {
           </Descriptions>
         )}
       </Card>
-    </Space>
-  )
-}
-
-/**
- * ضبط تذكير «هل استلمت طلبك؟» لطلب واحد.
- *
- * الجدولة على الخادم تقرأ عموداً في القاعدة، فتغيير الموعد هنا يكفي — لا
- * مؤقّت قديم يبقى معلّقاً. وبعد الإرسال تُقفل الأدوات لأن الخادم يرفض
- * إعادة الجدولة أو الإرسال مرة ثانية (REMINDER_ALREADY_SENT).
- */
-const PRESETS = [1, 6, 12, 24, 48] as const
-
-function ReminderControls({ order }: { order: AdminOrder }) {
-  const { message } = App.useApp()
-  const queryClient = useQueryClient()
-  const [customAt, setCustomAt] = useState<Dayjs | null>(null)
-
-  const sent = order.ratingReminderSentAt !== null
-  const invalidate = () => {
-    // نفس مفاتيح الصفحة نفسها — مفتاح مختلف يعني إبطالاً لا يصيب شيئاً
-    // وواجهةً تبقى على حالة قديمة بعد نجاح العملية.
-    void queryClient.invalidateQueries({ queryKey: ['order', order.id] })
-    void queryClient.invalidateQueries({ queryKey: ['orders'] })
-  }
-
-  const reschedule = useMutation({
-    mutationFn: (payload: { delayHours: number } | { remindAt: string }) =>
-      rescheduleReminder(order.id, payload),
-    onSuccess: () => {
-      message.success('حُدّث موعد التذكير')
-      invalidate()
-    },
-    onError: (error) =>
-      message.error(error instanceof ApiError ? error.message : 'تعذر التحديث'),
-  })
-
-  const sendNow = useMutation({
-    mutationFn: () => sendReminderNow(order.id),
-    onSuccess: () => {
-      message.success('أُرسل الإشعار للعميل')
-      invalidate()
-    },
-    onError: (error) =>
-      message.error(error instanceof ApiError ? error.message : 'تعذر الإرسال'),
-  })
-
-  const busy = reschedule.isPending || sendNow.isPending
-
-  if (sent) {
-    return (
-      <Alert
-        type="success"
-        showIcon
-        message="أُرسل التذكير للعميل"
-        description={`وقت الإرسال: ${formatDateTime(order.ratingReminderSentAt!)}. لا يمكن إعادة إرساله أو إعادة جدولته.`}
-      />
-    )
-  }
-
-  return (
-    <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-      <Descriptions column={1} size="small">
-        <Descriptions.Item label="خروج الطلب للتوصيل">
-          {formatDateTime(order.dispatchedAt!)}
-        </Descriptions.Item>
-        <Descriptions.Item label="تأكيد الاستلام">
-          {order.deliveredAt ? formatDateTime(order.deliveredAt) : 'لم يؤكّد بعد'}
-        </Descriptions.Item>
-        <Descriptions.Item label="موعد التذكير الحالي">
-          {order.ratingAvailableAt ? formatDateTime(order.ratingAvailableAt) : '—'}
-          {order.ratingAvailable ? ' (مستحق الآن)' : ''}
-        </Descriptions.Item>
-      </Descriptions>
-
-      <Space wrap>
-        <Typography.Text type="secondary">بعد الخروج للتوصيل بـ:</Typography.Text>
-        {PRESETS.map((hours) => (
-          <Button
-            key={hours}
-            size="small"
-            disabled={busy}
-            onClick={() => reschedule.mutate({ delayHours: hours })}
-          >
-            {hours} ساعة
-          </Button>
-        ))}
-      </Space>
-
-      <Space wrap>
-        <Typography.Text type="secondary">أو وقت محدّد:</Typography.Text>
-        <DatePicker
-          showTime
-          value={customAt}
-          disabled={busy}
-          onChange={(value) => setCustomAt(value)}
-          placeholder="اختر التاريخ والوقت"
-        />
-        <Button
-          size="small"
-          disabled={busy || !customAt}
-          onClick={() =>
-            customAt && reschedule.mutate({ remindAt: customAt.toISOString() })
-          }
-        >
-          حفظ الموعد
-        </Button>
-      </Space>
-
-      <Popconfirm
-        title="إرسال الإشعار الآن؟"
-        description="سيصل العميل فوراً، ولن يُرسل التذكير المجدول بعدها."
-        okText="إرسال"
-        cancelText="إلغاء"
-        onConfirm={() => sendNow.mutateAsync().catch(() => undefined)}
-      >
-        <Button type="primary" loading={sendNow.isPending} disabled={busy}>
-          إرسال الإشعار الآن
-        </Button>
-      </Popconfirm>
     </Space>
   )
 }

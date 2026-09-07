@@ -96,52 +96,66 @@ class _OtpCodeFieldState extends State<OtpCodeField> {
       }
     }
 
-    return Directionality(
-      // الأرقام تُدخل من اليسار لليمين حتى داخل واجهة عربية.
-      textDirection: TextDirection.ltr,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: List.generate(6, (index) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 3.5),
-            child: SizedBox(
-              width: 46,
-              height: 56,
-              child: TextField(
-                controller: _cells[index],
-                focusNode: _nodes[index],
-                onChanged: (v) => _onChanged(index, v),
-                keyboardType: TextInputType.number,
-                textAlign: TextAlign.center,
-                maxLength: index == 0 ? 6 : 1,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: AppDimens.weightExtraBold,
-                ),
-                decoration: InputDecoration(
-                  counterText: '',
-                  filled: true,
-                  fillColor: Theme.of(
-                    context,
-                  ).colorScheme.surfaceContainerHighest,
-                  contentPadding: EdgeInsets.zero,
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(AppDimens.radiusSm),
-                    borderSide: BorderSide(color: borderFor(index), width: 1.5),
+    return FittedBox(
+      // على الشاشات الضيقة يبقى الصف متمركزاً بلا تجاوز تخطيط: الخانات
+      // تُقاس بنسبها الأصلية (٤٦ عرضاً) وتُصغَّر متناسبةً حين لا تتسع.
+      fit: BoxFit.scaleDown,
+      child: Directionality(
+        // الأرقام تُدخل من اليسار لليمين حتى داخل واجهة عربية.
+        textDirection: TextDirection.ltr,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(6, (index) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 3.5),
+              child: SizedBox(
+                width: 46,
+                height: 56,
+                child: TextField(
+                  controller: _cells[index],
+                  focusNode: _nodes[index],
+                  onChanged: (v) => _onChanged(index, v),
+                  keyboardType: TextInputType.number,
+                  textAlign: TextAlign.center,
+                  maxLength: index == 0 ? 6 : 1,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: AppDimens.weightExtraBold,
                   ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(AppDimens.radiusSm),
-                    borderSide: BorderSide(color: borderFor(index), width: 1.8),
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(AppDimens.radiusSm),
-                    borderSide: BorderSide(color: borderFor(index), width: 1.5),
+                  decoration: InputDecoration(
+                    counterText: '',
+                    filled: true,
+                    fillColor: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest,
+                    contentPadding: EdgeInsets.zero,
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(AppDimens.radiusSm),
+                      borderSide: BorderSide(
+                        color: borderFor(index),
+                        width: 1.5,
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(AppDimens.radiusSm),
+                      borderSide: BorderSide(
+                        color: borderFor(index),
+                        width: 1.8,
+                      ),
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(AppDimens.radiusSm),
+                      borderSide: BorderSide(
+                        color: borderFor(index),
+                        width: 1.5,
+                      ),
+                    ),
                   ),
                 ),
               ),
-            ),
-          );
-        }),
+            );
+          }),
+        ),
       ),
     );
   }

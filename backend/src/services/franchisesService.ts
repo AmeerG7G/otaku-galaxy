@@ -11,7 +11,12 @@ export const franchisesService = {
     return franchiseRepo.listAll(db);
   },
 
-  async create(input: { name: string; imageUrl?: string | null; sortOrder?: number }) {
+  async create(input: {
+    name: string;
+    altNames?: string[];
+    imageUrl?: string | null;
+    sortOrder?: number;
+  }) {
     try {
       return await franchiseRepo.create(db, input);
     } catch (error) {
@@ -24,7 +29,13 @@ export const franchisesService = {
 
   async update(
     id: string,
-    input: { name?: string; imageUrl?: string | null; sortOrder?: number; isActive?: boolean },
+    input: {
+      name?: string;
+      altNames?: string[];
+      imageUrl?: string | null;
+      sortOrder?: number;
+      isActive?: boolean;
+    },
   ) {
     const updated = await franchiseRepo.update(db, id, input);
     if (!updated) throw Errors.notFound('الأنمي غير موجود');

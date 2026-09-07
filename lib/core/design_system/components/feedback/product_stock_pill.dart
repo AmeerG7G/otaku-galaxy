@@ -18,7 +18,10 @@ class ProductStockPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.themeColors;
     final (String label, Color color) = switch (stock) {
-      <= 0 => ('غير متوفر حالياً', colors.error),
+      // «نفذ المخزون» لا «غير متوفر»: الأولى تصف حالةً مؤقّتة يمكن
+      // انتظارها (ومن هنا زرّ «أعلمني عند توفره»)، والثانية توحي بأن
+      // المنتج لم يعد يُباع فيغادر الزبون بلا سبب.
+      <= 0 => ('نفد المخزون', colors.error),
       <= 3 => ('آخر $stock قطع', colors.warning),
       _ => ('متوفر', colors.success),
     };

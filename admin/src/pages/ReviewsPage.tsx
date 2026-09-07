@@ -1,4 +1,3 @@
-import { resolveMediaUrl } from '../utils/media'
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -6,8 +5,6 @@ import {
   Button,
   Card,
   Empty,
-  Flex,
-  Image,
   Input,
   Modal,
   Rate,
@@ -21,6 +18,9 @@ import { CheckOutlined, CloseOutlined, ReloadOutlined } from '@ant-design/icons'
 import { listAdminReviews, moderateReview } from '../api/communityApi'
 import type { AdminReview, ReviewStatus } from '../types/community'
 import { formatDateTime } from '../utils/format'
+import { PageHeader } from '../components/ui/PageHeader'
+import { MediaThumb } from '../components/ui/MediaThumb'
+import { ErrorState } from '../components/ui/States'
 
 const STATUS_TABS: { label: string; value: ReviewStatus }[] = [
   { label: 'بانتظار المراجعة', value: 'pending' },
@@ -111,17 +111,9 @@ export default function ReviewsPage() {
       title: 'الصورة',
       key: 'photo',
       width: 90,
-      render: (_: unknown, review: AdminReview) =>
-        review.photoUrl ? (
-          <Image
-            src={resolveMediaUrl(review.photoUrl)}
-            width={56}
-            height={56}
-            style={{ objectFit: 'cover', borderRadius: 6 }}
-          />
-        ) : (
-          <Typography.Text type="secondary">—</Typography.Text>
-        ),
+      render: (_: unknown, review: AdminReview) => (
+        <MediaThumb reference={review.photoUrl} size={56} radius={6} />
+      ),
     },
     {
       title: 'الحالة',
@@ -183,35 +175,38 @@ export default function ReviewsPage() {
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Flex align="center" justify="space-between" wrap gap={12}>
-        <div>
-          <Typography.Title level={3} style={{ margin: 0 }}>
-            مراجعة التقييمات
-          </Typography.Title>
-          <Typography.Text type="secondary">
-            التقييم لا يظهر في التطبيق قبل نشره من هنا.
-          </Typography.Text>
-        </div>
-        <Button
-          icon={<ReloadOutlined />}
-          loading={reviewsQuery.isFetching}
-          onClick={() => reviewsQuery.refetch()}
-        >
-          تحديث
-        </Button>
-      </Flex>
-
-      <Segmented
-        value={status}
-        options={STATUS_TABS}
-        onChange={(value) => {
-          setStatus(value as ReviewStatus)
-          setPage(1)
-        }}
+      <PageHeader
+        title="مراجعة التقييمات"
+        description="التقييم لا يظهر في التطبيق قبل نشره من هنا."
+        extra={
+          <Button
+            icon={<ReloadOutlined />}
+            loading={reviewsQuery.isFetching}
+            onClick={() => reviewsQuery.refetch()}
+          >
+            تحديث
+          </Button>
+        }
       />
 
       <Card variant="outlined">
-        {reviewsQuery.data?.items.length === 0 && !reviewsQuery.isPending ? (
+        <Segmented
+          value={status}
+          options={STATUS_TABS}
+          onChange={(value) => {
+            setStatus(value as ReviewStatus)
+            setPage(1)
+          }}
+          block
+          style={{ marginBottom: 16 }}
+        />
+        {reviewsQuery.isError ? (
+          <ErrorState
+            message="تعذّر تحميل التقييمات"
+            description={reviewsQuery.error.message}
+            onRetry={() => reviewsQuery.refetch()}
+          />
+        ) : reviewsQuery.data?.items.length === 0 && !reviewsQuery.isPending ? (
           <Empty
             description={
               status === 'pending' ? 'لا توجد تقييمات بانتظار المراجعة' : 'لا توجد تقييمات'

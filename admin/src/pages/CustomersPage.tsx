@@ -7,31 +7,73 @@ import {
   Button,
   Card,
   Flex,
+  Input,
   Modal,
+  Segmented,
+  Select,
   Space,
   Statistic,
   Table,
   Tag,
   Typography,
 } from 'antd'
-import { ReloadOutlined, StarOutlined } from '@ant-design/icons'
+import { ReloadOutlined, SearchOutlined, StarOutlined, WhatsAppOutlined } from '@ant-design/icons'
 import type { TablePaginationConfig } from 'antd'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { listCustomers, toggleUserActive } from '../api/customersApi'
 import { getCustomerPoints } from '../api/pointsApi'
 import type { PointsLedgerEntry, PointsReason } from '../types/points'
 import { ApiError } from '../api/client'
-import type { AdminCustomer } from '../types/customers'
+import type {
+  AdminCustomer,
+  CustomerGenderFilter,
+  CustomerSort,
+} from '../types/customers'
+import { CUSTOMER_SORT_LABELS, customerGenderLabel } from '../types/customers'
 import { formatDateTime } from '../utils/format'
+import { whatsappUrl } from '../utils/phone'
+import { POINTS_REASON_LABELS } from '../constants/points'
 import EmptyState from '../components/EmptyState'
+import { PageHeader } from '../components/ui/PageHeader'
 
 const PAGE_SIZE = 12
+
+/** مهلة الكتابة قبل إطلاق البحث — طلب لكل حرف يُغرق الخادم بلا فائدة. */
+const SEARCH_DEBOUNCE_MS = 350
+
+type ActivityFilter = 'all' | 'active' | 'blocked'
+type BirthdayFilter = 'all' | 'yes' | 'no'
+type OrdersFilter = 'all' | 'yes' | 'no'
+
+/** «الكل» تعني «بلا ترشيح» — لا تُرسَل إلى الخادم أصلاً. */
+function tri(value: 'all' | 'yes' | 'no'): boolean | undefined {
+  if (value === 'all') return undefined
+  return value === 'yes'
+}
 
 export default function CustomersPage() {
   const { message, modal } = App.useApp()
   const queryClient = useQueryClient()
   const [page, setPage] = useState(1)
   const [pointsFor, setPointsFor] = useState<AdminCustomer | null>(null)
+
+  const [searchInput, setSearchInput] = useState('')
+  const [search, setSearch] = useState('')
+  const [activity, setActivity] = useState<ActivityFilter>('all')
+  const [birthday, setBirthday] = useState<BirthdayFilter>('all')
+  const [orders, setOrders] = useState<OrdersFilter>('all')
+  const [gender, setGender] = useState<CustomerGenderFilter>('all')
+  const [sort, setSort] = useState<CustomerSort>('newest')
+
+  // البحث يُرسَل بعد سكون الكتابة، ويعود بالقائمة إلى صفحتها الأولى: البقاء
+  // على الصفحة الخامسة بعد تضييق النتائج يعرض جدولاً فارغاً بلا سبب ظاهر.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearch(searchInput.trim())
+      setPage(1)
+    }, SEARCH_DEBOUNCE_MS)
+    return () => clearTimeout(timer)
+  }, [searchInput])
 
   /**
    * نقاط العميل المحدَّد — تُجلب عند الفتح فقط.
@@ -44,10 +86,41 @@ export default function CustomersPage() {
     enabled: Boolean(pointsFor),
   })
 
+  // [CRITICAL] كل المعايير تُرسَل إلى الخادم. الترشيح في المتصفح كان يعني
+  // تحميل كل زبون في المتجر على كل حرف — يعمل على عشرين، وينهار على ألف.
+  const filters = {
+    page,
+    limit: PAGE_SIZE,
+    ...(search ? { search } : {}),
+    ...(activity === 'all' ? {} : { isActive: activity === 'active' }),
+    ...(tri(birthday) === undefined ? {} : { hasBirthday: tri(birthday) }),
+    ...(tri(orders) === undefined ? {} : { hasOrders: tri(orders) }),
+    ...(gender === 'all' ? {} : { gender }),
+    sort,
+  }
+
   const customersQuery = useQuery({
-    queryKey: ['customers', page],
-    queryFn: () => listCustomers({ page, limit: PAGE_SIZE }),
+    queryKey: ['customers', filters],
+    queryFn: () => listCustomers(filters),
   })
+
+  function resetFilters() {
+    setSearchInput('')
+    setSearch('')
+    setActivity('all')
+    setBirthday('all')
+    setOrders('all')
+    setGender('all')
+    setSort('newest')
+    setPage(1)
+  }
+
+  const filtersActive =
+    search !== '' ||
+    activity !== 'all' ||
+    birthday !== 'all' ||
+    orders !== 'all' ||
+    gender !== 'all'
 
   const invalidateCustomers = () => {
     queryClient.invalidateQueries({ queryKey: ['customers'] })
@@ -94,9 +167,33 @@ export default function CustomersPage() {
       ),
     },
     {
-      title: 'الهاتف',
+      // الرقم كاملاً: هذه شاشةُ مسؤولٍ مصادَق، وإخفاء خاناته يجعلها بلا فائدة
+      // لطاقم يتواصل مع الزبون.
+      title: 'رقم الهاتف',
       dataIndex: 'phone',
       key: 'phone',
+      width: 170,
+      render: (phone: string) => (
+        <Typography.Text copyable style={{ direction: 'ltr', display: 'inline-block' }}>
+          {phone}
+        </Typography.Text>
+      ),
+    },
+    {
+      title: 'الجنس',
+      dataIndex: 'gender',
+      key: 'gender',
+      width: 110,
+      // [CRITICAL] القيمة المخزَّنة وحدها. لا استنتاج من الاسم، و`null` تبقى
+      // «غير محدد» — لا تُحسب ذكراً لأن الحقل أُضيف بعد تسجيل صاحبها.
+      render: (value: AdminCustomer['gender']) =>
+        value === 'male' ? (
+          <Tag color="blue">{customerGenderLabel('male')}</Tag>
+        ) : value === 'female' ? (
+          <Tag color="red">{customerGenderLabel('female')}</Tag>
+        ) : (
+          <Typography.Text type="secondary">{customerGenderLabel(null)}</Typography.Text>
+        ),
     },
     {
       title: 'الحالة',
@@ -104,6 +201,34 @@ export default function CustomersPage() {
       key: 'isActive',
       render: (value: boolean) =>
         value ? <Tag color="green">نشط</Tag> : <Tag color="red">محظور</Tag>,
+    },
+    {
+      title: 'الميلاد',
+      key: 'birthday',
+      width: 110,
+      render: (_: unknown, customer: AdminCustomer) =>
+        customer.hasBirthday ? (
+          <Tag color="magenta">
+            {customer.birthDay}/{customer.birthMonth}
+          </Tag>
+        ) : (
+          <Typography.Text type="secondary">—</Typography.Text>
+        ),
+    },
+    {
+      title: 'الطلبات',
+      key: 'orders',
+      width: 120,
+      render: (_: unknown, customer: AdminCustomer) => (
+        <Space direction="vertical" size={0}>
+          <Typography.Text>{customer.ordersTotal}</Typography.Text>
+          {customer.ordersCompleted > 0 && (
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              {customer.ordersCompleted} مكتمل
+            </Typography.Text>
+          )}
+        </Space>
+      ),
     },
     {
       title: 'تاريخ الإنشاء',
@@ -114,31 +239,55 @@ export default function CustomersPage() {
     {
       title: 'النقاط',
       key: 'points',
-      width: 110,
+      width: 140,
       render: (_: unknown, customer: AdminCustomer) => (
-        <Button size="small" icon={<StarOutlined />} onClick={() => setPointsFor(customer)}>
-          عرض
-        </Button>
+        <Space size={6}>
+          <Typography.Text strong>{customer.points}</Typography.Text>
+          <Button size="small" icon={<StarOutlined />} onClick={() => setPointsFor(customer)}>
+            السجل
+          </Button>
+        </Space>
       ),
     },
     {
       title: 'الإجراءات',
       key: 'actions',
-      width: 150,
-      render: (_: unknown, customer: AdminCustomer) => (
-        <Button
-          size="small"
-          danger={customer.isActive}
-          loading={toggleMutation.isPending && toggleMutation.variables === customer.id}
-          onClick={() => confirmToggle(customer)}
-        >
-          {customer.isActive ? 'حظر' : 'تفعيل'}
-        </Button>
-      ),
+      width: 210,
+      render: (_: unknown, customer: AdminCustomer) => {
+        const chat = whatsappUrl(customer.phone)
+        return (
+          <Space size={6}>
+            {/*
+              يفتح المحادثة فقط ولا يرسل شيئاً: التواصل يبقى فعلاً صريحاً من
+              المسؤول، ولا خادم مراسلة جديد خلفه.
+            */}
+            <Button
+              size="small"
+              icon={<WhatsAppOutlined />}
+              disabled={!chat}
+              href={chat ?? undefined}
+              target="_blank"
+              rel="noreferrer noopener"
+            >
+              واتساب
+            </Button>
+            <Button
+              size="small"
+              danger={customer.isActive}
+              loading={toggleMutation.isPending && toggleMutation.variables === customer.id}
+              onClick={() => confirmToggle(customer)}
+            >
+              {customer.isActive ? 'حظر' : 'تفعيل'}
+            </Button>
+          </Space>
+        )
+      },
     },
   ]
 
   const items = customersQuery.data?.items ?? []
+  // العدّادات من الخادم لا من الصفحة المعروضة — انظر `CustomerGenderCounts`.
+  const genderCounts = customersQuery.data?.genderCounts
 
   const handleTableChange = (pagination: TablePaginationConfig) => {
     setPage(pagination.current ?? 1)
@@ -146,23 +295,109 @@ export default function CustomersPage() {
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Flex align="center" justify="space-between" wrap gap={12}>
-        <div>
-          <Typography.Title level={3} style={{ margin: 0 }}>
-            العملاء
-          </Typography.Title>
-          <Typography.Text type="secondary">
-            حسابات زبائن المتجر.
-          </Typography.Text>
-        </div>
-        <Button
-          icon={<ReloadOutlined />}
-          loading={customersQuery.isFetching}
-          onClick={() => customersQuery.refetch()}
-        >
-          تحديث
-        </Button>
-      </Flex>
+      <PageHeader
+        title="الزبائن"
+        description="بحث وترشيح على الخادم — يعمل مهما كبرت القائمة."
+        extra={
+          <Space wrap>
+            {filtersActive && <Button onClick={resetFilters}>مسح الترشيح</Button>}
+            <Button
+              icon={<ReloadOutlined />}
+              loading={customersQuery.isFetching}
+              onClick={() => customersQuery.refetch()}
+            >
+              تحديث
+            </Button>
+          </Space>
+        }
+      />
+
+      <Card variant="outlined">
+        <Flex wrap gap={12} align="center">
+          <Input
+            allowClear
+            prefix={<SearchOutlined />}
+            placeholder="ابحث بالاسم أو رقم الهاتف"
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
+            style={{ maxWidth: 280, flex: '1 1 220px' }}
+          />
+          <Segmented
+            value={activity}
+            onChange={(value) => {
+              setActivity(value as ActivityFilter)
+              setPage(1)
+            }}
+            options={[
+              { label: 'الكل', value: 'all' },
+              { label: 'نشط', value: 'active' },
+              { label: 'محظور', value: 'blocked' },
+            ]}
+          />
+          <Select
+            value={birthday}
+            onChange={(value) => {
+              setBirthday(value)
+              setPage(1)
+            }}
+            style={{ minWidth: 160 }}
+            options={[
+              { value: 'all', label: 'الميلاد: الكل' },
+              { value: 'yes', label: 'سجّل ميلاده' },
+              { value: 'no', label: 'لم يسجّل ميلاده' },
+            ]}
+          />
+          <Select
+            value={orders}
+            onChange={(value) => {
+              setOrders(value)
+              setPage(1)
+            }}
+            style={{ minWidth: 150 }}
+            options={[
+              { value: 'all', label: 'الطلبات: الكل' },
+              { value: 'yes', label: 'له طلبات' },
+              { value: 'no', label: 'بلا طلبات' },
+            ]}
+          />
+          <Segmented
+            value={gender}
+            onChange={(value) => {
+              setGender(value as CustomerGenderFilter)
+              setPage(1)
+            }}
+            options={[
+              { label: 'جميع المستخدمين', value: 'all' },
+              { label: 'الذكور', value: 'male' },
+              { label: 'الإناث', value: 'female' },
+              { label: 'غير محدد', value: 'unknown' },
+            ]}
+          />
+          <Select
+            value={sort}
+            onChange={(value) => {
+              setSort(value)
+              setPage(1)
+            }}
+            style={{ minWidth: 175 }}
+            options={(Object.keys(CUSTOMER_SORT_LABELS) as CustomerSort[]).map((key) => ({
+              value: key,
+              label: CUSTOMER_SORT_LABELS[key],
+            }))}
+          />
+        </Flex>
+      </Card>
+
+      {genderCounts && (
+        <Card variant="outlined">
+          <Flex wrap gap={32}>
+            <Statistic title="جميع المستخدمين" value={genderCounts.total} />
+            <Statistic title="الذكور" value={genderCounts.male} />
+            <Statistic title="الإناث" value={genderCounts.female} />
+            <Statistic title="غير محدد" value={genderCounts.unknown} />
+          </Flex>
+        </Card>
+      )}
 
       <Card>
         {customersQuery.isError ? (
@@ -183,17 +418,27 @@ export default function CustomersPage() {
             columns={columns}
             dataSource={items}
             loading={customersQuery.isPending || customersQuery.isFetching}
-            scroll={{ x: 800 }}
+            scroll={{ x: 1400 }}
             pagination={{
               current: page,
               pageSize: PAGE_SIZE,
               total: customersQuery.data?.total ?? 0,
               showSizeChanger: false,
-              showTotal: (total) => `${total} عميل`,
+              showTotal: (total) => `${total} زبون`,
             }}
             onChange={handleTableChange}
             locale={{
-              emptyText: <EmptyState description="لا يوجد عملاء بعد" />,
+              emptyText: (
+                <EmptyState
+                  description={
+                    filtersActive
+                      ? 'لا زبون يطابق هذا الترشيح'
+                      : 'لا يوجد زبائن بعد'
+                  }
+                  actionLabel={filtersActive ? 'مسح الترشيح' : undefined}
+                  onAction={filtersActive ? resetFilters : undefined}
+                />
+              ),
             }}
           />
         )}
@@ -244,12 +489,4 @@ export default function CustomersPage() {
       </Modal>
     </Space>
   )
-}
-
-/** تسميات أسباب المنح — عرض فقط. */
-const POINTS_REASON_LABELS: Record<PointsReason, string> = {
-  order_received: 'استلام طلب',
-  review_approved: 'تقييم معتمد',
-  review_with_photo: 'تقييم مصوّر',
-  manual: 'يدوي',
 }

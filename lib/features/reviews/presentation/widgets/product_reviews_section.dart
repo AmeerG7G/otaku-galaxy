@@ -6,6 +6,7 @@ import '../../../community/presentation/screens/community_screen.dart';
 import '../../domain/entities/review.dart';
 import '../../domain/repositories/review_repository.dart';
 import 'star_rating.dart';
+import '../../../visuals/domain/visual_slot.dart';
 
 /// قسم تقييمات العملاء وصورهم داخل تفاصيل المنتج.
 ///
@@ -224,7 +225,7 @@ class _ReviewCard extends StatelessWidget {
                 child: Text(
                   '✓ اشترى هذا المنتج',
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: colors.success,
+                    color: colors.successText,
                     fontWeight: AppDimens.weightBold,
                   ),
                 ),
@@ -263,9 +264,10 @@ class _EmptyReviews extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const OtakuEditorialPanel(
-      title: 'ما بيه تقييمات لهذا المنتج',
-      body: 'كون أول واحد يشارك تجربته بعد استلام طلبه.',
+      title: 'لا توجد تقييمات لهذا المنتج بعد',
+      body: 'كن أول من يشارك تجربته بعد استلام طلبه.',
       artwork: 'assets/art/opt/a-i1.png',
+      artworkSlot: VisualSlots.productReviews,
       margin: EdgeInsets.zero,
       minHeight: 150,
       artHeight: 120,

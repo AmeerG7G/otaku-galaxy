@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/design_system/design_system.dart';
+import '../../../../core/l10n/gender.dart';
 import '../../../../core/errors/app_exception.dart';
 import '../../../../core/router/app_router.dart';
 import '../cubit/auth_cubit.dart';
@@ -10,6 +11,7 @@ import '../widgets/auth_field.dart';
 import '../widgets/auth_scaffold.dart';
 import '../../../settings/data/personalize_storage.dart';
 import '../../../../core/di/injection_container.dart';
+import '../../../visuals/domain/visual_slot.dart';
 
 @RoutePage()
 class LoginScreen extends StatefulWidget {
@@ -126,94 +128,93 @@ class _LoginScreenState extends State<LoginScreen>
         position: _slideAnimation,
         child: AuthScaffold(
           title: 'تسجيل الدخول',
-          subtitle: 'أدخل رقم هاتفك وكلمة المرور للمتابعة إلى حسابك.',
+          subtitle: context.g(GenderedStrings.enterPhoneAndPassword),
           artwork: 'assets/art/opt/a-i4.png',
+          artworkSlot: VisualSlots.login,
           artworkHeight: 196,
           artworkWidth: 138,
           artworkBottom: -14,
           form: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                          // حقل رقم الهاتف — تسمية فوق الحقل بلا أيقونات.
-                          AuthField(
-                            controller: _phoneController,
-                            label: 'رقم الهاتف',
-                            hint: '0770 123 4567',
-                            textDirection: TextDirection.ltr,
-                            keyboardType: TextInputType.phone,
-                            textInputAction: TextInputAction.next,
-                            validator: (value) {
-                              if (value == null || value.trim().isEmpty) {
-                                return 'يرجى إدخال رقم الهاتف';
-                              }
-                              if (value.trim().length < 10) {
-                                return 'رقم الهاتف غير صحيح';
-                              }
-                              return null;
-                            },
-                          ),
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // حقل رقم الهاتف — تسمية فوق الحقل بلا أيقونات.
+                AuthField(
+                  controller: _phoneController,
+                  label: 'رقم الهاتف',
+                  hint: '0770 123 4567',
+                  textDirection: TextDirection.ltr,
+                  keyboardType: TextInputType.phone,
+                  textInputAction: TextInputAction.next,
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'يرجى إدخال رقم الهاتف';
+                    }
+                    if (value.trim().length < 10) {
+                      return 'رقم الهاتف غير صحيح';
+                    }
+                    return null;
+                  },
+                ),
 
-                          const SizedBox(height: 15),
+                const SizedBox(height: 15),
 
-                          // حقل كلمة المرور
-                          AuthField(
-                            controller: _passwordController,
-                            label: 'كلمة المرور',
-                            hint: '••••••••',
-                            obscureText: _obscure,
-                            textInputAction: TextInputAction.done,
-                            onSubmitted: (_) => _login(),
-                            trailing: IconButton(
-                              icon: Icon(
-                                _obscure
-                                    ? Icons.visibility_outlined
-                                    : Icons.visibility_off_outlined,
-                                size: AppDimens.iconMd,
-                                color: Theme.of(context).colorScheme.outline,
-                              ),
-                              onPressed: () =>
-                                  setState(() => _obscure = !_obscure),
-                            ),
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'يرجى إدخال كلمة المرور';
-                              }
-                              if (value.length < 6) {
-                                return 'كلمة المرور قصيرة جداً';
-                              }
-                              return null;
-                            },
-                          ),
+                // حقل كلمة المرور
+                AuthField(
+                  controller: _passwordController,
+                  label: 'كلمة المرور',
+                  hint: '••••••••',
+                  obscureText: _obscure,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => _login(),
+                  trailing: IconButton(
+                    icon: Icon(
+                      _obscure
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined,
+                      size: AppDimens.iconMd,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                    onPressed: () => setState(() => _obscure = !_obscure),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'يرجى إدخال كلمة المرور';
+                    }
+                    if (value.length < 6) {
+                      return 'كلمة المرور قصيرة جداً';
+                    }
+                    return null;
+                  },
+                ),
 
-                          SizedBox(height: AppDimens.space3),
+                SizedBox(height: AppDimens.space3),
 
-                          // نسيت كلمة المرور
-                          Align(
-                            alignment: AlignmentDirectional.centerStart,
-                            child: AnimeTextButton(
-                              label: 'نسيت كلمة المرور؟',
-                              onPressed: () => context.router.push(
-                                const ForgotPasswordRoute(),
-                              ),
-                            ),
-                          ),
-
-                          SizedBox(height: AppDimens.space5),
-
-                          // زر تسجيل الدخول
-                          AnimePrimaryButton(
-                            label: 'تسجيل الدخول',
-                            onPressed: _login,
-                            loading: _loading,
-                            height: AppDimens.buttonHeightXl,
-                            borderRadius: AppDimens.radiusMd,
-                            gradient: AppColors.ctaGradient,
-                          ),
-                    ],
+                // نسيت كلمة المرور
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: AnimeTextButton(
+                    label: 'نسيت كلمة المرور؟',
+                    onPressed: () =>
+                        context.router.push(const ForgotPasswordRoute()),
                   ),
                 ),
+
+                SizedBox(height: AppDimens.space5),
+
+                // زر تسجيل الدخول
+                AnimePrimaryButton(
+                  label: 'تسجيل الدخول',
+                  onPressed: _login,
+                  loading: _loading,
+                  height: AppDimens.buttonHeightXl,
+                  borderRadius: AppDimens.radiusMd,
+                  gradient: AppColors.ctaGradient,
+                ),
+              ],
+            ),
+          ),
           footer: Column(
             children: [
               SizedBox(height: AppDimens.space2),
@@ -224,12 +225,11 @@ class _LoginScreenState extends State<LoginScreen>
               // متابعة كزائر (بلا حساب) — تصفّح المتجر مباشرة.
               AnimeTextButton(
                 label: 'تصفح كزائر',
-                onPressed: () =>
-                    context.router.replace(
-        sl<PersonalizeStorage>().isDone
-            ? const MainNavigationRoute()
-            : const PersonalizeRoute(),
-      ),
+                onPressed: () => context.router.replace(
+                  sl<PersonalizeStorage>().isDone
+                      ? const MainNavigationRoute()
+                      : const PersonalizeRoute(),
+                ),
                 icon: Icons.arrow_back_ios,
                 iconPosition: IconPosition.end,
               ),

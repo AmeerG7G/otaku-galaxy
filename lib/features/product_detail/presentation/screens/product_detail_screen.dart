@@ -3,9 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../../../core/auth/require_auth.dart';
 import '../../../../core/design_system/design_system.dart';
-import '../../../../core/router/app_router.dart';
-import '../../../auth/presentation/cubit/auth_cubit.dart';
+import '../../../../core/l10n/gender.dart';
 import '../../../cart/presentation/cart_actions.dart';
 import '../../../collections/presentation/widgets/add_to_collection_sheet.dart';
 import '../../../favorites/presentation/cubit/favorites_cubit.dart';
@@ -13,6 +13,9 @@ import '../../../favorites/presentation/favorite_toggle.dart';
 import '../../../products/domain/entities/product.dart';
 import '../../../products/domain/usecases/fetch_product_details_usecase.dart';
 import '../../../reviews/presentation/widgets/product_reviews_section.dart';
+import '../../../visuals/domain/visual_slot.dart';
+import '../../../visuals/presentation/managed_artwork.dart';
+import '../../../restock/presentation/restock_notify_button.dart';
 
 /// تفاصيل المنتج بتصميم Otaku Galaxy v2.
 ///
@@ -68,19 +71,26 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     if (product == null) return Scaffold(body: _buildErrorState());
 
     return Scaffold(
-      body: Column(
-        children: [
-          Expanded(
-            child: ListView(
-              padding: EdgeInsets.zero,
-              children: [
-                _buildHero(product, isFavorite),
-                _buildDetails(product),
-              ],
+      // عمودٌ موسَّط بعرض القراءة على اللوح — صورةٌ بطول ٣٣٠ وعرضِ ١٣٦٦
+      // تصير شريطاً، ووصفُ المنتج سطوراً أطول من مدى القراءة. شريط الشراء
+      // يدخل الإطار معها فيبقى تحت المحتوى الذي يخصّه لا مفروداً بعيداً
+      // عنه. لا أثر لهذا على الهاتف.
+      body: ResponsiveContentFrame(
+        maxWidth: kReadingMaxWidth,
+        child: Column(
+          children: [
+            Expanded(
+              child: ListView(
+                padding: EdgeInsets.zero,
+                children: [
+                  _buildHero(product, isFavorite),
+                  _buildDetails(product),
+                ],
+              ),
             ),
-          ),
-          _buildBottomBar(product),
-        ],
+            _buildBottomBar(product),
+          ],
+        ),
       ),
     );
   }
@@ -102,7 +112,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             ),
             child: ProductPhotoSlot(
               imageUrl: product.images.isNotEmpty ? product.images.first : null,
-              desaturated: !product.inStock,
               iconSize: 70,
             ),
           ),
@@ -173,7 +182,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 alignment: Alignment.center,
                 color: const Color(0xFF180F30).withValues(alpha: 0.74),
                 child: Text(
-                  'نفدت الكمية',
+                  'نفد المخزون',
                   style: theme.textTheme.labelMedium?.copyWith(
                     fontSize: 11,
                     fontWeight: AppDimens.weightExtraBold,
@@ -207,7 +216,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             child: IgnorePointer(
               child: Opacity(
                 opacity: 0.13,
-                child: Image.asset('assets/art/opt/a-i4.png', width: 132),
+                child: const ManagedArtwork(
+                  slot: VisualSlots.productDetail,
+                  fallbackAsset: 'assets/art/opt/a-i4.png',
+                  width: 132,
+                ),
               ),
             ),
           ),
@@ -302,7 +315,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                       style: theme.textTheme.bodyMedium?.copyWith(
                         fontSize: 14,
                         decoration: TextDecoration.lineThrough,
-                        color: theme.colorScheme.outline,
+                        color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
                     const SizedBox(width: 9),
@@ -345,7 +358,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                       style: theme.textTheme.bodySmall?.copyWith(
                         fontSize: 12,
                         fontWeight: AppDimens.weightBold,
-                        color: AppColors.success,
+                        color: context.themeColors.successText,
                       ),
                     ),
                   ],
@@ -454,7 +467,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            'تدفع بعد ما يوصلك الطلب — بلا أي دفع مسبق.',
+                            'تدفع بعد وصول الطلب — دون أي دفع مسبق.',
                             style: theme.textTheme.bodySmall?.copyWith(
                               fontSize: 11.5,
                               height: 1.6,
@@ -475,7 +488,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               const SizedBox(height: 14),
               if (missingOption)
                 Text(
-                  'اختر كل الخيارات المطلوبة قبل الإضافة إلى السلة.',
+                  context.g(GenderedStrings.chooseAllOptions),
                   style: theme.textTheme.bodySmall?.copyWith(
                     fontSize: 11.5,
                     color: theme.colorScheme.onSurfaceVariant,
@@ -526,20 +539,28 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 bottom: 42,
                 end: 6,
                 child: IgnorePointer(
-                  child: Image.asset('assets/art/opt/a-i3.png', width: 82),
+                  child: const ManagedArtwork(
+                    slot: VisualSlots.productDetailReviews,
+                    fallbackAsset: 'assets/art/opt/a-i3.png',
+                    width: 82,
+                  ),
                 ),
               ),
-              AnimePrimaryButton(
-                label: !product.inStock
-                    ? 'نفدت الكمية'
-                    : missingOption
-                    ? 'اختر الخيارات أولاً'
-                    : 'إضافة إلى السلة',
-                onPressed: product.inStock && !missingOption
-                    ? () => _addToCart(context, product)
-                    : null,
-                height: AppDimens.buttonHeightXl,
-              ),
+              // نفاد المخزون لم يعد طريقاً مسدوداً: كان الزرّ يقول «نفدت
+              // الكمية» ولا يفعل شيئاً، فيغادر الزبون بلا بديل. الآن يأخذ
+              // مكانه إجراءٌ حقيقي — ينتظر ويُعلَم عند العودة.
+              if (!product.inStock)
+                RestockNotifyButton(productId: product.id)
+              else
+                AnimePrimaryButton(
+                  label: missingOption
+                      ? 'اختر الخيارات أولاً'
+                      : 'إضافة إلى السلة',
+                  onPressed: missingOption
+                      ? null
+                      : () => _addToCart(context, product),
+                  height: AppDimens.buttonHeightXl,
+                ),
             ],
           ),
         ),
@@ -729,17 +750,12 @@ class _AddToCollectionTile extends StatelessWidget {
   final String productId;
 
   Future<void> _open(BuildContext context) async {
-    if (!context.read<AuthCubit>().isLoggedIn) {
-      final wantsLogin = await showLoginGate(
-        context,
-        title: 'سجّل دخولك أولاً',
-        body: 'المجموعات تحتاج تسجيل الدخول لحسابك في مجرة الأوتاكو.',
-      );
-      if (wantsLogin && context.mounted) {
-        context.router.push(const LoginRoute());
-      }
-      return;
-    }
+    final authenticated = await requireAuthentication(
+      context,
+      title: 'سجّل دخولك أولاً',
+      body: 'المجموعات تحتاج تسجيل الدخول لحسابك في مجرة الأوتاكو.',
+    );
+    if (!authenticated) return;
     if (context.mounted) {
       await showAddToCollectionSheet(context, productId: productId);
     }
@@ -787,7 +803,7 @@ class _AddToCollectionTile extends StatelessWidget {
                 ),
               ),
             ),
-            Icon(Icons.add_rounded, size: 19, color: theme.colorScheme.outline),
+            Icon(Icons.add_rounded, size: 19, color: theme.colorScheme.onSurfaceVariant),
           ],
         ),
       ),

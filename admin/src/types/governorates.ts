@@ -17,6 +17,7 @@ export interface GovernorateCreatePayload {
 export interface GovernorateUpdatePayload {
   name?: string
   deliveryFee?: number
+  isActive?: boolean
 }
 
 export interface GovernorateAdminRow {

@@ -7,7 +7,7 @@ import '../../../../core/router/app_router.dart';
 import '../../data/onboarding_storage.dart';
 import '../widgets/onboarding_slides.dart';
 
-const _ctas = ['يلا نبدأ', 'كمّل', 'ابدأ التسوق'];
+const _ctas = ['لنبدأ', 'متابعة', 'ابدأ التسوق'];
 
 /// غسلة لونية خلف كل شريحة — مركزها ولونها من `ob.wash` في مصدر التصميم.
 const _washes = [
@@ -56,23 +56,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     super.dispose();
   }
 
+  /// إنهاء التعريف ودخول المتجر مباشرة (سلة المسار: «ابدأ التسوق»).
   Future<void> _finish() async {
     if (_finishing) return;
     _finishing = true;
     await sl<OnboardingStorage>().markSeen();
     if (!mounted) return;
     await context.router.replace(const MainNavigationRoute());
-  }
-
-  /// إنهاء التعريف ثم فتح شاشة الدخول فوقها مباشرة (زر «لدي حساب»).
-  Future<void> _finishThenLogin() async {
-    if (_finishing) return;
-    _finishing = true;
-    await sl<OnboardingStorage>().markSeen();
-    if (!mounted) return;
-    await context.router.replace(const MainNavigationRoute());
-    if (!mounted) return;
-    await context.router.push(const LoginRoute());
   }
 
   void _next() {
@@ -167,7 +157,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
-  /// المؤشّرات ثم الإجراء الرئيسي، ورابط «لدي حساب» في الشريحة الأخيرة فقط.
+  /// المؤشّرات ثم الإجراء الرئيسي الوحيد. الشريحة الأخيرة فيها زر
+  /// «ابدأ التسوق» فقط يدخل المتجر مباشرة (تصفّح كزائر) — بلا رابط
+  /// «لدي حساب»: تسجيل الدخول من شاشة الدخول عند الحاجة.
   Widget _buildFooter(ThemeData theme) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 6, 24, 30),
@@ -203,22 +195,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             // اليسار الفيزيائي وبنفسجي على اليمين. رمز التطبيق العام
             // معكوس عن هذا، فنمرّر الاتجاه الصحيح لهذه الشاشة.
             gradient: AppColors.ctaGradient,
-          ),
-          const SizedBox(height: 16),
-          // يبقى شاغلاً مساحته في كل الشرائح (كما في المصدر) لكنه غير مرئي
-          // ولا يستقبل نقرات إلا في الشريحة الأخيرة.
-          IgnorePointer(
-            ignoring: !_isLast,
-            child: AnimatedOpacity(
-              duration: AppDimens.durationNormal,
-              opacity: _isLast ? 1 : 0,
-              child: Center(
-                child: AnimeTextButton(
-                  label: 'لدي حساب — تسجيل الدخول',
-                  onPressed: _finishThenLogin,
-                ),
-              ),
-            ),
           ),
         ],
       ),

@@ -6,6 +6,7 @@ import '../../../../core/design_system/design_system.dart';
 import '../../../../core/router/app_router.dart';
 import '../../domain/entities/app_notification.dart';
 import '../cubit/notifications_cubit.dart';
+import '../../../visuals/domain/visual_slot.dart';
 
 /// مركز الإشعارات بتصميم Otaku Galaxy v2.
 ///
@@ -72,25 +73,30 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: BlocBuilder<NotificationsCubit, NotificationsState>(
-        builder: (context, state) {
-          return Column(
-            children: [
-              OtakuScreenHeader.compact(
-                title: 'الإشعارات',
-                onBack: () => context.router.maybePop(),
-                trailing: state.hasUnread
-                    ? AnimeTextButton(
-                        label: 'تعليم الكل كمقروء',
-                        onPressed: () =>
-                            context.read<NotificationsCubit>().markAllRead(),
-                      )
-                    : null,
-              ),
-              Expanded(child: _buildBody(context, state)),
-            ],
-          );
-        },
+      // عمودٌ موسَّط بعرض القراءة على اللوح — القائمة الممتدّة بعرض
+      // ١٣٦٦ بكسل تصير صفوفاً فارغة الوسط. لا أثر له على الهاتف.
+      body: ResponsiveContentFrame(
+        maxWidth: kReadingMaxWidth,
+        child: BlocBuilder<NotificationsCubit, NotificationsState>(
+          builder: (context, state) {
+            return Column(
+              children: [
+                OtakuScreenHeader.compact(
+                  title: 'الإشعارات',
+                  onBack: () => context.router.maybePop(),
+                  trailing: state.hasUnread
+                      ? AnimeTextButton(
+                          label: 'تعليم الكل كمقروء',
+                          onPressed: () =>
+                              context.read<NotificationsCubit>().markAllRead(),
+                        )
+                      : null,
+                ),
+                Expanded(child: _buildBody(context, state)),
+              ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -108,8 +114,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     if (state.items.isEmpty) {
       return const AnimeEmptyState(
         title: 'لا توجد إشعارات',
-        subtitle: 'كل تحديثات طلباتك وتقييماتك راح تظهر هنا أول ما تصير.',
+        subtitle: 'ستظهر هنا تحديثات طلباتك وتقييماتك فور حدوثها.',
         artwork: 'assets/art/opt/a-i3.png',
+        artworkSlot: VisualSlots.notificationsHeader,
       );
     }
 
@@ -129,7 +136,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   fontSize: 11.5,
                   fontWeight: AppDimens.weightBold,
                   letterSpacing: 0.6,
-                  color: Theme.of(context).colorScheme.outline,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
             ),
@@ -178,6 +185,8 @@ class _NotificationRow extends StatelessWidget {
         Icons.local_offer_outlined,
         AppColors.secondary,
       ),
+      // المزيّة هدية أو خصم — أيقونة العطاء لا العلامة الترويجية.
+      NotificationType.rewardClaimed => (Icons.redeem_outlined, colors.success),
     };
   }
 
@@ -265,7 +274,7 @@ class _NotificationRow extends StatelessWidget {
                   _relativeTime(),
                   style: theme.textTheme.labelSmall?.copyWith(
                     fontSize: 10.5,
-                    color: theme.colorScheme.outline,
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
               ],

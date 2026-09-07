@@ -14,17 +14,52 @@ import dotenv from 'dotenv';
 /** البيئات المعتمدة — نفس أسماء فروع Git ونكهات أندرويد. */
 export type AppEnv = 'dev' | 'staging' | 'prod';
 
-function normaliseAppEnv(raw: string | undefined): AppEnv {
-  switch ((raw ?? '').trim().toLowerCase()) {
-    case 'prod':
-    case 'production':
-      return 'prod';
-    case 'staging':
-    case 'stage':
-      return 'staging';
-    default:
-      return 'dev';
+/**
+ * تحديد البيئة — **يفشل مغلقاً**.
+ *
+ * [CRITICAL] كان أي مدخل غير معروف (أو غيابه كلياً) يسقط إلى `dev` بصمت.
+ * وكل حارس في هذا الملف مربوط بـ`appEnv`: مفتاح التوقيع الافتراضي، ومزوّد
+ * الرسائل `console`، ورمز التحقق الثابت — كلها تُمنع في `staging`/`prod`
+ * وتُسمح في `dev`. فنشرةٌ نسيت ضبط المتغيّر كانت تُعتبر تطويراً: تُقلع
+ * بمفتاح توقيع منشور في المستودع، وتطبع رموز التحقق في السجلّ، ولا يعترض
+ * شيء لأن كل الحرّاس رأوا بيئة تطوير. مطبعةٌ في اسم البيئة (`prodution`)
+ * كانت تفعل الشيء نفسه.
+ *
+ * الآن: القيمة غير المعروفة تُرمى، و`NODE_ENV=production` بلا `APP_ENV`
+ * يُرمى أيضاً لأن الخادم لا يملك ما يميّز به الإنتاج من الاختبار المسبق —
+ * والتخمين بينهما ليس من حقّه. `dev` تبقى الافتراضَ **فقط** حين لا يكون
+ * `NODE_ENV=production`، فتبقى تجربة المطوّر كما هي بلا إعداد.
+ */
+function resolveAppEnv(rawEnv: string | undefined, node: string): AppEnv {
+  const raw = rawEnv?.trim().toLowerCase();
+
+  if (raw) {
+    switch (raw) {
+      case 'prod':
+      case 'production':
+        return 'prod';
+      case 'staging':
+      case 'stage':
+        return 'staging';
+      case 'dev':
+      case 'development':
+        return 'dev';
+      default:
+        throw new Error(
+          `APP_ENV=${rawEnv} غير معروف. القيم المقبولة: dev, staging, prod.`,
+        );
+    }
   }
+
+  if (node === 'production') {
+    throw new Error(
+      'APP_ENV مطلوب صراحةً حين NODE_ENV=production. ' +
+        'اضبطه على staging أو prod — لا يجوز الافتراض، ' +
+        'فبيئة التطوير تعني مفتاح توقيع معروفاً ورموز تحقق في السجلّ.',
+    );
+  }
+
+  return 'dev';
 }
 
 const nodeEnv = process.env.NODE_ENV ?? 'development';
@@ -36,14 +71,12 @@ const nodeEnv = process.env.NODE_ENV ?? 'development';
 export const isTest = nodeEnv === 'test' || import.meta.url.includes('vitest');
 
 /**
- * البيئة المطلوبة صراحةً، وإلا فمشتقّة من NODE_ENV.
+ * البيئة المعتمدة — انظر `resolveAppEnv`: صريحة أو تفشل.
  *
- * `APP_ENV` هو المصدر المفضّل لأنه يحمل الأسماء الثلاثة المعتمدة، بينما
- * `NODE_ENV` تبقى لما تتوقّعه المكتبات (`production` مقابل غيرها).
+ * `APP_ENV` هو المصدر الوحيد للاسم، بينما `NODE_ENV` تبقى لما تتوقّعه
+ * المكتبات (`production` مقابل غيرها) ولا تُشتقّ منها البيئة ضمناً.
  */
-export const appEnv: AppEnv = normaliseAppEnv(
-  process.env.APP_ENV ?? (nodeEnv === 'production' ? 'prod' : undefined),
-);
+export const appEnv: AppEnv = resolveAppEnv(process.env.APP_ENV, nodeEnv);
 
 /**
  * تحميل ملف البيئة الخاص قبل `.env` العام.
@@ -172,6 +205,26 @@ if (devOtpRequested && requiresRealSecrets) {
   );
 }
 
+/**
+ * إعدادات النشر التي بديلها **خاطئ** لا مجرّد ناقص.
+ *
+ * تختلف عن `CORS_ORIGINS`: بديلها (قائمة فارغة) يمنع كل أصل، وهو الفشل في
+ * الاتجاه الآمن فلا يُطلب صراحةً. أما هذان فبديلهما يعمل ويعطي سلوكاً
+ * خاطئاً بصمت، ولذلك يجب أن يُذكرا.
+ */
+const trustProxySetting = requireInProduction(
+  'TRUST_PROXY',
+  process.env.TRUST_PROXY,
+  'false',
+);
+
+const publicBaseUrl = requireInProduction(
+  'PUBLIC_BASE_URL',
+  process.env.PUBLIC_BASE_URL,
+  `http://localhost:${Number(process.env.PORT ?? 4000)}`,
+  (v) => (/^https?:\/\/.+/.test(v) ? null : 'يجب أن يبدأ بـ http:// أو https://'),
+);
+
 if (fatalConfigErrors.length > 0) {
   throw new Error(
     `فشل التحقق من إعدادات الإنتاج:\n  - ${fatalConfigErrors.join('\n  - ')}\n` +
@@ -194,8 +247,14 @@ export const config = {
    *
    * بدونه يرى express عنوان الوسيط لكل الطلبات، فيصير حدّ المعدّل دلواً
    * واحداً للعالم كله — وهو ما يُسقط التسجيل ودخول المستخدمين جميعاً.
+   *
+   * [CRITICAL] كان `staging` يرث `'false'` لأن الافتراض كان مربوطاً
+   * بالإنتاج وحده. خادم اختبارٍ خلف nginx بهذه القيمة يجعل كل الطلبات تبدو
+   * قادمة من عنوان الوسيط، فيقفل التسجيل والدخول على الجميع بعد أول عشرة
+   * طلبات — عطلٌ يبدو «مشكلة في الرمز» وهو إعداد. صار مطلوباً صراحةً في
+   * البيئتين الحقيقيتين (انظر التحقق أعلاه).
    */
-  trustProxy: process.env.TRUST_PROXY ?? (isProduction ? '1' : 'false'),
+  trustProxy: trustProxySetting,
 
   databaseUrl,
   testDatabaseUrl: process.env.TEST_DATABASE_URL ?? DEV_TEST_DATABASE_URL,
@@ -236,13 +295,35 @@ export const config = {
     timeoutMs: Number(process.env.SMS_TIMEOUT_MS ?? 10_000),
   },
 
+  /**
+   * مزوّد الإشعارات الفورية — نفس نمط `sms` أعلاه ونفس ضماناته.
+   *
+   * `console`/`noop` مرفوضان في staging/prod: إشعارٌ «يُرسل» بنجاح ظاهري
+   * ولا يصل هاتفاً هو عطلٌ صامت لا يكتشفه إلا الزبون الذي لم يصله شيء.
+   */
+  push: {
+    provider: (process.env.PUSH_PROVIDER ?? (requiresRealSecrets ? 'fcm' : 'console')).toLowerCase(),
+    projectId: process.env.FCM_PROJECT_ID ?? '',
+    clientEmail: process.env.FCM_CLIENT_EMAIL ?? '',
+    // مفتاح حساب الخدمة — يُمرَّر بأسطر `\n` مهرّبة في متغيّر البيئة.
+    privateKey: (process.env.FCM_PRIVATE_KEY ?? '').replace(/\\n/g, '\n'),
+    timeoutMs: Number(process.env.PUSH_TIMEOUT_MS ?? 10_000),
+  },
+
   corsOrigins: (process.env.CORS_ORIGINS ?? '')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean),
 
-  /** أصل الخادم العام — تُبنى منه روابط الصور المطلقة التي يقرأها التطبيق. */
-  publicBaseUrl: (process.env.PUBLIC_BASE_URL ?? `http://localhost:${Number(process.env.PORT ?? 4000)}`).replace(/\/$/, ''),
+  /**
+   * أصل الخادم العام — تُبنى منه روابط الصور المطلقة التي يقرأها التطبيق.
+   *
+   * [CRITICAL] البديل `http://localhost` صامتٌ وخاطئ خارج جهاز المطوّر:
+   * الهاتف الذي يقرأ رابطاً يبدأ بـ`localhost` يطلبه من نفسه، فتظهر كل
+   * الصور مكسورة بلا رسالة خطأ واحدة في الخادم. مطلوب صراحةً في
+   * `staging`/`prod`.
+   */
+  publicBaseUrl: publicBaseUrl.replace(/\/$/, ''),
 
   uploads: {
     /** مجلد التخزين على القرص (نسبي لجذر تشغيل الخادم). */
@@ -255,10 +336,21 @@ export const config = {
 
   orders: {
     /**
-     * المهلة بين استلام الطلب وفتح التقييم (ساعات).
-     * قابلة للضبط بيئياً حتى تختبرها المنظومة بلا انتظار يوم كامل.
+     * المهلة بين خروج الطلب للتوصيل وإرسال تذكير التقييم (ساعات).
+     *
+     * [CRITICAL] هذه **لا تفتح التقييم ولا تؤخّره**. التقييم يُفتح بتأكيد
+     * الاستلام فوراً؛ ما تجدوله هذه القيمة هو إشعار «شلونها المنتجات؟»
+     * لمن استلم ولم يقيّم بعد.
+     *
+     * كانت تُسمّى `ratingDelayHours` ويطغى عليها إعداد لوحة التحكم
+     * `order_rating_delay_hours`. أُزيل ذلك الإعداد (هجرة ٠٤٣) لأن مهلةً
+     * تفصل بين ضغطة «استلمت طلبي» وفتح التقييم تسأل الزبونَ عن رأيه بعد أن
+     * ينساه. ما بقي متغيّرُ بيئة تشغيلي للإشعار، لا إعداداً تجارياً في
+     * المتصفح.
      */
-    ratingDelayHours: Number(process.env.ORDER_RATING_DELAY_HOURS ?? 24),
+    reviewReminderDelayHours: Number(
+      process.env.ORDER_REVIEW_REMINDER_DELAY_HOURS ?? 16,
+    ),
     /** كل كم مللي ثانية تفحص الجدولةُ التذكيراتِ المستحقة. */
     ratingReminderIntervalMs: Number(
       process.env.RATING_REMINDER_INTERVAL_MS ?? 5 * 60 * 1000,
@@ -266,6 +358,17 @@ export const config = {
     /** سقف التذكيرات في الدورة الواحدة — يمنع دفعة ضخمة بعد توقف طويل. */
     ratingReminderBatchSize: Number(process.env.RATING_REMINDER_BATCH ?? 200),
   },
+
+  /**
+   * المنطقة الزمنية التي يعيش فيها المتجر.
+   *
+   * [CRITICAL] «عيد ميلاد اليوم» سؤالٌ عن تقويم الزبون لا عن ساعة الخادم.
+   * خادمٌ يعمل بـUTC يرى يوماً جديداً الساعة الثالثة فجراً ببغداد، فتُرسل
+   * تهنئةُ الغد قبل أن ينتهي اليوم عند صاحبها بثلاث ساعات — ويوم الميلاد
+   * الحقيقي يمرّ وقد صُنّف «أمس». لذلك يُحسب «اليوم» بهذه المنطقة صراحةً
+   * في كل استعلام تاريخ ميلاد، لا بـ`CURRENT_DATE` الخام.
+   */
+  storeTimezone: process.env.STORE_TIMEZONE ?? 'Asia/Baghdad',
 
   /**
    * حدود المعدّل.

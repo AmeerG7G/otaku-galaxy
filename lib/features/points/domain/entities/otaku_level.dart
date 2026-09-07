@@ -1,62 +1,82 @@
-/// مستوى الأوتاكو — يُشتق حسابياً من رصيد نقاط المجرّة الحالي.
+import '../../../../core/l10n/gender.dart';
+
+/// مستوى في سلّم نقاط المجرّة كما يرسله الخادم.
 ///
-/// [NOTE] ليس نظاماً منفصلاً على الخادم: لا جدول مستويات ولا مكافآت فعلية.
-/// هو تمثيل تقدّمي فوق الرصيد نفسه، فلا يحتاج أي مصدر بيانات إضافي. عند
-/// بناء نظام ولاء حقيقي لاحقاً يُستبدل هذا الاشتقاق بقيم من الخادم.
-enum OtakuLevel {
-  newcomer(1, 'أوتاكو جديد', 'بداية الرحلة', 0),
-  active(2, 'أوتاكو فعّال', 'خصم على الطلبات', 30),
-  golden(3, 'أوتاكو ذهبي', 'هدية مع الطلب', 80),
-  legend(4, 'أسطورة المجرّة', 'وصول مبكر للتشكيلات', 160);
+/// كان هذا الملف `enum` يحمل الأسماء والعتبات مخبوزةً في التطبيق ويشتقّ
+/// المستوى حسابياً، ثم صار عارضاً لسلّمٍ يديره المسؤول من اللوحة. السلّم
+/// اليوم **قاعدة تجارية ثابتة** يعرّفها الخادم في `domain/galaxyPoints.ts`:
+/// سبعة مستويات لا تُضبط من أي واجهة.
+///
+/// يبقى هذا الصنف عارضاً لا مصدراً للحقيقة: لا عتبات محلية ولا قيم افتراضية.
+/// الجديد أنه يحمل **صيغ الاسم الثلاث** ويختار بينها بجنس صاحب الحساب —
+/// وهو قرار عرضٍ محض، ولذلك يعيش هنا لا في الخادم.
+class OtakuLevel {
+  const OtakuLevel({
+    required this.key,
+    required this.number,
+    required this.nameMale,
+    required this.nameFemale,
+    required this.nameNeutral,
+    required this.reward,
+    required this.rewardKind,
+    required this.threshold,
+  });
 
-  const OtakuLevel(this.number, this.title, this.reward, this.threshold);
+  /// معرّف المستوى المستقر (`beginner`, `explorer`, …).
+  ///
+  /// [CRITICAL] كل منطق يمرّ على هذا لا على الاسم: الاسم نصُّ عرضٍ يتغيّر
+  /// بجنس القارئ، ومقارنةُ نصوصٍ معروضة منطقٌ ينكسر أول مرة تتغيّر صياغة.
+  final String key;
 
-  /// رقم المستوى (١..٤).
+  /// رقم المستوى المعروض (١..٧).
   final int number;
 
-  /// اسم المستوى المعروض.
-  final String title;
+  /// اسم المستوى للمخاطَب المذكّر (مثل «بطل المجرة»).
+  final String nameMale;
 
-  /// وصف المزية المرتبطة بالمستوى (تحددها الإدارة لاحقاً).
+  /// اسم المستوى للمخاطَبة المؤنّثة (مثل «بطلة المجرة»).
+  final String nameFemale;
+
+  /// صيغة محايدة لمن لم يحدّد جنسه (مثل «مستوى البطولة»).
+  final String nameNeutral;
+
+  /// وصف المزيّة المرتبطة بالمستوى.
   final String reward;
+
+  /// نوع المزيّة: `none` أو `discount` أو `gift`.
+  final String rewardKind;
 
   /// أقل رصيد نقاط يفتح هذا المستوى.
   final int threshold;
 
-  /// المستوى الحالي حسب الرصيد.
-  static OtakuLevel forPoints(int points) {
-    var current = OtakuLevel.newcomer;
-    for (final level in OtakuLevel.values) {
-      if (points >= level.threshold) current = level;
-    }
-    return current;
+  /// الاسم بالصيغة المناسبة لقارئٍ بعينه.
+  String nameFor(AppGender gender) => switch (gender) {
+    AppGender.male => nameMale,
+    AppGender.female => nameFemale,
+    AppGender.unknown => nameNeutral,
+  };
+
+  bool get hasReward => rewardKind != 'none';
+
+  factory OtakuLevel.fromJson(Map<String, dynamic> json) {
+    final male = json['nameMale']?.toString() ?? '';
+    return OtakuLevel(
+      key: json['key']?.toString() ?? '',
+      number: (json['number'] as num?)?.toInt() ?? 0,
+      nameMale: male,
+      // الصيغتان الأخريان تسقطان إلى المذكّرة لو غابتا عن ردٍّ قديم: نصٌّ
+      // ظاهر أفضل من فراغ، وهي الحالة الوحيدة التي يُقبل فيها ذلك.
+      nameFemale: json['nameFemale']?.toString() ?? male,
+      nameNeutral: json['nameNeutral']?.toString() ?? male,
+      reward: json['reward']?.toString() ?? '',
+      rewardKind: json['rewardKind']?.toString() ?? 'none',
+      threshold: (json['requiredPoints'] as num?)?.toInt() ?? 0,
+    );
   }
 
-  /// المستوى التالي، أو null إذا كان أعلى مستوى.
-  OtakuLevel? get next {
-    final index = OtakuLevel.values.indexOf(this);
-    return index + 1 < OtakuLevel.values.length
-        ? OtakuLevel.values[index + 1]
-        : null;
-  }
+  @override
+  bool operator ==(Object other) => other is OtakuLevel && other.key == key;
 
-  bool get isMax => next == null;
-
-  /// النقاط المتبقية للوصول للمستوى التالي (صفر عند أعلى مستوى).
-  int pointsToNext(int points) {
-    final upcoming = next;
-    if (upcoming == null) return 0;
-    final remaining = upcoming.threshold - points;
-    return remaining > 0 ? remaining : 0;
-  }
-
-  /// نسبة التقدّم داخل المستوى الحالي (٠..١).
-  double progress(int points) {
-    final upcoming = next;
-    if (upcoming == null) return 1;
-    final span = upcoming.threshold - threshold;
-    if (span <= 0) return 1;
-    final done = (points - threshold) / span;
-    return done.clamp(0.0, 1.0);
-  }
+  @override
+  int get hashCode => key.hashCode;
 }

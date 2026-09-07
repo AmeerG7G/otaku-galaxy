@@ -1,11 +1,9 @@
 import { useMemo } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
-  Alert,
   Button,
   Card,
-  Flex,
   Space,
   Table,
   Tabs,
@@ -15,27 +13,24 @@ import { ReloadOutlined } from '@ant-design/icons'
 import { listOrders } from '../api/ordersApi'
 import type { OrderStatus } from '../types/orders'
 import {
-  ORDER_STATUSES,
+  ORDER_STAGES,
   STATUS_LABELS,
   isOrderStatus,
 } from '../constants/orders'
 import { formatCurrency, formatDateTime } from '../utils/format'
 import StatusBadge from '../components/StatusBadge'
 import EmptyState from '../components/EmptyState'
+import { PageHeader } from '../components/ui/PageHeader'
+import { ErrorState } from '../components/ui/States'
+import { useTableState } from '../hooks/useTableState'
 
 const PAGE_LIMIT = 12
 
-function readPage(value: string | null): number {
-  const parsed = Number(value)
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : 1
-}
-
 export default function OrdersPage() {
-  const [searchParams, setSearchParams] = useSearchParams()
+  const { page, setPage, searchParams, setSearchParams } = useTableState()
 
   const statusParam = searchParams.get('status')
   const status = isOrderStatus(statusParam) ? statusParam : undefined
-  const page = readPage(searchParams.get('page'))
 
   const ordersQuery = useQuery({
     queryKey: ['orders', { status: status ?? 'all', page }],
@@ -57,14 +52,23 @@ export default function OrdersPage() {
   }
 
   function changePage(nextPage: number) {
-    const next = new URLSearchParams(searchParams)
-    next.set('page', String(nextPage))
-    setSearchParams(next)
+    setPage(nextPage)
   }
 
+  // التبويبات تتبع مراحل الطلب الفعلية. «تم تأكيده» و«قيد التجهيز» لا
+  // تظهران إلا إن بقي فيهما طلبٌ قديم فعلاً — تبويبٌ دائم بصفر يوحي بمرحلة
+  // لم تعد موجودة.
+  const legacyConfirmed = statusCounts?.CONFIRMED ?? 0
+  const legacyPreparing = statusCounts?.PREPARING ?? 0
+  const tabStatuses: OrderStatus[] = [
+    ...ORDER_STAGES,
+    ...(legacyConfirmed > 0 ? (['CONFIRMED'] as OrderStatus[]) : []),
+    ...(legacyPreparing > 0 ? (['PREPARING'] as OrderStatus[]) : []),
+    'REJECTED',
+  ]
   const tabs = [
     { key: 'all', label: `الكل (${totalCount})` },
-    ...ORDER_STATUSES.map((orderStatus) => ({
+    ...tabStatuses.map((orderStatus) => ({
       key: orderStatus,
       label: `${STATUS_LABELS[orderStatus]} (${statusCounts?.[orderStatus] ?? 0})`,
     })),
@@ -131,23 +135,19 @@ export default function OrdersPage() {
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Flex align="center" justify="space-between" wrap gap={12}>
-        <div>
-          <Typography.Title level={3} style={{ margin: 0 }}>
-            الطلبات
-          </Typography.Title>
-          <Typography.Text type="secondary">
-            إدارة طلبات المتجر: مراجعتها، تغيير حالتها، وتتبع مراحل التوصيل.
-          </Typography.Text>
-        </div>
-        <Button
-          icon={<ReloadOutlined />}
-          loading={ordersQuery.isFetching}
-          onClick={() => ordersQuery.refetch()}
-        >
-          تحديث
-        </Button>
-      </Flex>
+      <PageHeader
+        title="الطلبات"
+        description="إدارة طلبات المتجر: مراجعتها، تغيير حالتها، وتتبع مراحل التوصيل."
+        extra={
+          <Button
+            icon={<ReloadOutlined />}
+            loading={ordersQuery.isFetching}
+            onClick={() => ordersQuery.refetch()}
+          >
+            تحديث
+          </Button>
+        }
+      />
 
       <Card>
         <Tabs
@@ -158,16 +158,10 @@ export default function OrdersPage() {
         />
 
         {ordersQuery.isError ? (
-          <Alert
-            type="error"
-            showIcon
+          <ErrorState
             message="تعذر تحميل الطلبات"
             description={ordersQuery.error.message}
-            action={
-              <Button size="small" onClick={() => ordersQuery.refetch()}>
-                إعادة المحاولة
-              </Button>
-            }
+            onRetry={() => ordersQuery.refetch()}
           />
         ) : (
           <Table

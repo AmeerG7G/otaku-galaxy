@@ -3,8 +3,11 @@ import { cartController } from '../controllers/cartController.js';
 import { communityController } from '../controllers/communityController.js';
 import { favoritesController } from '../controllers/favoritesController.js';
 import { mediaController } from '../controllers/mediaController.js';
+import { notificationPrefsController } from '../controllers/notificationPrefsController.js';
 import { orderController } from '../controllers/orderController.js';
+import { restockController } from '../controllers/restockController.js';
 import { uploadSingleImage } from '../middleware/upload.js';
+import { pushController } from '../controllers/pushController.js';
 
 /**
  * مسارات العميل المسجّل: مفضلة + عربة + طلبات + تقييمات + نقاط
@@ -38,6 +41,8 @@ customerRoutes.patch('/reviews/:id', communityController.resubmitReview);
 
 // ── نقاط المجرّة ──
 customerRoutes.get('/points', communityController.pointsSummary);
+// المطالبة بمزيّة مستوى — مرة واحدة لكل مستوى، ويحرسها قيد فريد في القاعدة.
+customerRoutes.post('/points/rewards/:levelKey/claim', communityController.claimReward);
 
 // ── المجموعات ──
 customerRoutes.get('/collections', communityController.listCollections);
@@ -51,9 +56,22 @@ customerRoutes.delete(
 );
 
 // ── الإشعارات ──
+// قبل '/notifications/:id/read' حتى لا يلتقطه معرّف UUID (المسار قراءة GET
+// ومسار القراءة POST، لكن الترتيب يبقى وقائياً بلا كلفة).
+// أجهزة الإشعارات الفورية — الرمز يخصّ صاحب الجلسة دائماً.
+customerRoutes.get('/devices', pushController.mine);
+customerRoutes.post('/devices', pushController.register);
+customerRoutes.post('/devices/unregister', pushController.unregister);
+customerRoutes.get('/notifications/prefs', notificationPrefsController.get);
+customerRoutes.patch('/notifications/prefs', notificationPrefsController.set);
 customerRoutes.get('/notifications', communityController.listNotifications);
 customerRoutes.post('/notifications/read-all', communityController.markAllNotificationsRead);
 customerRoutes.post('/notifications/:id/read', communityController.markNotificationRead);
+
+// ── «أخبرني عند توفره» ──
+customerRoutes.get('/restock-subscriptions/mine', restockController.mine);
+customerRoutes.post('/restock-subscriptions', restockController.subscribe);
+customerRoutes.delete('/restock-subscriptions/:productId', restockController.unsubscribe);
 
 // ── عيد الميلاد ──
 customerRoutes.get('/birthday', communityController.birthdayStatus);

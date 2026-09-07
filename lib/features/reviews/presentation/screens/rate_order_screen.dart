@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/design_system/design_system.dart';
+import '../../../../core/l10n/gender.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../orders/domain/entities/order.dart';
 import '../../domain/entities/review.dart';
 import '../cubit/reviews_cubit.dart';
 import '../widgets/review_status_chip.dart';
+import '../../../visuals/domain/visual_slot.dart';
 
 /// «قيّم منتجات طلبك» بتصميم Otaku Galaxy v2.
 ///
@@ -55,51 +57,57 @@ class _RateOrderScreenState extends State<RateOrderScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      body: Column(
-        children: [
-          OtakuScreenHeader(
-            title: '⭐ قيّم منتجات طلبك',
-            subtitle: 'رأيك يساعد بقية العملاء يختارون بثقة',
-            artwork: 'assets/art/opt/a-i6.png',
-            onBack: () => context.router.maybePop(),
-          ),
-          Expanded(
-            child: _loading
-                ? const OtakuListSkeleton(count: 3, height: 140)
-                : ListView(
-                    padding: const EdgeInsets.fromLTRB(18, 12, 18, 26),
-                    children: [
-                      for (final item in widget.order.items) ...[
-                        _ProductReviewCard(
-                          product: item.product,
-                          review: _byProduct[item.product.id],
-                          onTap: () async {
-                            final done = await context.router.push<bool>(
-                              WriteReviewRoute(
-                                orderId: widget.order.id,
-                                productId: item.product.id,
-                                productName: item.product.name,
-                              ),
-                            );
-                            if (done == true) _load();
-                          },
+      // عمودٌ موسَّط بعرض القراءة على اللوح — القائمة الممتدّة بعرض
+      // ١٣٦٦ بكسل تصير صفوفاً فارغة الوسط. لا أثر له على الهاتف.
+      body: ResponsiveContentFrame(
+        maxWidth: kReadingMaxWidth,
+        child: Column(
+          children: [
+            OtakuScreenHeader(
+              title: '⭐ ${context.g(GenderedStrings.rateOrderProducts)}',
+              subtitle: 'رأيك يساعد بقية العملاء يختارون بثقة',
+              artwork: 'assets/art/opt/a-i6.png',
+              artworkSlot: VisualSlots.rateOrder,
+              onBack: () => context.router.maybePop(),
+            ),
+            Expanded(
+              child: _loading
+                  ? const OtakuListSkeleton(count: 3, height: 140)
+                  : ListView(
+                      padding: const EdgeInsets.fromLTRB(18, 12, 18, 26),
+                      children: [
+                        for (final item in widget.order.items) ...[
+                          _ProductReviewCard(
+                            product: item.product,
+                            review: _byProduct[item.product.id],
+                            onTap: () async {
+                              final done = await context.router.push<bool>(
+                                WriteReviewRoute(
+                                  orderId: widget.order.id,
+                                  productId: item.product.id,
+                                  productName: item.product.name,
+                                ),
+                              );
+                              if (done == true) _load();
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                        ],
+                        const SizedBox(height: 4),
+                        Text(
+                          'لكل منتج تقييم واحد، ويُراجَع قبل نشره.',
+                          textAlign: TextAlign.center,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontSize: 11.5,
+                            height: 1.7,
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
                         ),
-                        const SizedBox(height: 12),
                       ],
-                      const SizedBox(height: 4),
-                      Text(
-                        'تكدر تقيّم كل منتج مرة وحدة. التقييم يُراجع قبل نشره.',
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          fontSize: 11.5,
-                          height: 1.7,
-                          color: theme.colorScheme.outline,
-                        ),
-                      ),
-                    ],
-                  ),
-          ),
-        ],
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -166,7 +174,7 @@ class _ProductReviewCard extends StatelessWidget {
                     if (review == null)
                       OtakuStatusPill(
                         label: 'لم يُقيَّم بعد',
-                        color: theme.colorScheme.outline,
+                        color: theme.colorScheme.onSurface,
                         showDot: false,
                       )
                     else
@@ -196,7 +204,9 @@ class _ProductReviewCard extends StatelessWidget {
           const SizedBox(height: 14),
           if (canEdit)
             AnimePrimaryButton(
-              label: review == null ? 'قيّم المنتج' : 'عدّل وأعد الإرسال',
+              label: review == null
+                  ? context.g(GenderedStrings.rateProduct)
+                  : 'عدّل وأعد الإرسال',
               onPressed: onTap,
               height: AppDimens.buttonHeightMd,
             )

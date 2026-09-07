@@ -204,22 +204,16 @@ describe('order rejection stock integrity', () => {
     expect(await stockOf(rejectProductId!)).toBe(before);
   });
 
-  it('non-rejection transitions do not touch stock, rejection from CONFIRMED restores once', async () => {
+  it('non-rejection transitions do not touch stock, rejection restores once', async () => {
     const before = await stockOf(rejectProductId!);
     const { orderId } = await placeOrder(rejectProductId!, 1);
     expect(await stockOf(rejectProductId!)).toBe(before - 1);
 
+    // الموافقة تنقل مباشرةً إلى «قيد التوصيل» — لا مرحلة تجهيز — دون لمس المخزون.
     await api
       .patch(`/api/admin/orders/${orderId}/status`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ status: 'CONFIRMED' })
-      .expect(200);
-    expect(await stockOf(rejectProductId!)).toBe(before - 1);
-
-    await api
-      .patch(`/api/admin/orders/${orderId}/status`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ status: 'PREPARING' })
+      .send({ status: 'OUT_FOR_DELIVERY' })
       .expect(200);
     expect(await stockOf(rejectProductId!)).toBe(before - 1);
 

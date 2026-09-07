@@ -100,7 +100,7 @@ export default function ProductEditPage() {
 
       {editQuery.isPending && (
         <Flex justify="center" style={{ paddingTop: 80 }}>
-          <Spin size="large" tip="جارٍ تحميل المنتج…">
+          <Spin size="large" description="جارٍ تحميل المنتج…">
             <div style={{ width: 120, height: 60 }} />
           </Spin>
         </Flex>

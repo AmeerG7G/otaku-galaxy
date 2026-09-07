@@ -60,13 +60,33 @@ export async function seedTestCatalog() {
   return { categoryId, subcategoryId, productIds, governorateId };
 }
 
-/** يسجّل مستخدماً (رقم فريد) ويعيد التوكن. */
-export async function registerAndLogin(phone = `077${Math.floor(10000000 + Math.random() * 89999999)}`) {
+/**
+ * يسجّل مستخدماً (رقم فريد) ويعيد التوكن.
+ *
+ * `gender` جزءٌ من التسجيل الآن ولا يُقبل الطلب بدونه — لذلك يُرسَل هنا في
+ * المُساعد المشترك بدل تكرارِه في كل سويت. القيمة الافتراضية `male` اختيارُ
+ * تثبيتٍ لا افتراضٌ عن المستخدمين؛ سويت الجنس تختبر الصيغتين صراحةً.
+ */
+export async function registerAndLogin(
+  phone = `077${Math.floor(10000000 + Math.random() * 89999999)}`,
+  gender: 'male' | 'female' = 'male',
+) {
   const password = 'secret123';
-  await api.post('/api/auth/register').send({ username: 'مختبر', phone, password }).expect(200);
+  await api
+    .post('/api/auth/register')
+    .send({ username: 'مختبر', phone, password, gender })
+    .expect(200);
   await api.post('/api/auth/verify').send({ phone, code: DEV_CODE }).expect(200);
   const login = await api.post('/api/auth/login').send({ phone, password }).expect(200);
-  return { phone, password, token: login.body.data.token as string, userId: login.body.data.user.id as string };
+  // الرقم يُعاد بالصيغة التي خزّنها الخادم لا بالتي أُرسلت، فتصحّ أي مقارنة
+  // في السويتات بلا أن تعرف كلٌّ منها قاعدة التطبيع.
+  return {
+    phone: login.body.data.user.phone as string,
+    password,
+    token: login.body.data.token as string,
+    userId: login.body.data.user.id as string,
+    gender,
+  };
 }
 
 /** كلمة مرور المسؤول في الاختبارات — قيمة محلية للسويت لا قيمة افتراضية للمنتج. */
@@ -79,7 +99,14 @@ const ADMIN_TEST_PASSWORD = 'test-admin-password-not-a-default';
  * وتسجيل الدخول صار يرفض أي حساب لم يُثبت ملكية رقمه.
  */
 export async function createAdminUser() {
-  const phone = '07700000000';
+  // [CRITICAL] النطاق ‎+96478… لا +96477…. المسؤول المشترك كان `07700000000`
+  // (الآن `+9647700000000`)، وهو يطابق نمط `purgeTestUsers` فيُحذف كلما
+  // نظّفت سويتٌ مستخدميها. كل سويت أخرى تحمل توكن هذا المسؤول كانت تتلقّى
+  // بعدها 401 لأن صفّه اختفى — وهو مصدر فشلٍ يتنقّل بحسب ترتيب التنفيذ
+  // فتختلف النتيجة بين تشغيلين على شيفرة واحدة. فصلُ النطاقين يجعل التنظيف
+  // لا يمسّ المسؤول أبداً. الرقم بالصيغة المخزنة مباشرةً (تطبيع الـ API لا
+  // يشمل هذا الإدراج المباشر، والقيد الجديد يفرض الصيغة الدولية).
+  const phone = '+9647800000000';
   const passwordHash = await bcrypt.hash(ADMIN_TEST_PASSWORD, 10);
   await db.query(
     `INSERT INTO users (username, phone, password_hash, role, phone_verified_at)
@@ -98,8 +125,13 @@ export async function createAdminUser() {
   return login.body.data.token as string;
 }
 
-/** تنظيف مستخدمي الاختبار بترتيب يعتمديات FK (أولاً ما يقيّد الحذف). */
-export async function purgeTestUsers(pattern = '077%') {
+/**
+ * تنظيف مستخدمي الاختبار بترتيب يعتمديات FK (أولاً ما يقيّد الحذف).
+ *
+ * النمط بالصيغة المعتمدة `+96477%` لأن الأرقام تُخزَّن الآن دولية. وهو
+ * يغطّي مستخدمي `registerAndLogin` (‎077…) ولا يغطّي المسؤول (‎078…) عمداً.
+ */
+export async function purgeTestUsers(pattern = '+96477%') {
   const sub = `(SELECT id FROM users WHERE phone LIKE $1)`;
   await db.query(`DELETE FROM order_status_history WHERE order_id IN (SELECT id FROM orders WHERE user_id IN ${sub})`, [pattern]);
   await db.query(`DELETE FROM order_items WHERE order_id IN (SELECT id FROM orders WHERE user_id IN ${sub})`, [pattern]);
@@ -111,28 +143,16 @@ export async function purgeTestUsers(pattern = '077%') {
   await db.query('DELETE FROM users WHERE phone LIKE $1', [pattern]);
 }
 /**
- * محاكاة مرور مهلة التقييم.
+ * [NOTE] `fastForwardRatingWindow` حُذفت.
  *
- * تُزحزح الطوابع الثلاثة معاً (الإرسال، الاستلام، النافذة) بنفس المقدار،
- * فيبقى القيد `rating_available_at >= dispatched_at` صحيحاً ويصير التقييم
- * مستحقاً الآن. هذا أصدق من تعطيل المهلة في الاختبارات: القاعدة الإنتاجية
- * نفسها تبقى مفعَّلة، والاختبار هو من ينقل الزمن.
+ * كانت تُزحزح `rating_available_at` إلى الماضي لتجعل التقييم مستحقاً، لأن
+ * التقييم كان يُفتح بعد مهلة من الخروج للتوصيل. صار يُفتح بتأكيد الاستلام
+ * نفسه، فلا نافذة تُنتظر ولا زمن يُزحزَح: كل طلبٍ بلغ COMPLETED قابل
+ * للتقييم فوراً.
+ *
+ * ما بقي من `rating_reminder_at` يخصّ **إشعار** التذكير وحده، وتزحزحه
+ * سويت التذكيرات بنفسها حين تحتاجه.
  */
-export async function fastForwardRatingWindow(orderId: string, hours = 25) {
-  const { rowCount } = await db.query(
-    `UPDATE orders
-        SET dispatched_at = dispatched_at - make_interval(hours => $2),
-            delivered_at = delivered_at - make_interval(hours => $2),
-            rating_available_at = rating_available_at - make_interval(hours => $2)
-      WHERE id = $1 AND dispatched_at IS NOT NULL`,
-    [orderId, hours],
-  );
-  if ((rowCount ?? 0) === 0) {
-    throw new Error(
-      `fastForwardRatingWindow: الطلب ${orderId} لم يخرج للتوصيل بعد`,
-    );
-  }
-}
 
 /**
  * يسجّل صورة مرفوعة فعلاً ويعيد رابطها.

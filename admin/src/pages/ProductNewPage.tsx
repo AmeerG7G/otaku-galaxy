@@ -1,22 +1,54 @@
-import { Link, useNavigate } from 'react-router-dom'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { App, Breadcrumb, Button, Flex, Typography } from 'antd'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Alert, App, Breadcrumb, Button, Flex, Typography } from 'antd'
 import { ArrowRightOutlined } from '@ant-design/icons'
 import ProductForm, { type ProductFormValues } from '../components/ProductForm'
 import { createProduct } from '../api/productsApi'
+import { listAdminCategories } from '../api/categoriesApi'
 import { ApiError } from '../api/client'
 
+/**
+ * إضافة منتج.
+ *
+ * يقبل `?categoryId=&subcategoryId=` فيبدأ النموذج بالقسم مختاراً. هذا هو
+ * ما يجعل المسار «الأقسام ← قسم فرعي ← إضافة منتج» ينتهي بمنتج مرتبط
+ * بالقسم الصحيح بدل أن يُعيد المسؤول اختياره ويخطئ. النموذج واحد لا اثنان:
+ * لا مسار إنشاء ثانٍ يتباعد عن الأول.
+ */
 export default function ProductNewPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { message } = App.useApp()
   const queryClient = useQueryClient()
+
+  const presetCategoryId = searchParams.get('categoryId') ?? undefined
+  const presetSubcategoryId = searchParams.get('subcategoryId') ?? undefined
+
+  const categoriesQuery = useQuery({
+    queryKey: ['admin-categories'],
+    queryFn: listAdminCategories,
+  })
+
+  const presetCategory = (categoriesQuery.data?.items ?? []).find(
+    (category) => category.id === presetCategoryId,
+  )
+  const presetSubcategory = presetCategory?.subcategories.find(
+    (subcategory) => subcategory.id === presetSubcategoryId,
+  )
+  const presetLabel = presetCategory
+    ? [presetCategory.name, presetSubcategory?.name].filter(Boolean).join(' ← ')
+    : null
+
+  /** الرجوع إلى حيث بدأ المسؤول، بالترشيح نفسه. */
+  const backSearch = searchParams.toString()
+  const backTo = backSearch ? `/products?${backSearch}` : '/products'
 
   const createMutation = useMutation({
     mutationFn: createProduct,
     onSuccess: (result) => {
       message.success(result.message)
       queryClient.invalidateQueries({ queryKey: ['products'] })
-      navigate('/products')
+      navigate(backTo)
     },
     onError: (error) => {
       message.error(error instanceof ApiError ? error.message : 'حدث خطأ غير متوقع')
@@ -48,7 +80,10 @@ export default function ProductNewPage() {
     <div style={{ maxWidth: 860, width: '100%' }}>
       <Breadcrumb
         items={[
-          { title: <Link to="/products">المنتجات</Link> },
+          ...(presetCategory
+            ? [{ title: <Link to="/categories">الأقسام</Link> }]
+            : []),
+          { title: <Link to={backTo}>المنتجات</Link> },
           { title: 'إضافة منتج' },
         ]}
       />
@@ -57,15 +92,31 @@ export default function ProductNewPage() {
         <Typography.Title level={3} style={{ margin: 0 }}>
           إضافة منتج
         </Typography.Title>
-        <Button icon={<ArrowRightOutlined />} onClick={() => navigate('/products')}>
+        <Button icon={<ArrowRightOutlined />} onClick={() => navigate(backTo)}>
           العودة إلى المنتجات
         </Button>
       </Flex>
       <div style={{ height: 16 }} />
+      {presetLabel && (
+        <>
+          <Alert
+            type="info"
+            showIcon
+            message={`القسم مختار مسبقاً: ${presetLabel}`}
+            description="يمكنك تغييره من النموذج إن أردت."
+          />
+          <div style={{ height: 16 }} />
+        </>
+      )}
       <ProductForm
+        // النموذج يُبنى بعد وصول الأقسام حتى تصل القيم المبدئية معه —
+        // ضبطها بعد التركيب يتركها فارغة في الحقل الذي يراه المسؤول.
+        key={presetCategoryId ?? 'blank'}
         mode="create"
         optionsAvailable
         initialValues={{
+          categoryId: presetCategoryId,
+          subcategoryId: presetSubcategoryId ?? null,
           images: [],
           options: [],
           isOffer: false,

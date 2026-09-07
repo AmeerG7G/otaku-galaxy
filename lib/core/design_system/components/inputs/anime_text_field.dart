@@ -125,7 +125,7 @@ class AnimeTextField extends StatelessWidget {
           fontWeight: AppDimens.weightRegular,
         ),
         errorStyle: Theme.of(context).textTheme.bodySmall?.copyWith(
-          color: context.themeColors.error,
+          color: context.themeColors.errorText,
           fontWeight: AppDimens.weightMedium,
         ),
         floatingLabelBehavior: FloatingLabelBehavior.auto,

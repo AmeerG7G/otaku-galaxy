@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../tokens/app_breakpoints.dart';
 import '../../tokens/app_colors.dart';
 import '../../tokens/app_dimens.dart';
 
@@ -24,54 +25,62 @@ class OtakuSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: const BorderRadius.vertical(
-          top: Radius.circular(AppDimens.radiusXl),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.24),
-            blurRadius: 40,
-            offset: const Offset(0, -14),
+    // ورقةٌ بعرض لوحٍ كامل تضع أزرارها على طرفَي الشاشة، وتقطع الصلة بينها
+    // وبين ما فُتحت من أجله. التوسيط مع حدٍّ أعلى يُبقيها ورقةً على كل عرض؛
+    // وعلى الهاتف (أضيق من الحدّ) لا يتغيّر شيء.
+    return ResponsiveContentFrame(
+      maxWidth: kSheetMaxWidth,
+      alignment: Alignment.bottomCenter,
+      heightFactor: 1,
+      child: Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(AppDimens.radiusXl),
           ),
-        ],
-      ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: padding,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // المقبض العلوي.
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 5,
-                  margin: const EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.outlineVariant,
-                    borderRadius: BorderRadius.circular(3),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.24),
+              blurRadius: 40,
+              offset: const Offset(0, -14),
+            ),
+          ],
+        ),
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: padding,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // المقبض العلوي.
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 5,
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.outlineVariant,
+                      borderRadius: BorderRadius.circular(3),
+                    ),
                   ),
                 ),
-              ),
-              if (title != null) ...[
-                Text(
-                  title!,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontFamily: 'Tajawal',
-                    fontWeight: AppDimens.weightExtraBold,
-                    fontSize: titleSize,
+                if (title != null) ...[
+                  Text(
+                    title!,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontFamily: 'Tajawal',
+                      fontWeight: AppDimens.weightExtraBold,
+                      fontSize: titleSize,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
+                  const SizedBox(height: 12),
+                ],
+                Flexible(child: child),
               ],
-              Flexible(child: child),
-            ],
+            ),
           ),
         ),
       ),

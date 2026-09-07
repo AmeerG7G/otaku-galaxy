@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/design_system/design_system.dart';
+import '../../../visuals/presentation/managed_artwork.dart';
+import '../../../visuals/domain/visual_slot.dart';
 
 /// هيكل شاشات المصادقة بتصميم Otaku Galaxy v2.
 ///
@@ -16,6 +18,7 @@ class AuthScaffold extends StatelessWidget {
     this.footer,
     this.showBack = false,
     this.artwork,
+    this.artworkSlot,
     this.artworkHeight = 190,
     this.artworkWidth = 142,
     this.artworkBottom = -12,
@@ -39,6 +42,12 @@ class AuthScaffold extends StatelessWidget {
   /// واجهة عربية.
   final String? artwork;
 
+  /// مفتاح الفتحة البصرية التي يديرها المسؤول من لوحة التحكم.
+  ///
+  /// حين يُمرَّر، يصير [artwork] هو الأصل الاحتياطي: يُعرض كما هو ما دامت
+  /// الفتحة غير مضبوطة أو تعذّر تحميل صورتها. المقاس والموضع لا يتغيّران.
+  final String? artworkSlot;
+
   /// صندوق رسم الرأس وإزاحته السفلية — تختلف لكل شاشة في المصدر.
   ///
   /// المصدر يحدّد `width` و`height` معاً مع `background-size:contain`، فلا
@@ -54,7 +63,9 @@ class AuthScaffold extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.themeColors;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final headerInk = isDark ? const Color(0xFFF9F6FF) : const Color(0xFF22133F);
+    final headerInk = isDark
+        ? const Color(0xFFF9F6FF)
+        : const Color(0xFF22133F);
     final headerInk2 = isDark
         ? const Color(0xFFBCB0E2)
         : const Color(0xFF5A4A7D);
@@ -62,169 +73,236 @@ class AuthScaffold extends StatelessWidget {
     return Scaffold(
       body: Container(
         decoration: BoxDecoration(gradient: colors.surfaceGradient),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // ── الرأس المتدرّج ──
-              ClipRRect(
-                borderRadius: const BorderRadius.only(
-                  bottomLeft: Radius.circular(42),
-                  bottomRight: Radius.circular(42),
-                ),
-                child: Container(
-                  height: 214,
-                  decoration: BoxDecoration(
-                    gradient: isDark
-                        ? AppThemeColors.authGradientDark
-                        : AppThemeColors.authGradientLight,
-                  ),
-                  child: Stack(
-                    children: [
-                      // هالة ناعمة أعلى جهة النهاية.
-                      PositionedDirectional(
-                        top: -70,
-                        end: -50,
-                        child: Container(
-                          width: 210,
-                          height: 210,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: RadialGradient(
-                              colors: [
-                                Colors.white.withValues(alpha: 0.35),
-                                Colors.white.withValues(alpha: 0),
-                              ],
-                            ),
-                          ),
-                        ),
+        // [CRITICAL] الذيل يُدفع إلى أسفل الشاشة، لا يُلصق تحت البطاقة.
+        //
+        // المصدر يضع على الذيل `margin-top:auto` داخل عمود مرن يملأ الشاشة،
+        // فالفراغ الزائد يقع **بين** البطاقة والذيل. التنفيذ السابق كان
+        // عموداً عادياً داخل `SingleChildScrollView`، فيلتصق الذيل بالبطاقة
+        // ويتجمّع الفراغ كله **تحته** — وهو بالضبط الفراغ الزائد أسفل
+        // شاشات المصادقة.
+        //
+        // `ConstrainedBox(minHeight)` مع `Spacer` هو مقابل ذلك في فلاتر:
+        // العمود يملأ الشاشة حين يكون المحتوى أقصر، ويتمدّد ويُمرَّر حين
+        // يطول (لوحة المفاتيح مفتوحة مثلاً).
+        //
+        // [CRITICAL] داخل `SingleChildScrollView` يمرّر الحدّ الأقصى المرتفع
+        // غير المحدود (∞) إلى الطفل، فيبقى حدّ الأصغر فقط هو المقيَّد. ليعمل
+        // `Spacer` (عنصر مرن) يجب أن يكون الحدّ الأعلى محدوداً — وإلا أخطأت
+        // `RenderFlex` ("children have non-zero flex but incoming height
+        // constraints are unbounded") فأصبحت كل شاشات المصادقة بيضاء/فارغة.
+        // لفّ العمود داخل `IntrinsicHeight` يعطيه ارتفاعاً أصلياً محدوداً
+        // يساوي min-height فتُدفع حتى القاع حين المحتوى قصير، ويُتَمرَّر
+        // حين يطول.
+        child: LayoutBuilder(
+          builder: (context, constraints) => SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: IntrinsicHeight(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // ── الرأس المتدرّج ──
+                    ClipRRect(
+                      borderRadius: const BorderRadius.only(
+                        bottomLeft: Radius.circular(42),
+                        bottomRight: Radius.circular(42),
                       ),
-                      // رسم الشخصية يُقصّ بحافة الرأس ويبقى خلف النص.
-                      if (artwork != null)
-                        PositionedDirectional(
-                          bottom: artworkBottom,
-                          end: -34,
-                          child: SizedBox(
-                            width: artworkWidth,
-                            height: artworkHeight,
-                            child: Image.asset(
-                              artwork!,
-                              fit: BoxFit.contain,
-                              alignment: Alignment.bottomCenter,
-                            ),
-                          ),
+                      child: Container(
+                        height: 214,
+                        decoration: BoxDecoration(
+                          gradient: isDark
+                              ? AppThemeColors.authGradientDark
+                              : AppThemeColors.authGradientLight,
                         ),
-                      SafeArea(
-                        bottom: false,
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(22, 16, 22, 0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  if (showBack)
-                                    _GlassIconButton(
-                                      icon: Icons.arrow_forward,
-                                      onTap: () => Navigator.of(context).pop(),
-                                    ),
-                                  if (showBack)
-                                    const SizedBox(width: AppDimens.space3),
-                                  const OtakuStoreLogoSimple(size: 38),
-                                ],
+                        child: Stack(
+                          children: [
+                            // هالة ناعمة أعلى جهة النهاية.
+                            PositionedDirectional(
+                              top: -70,
+                              end: -50,
+                              child: Container(
+                                width: 210,
+                                height: 210,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  gradient: RadialGradient(
+                                    colors: [
+                                      Colors.white.withValues(alpha: 0.35),
+                                      Colors.white.withValues(alpha: 0),
+                                    ],
+                                  ),
+                                ),
                               ),
-                              const SizedBox(height: AppDimens.space5),
-                              ConstrainedBox(
-                                constraints: const BoxConstraints(maxWidth: 240),
+                            ),
+                            // رسم الشخصية يُقصّ بحافة الرأس ويبقى خلف النص.
+                            if (artwork != null)
+                              PositionedDirectional(
+                                bottom: artworkBottom,
+                                end: -34,
+                                child: SizedBox(
+                                  width: artworkWidth,
+                                  height: artworkHeight,
+                                  child: artworkSlot == null
+                                      ? Image.asset(
+                                          artwork!,
+                                          fit: BoxFit.contain,
+                                          alignment: Alignment.bottomCenter,
+                                        )
+                                      : ManagedArtwork(
+                                          slot: artworkSlot!,
+                                          fallbackAsset: artwork!,
+                                        ),
+                                ),
+                              ),
+                            SafeArea(
+                              bottom: false,
+                              child: Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  22,
+                                  16,
+                                  22,
+                                  0,
+                                ),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
-                                      title,
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .headlineSmall
-                                          ?.copyWith(
-                                            fontSize: 26,
-                                            fontWeight: AppDimens.weightBlack,
-                                            color: headerInk,
+                                    Row(
+                                      children: [
+                                        if (showBack)
+                                          _GlassIconButton(
+                                            icon: Icons.arrow_forward,
+                                            onTap: () =>
+                                                Navigator.of(context).pop(),
                                           ),
+                                        if (showBack)
+                                          const SizedBox(
+                                            width: AppDimens.space3,
+                                          ),
+                                        const OtakuStoreLogoSimple(size: 38),
+                                      ],
                                     ),
-                                    const SizedBox(height: AppDimens.space2),
-                                    Text(
-                                      subtitle,
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodySmall
-                                          ?.copyWith(
-                                            fontSize: 13,
-                                            height: 1.7,
-                                            color: headerInk2,
+                                    const SizedBox(height: AppDimens.space5),
+                                    ConstrainedBox(
+                                      constraints: const BoxConstraints(
+                                        maxWidth: 240,
+                                      ),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            title,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .headlineSmall
+                                                ?.copyWith(
+                                                  fontSize: 26,
+                                                  fontWeight:
+                                                      AppDimens.weightBlack,
+                                                  color: headerInk,
+                                                ),
                                           ),
+                                          const SizedBox(
+                                            height: AppDimens.space2,
+                                          ),
+                                          Text(
+                                            subtitle,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .bodySmall
+                                                ?.copyWith(
+                                                  fontSize: 13,
+                                                  height: 1.7,
+                                                  color: headerInk2,
+                                                ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    // ── بطاقة النموذج العائمة (تتداخل مع الرأس) ──
+                    Transform.translate(
+                      offset: const Offset(0, -28),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 18),
+                        // حقلُ إدخالٍ بعرض لوحٍ كامل يبعّد مؤشّر الكتابة عن
+                        // تسميته ويجعل النموذج شريطاً ممتدّاً؛ على الهاتف
+                        // (أضيق من الحدّ) لا أثر لهذا الإطار البتّة.
+                        child: ResponsiveContentFrame(
+                          maxWidth: kFormMaxWidth,
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.fromLTRB(
+                                  20,
+                                  24,
+                                  20,
+                                  22,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context).colorScheme.surface,
+                                  borderRadius: BorderRadius.circular(
+                                    AppDimens.radiusLg,
+                                  ),
+                                  border: Border.all(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.outlineVariant,
+                                  ),
+                                  boxShadow: colors.shadowFloating,
+                                ),
+                                child: form,
+                              ),
+                              // رسم صغير يتدلّى من زاوية البطاقة فوق زر الإجراء،
+                              // كما في `ctaArtStyle` بالمصدر.
+                              PositionedDirectional(
+                                bottom: -26,
+                                end: -18,
+                                child: IgnorePointer(
+                                  child: ManagedArtwork(
+                                    slot: VisualSlots.authCta,
+                                    fallbackAsset: 'assets/art/opt/a-i3.png',
+                                    width: ctaArtWidth,
+                                    opacity: 0.95,
+                                  ),
                                 ),
                               ),
                             ],
                           ),
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+
+                    // الفراغ الزائد هنا — بين البطاقة والذيل — كما في المصدر.
+                    const Spacer(),
+                    if (footer != null)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 18, 20, 26),
+                        child: ResponsiveContentFrame(
+                          maxWidth: kFormMaxWidth,
+                          child: footer!,
+                        ),
+                      )
+                    else
+                      const SizedBox(height: AppDimens.space6),
+                  ],
                 ),
               ),
-
-              // ── بطاقة النموذج العائمة (تتداخل مع الرأس) ──
-              Transform.translate(
-                offset: const Offset(0, -28),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 18),
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.fromLTRB(20, 24, 20, 22),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.surface,
-                          borderRadius: BorderRadius.circular(
-                            AppDimens.radiusLg,
-                          ),
-                          border: Border.all(
-                            color: Theme.of(context).colorScheme.outlineVariant,
-                          ),
-                          boxShadow: colors.shadowFloating,
-                        ),
-                        child: form,
-                      ),
-                      // رسم صغير يتدلّى من زاوية البطاقة فوق زر الإجراء،
-                      // كما في `ctaArtStyle` بالمصدر.
-                      PositionedDirectional(
-                        bottom: -26,
-                        end: -18,
-                        child: IgnorePointer(
-                          child: Opacity(
-                            opacity: 0.95,
-                            child: Image.asset(
-                              'assets/art/opt/a-i3.png',
-                              width: ctaArtWidth,
-                              fit: BoxFit.contain,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              if (footer != null)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 26),
-                  child: footer!,
-                )
-              else
-                const SizedBox(height: AppDimens.space6),
-            ],
+            ),
           ),
         ),
       ),

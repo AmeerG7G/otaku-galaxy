@@ -16,6 +16,7 @@ class ApiClient {
     AppConfig? config,
     this.tokenProvider,
     this.onUnauthorized,
+    this.appVersionProvider,
     Dio? dio,
   }) : _dio =
            dio ??
@@ -44,6 +45,14 @@ class ApiClient {
           final token = tokenProvider?.call();
           if (token != null && token.isNotEmpty) {
             options.headers['Authorization'] = 'Bearer $token';
+          }
+          // نسخة التطبيق المثبَّتة — يقرؤها الخادم ليرفض العمليات المحميّة
+          // القادمة من نسخة دون الحدّ الأدنى المدعوم. الحاجز في Flutter
+          // يُتجاوَز بتعديل التطبيق؛ هذا الرأس هو ما يجعل الفرض خادميّاً.
+          // فارغةً تُحذف تماماً: الخادم يمرّر الرأس الغائب عمداً.
+          final appVersion = appVersionProvider?.call();
+          if (appVersion != null && appVersion.isNotEmpty) {
+            options.headers['X-App-Version'] = appVersion;
           }
           _log(
             '▶ [$platformLabel] base=${_dio.options.baseUrl} '
@@ -122,6 +131,9 @@ class ApiClient {
 
   /// استدعاء عند انتهاء الجلسة (401).
   void Function()? onUnauthorized;
+
+  /// النسخة المثبَّتة المعلَنة للخادم (تُقرأ عند كل طلب، متزامنةً).
+  String? Function()? appVersionProvider;
 
   /// ربط الجلسة بعد بناء العميل (لتجنب الاعتماد الدائري في DI).
   void attachAuth({

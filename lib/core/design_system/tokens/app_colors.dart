@@ -30,6 +30,20 @@ class AppColors {
   static const Color infoLight = Color(0xFF4EA8FF);
   static const Color infoPale = Color(0xFFE7F2FF);
 
+  // ═══ صيغ نصّية من ألوان الحالة ═══
+  //
+  // [CRITICAL] الألوان أعلاه مضبوطة **مؤشِّراتٍ**: أيقونات وحدود وشارات
+  // ملوّنة، حيث الحدّ ٣:١. استعمالُها لوناً لنصّ على سطحٍ فاتح يرسب: القياس
+  // على `surfaceVariant` أعطى 2.52:1 للأخضر و2.72:1 للأحمر و4.13:1 للأزرق —
+  // كلها دون حدّ AA للنصّ (4.5:1).
+  //
+  // هذه الصيغ أغمق من مقابلاتها بالقدر الذي يجتاز الحدّ ويحفظ الدرجة نفسها،
+  // وتُستعمل **للنصّ وحده**. الوضع الداكن لا يحتاجها: نصوصه تُرسم بالصيغة
+  // الفاتحة على سطحٍ داكن فتجتاز أصلاً (5.92:1 و6.45:1).
+  static const Color successText = Color(0xFF0F7A55);
+  static const Color errorText = Color(0xFFC42544);
+  static const Color infoText = Color(0xFF1C63A3);
+
   static const Color surface = Color(0xFFFFFFFF);
   static const Color surfaceVariant = Color(0xFFF6F2FE);
   static const Color surfaceElevated = Color(0xFFFFFFFF);
@@ -56,6 +70,7 @@ class AppColors {
     begin: Alignment.topRight,
     end: Alignment.bottomLeft,
   );
+
   /// تدرّج أزرار الإجراء الرئيسية — `linear-gradient(135deg, pink, violet)`
   /// في مصدر التصميم: وردي على اليسار الفيزيائي وبنفسجي على اليمين.
   ///

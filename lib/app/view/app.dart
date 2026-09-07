@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
@@ -10,7 +13,10 @@ import '../../features/auth/presentation/cubit/auth_cubit.dart';
 import '../../features/auth/presentation/cubit/auth_state.dart';
 import '../../features/cart/presentation/cubit/cart_cubit.dart';
 import '../../features/collections/presentation/cubit/collections_cubit.dart';
+import '../../features/app_update/data/app_version_repository.dart';
+import '../../features/app_update/presentation/force_update_gate.dart';
 import '../../features/connectivity/presentation/offline_gate.dart';
+import '../../features/main_navigation/presentation/screens/main_navigation_screen.dart';
 import '../../features/notifications/presentation/cubit/notifications_cubit.dart';
 import '../../features/points/presentation/cubit/points_cubit.dart';
 import '../../features/reviews/domain/repositories/review_repository.dart';
@@ -30,6 +36,7 @@ import '../../features/products/domain/usecases/fetch_product_details_usecase.da
 import '../../features/products/domain/usecases/fetch_products_usecase.dart';
 import '../../features/products/domain/usecases/search_products_usecase.dart';
 import '../../features/birthday/data/birthday_storage.dart';
+import '../../features/notifications/data/push_registrar.dart';
 
 /// جذر التطبيق: يربط الثيم والرواتر والاعتماديات المشتركة.
 class OtakuGalaxyApp extends StatelessWidget {
@@ -78,14 +85,31 @@ class OtakuGalaxyApp extends StatelessWidget {
           // التي تحتاج حساباً تعرض دعوة تسجيل الدخول عند الحاجة.
           listener: (context, state) {
             if (state is AuthAuthenticated) {
+              // إن كان المستخدم زائراً طلب تبويباً محمياً قبل الدخول
+              // (السلة/الحساب) ننقله إليه الآن — «يصل إلى ما كان يريده».
+              final pending = pendingProtectedTab;
+              pendingProtectedTab = null;
+              if (pending != null) {
+                mainNavIndex.value = pending.clamp(0, MainTab.count - 1);
+              }
               di.sl<CartCubit>().load();
               di.sl<FavoritesCubit>().load();
               // حالة عيد الميلاد تُقرأ من الخادم لكل حساب على حدة.
               di.sl<BirthdayStorage>().refresh();
               di.sl<NotificationsCubit>().load();
               di.sl<PointsCubit>().load();
+              // ربط الجهاز بالحساب للإشعارات الفورية. لا يُنتظر: طلب الإذن
+              // وجلب الرمز لا يجوز أن يؤخّرا دخول المستخدم، والفشل صامت
+              // (الإشعار الفوري تحسين لا شرط).
+              unawaited(di.sl<PushRegistrar>().onLogin());
             } else if (state is AuthUnauthenticated) {
-              // كل ما يخص الحساب يُمسح فوراً حتى لا يظهر لحساب آخر.
+              // كل ما يخص الحساب يُمسح فوراً حتى لا يظهر لحساب آخر، ويعود
+              // التبويب إلى الرئيسية فلا يبقى الزائر على تبويب محمي بعد خروجه.
+              pendingProtectedTab = null;
+              mainNavIndex.value = MainTab.home;
+              // [CRITICAL] إلغاء تسجيل الجهاز أولاً: بدونه يبقى مسجَّلاً باسم
+              // من خرج، فتصل إشعاراته الخاصة إلى من يستعمل الهاتف بعده.
+              unawaited(di.sl<PushRegistrar>().onLogout());
               di.sl<CartCubit>().clear();
               di.sl<FavoritesCubit>().clear();
               di.sl<BirthdayStorage>().clear();
@@ -123,8 +147,26 @@ class OtakuGalaxyApp extends StatelessWidget {
                     const Locale('ar'),
                 // حاجز الاتصال يغلّف كل الشاشات — زائر أو مسجّل أو عائد،
                 // بلا استثناء؛ لا محتوى فارغ أوفلاين.
-                builder: (context, child) =>
-                    OfflineGate(child: child ?? const SizedBox.shrink()),
+                // [CRITICAL] ترتيب الحاجزين مقصود: إجبار التحديث **فوق**
+                // كل شيء بما فيه حاجز الاتصال والرواتر. حين يجب التحديث
+                // لا يُبنى الرواتر أصلاً، فلا مسار ولا رابط عميق ولا وضع
+                // زائر يصل إلى شيء. وحاجز الاتصال يبقى تحته كما كان.
+                // [CRITICAL] أسلوب أشرطة النظام يُطبَّق هنا لا عند الإقلاع:
+                // هذا الموضع فوق الرواتر والأوراق والحوارات وكل حاجز، فيسري
+                // على **كل** شاشة بلا استثناء ويتبدّل مع تبدّل المظهر. ضبطه
+                // مرة واحدة في `bootstrap` كان يترك الشريط أبيض في الوضع
+                // الداكن وأيقونات الحالة داكنةً على خلفية داكنة.
+                builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
+                  value: otakuSystemOverlay(
+                    themeState.isDark ? Brightness.dark : Brightness.light,
+                  ),
+                  child: ForceUpdateGate(
+                  repository: di.sl<AppVersionRepository>(),
+                    child: OfflineGate(
+                      child: child ?? const SizedBox.shrink(),
+                    ),
+                  ),
+                ),
                 routerConfig: appRouter.config(),
               );
             },

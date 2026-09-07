@@ -1,6 +1,12 @@
 import type pg from 'pg';
+import { config } from '../config/index.js';
 import { sendRatingReminderNow } from '../jobs/ratingReminderJob.js';
 import { db, withTransaction } from '../database/pool.js';
+import { birthdayDiscountAmount } from '../domain/birthday.js';
+import {
+  eligiblePurchaseValue,
+  purchasePointsFor,
+} from '../domain/galaxyPoints.js';
 import { birthdayRepo } from '../repositories/birthdayRepo.js';
 import { cartRepo } from '../repositories/cartRepo.js';
 import { productRepo } from '../repositories/catalogRepo.js';
@@ -11,11 +17,12 @@ import { pointsRepo } from '../repositories/pointsRepo.js';
 import { zoneRepo } from '../repositories/zonesRepo.js';
 import { ORDER_STATUSES as ALL_ORDER_STATUSES } from '../types/order-status.js';
 import {
+  CUSTOMER_CANCELLABLE_STATUSES,
   ORDER_STATUS_TRANSITIONS,
   type OrderStatus,
 } from '../types/index.js';
 import { Errors } from '../utils/errors.js';
-import { businessConfigService } from './businessConfigService.js';
+import { loyaltyRewardsService } from './loyaltyRewardsService.js';
 
 /**
  * رفض طلب داخل معاملة واحدة: تحديث الحالة + استرجاع المخزون المحجوز.
@@ -40,14 +47,13 @@ async function rejectOrderInTransaction(
 }
 
 /**
- * مهلة فتح التقييم المعمول بها الآن.
+ * مهلة **تذكير** التقييم — لا مهلة فتحه.
  *
- * تُقرأ عند كل انتقال حالة لا مرة واحدة عند الإقلاع، فتغييرُها من لوحة
- * التحكم يسري على الطلب التالي مباشرةً. الطلبات القائمة لا تتأثر لأن
- * الموعد مثبَّت في `rating_available_at` وقت الخروج للتوصيل.
+ * التقييم يُفتح بتأكيد الاستلام فوراً. هذه القيمة تجدول إشعار «شلونها
+ * المنتجات؟» فقط، وهي ثابت تشغيلي في البيئة لا إعداد في لوحة التحكم.
  */
-async function ratingDelayHours(): Promise<number> {
-  return businessConfigService.value('order_rating_delay_hours');
+function reviewReminderDelayHours(): number {
+  return config.orders.reviewReminderDelayHours;
 }
 
 
@@ -114,17 +120,31 @@ export const orderService = {
         });
       }
 
-      // سقف الخصم رسوم التوصيل نفسها — لا توصيل سالب مهما تراكم الترويج.
-      const deliveryDiscount = Math.min(deliveryPromoTotal, deliveryFee);
+      // القسمة (سقفُ الزبون وفائضُ المتجر) تقع في `orderRepo.create` من
+      // القيمة الخام وحدها، فلا موضعان يحسبانها وقد يتباعدان.
 
       // خصم عيد الميلاد: يُحتسب على الخادم فقط، ويُستهلك مرة واحدة سنوياً.
       // النسبة تُقرأ لحظة إنشاء الطلب، فتغييرها لاحقاً لا يمسّ طلباً مضى.
+      // خصم عيد الميلاد: نسبة **ثابتة** في `domain/birthday.ts` لا إعداد.
+      // الأهلية والاستهلاك مرة واحدة سنوياً كما كانا — تغيّر مصدر النسبة
+      // وحده.
       const birthday = await birthdayRepo.status(tx, userId);
-      const birthdayPercent = await businessConfigService.value('birthday_discount_percent');
       const productsTotal = snapshots.reduce((sum, item) => sum + item.lineTotal, 0);
-      const discount = birthday.rewardAvailable
-        ? Math.round((productsTotal * birthdayPercent) / 100)
+      const birthdayDiscount = birthday.rewardAvailable
+        ? birthdayDiscountAmount(productsTotal)
         : 0;
+
+      // خصم مزيّة المستوى: يُحجز بالمطالبة ويُستهلك هنا. القيمة تُحسب على
+      // الخادم من مجموع المنتجات ولا تتجاوز سقفها المالي؛ لا مبلغ يُقرأ من
+      // العميل. الاستهلاك داخل هذه المعاملة، فسقوط الطلب لاحقاً يُرجع المزيّة.
+      // يسبق إنشاء الطلب لأن `discount` جزءٌ من الصفّ المُنشأ؛ الربط بالطلب
+      // يقع بعد وجود معرّفه.
+      const loyaltyReward = await loyaltyRewardsService.reserveDiscountForOrder(
+        tx,
+        userId,
+        productsTotal,
+      );
+      const discount = birthdayDiscount + (loyaltyReward?.amount ?? 0);
 
       const order = await orderRepo.create(tx, {
         userId,
@@ -137,15 +157,30 @@ export const orderService = {
         zoneId,
         zoneName,
         discount,
-        deliveryDiscount,
+        deliveryPromoRaw: deliveryPromoTotal,
+        loyaltyDiscount: loyaltyReward?.amount ?? 0,
       });
 
-      if (discount > 0) {
+      if (birthdayDiscount > 0) {
         // القيد الفريد هو الحارس الحقيقي: إن فشل الإدراج فالخصم مستهلك
         // بالفعل هذه السنة، فنتراجع عن الطلب كاملاً بدل منحه مرتين.
-        const consumed = await birthdayRepo.consume(tx, userId, order.id, discount);
+        const consumed = await birthdayRepo.consume(tx, userId, order.id, birthdayDiscount);
         if (!consumed) {
           throw Errors.conflict('خصم عيد الميلاد مستخدم هذه السنة', 'BIRTHDAY_DISCOUNT_USED');
+        }
+      }
+
+      if (loyaltyReward) {
+        // الصفّ مقفول منذ الحجز، فهذا التثبيت لا يخسر سباقاً في الحالة
+        // العادية. الشرط يبقى: لو استُهلك رغم ذلك نُسقط الطلب كاملاً بدل
+        // إنشائه بخصمٍ لم يُحجز فعلاً.
+        const applied = await loyaltyRewardsService.consumeReserved(
+          tx,
+          loyaltyReward.redemptionId,
+          order.id,
+        );
+        if (!applied) {
+          throw Errors.conflict('مزيّة الخصم استُهلكت في طلب آخر', 'REWARD_ALREADY_USED');
         }
       }
 
@@ -184,7 +219,7 @@ export const orderService = {
   async cancelOrder(userId: string, orderId: string) {
     const order = await orderRepo.findById(db, orderId);
     if (!order || order.customer?.id !== userId) throw Errors.notFound('الطلب غير موجود');
-    if (order.status !== 'PENDING_ADMIN_CONFIRMATION' && order.status !== 'CONFIRMED') {
+    if (!(CUSTOMER_CANCELLABLE_STATUSES as readonly OrderStatus[]).includes(order.status)) {
       throw Errors.conflict('لا يمكن إلغاء طلب في هذه المرحلة');
     }
     // تحديث الحالة + استرجاع المخزون في معاملة واحدة (نفس مسار رفض الإدارة).
@@ -345,34 +380,45 @@ async function applyStatusTransition(
       await orderRepo.updateStatus(tx, order.id, status, note, changedBy);
     }
 
-    // نافذة التقييم تُثبَّت ساعةَ يخرج الطلب للتوصيل — وهو فعل الإدارة.
-    // تأكيد العميل لاحقاً لا يحرّكها، فلا يبدأ المؤقّت من ضغطته.
-    // المهلة تُقرأ الآن من إعدادات الأعمال وتُثبَّت في `rating_available_at`.
-    // الطلبات التي خرجت للتوصيل سابقاً تحتفظ بموعدها المحفوظ: `markDispatched`
-    // مشروط بـ`dispatched_at IS NULL`، فتغيير الإعداد لا يعيد تشغيل عدّاد أحد.
+    // موعد **تذكير** التقييم يُثبَّت ساعةَ يخرج الطلب للتوصيل — وهو فعل
+    // الإدارة. لا علاقة له بفتح التقييم: ذاك يقع بتأكيد الاستلام.
     if (status === 'OUT_FOR_DELIVERY') {
-      await orderRepo.markDispatched(tx, order.id, await ratingDelayHours());
+      await orderRepo.markDispatched(tx, order.id, reviewReminderDelayHours());
     }
 
     if (!customerId) return;
 
     // منح نقاط الاستلام مرة واحدة — الفهرس الفريد يمنع التكرار.
     if (status === 'COMPLETED' && order.status !== 'COMPLETED') {
-      // تثبيت لحظة الاستلام وفتح نافذة التقييم بعدها. داخل المعاملة نفسها،
-      // فإمّا أن يُسجَّل الاستلام بنافذته كاملاً أو لا يُسجَّل شيء.
-      await orderRepo.markDelivered(tx, order.id, await ratingDelayHours());
-      // المبلغ يُقرأ لحظة المنح ويُكتب في الدفتر. تغيير الإعداد لاحقاً لا
-      // يمسّ هذا الصفّ ولا أي صفّ سابق — الرصيد مجموع ما كُتب فعلاً.
-      await pointsRepo.award(tx, {
-        userId: customerId,
-        label: 'استلام طلب',
-        amount: await businessConfigService.value('points_order_received'),
-        reason: 'order_received',
-        orderId: order.id,
-      });
+      // تثبيت لحظة الاستلام — وهي وحدها ما يفتح التقييم. داخل المعاملة
+      // نفسها مع منح النقاط: إمّا أن يُسجَّل الاستلام كاملاً أو لا شيء.
+      await orderRepo.markDelivered(tx, order.id, reviewReminderDelayHours());
+      // نقاط الشراء: خمس نقاط عن كل ١٠٬٠٠٠ دينار من قيمة الشراء المؤهَّلة
+      // (مجموع المنتجات ناقص خصوماتها — بلا رسوم التوصيل). كانت القيمة
+      // مبلغاً ثابتاً يضبطه المسؤول، فطلبٌ بعشرة آلاف وطلبٌ بمليون كانا
+      // يمنحان الشيء نفسه.
+      //
+      // الحساب على الخادم من صفّ الطلب المحفوظ، لا من أي رقم يرسله العميل.
+      const purchasePoints = purchasePointsFor(
+        eligiblePurchaseValue({
+          productsTotal: order.productsTotal,
+          discount: order.discount,
+        }),
+      );
+      // طلبٌ صغير قد يستحق صفراً؛ الدفتر يرفض الصفر (`amount <> 0`) ولا معنى
+      // لسطر «+٠» في سجلّ الزبون أصلاً.
+      if (purchasePoints > 0) {
+        await pointsRepo.award(tx, {
+          userId: customerId,
+          label: 'نقاط شراء',
+          amount: purchasePoints,
+          reason: 'order_received',
+          orderId: order.id,
+        });
+      }
     }
 
-    const notification = buildStatusNotification(status, note);
+    const notification = buildStatusNotification(order.status, status, note);
     if (notification && status !== order.status) {
       await notificationRepo.create(tx, {
         userId: customerId,
@@ -388,10 +434,16 @@ async function applyStatusTransition(
 }
 
 /**
- * نص الإشعار لكل انتقال حالة. الحالات الداخلية (التجهيز) لا تُشعر العميل —
- * التطبيق يعرضها ضمن «قيد التوصيل» أصلاً.
+ * نص الإشعار لكل انتقال حالة.
+ *
+ * الحالة السابقة جزء من القرار لا زينة: في المسار الجديد يقفز القبول من
+ * الانتظار إلى التوصيل في انتقال واحد، فيجب أن يحمل الإشعارُ القبولَ نفسه
+ * (لا يُشعَر العميل «خرج للتوصيل» فقط بلا أن يعرف أن طلبه قُبل). الطلبات
+ * الموروثة الواقفة في `CONFIRMED` أو`PREPARING` كانت قد استلمت إشعار القبول
+ * أصلاً، فلا يُشعَر القادمُ منها قبولاً ثانياً — يحصل على إشعار التوصيل فقط.
  */
 function buildStatusNotification(
+  from: OrderStatus,
   status: OrderStatus,
   note: string | null,
 ):
@@ -402,13 +454,30 @@ function buildStatusNotification(
     }
   | null {
   switch (status) {
+    // المسار الموروث: طلبات توقّفت عند «تم تأكيده» قبل الدمج الأول.
     case 'CONFIRMED':
       return {
         type: 'orderAccepted',
         title: 'تم قبول طلبك 🎉',
         body: note ?? 'طلبك مقبول وقيد التجهيز، وراح يوصلك قريباً.',
       };
+    // المسار الموروث: طلبات توقّفت عند «قيد التجهيز» قبل الدمج الثاني.
+    case 'PREPARING':
+      if (from !== 'PENDING_ADMIN_CONFIRMATION') return null;
+      return {
+        type: 'orderAccepted',
+        title: 'تم قبول طلبك 🎉',
+        body: note ?? 'طلبك مقبول وقيد التجهيز، وراح يوصلك قريباً.',
+      };
     case 'OUT_FOR_DELIVERY':
+      // القبول الجديد: الانتظار → التوصيل في خطوة واحدة — إشعار القبول.
+      if (from === 'PENDING_ADMIN_CONFIRMATION') {
+        return {
+          type: 'orderAccepted',
+          title: 'تم قبول طلبك 🎉',
+          body: note ?? 'طلبك مقبول وخرج للتوصيل — الدفع عند الاستلام.',
+        };
+      }
       return {
         type: 'deliveryUpdate',
         title: 'طلبك بالطريق 🚚',

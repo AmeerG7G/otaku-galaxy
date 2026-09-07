@@ -12,7 +12,12 @@ import {
   Tag,
   Typography,
 } from 'antd'
-import { StarOutlined } from '@ant-design/icons'
+import { formatDateTime } from '../utils/format'
+import { POINTS_REASON_COLORS, POINTS_REASON_LABELS } from '../constants/points'
+import EmptyState from '../components/EmptyState'
+import GalaxyRulesCard from '../components/GalaxyRulesCard'
+import GiftClaimsCard from '../components/GiftClaimsCard'
+import { PageHeader } from '../components/ui/PageHeader'
 import { getCustomerPoints, getPointsSummary } from '../api/pointsApi'
 import type {
   PointsByReason,
@@ -20,26 +25,11 @@ import type {
   PointsLedgerEntry,
   PointsTopBalance,
 } from '../types/points'
-import { formatDateTime } from '../utils/format'
-import EmptyState from '../components/EmptyState'
 
 /** تسميات أسباب المنح — للعرض فقط، لا يُبنى عليها منطق. */
-const REASON_LABELS: Record<PointsReason, string> = {
-  order_received: 'استلام طلب',
-  review_approved: 'تقييم معتمد',
-  review_with_photo: 'تقييم مصوّر',
-  manual: 'يدوي',
-}
-
-const REASON_COLORS: Record<PointsReason, string> = {
-  order_received: 'blue',
-  review_approved: 'green',
-  review_with_photo: 'purple',
-  manual: 'default',
-}
 
 /**
- * نقاط المجرّة — عرض إداري للقراءة فقط.
+ * نقاط المجرّة — القواعد والسلّم والدفتر للقراءة، وتسليم الهدايا للتنفيذ.
  *
  * كل رقم هنا مشتقّ من `points_ledger` نفسه الذي يقرأه التطبيق؛ لا رصيد
  * مخزَّن ولا جدول تجميع يمكن أن يتباعد عن الحقيقة.
@@ -47,6 +37,10 @@ const REASON_COLORS: Record<PointsReason, string> = {
  * لا يوجد تعديل يدوي عمداً: كل حركة في الدفتر تقابل حدثاً حقيقياً (استلام
  * طلب، اعتماد تقييم) ويحميها فهرس فريد من التكرار. منحٌ يدوي بلا حدث يكسر
  * ذلك الضمان ويجعل الرصيد غير قابل للتفسير.
+ *
+ * [NOTE] حُذفت من هنا بطاقتان: «سلّم المستويات» (إنشاء/تعديل/حذف) و«إعدادات
+ * النقاط والتقييم». القواعد صارت ثابتة في الخادم، وما بقي من إعدادات قابلة
+ * للضبط فعلاً انتقل إلى صفحة «الإعدادات».
  */
 export default function PointsPage() {
   const [selected, setSelected] = useState<PointsTopBalance | null>(null)
@@ -97,7 +91,7 @@ export default function PointsPage() {
       dataIndex: 'reason',
       key: 'reason',
       render: (reason: PointsReason) => (
-        <Tag color={REASON_COLORS[reason]}>{REASON_LABELS[reason] ?? reason}</Tag>
+        <Tag color={POINTS_REASON_COLORS[reason]}>{POINTS_REASON_LABELS[reason] ?? reason}</Tag>
       ),
     },
     { title: 'عدد الحركات', dataIndex: 'entries', key: 'entries' },
@@ -115,7 +109,7 @@ export default function PointsPage() {
       dataIndex: 'reason',
       key: 'reason',
       render: (reason: PointsReason) => (
-        <Tag color={REASON_COLORS[reason]}>{REASON_LABELS[reason] ?? reason}</Tag>
+        <Tag color={POINTS_REASON_COLORS[reason]}>{POINTS_REASON_LABELS[reason] ?? reason}</Tag>
       ),
     },
     {
@@ -140,16 +134,21 @@ export default function PointsPage() {
 
   return (
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-      <Typography.Title level={4} style={{ margin: 0 }}>
-        <StarOutlined /> نقاط المجرّة
-      </Typography.Title>
+      <PageHeader
+        title="نقاط المجرّة"
+        description="القواعد والسلّم والدفتر — كلها للقراءة. ما يُدار هنا هو تسليم الهدايا."
+      />
 
       <Alert
         type="info"
         showIcon
-        message="عرض للقراءة فقط"
-        description="كل حركة في دفتر النقاط تقابل حدثاً حقيقياً (استلام طلب أو اعتماد تقييم) ويمنع تكرارها فهرس فريد في قاعدة البيانات. تغيير قيم المنح من «إعدادات الأعمال» يسري على المنح القادم فقط ولا يمسّ أي حركة سابقة."
+        message="القواعد ثابتة والدفتر للقراءة فقط"
+        description="قيم النقاط وعتبات المستويات ومزاياها قرارٌ تجاري مثبَّت في الخادم — لا تُضبط من هنا ولا من أي واجهة. وكل حركة في دفتر النقاط تقابل حدثاً حقيقياً (استلام طلب أو اعتماد تقييم) ويمنع تكرارها فهرس فريد في القاعدة، فلا منح يدوي. الفعل الوحيد المتاح في هذه الصفحة هو تعليم هدية بأنها سُلّمت."
       />
+
+      <GalaxyRulesCard />
+
+      <GiftClaimsCard />
 
       <Row gutter={[12, 12]}>
         <Col xs={12} md={6}>

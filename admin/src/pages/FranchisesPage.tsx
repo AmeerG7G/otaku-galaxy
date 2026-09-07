@@ -11,6 +11,7 @@ import {
   InputNumber,
   Modal,
   Popconfirm,
+  Select,
   Space,
   Switch,
   Table,
@@ -25,11 +26,16 @@ import {
   updateFranchise,
 } from '../api/communityApi'
 import type { Franchise } from '../types/community'
+import { MediaThumb } from '../components/ui/MediaThumb'
+import ImageUploadField from '../components/ImageUploadField'
+import { isValidImageRef } from '../utils/media'
 
 interface FormValues {
   name: string
+  altNames?: string[]
   sortOrder?: number
   isActive?: boolean
+  imageUrl?: string | null
 }
 
 /**
@@ -57,11 +63,18 @@ export default function FranchisesPage() {
       if (editing) {
         return updateFranchise(editing.id, {
           name: values.name,
+          altNames: values.altNames ?? [],
           sortOrder: values.sortOrder,
           isActive: values.isActive,
+          imageUrl: values.imageUrl ?? null,
         })
       }
-      return createFranchise({ name: values.name, sortOrder: values.sortOrder })
+      return createFranchise({
+        name: values.name,
+        altNames: values.altNames ?? [],
+        sortOrder: values.sortOrder,
+        imageUrl: values.imageUrl ?? null,
+      })
     },
     onSuccess: async () => {
       message.success(editing ? 'تم التحديث' : 'أُضيف الأنمي')
@@ -99,18 +112,43 @@ export default function FranchisesPage() {
     setEditing(franchise)
     form.setFieldsValue({
       name: franchise.name,
+      altNames: franchise.altNames,
       sortOrder: franchise.sortOrder,
       isActive: franchise.isActive,
+      imageUrl: franchise.imageUrl ?? undefined,
     })
     setOpen(true)
   }
 
   const columns = [
     {
+      title: 'الصورة',
+      key: 'image',
+      width: 80,
+      render: (_: unknown, franchise: Franchise) => (
+        <MediaThumb reference={franchise.imageUrl} size={48} radius={8} />
+      ),
+    },
+    {
       title: 'الأنمي',
       dataIndex: 'name',
       key: 'name',
       render: (value: string) => <Typography.Text strong>{value}</Typography.Text>,
+    },
+    {
+      title: 'أسماء البحث',
+      dataIndex: 'altNames',
+      key: 'altNames',
+      render: (values: string[]) =>
+        values.length === 0 ? (
+          <Typography.Text type="secondary">—</Typography.Text>
+        ) : (
+          <Space size={4} wrap>
+            {values.map((value) => (
+              <Tag key={value}>{value}</Tag>
+            ))}
+          </Space>
+        ),
     },
     {
       title: 'المنتجات المرتبطة',
@@ -210,7 +248,7 @@ export default function FranchisesPage() {
             columns={columns}
             dataSource={franchisesQuery.data?.items ?? []}
             pagination={false}
-            scroll={{ x: 700 }}
+            scroll={{ x: 820 }}
           />
         )}
       </Card>
@@ -232,6 +270,35 @@ export default function FranchisesPage() {
             rules={[{ required: true, message: 'الاسم مطلوب' }]}
           >
             <Input placeholder="ون بيس" maxLength={80} />
+          </Form.Item>
+          <Form.Item
+            name="altNames"
+            label="أسماء بديلة للبحث"
+            tooltip="يبحث بها العميل عن هذا الأنمي: الاسم العربي، النقحرة، أي تسمية شائعة. الاسم الأساسي مشمول تلقائياً."
+            extra="اكتب الاسم ثم اضغط Enter لإضافته."
+          >
+            <Select
+              mode="tags"
+              open={false}
+              suffixIcon={null}
+              placeholder="قاتل الشياطين، Kimetsu no Yaiba"
+              tokenSeparators={[',']}
+              style={{ width: '100%' }}
+            />
+          </Form.Item>
+          <Form.Item
+            name="imageUrl"
+            label="صورة الأنمي (اختيارية)"
+            rules={[
+              {
+                validator: (_rule, value: string) =>
+                  !value || isValidImageRef(value)
+                    ? Promise.resolve()
+                    : Promise.reject(new Error('رابط الصورة غير صالح')),
+              },
+            ]}
+          >
+            <ImageUploadField purpose="franchise" allowClear />
           </Form.Item>
           <Form.Item name="sortOrder" label="الترتيب">
             <InputNumber min={0} style={{ width: '100%' }} placeholder="0" />

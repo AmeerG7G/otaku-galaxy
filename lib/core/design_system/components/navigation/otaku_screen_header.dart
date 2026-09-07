@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../tokens/app_dimens.dart';
 import '../../tokens/app_theme_colors.dart';
+import '../../../../features/visuals/presentation/managed_artwork.dart';
 
 /// نمط ترويسة الشاشة في تصميم Otaku Galaxy v2.
 enum OtakuHeaderVariant {
@@ -34,6 +35,7 @@ class OtakuScreenHeader extends StatelessWidget {
     this.actions = const [],
     this.trailing,
     this.artwork,
+    this.artworkSlot,
     this.gradient,
     this.variant = OtakuHeaderVariant.plain,
     this.leading,
@@ -50,6 +52,7 @@ class OtakuScreenHeader extends StatelessWidget {
     this.actions = const [],
     this.trailing,
     this.artwork,
+    this.artworkSlot,
     this.leading,
     this.bottom,
   }) : variant = OtakuHeaderVariant.gradient;
@@ -62,6 +65,7 @@ class OtakuScreenHeader extends StatelessWidget {
     this.actions = const [],
     this.trailing,
     this.artwork,
+    this.artworkSlot,
     this.bottom,
   }) : variant = OtakuHeaderVariant.tab,
        onBack = null,
@@ -76,6 +80,7 @@ class OtakuScreenHeader extends StatelessWidget {
     this.actions = const [],
     this.trailing,
     this.artwork,
+    this.artworkSlot,
     this.leading,
     this.bottom,
   }) : variant = OtakuHeaderVariant.compact,
@@ -95,6 +100,12 @@ class OtakuScreenHeader extends StatelessWidget {
   /// رسم شخصية تزييني خلف الترويسة.
   final String? artwork;
 
+  /// مفتاح الفتحة البصرية التي يديرها المسؤول من لوحة التحكم.
+  ///
+  /// حين يُمرَّر، يصير [artwork] هو الأصل الاحتياطي: يُعرض كما هو ما دامت
+  /// الفتحة غير مضبوطة أو تعذّر تحميل صورتها. المقاس والموضع لا يتغيّران.
+  final String? artworkSlot;
+
   final Gradient? gradient;
   final OtakuHeaderVariant variant;
 
@@ -106,14 +117,21 @@ class OtakuScreenHeader extends StatelessWidget {
 
   bool get _onGradient => variant == OtakuHeaderVariant.gradient;
 
-  /// ستارة داكنة رقيقة تحت نص الترويسة المتدرّجة.
-  ///
-  /// النص الأبيض على التدرّج هو توقيع تصميم v2، لكن بعض تدرّجات الأقسام
-  /// فاتحة (الكهرماني) فتهبط نسبة التباين إلى 1.83:1 ويصير العنوان شبه
-  /// غير مقروء. الستارة تُخفّض إضاءة التدرّج بقدر يرفع الأسوأ إلى 3.46:1
-  /// (فوق حدّ WCAG AA للنص الكبير) مع إبقاء اللون حيّاً والحبر أبيض في
-  /// كل الأقسام — أفضل من تبديل لون الحبر الذي يجعل الترويسات غير متسقة.
-  static const double _gradientScrim = 0.28;
+  // [CRITICAL] لا ستارة داكنة فوق التدرّج — أُزيلت عمداً.
+  //
+  // كانت `ColoredBox(Colors.black @ 0.28)` تملأ الترويسة فوق تدرّج القسم،
+  // فيظهر لون القسم داخل ترويسته أغمقَ وأبهتَ من اللون نفسه خارجها (في
+  // بطاقة القسم وشريط الرئيسية). التدرّج الآن هو تدرّج الهوية كما هو،
+  // مطابقاً لمصدر التصميم الذي لا يعرف هذه الستارة أصلاً:
+  // `catHeadStyle: background:${grad}` وحده (المرجع، سطر ٤٣٤٥).
+  //
+  // [NOTE] الستارة كانت مضافةً لسبب: التباين. الحبر أبيض، وأفتحُ تدرّجات
+  // الأقسام (الكهرماني `#FFB02E`) يعطي مع الأبيض **1.83:1**، وكانت الستارة
+  // ترفعه إلى **3.46:1** أي فوق حدّ WCAG AA للنص الكبير (3:1). بإزالتها
+  // يعود الأسوأ إلى 1.83:1 — دون الحدّ. القرار صريح من صاحب المنتج
+  // (اللون الحيّ أولى)، والمرجع نفسه على هذا. ولو أُريد التباين لاحقاً بلا
+  // إعادة التبهيت فالمخرج ظلٌّ على النصّ أو ستارةٌ محصورة خلف سطر العنوان
+  // وحده، لا طبقةٌ تغطّي التدرّج كلّه.
 
   @override
   Widget build(BuildContext context) {
@@ -140,13 +158,6 @@ class OtakuScreenHeader extends StatelessWidget {
           : Clip.none,
       child: Stack(
         children: [
-          // ستارة القراءة — تسبق الهالة والمحتوى.
-          if (_onGradient)
-            Positioned.fill(
-              child: ColoredBox(
-                color: Colors.black.withValues(alpha: _gradientScrim),
-              ),
-            ),
           // هالة بيضاء ناعمة خلف الترويسة المتدرّجة.
           if (_onGradient)
             PositionedDirectional(
@@ -169,7 +180,13 @@ class OtakuScreenHeader extends StatelessWidget {
               child: IgnorePointer(
                 child: Opacity(
                   opacity: 0.16,
-                  child: Image.asset(artwork!, width: 126),
+                  child: artworkSlot == null
+                      ? Image.asset(artwork!, width: 126)
+                      : ManagedArtwork(
+                          slot: artworkSlot!,
+                          fallbackAsset: artwork!,
+                          width: 126,
+                        ),
                 ),
               ),
             ),

@@ -44,6 +44,14 @@ export interface AdminOrder {
   rejectionReason: string | null
   /** خصم التوصيل المطبَّق وقت الطلب — بدونه لا تتطابق الإجماليات المعروضة. */
   deliveryDiscount: number
+  /**
+   * ما تجاوز رسوم التوصيل من ترويج المنتجات — مبلغ محتفَظ به للمتجر.
+   *
+   * [CRITICAL] ليس خصماً للزبون: لا يدخل `total` ولا ينقص `productsTotal`.
+   * يصل من مسار `/admin/orders/:id` وحده ولا يخرج في أي استجابة للعميل،
+   * لذلك هو اختياري — قوائم الطلبات لا تحمله.
+   */
+  deliveryDiscountExcess?: number
   /** لحظة خروج الطلب للتوصيل — مرجع نافذة التقييم. */
   dispatchedAt: string | null
   /** لحظة تأكيد الاستلام؛ null قبل الاستلام. */

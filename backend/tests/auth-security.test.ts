@@ -11,7 +11,16 @@ const BACKEND_ROOT = path.resolve(import.meta.dirname, '..');
 
 /** رقم فريد لكل حالة — الاختبارات تتشارك القاعدة فلا يجوز تصادم الأرقام. */
 let counter = 0;
-function uniquePhone(prefix = '077') {
+/**
+ * رقم فريد **بالصيغة المعتمدة** `+9647XXXXXXXXX`.
+ *
+ * الأرقام تُخزَّن دولية الآن، وهذه السويت تستعلم القاعدة مباشرةً بالرقم
+ * (رموز التحقق، حالة التوثيق). إعادةُ الصيغة المحلية كانت تجعل كل استعلام
+ * يعود فارغاً — لا لأن السلوك خطأ بل لأن الاختبار يسأل عن تمثيل لم يعد
+ * موجوداً. مسارات الإدخال المحلية (`07…`, `7…`, `00964…`) مغطّاة في
+ * `tests/phone-normalization.test.ts`.
+ */
+function uniquePhone(prefix = '+96477') {
   counter += 1;
   const tail = String(Date.now()).slice(-6) + String(counter).padStart(2, '0');
   return `${prefix}${tail.slice(-8).padStart(8, '0')}`;
@@ -67,15 +76,20 @@ const VALID_PRODUCTION_ENV = {
   DEV_OTP_ENABLED: undefined,
   DEV_OTP_CODE: undefined,
   SMS_PROVIDER: 'http',
+  // إعدادان بديلُهما يعمل ويعطي سلوكاً خاطئاً بصمت، فصارا مطلوبين صراحةً
+  // خارج التطوير: `TRUST_PROXY` (بدونه ينهار حدّ المعدّل إلى دلو واحد خلف
+  // الوسيط) و`PUBLIC_BASE_URL` (بدونه تُبنى روابط الصور على localhost).
+  TRUST_PROXY: '1',
+  PUBLIC_BASE_URL: 'https://api.example.com',
 };
 
 describe('تسجيل حساب جديد — المسار الحقيقي كاملاً', () => {
   beforeAll(async () => {
-    await purgeTestUsers('077%');
+    await purgeTestUsers();
     await purgeTestUsers('078%');
   });
   afterAll(async () => {
-    await purgeTestUsers('077%');
+    await purgeTestUsers();
     await purgeTestUsers('078%');
   });
 
@@ -84,7 +98,9 @@ describe('تسجيل حساب جديد — المسار الحقيقي كامل�
 
     const register = await api
       .post('/api/auth/register')
-      .send({ username: 'مستخدم جديد', phone, password: 'secret123' })
+      .send({ username: 'مستخدم جديد', phone, password: 'secret123',
+        gender: 'male',
+      })
       .expect(200);
     // الحساب موجود لكنه غير محقَّق بعد.
     expect(register.body.data.user.isPhoneVerified).toBe(false);
@@ -124,7 +140,9 @@ describe('تسجيل حساب جديد — المسار الحقيقي كامل�
     const phone = uniquePhone();
     await api
       .post('/api/auth/register')
-      .send({ username: 'غير محقَّق', phone, password: 'secret123' })
+      .send({ username: 'غير محقَّق', phone, password: 'secret123',
+        gender: 'male',
+      })
       .expect(200);
 
     const { rows } = await db.query<{ phone_verified_at: Date | null }>(
@@ -144,7 +162,9 @@ describe('تسجيل حساب جديد — المسار الحقيقي كامل�
     const phone = uniquePhone();
     await api
       .post('/api/auth/register')
-      .send({ username: 'محاولة أولى', phone, password: 'first-pass' })
+      .send({ username: 'محاولة أولى', phone, password: 'first-pass',
+        gender: 'male',
+      })
       .expect(200);
 
     // المستخدم لم يُدخل الرمز وأعاد المحاولة: يجب أن يُستأنف لا أن يُرفض.
@@ -158,7 +178,9 @@ describe('تسجيل حساب جديد — المسار الحقيقي كامل�
 
     const retry = await api
       .post('/api/auth/register')
-      .send({ username: 'محاولة ثانية', phone, password: 'second-pass' })
+      .send({ username: 'محاولة ثانية', phone, password: 'second-pass',
+        gender: 'male',
+      })
       .expect(200);
     expect(retry.body.data.user.username).toBe('محاولة ثانية');
 
@@ -178,7 +200,9 @@ describe('تسجيل حساب جديد — المسار الحقيقي كامل�
     const { phone } = await registerAndLogin();
     const res = await api
       .post('/api/auth/register')
-      .send({ username: 'منتحل', phone, password: 'other-pass' });
+      .send({ username: 'منتحل', phone, password: 'other-pass',
+        gender: 'male',
+      });
     expect(res.status).toBe(409);
     expect(res.body.error.code).toBe('PHONE_TAKEN');
   });
@@ -203,14 +227,16 @@ describe('تسجيل حساب جديد — المسار الحقيقي كامل�
 
 describe('دورة حياة رمز التحقق', () => {
   afterAll(async () => {
-    await purgeTestUsers('077%');
+    await purgeTestUsers();
   });
 
   async function registerUnverified() {
     const phone = uniquePhone();
     await api
       .post('/api/auth/register')
-      .send({ username: 'صاحب رمز', phone, password: 'secret123' })
+      .send({ username: 'صاحب رمز', phone, password: 'secret123',
+        gender: 'male',
+      })
       .expect(200);
     return phone;
   }
@@ -485,6 +511,8 @@ describe('الاختبار المسبق مشدَّد كالإنتاج', () => {
     DEV_OTP_ENABLED: undefined,
     DEV_OTP_CODE: undefined,
     SMS_PROVIDER: 'http',
+    TRUST_PROXY: '1',
+    PUBLIC_BASE_URL: 'https://staging-api.example.com',
   };
 
   it('يسقط عند غياب JWT_SECRET', async () => {
@@ -598,7 +626,8 @@ describe('حدّ التماس مع مزوّد الرسائل', () => {
     expect(parsed.received.method).toBe('POST');
     expect(parsed.received.authorization).toBe('Bearer fixture-key');
     expect(parsed.received.secret).toBe('fixture-secret');
-    expect(parsed.received.body.to).toBe('07700000001');
+    // المزوّد يستلم الصيغة الدولية — هذا هو ما يقبله مزوّدو الرسائل فعلاً.
+    expect(parsed.received.body.to).toBe('+9647700000001');
     expect(parsed.received.body.sender).toBe('OtakuGalaxy');
     expect(parsed.received.body.message).toContain('123456');
   });
@@ -622,7 +651,7 @@ describe('حدّ التماس مع مزوّد الرسائل', () => {
 
 describe('إبطال التوكن عند إيقاف الحساب (S-8)', () => {
   afterAll(async () => {
-    await purgeTestUsers('077%');
+    await purgeTestUsers();
   });
 
   it('التوكن الصادر قبل الإيقاف يُرفض على كل المسارات المحمية', async () => {
@@ -724,7 +753,7 @@ describe('إبطال التوكن عند إيقاف الحساب (S-8)', () => {
 
 describe('أمان رابط الصورة الشخصية (S-4)', () => {
   afterAll(async () => {
-    await purgeTestUsers('077%');
+    await purgeTestUsers();
   });
 
   it('يرفض أصلاً خارجياً عشوائياً', async () => {

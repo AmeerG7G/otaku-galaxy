@@ -95,6 +95,9 @@ void main() {
     'ref': Size(412, 892),
     'narrow': Size(375, 812),
     'tiny': Size(320, 640),
+    // ألواح: الطرف الآخر من المدى.
+    'tablet': Size(834, 1112),
+    'tablet-landscape': Size(1194, 834),
   };
 
   for (final dark in [false, true]) {

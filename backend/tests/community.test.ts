@@ -3,7 +3,6 @@ import { db } from '../src/database/pool.js';
 import {
   api,
   createAdminUser,
-  fastForwardRatingWindow,
   registerAndLogin,
   registerUploadedPhoto,
   seedTestCatalog,
@@ -39,7 +38,7 @@ async function completedOrder(productId: string, quantity = 1) {
   expect(order.status).toBe(201);
   const orderId = order.body.data.id as string;
 
-  for (const status of ['CONFIRMED', 'PREPARING', 'OUT_FOR_DELIVERY', 'COMPLETED']) {
+  for (const status of ['OUT_FOR_DELIVERY', 'COMPLETED']) {
     await api
       .patch(`/api/admin/orders/${orderId}/status`)
       .set('Authorization', `Bearer ${adminToken}`)
@@ -47,8 +46,6 @@ async function completedOrder(productId: string, quantity = 1) {
       .expect(200);
   }
   // التقييم لا يُفتح إلا بعد مهلة الاستلام؛ ننقل الطلب إلى الماضي بدل
-  // تعطيل القاعدة، فتبقى القاعدة الإنتاجية تحت الاختبار.
-  await fastForwardRatingWindow(orderId);
   return { user, orderId };
 }
 
@@ -189,7 +186,13 @@ describe('reviews + moderation', () => {
 });
 
 describe('galaxy points ledger', () => {
-  it('awards points once for a received order and again when a review is approved', async () => {
+  /**
+   * منتج البذور بـ١٥٬٠٠٠ دينار: `floor(15000/10000) × 5 = 5` نقاط شراء.
+   * والتقييم المصوّر المكتوب يمنح ٦ (نقطة للتعليق + خمس مقطوعة للصور)، فصار
+   * المجموع ١١. كانت القيم ٢٠ للطلب و٥ للتقييم المصوّر **بدلاً** من نقطة
+   * التعليق لا إضافةً إليها.
+   */
+  it('awards purchase points once, then comment + photo points on approval', async () => {
     const productId = catalog.productIds[0]!;
     const { user, orderId } = await completedOrder(productId);
 
@@ -197,7 +200,7 @@ describe('galaxy points ledger', () => {
       .get('/api/points')
       .set('Authorization', `Bearer ${user.token}`)
       .expect(200);
-    expect(afterOrder.body.data.balance).toBe(20);
+    expect(afterOrder.body.data.balance).toBe(5);
     expect(afterOrder.body.data.activity).toHaveLength(1);
 
     // إعادة ضبط الحالة إلى COMPLETED مجدداً يجب ألا تمنح نقاطاً ثانية.
@@ -210,9 +213,9 @@ describe('galaxy points ledger', () => {
       .get('/api/points')
       .set('Authorization', `Bearer ${user.token}`)
       .expect(200);
-    expect(repeat.body.data.balance).toBe(20);
+    expect(repeat.body.data.balance).toBe(5);
 
-    // تقييم مصوّر معتمد يمنح ٥ نقاط.
+    // تقييم مصوّر مكتوب معتمد يمنح ٦ نقاط: ١ للتعليق + ٥ مقطوعة للصور.
     const submitted = await api
       .post('/api/reviews')
       .set('Authorization', `Bearer ${user.token}`)
@@ -221,7 +224,7 @@ describe('galaxy points ledger', () => {
         productId,
         rating: 5,
         comment: 'رائع',
-        photoUrl: await registerUploadedPhoto(user.userId),
+        photoUrls: [await registerUploadedPhoto(user.userId)],
       })
       .expect(201);
     await api
@@ -234,7 +237,7 @@ describe('galaxy points ledger', () => {
       .get('/api/points')
       .set('Authorization', `Bearer ${user.token}`)
       .expect(200);
-    expect(afterReview.body.data.balance).toBe(25);
+    expect(afterReview.body.data.balance).toBe(11);
   });
 });
 
@@ -293,8 +296,8 @@ describe('notifications', () => {
       .get('/api/notifications')
       .set('Authorization', `Bearer ${user.token}`)
       .expect(200);
-    // قبول + خروج للتوصيل + استلام = ثلاثة إشعارات على الأقل.
-    expect(listed.body.data.items.length).toBeGreaterThanOrEqual(3);
+    // القبول هو الخروج للتوصيل (إشعار قبول واحد) + إشعار الاستلام = إشعاران.
+    expect(listed.body.data.items.length).toBeGreaterThanOrEqual(2);
     expect(listed.body.data.unread).toBe(listed.body.data.items.length);
 
     const firstId = listed.body.data.items[0].id as string;

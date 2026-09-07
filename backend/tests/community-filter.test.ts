@@ -3,7 +3,6 @@ import { db } from '../src/database/pool.js';
 import {
   api,
   createAdminUser,
-  fastForwardRatingWindow,
   registerAndLogin,
   registerUploadedPhoto,
   seedTestCatalog,
@@ -72,15 +71,13 @@ describe('community photos category filter', () => {
       })
       .expect(201);
     const orderId = created.body.data.id as string;
-    for (const next of ['CONFIRMED', 'PREPARING', 'OUT_FOR_DELIVERY', 'COMPLETED']) {
+    for (const next of ['OUT_FOR_DELIVERY', 'COMPLETED']) {
       await api
         .patch(`/api/admin/orders/${orderId}/status`)
         .set('Authorization', `Bearer ${adminToken}`)
         .send({ status: next })
         .expect(200);
     }
-    // نافذة التقييم تُفتح بعد مهلة الاستلام — ننقل الطلب إلى الماضي.
-    await fastForwardRatingWindow(orderId);
     const review = await api
       .post('/api/reviews')
       .set('Authorization', `Bearer ${user.token}`)
@@ -89,7 +86,7 @@ describe('community photos category filter', () => {
         productId,
         rating: 5,
         comment: 'ممتاز',
-        photoUrl: await registerUploadedPhoto(user.userId),
+        photoUrls: [await registerUploadedPhoto(user.userId)],
       })
       .expect(201);
     await api
@@ -170,7 +167,7 @@ describe('community photos category filter', () => {
          FROM reviews r
          JOIN products p ON p.id = r.product_id
         WHERE r.status = 'approved'
-          AND r.photo_url IS NOT NULL AND btrim(r.photo_url) <> ''
+          AND cardinality(r.photo_urls) > 0
           AND p.category_id = $1`,
       [otherCategoryId],
     );

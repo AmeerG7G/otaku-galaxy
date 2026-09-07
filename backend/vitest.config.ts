@@ -15,6 +15,8 @@ export default defineConfig({
       DEV_OTP_ENABLED: 'true',
       DEV_OTP_CODE: '123456',
       SMS_PROVIDER: 'noop',
+      // لا دفع حقيقي في الاختبارات — المسار يُتحقَّق كاملاً بلا شبكة.
+      PUSH_PROVIDER: 'noop',
     },
     globalSetup: ['./tests/global-setup.ts'],
     testTimeout: 15_000,

@@ -8,6 +8,7 @@ export type UploadPurpose =
   | 'review'
   | 'avatar'
   | 'category'
+  | 'slot'
 
 /**
  * يرفع صورة إلى الخادم ويعيد رابطها العام الجاهز للحفظ مع المنتج/البنر.

@@ -74,7 +74,7 @@ class _AddToCollectionSheetState extends State<_AddToCollectionSheet> {
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 6),
                       child: Text(
-                        'ما عندك مجموعات بعد — أنشئ أول مجموعة.',
+                        'لا توجد مجموعات بعد — أنشئ أول مجموعة.',
                         style: theme.textTheme.bodySmall?.copyWith(
                           fontSize: 12.5,
                           height: 1.7,
@@ -155,10 +155,10 @@ class _AddToCollectionSheetState extends State<_AddToCollectionSheet> {
                   const SizedBox(height: 12),
                   Center(
                     child: Text(
-                      'مجموعاتك خاصة فيك ولا تظهر لأحد.',
+                      'مجموعاتك خاصة بك ولا تظهر لأحد.',
                       style: theme.textTheme.labelSmall?.copyWith(
                         fontSize: 11.5,
-                        color: theme.colorScheme.outline,
+                        color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ),

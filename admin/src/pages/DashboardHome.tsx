@@ -1,31 +1,16 @@
-import { resolveMediaUrl } from '../utils/media'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import {
-  Alert,
-  App,
-  Button,
-  Card,
-  Col,
-  Empty,
-  Flex,
-  Image,
-  Row,
-  Space,
-  Statistic,
-  Table,
-  Tag,
-  Tooltip,
-  Typography,
-} from 'antd'
+import { Alert, App, Button, Card, Col, Empty, Row, Space, Table, Tag, Typography } from 'antd'
 import {
   AppstoreOutlined,
+  BellOutlined,
   CarOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
   CloseCircleOutlined,
   DollarOutlined,
+  GiftOutlined,
   ReloadOutlined,
   ShoppingCartOutlined,
   StarOutlined,
@@ -37,45 +22,32 @@ import { fetchDashboardStats } from '../api/communityApi'
 import type { OrderStatus } from '../types/orders'
 import StatusBadge from '../components/StatusBadge'
 import { formatCurrency, formatDateTime } from '../utils/format'
-
-const NO_IMAGE_PLACEHOLDER =
-  'data:image/svg+xml;utf8,' +
-  encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="#f5f5f5"/><text x="32" y="36" font-size="12" text-anchor="middle" fill="#aaa">لا صورة</text></svg>',
-  )
+import { PageHeader } from '../components/ui/PageHeader'
+import { SectionHeader } from '../components/ui/SectionHeader'
+import { StatCard } from '../components/ui/StatCard'
+import { MediaThumb } from '../components/ui/MediaThumb'
 
 function KpiCard({
   title,
   value,
-  prefix,
   loading,
   tooltip,
-  suffix,
-  valueStyle,
+  tone,
   to,
+  icon,
 }: {
   title: string
   value: number | string
-  prefix: ReactNode
   loading?: boolean
   tooltip?: string
-  suffix?: string
-  valueStyle?: React.CSSProperties
+  tone?: 'brand' | 'secondary' | 'cyan' | 'amber' | 'success' | 'error' | 'info'
   to?: string
+  icon: ReactNode
 }) {
   const card = (
-    <Card variant="outlined" size="small" loading={loading} hoverable={Boolean(to)}>
-      <Statistic
-        title={title}
-        value={value}
-        prefix={prefix}
-        suffix={suffix}
-        valueStyle={valueStyle}
-      />
-    </Card>
+    <StatCard title={title} value={loading ? '…' : value} icon={icon} tone={tone} hint={tooltip} />
   )
-  const linked = to ? <Link to={to}>{card}</Link> : card
-  return tooltip ? <Tooltip title={tooltip}>{linked}</Tooltip> : linked
+  return to ? <Link to={to}>{card}</Link> : card
 }
 
 /**
@@ -106,6 +78,7 @@ export default function DashboardHome() {
   const stats = statsQuery.data
   const byStatus = stats?.orders.byStatus
   const recentOrders = recentOrdersQuery.data?.items ?? []
+  const pending = byStatus?.PENDING_ADMIN_CONFIRMATION ?? 0
 
   const recentColumns = [
     {
@@ -114,7 +87,7 @@ export default function DashboardHome() {
       key: 'number',
       render: (value: string, order: { id: string }) => (
         <Link to={`/orders/${order.id}`}>
-          <Typography.Text strong>{value}</Typography.Text>
+          <Typography.Text strong>#{value}</Typography.Text>
         </Link>
       ),
     },
@@ -148,16 +121,9 @@ export default function DashboardHome() {
     {
       title: '',
       key: 'image',
-      width: 56,
+      width: 60,
       render: (_: unknown, product: { imageUrl: string | null }) => (
-        <Image
-          src={resolveMediaUrl(product.imageUrl) ?? NO_IMAGE_PLACEHOLDER}
-          width={40}
-          height={40}
-          style={{ objectFit: 'cover', borderRadius: 4 }}
-          preview={false}
-          fallback={NO_IMAGE_PLACEHOLDER}
-        />
+        <MediaThumb reference={product.imageUrl} size={40} radius={6} />
       ),
     },
     {
@@ -176,24 +142,23 @@ export default function DashboardHome() {
       title: 'المخزون',
       dataIndex: 'stock',
       key: 'stock',
+      width: 80,
       render: (value: number) =>
-        value === 0 ? <Tag color="red">نفدت</Tag> : <Tag color="orange">{value}</Tag>,
+        value === 0 ? <Tag color="error">نفدت</Tag> : <Tag color="warning">{value}</Tag>,
     },
   ]
 
   return (
-    <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Flex align="center" justify="space-between" wrap gap={12}>
-        <div>
-          <Typography.Title level={3} style={{ margin: 0 }}>
-            نظرة عامة على المتجر
-          </Typography.Title>
-          <Typography.Text type="secondary">أرقام حقيقية مباشرة من قاعدة البيانات.</Typography.Text>
-        </div>
-        <Button icon={<ReloadOutlined />} loading={anyLoading} onClick={reloadAll}>
-          تحديث الكل
-        </Button>
-      </Flex>
+    <Space direction="vertical" size={20} style={{ width: '100%' }}>
+      <PageHeader
+        title="نظرة عامة على المتجر"
+        description="أرقام حقيقية مباشرة من قاعدة البيانات — لا تقديرات."
+        extra={
+          <Button icon={<ReloadOutlined />} loading={anyLoading} onClick={reloadAll}>
+            تحديث الكل
+          </Button>
+        }
+      />
 
       {anyError && (
         <Alert
@@ -204,136 +169,187 @@ export default function DashboardHome() {
         />
       )}
 
-      {/* ── ما يحتاج تدخّلاً الآن ── */}
-      <Row gutter={[16, 16]}>
-        <Col xs={24} sm={12} md={8} lg={6}>
-          <KpiCard
-            title="طلبات بانتظار الموافقة"
-            value={byStatus?.PENDING_ADMIN_CONFIRMATION ?? 0}
-            prefix={<ClockCircleOutlined />}
-            loading={statsQuery.isPending}
-            valueStyle={
-              (byStatus?.PENDING_ADMIN_CONFIRMATION ?? 0) > 0 ? { color: '#d48806' } : undefined
-            }
-            tooltip="تحتاج قبولاً أو رفضاً."
-            to="/orders"
-          />
-        </Col>
-        <Col xs={24} sm={12} md={8} lg={6}>
-          <KpiCard
-            title="قيد التوصيل"
-            value={byStatus?.OUT_FOR_DELIVERY ?? 0}
-            prefix={<CarOutlined />}
-            loading={statsQuery.isPending}
-            to="/orders"
-          />
-        </Col>
-        <Col xs={24} sm={12} md={8} lg={6}>
-          <KpiCard
-            title="تقييمات بانتظار المراجعة"
-            value={stats?.reviews.pending ?? 0}
-            prefix={<StarOutlined />}
-            loading={statsQuery.isPending}
-            valueStyle={(stats?.reviews.pending ?? 0) > 0 ? { color: '#d48806' } : undefined}
-            tooltip="لا تظهر في التطبيق قبل نشرها."
-            to="/reviews"
-          />
-        </Col>
-        <Col xs={24} sm={12} md={8} lg={6}>
-          <KpiCard
-            title="نفد المخزون"
-            value={stats?.products.outOfStock ?? 0}
-            prefix={<WarningOutlined />}
-            loading={statsQuery.isPending}
-            valueStyle={(stats?.products.outOfStock ?? 0) > 0 ? { color: '#cf1322' } : undefined}
-            tooltip={`منتجات نشطة مخزونها صفر. قاربت النفاد: ${stats?.products.lowStock ?? 0}.`}
-            to="/products"
-          />
-        </Col>
-      </Row>
+      <div>
+        <SectionHeader title="ما يحتاج تدخّلاً الآن" description="طلبات وتقييمات ومخزون بانتظار قرارك." />
+        <Row gutter={[16, 16]}>
+          <Col xs={24} sm={12} md={8} xl={4}>
+            <KpiCard
+              title="طلبات بانتظار الموافقة"
+              value={pending}
+              icon={<ClockCircleOutlined />}
+              tone={pending > 0 ? 'amber' : 'brand'}
+              tooltip="تحتاج قبولاً أو رفضاً."
+              to="/orders"
+            />
+          </Col>
+          <Col xs={24} sm={12} md={8} xl={4}>
+            <KpiCard
+              title="قيد التوصيل"
+              value={byStatus?.OUT_FOR_DELIVERY ?? 0}
+              icon={<CarOutlined />}
+              tone="info"
+              to="/orders?status=OUT_FOR_DELIVERY"
+            />
+          </Col>
+          <Col xs={24} sm={12} md={8} xl={4}>
+            <KpiCard
+              title="تقييمات بانتظار المراجعة"
+              value={stats?.reviews.pending ?? 0}
+              icon={<StarOutlined />}
+              tone={(stats?.reviews.pending ?? 0) > 0 ? 'amber' : 'brand'}
+              tooltip="لا تظهر في التطبيق قبل نشرها."
+              to="/reviews"
+            />
+          </Col>
+          <Col xs={24} sm={12} md={8} xl={4}>
+            <KpiCard
+              title="نفد المخزون"
+              value={stats?.products.outOfStock ?? 0}
+              icon={<WarningOutlined />}
+              tone={(stats?.products.outOfStock ?? 0) > 0 ? 'error' : 'brand'}
+              tooltip={`منتجات نشطة مخزونها صفر. قاربت النفاد: ${stats?.products.lowStock ?? 0}.`}
+              to="/products"
+            />
+          </Col>
+          <Col xs={24} sm={12} md={8} xl={4}>
+            <KpiCard
+              title="أعياد ميلاد اليوم"
+              value={stats?.birthdays.today ?? 0}
+              icon={<GiftOutlined />}
+              tone={(stats?.birthdays.today ?? 0) > 0 ? 'secondary' : 'brand'}
+              tooltip="محسوبة بتوقيت المتجر. التهنئة تُرسَل يدوياً — لا جدولة تلقائية."
+              to="/birthdays"
+            />
+          </Col>
+        </Row>
+      </div>
 
-      {/* ── الإيرادات ── */}
-      <Row gutter={[16, 16]}>
-        <Col xs={24} sm={12} lg={8}>
-          <KpiCard
-            title="إيراد الطلبات المكتملة"
-            value={formatCurrency(stats?.revenue.completed ?? 0)}
-            prefix={<DollarOutlined />}
-            loading={statsQuery.isPending}
-            tooltip="مجموع الطلبات التي استلمها العملاء فعلاً."
-          />
-        </Col>
-        <Col xs={24} sm={12} lg={8}>
-          <KpiCard
-            title="إيراد هذا الشهر"
-            value={formatCurrency(stats?.revenue.completedThisMonth ?? 0)}
-            prefix={<DollarOutlined />}
-            loading={statsQuery.isPending}
-            tooltip="الطلبات المكتملة منذ بداية الشهر الحالي."
-          />
-        </Col>
-        <Col xs={24} sm={12} lg={8}>
-          <KpiCard
-            title="قيمة الطلبات الجارية"
-            value={formatCurrency(stats?.revenue.inProgress ?? 0)}
-            prefix={<ShoppingCartOutlined />}
-            loading={statsQuery.isPending}
-            tooltip="طلبات لم تكتمل ولم تُرفض بعد."
-          />
-        </Col>
-      </Row>
+      <div>
+        <SectionHeader
+          title="الإيرادات"
+          description="من الطلبات الفعلية — الإيراد يحسب عند التسليم."
+        />
+        <Row gutter={[16, 16]}>
+          <Col xs={24} sm={12} lg={8}>
+            <KpiCard
+              title="إيراد الطلبات المكتملة"
+              value={formatCurrency(stats?.revenue.completed ?? 0)}
+              icon={<DollarOutlined />}
+              tone="success"
+              tooltip="مجموع الطلبات التي استلمها العملاء فعلاً."
+            />
+          </Col>
+          <Col xs={24} sm={12} lg={8}>
+            <KpiCard
+              title="إيراد هذا الشهر"
+              value={formatCurrency(stats?.revenue.completedThisMonth ?? 0)}
+              icon={<DollarOutlined />}
+              tone="brand"
+              tooltip="الطلبات المكتملة منذ بداية الشهر الحالي."
+            />
+          </Col>
+          <Col xs={24} sm={12} lg={8}>
+            <KpiCard
+              title="قيمة الطلبات الجارية"
+              value={formatCurrency(stats?.revenue.inProgress ?? 0)}
+              icon={<ShoppingCartOutlined />}
+              tone="info"
+              tooltip="طلبات لم تكتمل ولم تُرفض بعد."
+            />
+          </Col>
+        </Row>
+      </div>
 
-      {/* ── أرقام عامة ── */}
-      <Row gutter={[16, 16]}>
-        <Col xs={24} sm={12} md={6}>
-          <KpiCard
-            title="إجمالي الطلبات"
-            value={stats?.orders.total ?? 0}
-            prefix={<ShoppingCartOutlined />}
-            loading={statsQuery.isPending}
-          />
-        </Col>
-        <Col xs={24} sm={12} md={6}>
-          <KpiCard
-            title="طلبات مكتملة"
-            value={byStatus?.COMPLETED ?? 0}
-            prefix={<CheckCircleOutlined />}
-            loading={statsQuery.isPending}
-          />
-        </Col>
-        <Col xs={24} sm={12} md={6}>
-          <KpiCard
-            title="طلبات مرفوضة"
-            value={byStatus?.REJECTED ?? 0}
-            prefix={<CloseCircleOutlined />}
-            loading={statsQuery.isPending}
-          />
-        </Col>
-        <Col xs={24} sm={12} md={6}>
-          <KpiCard
-            title="الزبائن"
-            value={stats?.customers.total ?? 0}
-            prefix={<TeamOutlined />}
-            loading={statsQuery.isPending}
-          />
-        </Col>
-        <Col xs={24} sm={12} md={6}>
-          <KpiCard
-            title="المنتجات النشطة"
-            value={stats?.products.active ?? 0}
-            prefix={<AppstoreOutlined />}
-            loading={statsQuery.isPending}
-            tooltip={`الإجمالي بما فيها المعطّلة: ${stats?.products.total ?? 0}.`}
-            to="/products"
-          />
-        </Col>
-      </Row>
+      <div>
+        <SectionHeader
+          title="نشاط الزبائن والتواصل"
+          description="جمهور اليوم وقنوات التواصل الداخلية."
+        />
+        <Row gutter={[16, 16]}>
+          <Col xs={24} sm={12} md={6}>
+            <KpiCard
+              title="أعياد خلال ٧ أيام"
+              value={stats?.birthdays.upcoming7 ?? 0}
+              icon={<GiftOutlined />}
+              tone="info"
+              to="/birthdays"
+            />
+          </Col>
+          <Col xs={24} sm={12} md={6}>
+            <KpiCard
+              title="لم يسجّلوا ميلادهم"
+              value={stats?.birthdays.missing ?? 0}
+              icon={<TeamOutlined />}
+              tone="brand"
+              tooltip="جمهور رسالة «أكمل تاريخ ميلادك»."
+              to="/birthdays"
+            />
+          </Col>
+          <Col xs={24} sm={12} md={6}>
+            <KpiCard
+              title="إشعارات آخر ٧ أيام"
+              value={stats?.notifications.last7Days ?? 0}
+              icon={<BellOutlined />}
+              tone="cyan"
+              tooltip="سجلات داخل التطبيق — لا إشعارات دفع."
+              to="/notifications"
+            />
+          </Col>
+          <Col xs={24} sm={12} md={6}>
+            <KpiCard
+              title="المنتجات النشطة"
+              value={stats?.products.active ?? 0}
+              icon={<AppstoreOutlined />}
+              tone="cyan"
+              tooltip={`الإجمالي بما فيها المعطّلة: ${stats?.products.total ?? 0}.`}
+              to="/products"
+            />
+          </Col>
+        </Row>
+      </div>
+
+      <div>
+        <SectionHeader title="أرقام عامة" description="حصيلة الطلبات والزبائن." />
+        <Row gutter={[16, 16]}>
+          <Col xs={24} sm={12} md={6}>
+            <KpiCard
+              title="إجمالي الطلبات"
+              value={stats?.orders.total ?? 0}
+              icon={<ShoppingCartOutlined />}
+              tone="brand"
+            />
+          </Col>
+          <Col xs={24} sm={12} md={6}>
+            <KpiCard
+              title="طلبات مكتملة"
+              value={byStatus?.COMPLETED ?? 0}
+              icon={<CheckCircleOutlined />}
+              tone="success"
+            />
+          </Col>
+          <Col xs={24} sm={12} md={6}>
+            <KpiCard
+              title="طلبات مرفوضة"
+              value={byStatus?.REJECTED ?? 0}
+              icon={<CloseCircleOutlined />}
+              tone="error"
+            />
+          </Col>
+          <Col xs={24} sm={12} md={6}>
+            <KpiCard
+              title="الزبائن"
+              value={stats?.customers.total ?? 0}
+              icon={<TeamOutlined />}
+              tone="cyan"
+            />
+          </Col>
+        </Row>
+      </div>
 
       <Row gutter={[16, 16]}>
         <Col xs={24} xl={14}>
           <Card
             title="أحدث الطلبات"
-            variant="outlined"
             extra={<Link to="/orders">عرض الكل</Link>}
             loading={recentOrdersQuery.isPending}
           >
@@ -355,7 +371,6 @@ export default function DashboardHome() {
         <Col xs={24} xl={10}>
           <Card
             title={`قارب على النفاد (${stats?.products.lowStock ?? 0})`}
-            variant="outlined"
             extra={<Link to="/products">المنتجات</Link>}
             loading={statsQuery.isPending}
           >

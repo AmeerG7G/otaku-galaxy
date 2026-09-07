@@ -2,6 +2,7 @@ import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../../core/auth/require_auth.dart';
 import '../../../../core/design_system/design_system.dart';
 import '../../../orders/presentation/widgets/delivery_confirmation_sheet.dart';
 import '../../../orders/domain/repositories/order_repository.dart';
@@ -20,6 +21,14 @@ import '../../../home/presentation/screens/home_screen.dart';
 /// من شاشات أخرى (مثل: «الذهاب إلى السلة» بعد الإضافة، «تصفح المنتجات»
 /// من حالة المفضلة الفارغة). لا تغيّر القيمة الافتراضية (الرئيسية = 0).
 final ValueNotifier<int> mainNavIndex = ValueNotifier<int>(0);
+
+/// تبويب محمي طلبه زائر قبل تسجيل الدخول (السلة أو الحساب) — يُطبَّق
+/// مرة واحدة بعد نجاح الدخول ليصل المستخدم إلى الوجهة التي أرادها أصلاً.
+///
+/// لا يُمسّ قبل الدخول حفاظاً على «مَن ألغى يبقى في حالته»: الزائر الذي
+/// تراجع من شاشة الدخول يبقى في التبويب العام الذي كان فيه، ولو أراد لاحقاً
+/// تسجيل الدخول من بوابة أخرى سيعيد ضبط هذه القيمة إعادةُ فتح البوابة.
+int? pendingProtectedTab;
 
 /// الغلاف الرئيسي: يضم التبويبات الخمسة في IndexedStack يحافظ على الحالة.
 @RoutePage()
@@ -140,12 +149,38 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     // الشريط عائم فوق المحتوى، فنمدّ المحتوى خلفه بدل قصّه.
     return Scaffold(
       extendBody: true,
-      body: IndexedStack(index: _index, children: _screens),
+      // [CRITICAL] إطارٌ واحد يغطّي التبويبات الخمسة: تمديدُ واجهةِ هاتفٍ
+      // على لوحٍ عرضه ١٣٦٦ يجعل البانرات والبطاقات مفرطةَ الاتّساع وسطورَ
+      // النصّ أطولَ من مدى القراءة. الحدّ يوسّط المحتوى ويترك هامشين، بينما
+      // شبكةُ المنتجات تملأ العرض المتاح بأعمدةٍ أكثر (`productGridColumns`).
+      // وعلى الهاتف — أضيق من الحدّ — لا أثر لهذا الإطار البتّة.
+      body: ResponsiveContentFrame(
+        maxWidth: kGridMaxWidth,
+        child: IndexedStack(index: _index, children: _screens),
+      ),
       bottomNavigationBar: BlocBuilder<CartCubit, CartState>(
         builder: (context, cart) => OtakuBottomNav(
           currentIndex: _index,
           raisedIndex: MainTab.community,
-          onSelected: (index) {
+          onSelected: (index) async {
+            // السلة والحساب تبويبان محميان: الزائر يمرّ عبر البوابة الموحّدة
+            // ذاتها في كل مكان، فإن ألغى بقي في التبويب الذي كان فيه، وإن
+            // اختار تسجيل الدخول ونجح لاحقاً وصل إلى التبويب الذي طلبه.
+            final isProtected =
+                index == MainTab.cart || index == MainTab.account;
+            if (isProtected) {
+              pendingProtectedTab = null; // إلغاء أي طلب قديم لم يُنجز.
+              final granted = await requireAuthentication(
+                context,
+                title: 'سجّل دخولك أولاً',
+                body: index == MainTab.cart
+                    ? 'سلة التسوق ميزة خاصة بالحساب — سجّل دخولك لتشاهد أغراضك وتتابع طلبك.'
+                    : 'حسابك الشخصي يحتاج تسجيل دخول لتعرض ملفك وطلباتك.',
+                onLoginRequested: () => pendingProtectedTab = index,
+              );
+              if (!granted || !mounted) return;
+            }
+            pendingProtectedTab = null;
             setState(() => _index = index);
             mainNavIndex.value = index;
           },
@@ -159,6 +194,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
               icon: Icons.grid_view_outlined,
               activeIcon: Icons.grid_view_rounded,
               label: 'الأقسام',
+              gridIconCount: 4,
             ),
             const OtakuNavItem(
               icon: Icons.photo_library_outlined,

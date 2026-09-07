@@ -6,6 +6,7 @@ import '../../../../core/design_system/design_system.dart';
 import '../../../../core/router/app_router.dart';
 import '../../domain/entities/order.dart';
 import '../../domain/usecases/fetch_my_orders_usecase.dart';
+import '../../../visuals/domain/visual_slot.dart';
 
 /// قائمة طلباتي بتصميم Otaku Galaxy v2.
 ///
@@ -55,17 +56,23 @@ class _OrdersScreenState extends State<OrdersScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Column(
-        children: [
-          OtakuScreenHeader(
-            title: 'طلباتي',
-            subtitle: 'تابع حالة طلباتك خطوة بخطوة',
-            artwork: 'assets/art/opt/a-i4.png',
-            onBack: () => context.router.maybePop(),
-          ),
-          const SizedBox(height: 8),
-          Expanded(child: _buildBody()),
-        ],
+      // عمودٌ موسَّط بعرض القراءة على اللوح — القائمة الممتدّة بعرض
+      // ١٣٦٦ بكسل تصير صفوفاً فارغة الوسط. لا أثر له على الهاتف.
+      body: ResponsiveContentFrame(
+        maxWidth: kReadingMaxWidth,
+        child: Column(
+          children: [
+            OtakuScreenHeader(
+              title: 'طلباتي',
+              subtitle: 'تابع حالة طلباتك خطوة بخطوة',
+              artwork: 'assets/art/opt/a-i4.png',
+              artworkSlot: VisualSlots.ordersHeader,
+              onBack: () => context.router.maybePop(),
+            ),
+            const SizedBox(height: 8),
+            Expanded(child: _buildBody()),
+          ],
+        ),
       ),
     );
   }
@@ -80,6 +87,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
         title: 'لا توجد طلبات بعد',
         subtitle: 'كل طلب تكمله سيظهر هنا مع حالته ومحتوياته وتفاصيل توصيله.',
         artwork: 'assets/art/opt/a-luffy-kid.png',
+        artworkSlot: VisualSlots.emptyOrders,
         actionLabel: 'ابدأ التسوق',
         onAction: () => context.router.maybePop(),
       );
@@ -98,6 +106,14 @@ class _OrdersScreenState extends State<OrdersScreen> {
             order: order,
             onTap: () =>
                 context.router.push(OrderDetailRoute(orderId: order.id)),
+            // زرّ التقييم يخصّ هذا الطلب: يُفتح تقييم منتجاته هو، ولا يمرّ
+            // بشاشة عامة. الأهلية من الخادم (`canReview`) لا من الحالة هنا.
+            onReview: () async {
+              await context.router.push(RateOrderRoute(order: order));
+              // العودة من التقييم قد تُغيّر ما يُعرض (تقييم أُرسل) — نُعيد
+              // القراءة من الخادم بدل تخمين النتيجة محلياً.
+              if (context.mounted) await _load();
+            },
           );
         },
       ),

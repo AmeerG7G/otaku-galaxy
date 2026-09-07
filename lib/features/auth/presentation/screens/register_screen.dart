@@ -4,10 +4,12 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/design_system/design_system.dart';
 import '../../../../core/errors/app_exception.dart';
+import '../../../../core/l10n/gender.dart';
 import '../../../../core/router/app_router.dart';
 import '../cubit/auth_cubit.dart';
 import '../widgets/auth_field.dart';
 import '../widgets/auth_scaffold.dart';
+import '../../../visuals/domain/visual_slot.dart';
 
 @RoutePage()
 class RegisterScreen extends StatefulWidget {
@@ -26,6 +28,16 @@ class _RegisterScreenState extends State<RegisterScreen>
 
   bool _obscure = true;
   bool _loading = false;
+
+  /// اختيار الجنس — لا قيمة افتراضية.
+  ///
+  /// [CRITICAL] البدء بـ`null` لا بـ`male`. قيمةٌ مختارة سلفاً تجعل نصف
+  /// الحسابات تُنشأ باختيارٍ لم يقصده أصحابها لأنهم لم ينتبهوا لحقلٍ يبدو
+  /// مملوءاً.
+  AppGender? _gender;
+
+  /// تظهر رسالة «اختر الجنس» بعد أول محاولة إرسال لا قبلها.
+  bool _submitted = false;
 
   late final AnimationController _animationController;
   late final Animation<double> _fadeAnimation;
@@ -78,7 +90,11 @@ class _RegisterScreenState extends State<RegisterScreen>
   }
 
   Future<void> _register() async {
-    if (!_formKey.currentState!.validate()) return;
+    setState(() => _submitted = true);
+    // `Form` لا يعرف البطاقتين، فيُفحص الاختيار صراحةً. والخادم يرفض التسجيل
+    // بلا جنس على أي حال — هذا الفحص للتجربة لا للأمان.
+    final gender = _gender;
+    if (!_formKey.currentState!.validate() || gender == null) return;
 
     setState(() => _loading = true);
     try {
@@ -86,6 +102,7 @@ class _RegisterScreenState extends State<RegisterScreen>
         username: _usernameController.text.trim(),
         phone: _phoneController.text.trim(),
         password: _passwordController.text,
+        gender: gender.value!,
       );
       if (!mounted) return;
       context.router.push(
@@ -107,117 +124,130 @@ class _RegisterScreenState extends State<RegisterScreen>
 
   @override
   Widget build(BuildContext context) {
-
     return FadeTransition(
       opacity: _fadeAnimation,
       child: SlideTransition(
         position: _slideAnimation,
         child: AuthScaffold(
           title: 'إنشاء حساب',
-          subtitle: 'خطوة وحدة وتصير من سكّان مجرة الأوتاكو.',
+          // المخاطَب مجهول بالضرورة في هذه الشاشة: لم يُنشأ الحساب بعد ولم
+          // يُسأل عن جنسه، فالصيغة المحايدة هي الصحيحة هنا لا المذكّرة.
+          subtitle: GenderedStrings.galaxyResident.of(AppGender.unknown),
           artwork: 'assets/art/opt/a-i0.png',
+          artworkSlot: VisualSlots.register,
           artworkHeight: 178,
           artworkWidth: 150,
           artworkBottom: -8,
           form: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // حقل اسم المستخدم
-                      AuthField(
-                        controller: _usernameController,
-                        label: 'اسم المستخدم',
-                        hint: 'عمر الطيار',
-                        textInputAction: TextInputAction.next,
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'يرجى إدخال اسم المستخدم';
-                          }
-                          if (value.trim().length < 3) {
-                            return 'اسم المستخدم قصير جداً';
-                          }
-                          return null;
-                        },
-                      ),
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // حقل اسم المستخدم
+                AuthField(
+                  controller: _usernameController,
+                  label: 'اسم المستخدم',
+                  hint: 'عمر الطيار',
+                  textInputAction: TextInputAction.next,
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'يرجى إدخال اسم المستخدم';
+                    }
+                    if (value.trim().length < 3) {
+                      return 'اسم المستخدم قصير جداً';
+                    }
+                    return null;
+                  },
+                ),
 
-                      const SizedBox(height: 15),
+                const SizedBox(height: 15),
 
-                      // حقل رقم الهاتف
-                      AuthField(
-                        controller: _phoneController,
-                        label: 'رقم الهاتف',
-                        hint: '0770 123 4567',
-                        textDirection: TextDirection.ltr,
-                        keyboardType: TextInputType.phone,
-                        textInputAction: TextInputAction.next,
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'يرجى إدخال رقم الهاتف';
-                          }
-                          if (value.trim().length < 10) {
-                            return 'رقم الهاتف غير صحيح';
-                          }
-                          return null;
-                        },
-                      ),
+                // حقل رقم الهاتف
+                AuthField(
+                  controller: _phoneController,
+                  label: 'رقم الهاتف',
+                  hint: '0770 123 4567',
+                  textDirection: TextDirection.ltr,
+                  keyboardType: TextInputType.phone,
+                  textInputAction: TextInputAction.next,
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'يرجى إدخال رقم الهاتف';
+                    }
+                    if (value.trim().length < 10) {
+                      return 'رقم الهاتف غير صحيح';
+                    }
+                    return null;
+                  },
+                ),
 
-                      const SizedBox(height: 15),
+                const SizedBox(height: 15),
 
-                      // حقل كلمة المرور
-                      AuthField(
-                        controller: _passwordController,
-                        label: 'كلمة المرور',
-                        hint: '••••••••',
-                        obscureText: _obscure,
-                        textInputAction: TextInputAction.done,
-                        onSubmitted: (_) => _register(),
-                        trailing: IconButton(
-                          icon: Icon(
-                            _obscure
-                                ? Icons.visibility_outlined
-                                : Icons.visibility_off_outlined,
-                            size: AppDimens.iconMd,
-                            color: Theme.of(context).colorScheme.outline,
-                          ),
-                          onPressed: () => setState(() => _obscure = !_obscure),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'يرجى إدخال كلمة المرور';
-                          }
-                          if (value.length < 6) {
-                            return 'كلمة المرور قصيرة جداً (6 أحرف على الأقل)';
-                          }
-                          return null;
-                        },
-                      ),
+                // حقل كلمة المرور
+                AuthField(
+                  controller: _passwordController,
+                  label: 'كلمة المرور',
+                  hint: '••••••••',
+                  obscureText: _obscure,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => _register(),
+                  trailing: IconButton(
+                    icon: Icon(
+                      _obscure
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined,
+                      size: AppDimens.iconMd,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                    onPressed: () => setState(() => _obscure = !_obscure),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'يرجى إدخال كلمة المرور';
+                    }
+                    if (value.length < 6) {
+                      return 'كلمة المرور قصيرة جداً (6 أحرف على الأقل)';
+                    }
+                    return null;
+                  },
+                ),
 
-                      SizedBox(height: AppDimens.space5),
+                const SizedBox(height: 15),
 
-                      // زر إنشاء الحساب
-                      AnimePrimaryButton(
-                        label: 'إرسال رمز التحقق',
-                        onPressed: _register,
-                        loading: _loading,
-                        height: AppDimens.buttonHeightXl,
-                        borderRadius: AppDimens.radiusMd,
-                        gradient: AppColors.ctaGradient,
-                      ),
+                // اختيار الجنس — بطاقتان بأيقونتين، بلا حقل نصّي.
+                GenderSelector(
+                  value: _gender,
+                  onChanged: (value) => setState(() => _gender = value),
+                  errorText: _submitted && _gender == null
+                      ? GenderedStrings.genderRequired
+                      : null,
+                ),
 
-                      SizedBox(height: AppDimens.space3),
+                SizedBox(height: AppDimens.space5),
 
-                      Text(
-                        'بإنشائك حساباً فأنت توافق على شروط الاستخدام وسياسة الخصوصية.',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          height: 1.7,
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
+                // زر إنشاء الحساب
+                AnimePrimaryButton(
+                  label: 'إرسال رمز التحقق',
+                  onPressed: _register,
+                  loading: _loading,
+                  height: AppDimens.buttonHeightXl,
+                  borderRadius: AppDimens.radiusMd,
+                  gradient: AppColors.ctaGradient,
+                ),
+
+                SizedBox(height: AppDimens.space3),
+
+                Text(
+                  GenderedStrings.termsNotice.of(_gender ?? AppGender.unknown),
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    height: 1.7,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
+              ],
+            ),
+          ),
           footer: Center(
             child: AnimeTextButton(
               label: 'عندك حساب؟ تسجيل الدخول',

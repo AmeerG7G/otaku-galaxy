@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../tokens/app_colors.dart';
 import '../../tokens/app_dimens.dart';
 import '../../tokens/app_theme_colors.dart';
+import '../../../../features/visuals/presentation/managed_artwork.dart';
 
 /// عنوان قسم داخل الشاشة — Tajawal ثقيل بحجم ١٧.
 class OtakuSectionTitle extends StatelessWidget {
@@ -107,6 +108,7 @@ class OtakuEditorialPanel extends StatelessWidget {
     required this.title,
     this.body,
     this.artwork,
+    this.artworkSlot,
     this.action,
     this.margin = const EdgeInsets.fromLTRB(18, 26, 18, 0),
     this.contentWidthFactor = 0.62,
@@ -117,6 +119,13 @@ class OtakuEditorialPanel extends StatelessWidget {
   final String title;
   final String? body;
   final String? artwork;
+
+  /// مفتاح الفتحة البصرية التي يديرها المسؤول من لوحة التحكم.
+  ///
+  /// حين يُمرَّر، يصير [artwork] هو الأصل الاحتياطي: يُعرض كما هو ما دامت
+  /// الفتحة غير مضبوطة أو تعذّر تحميل صورتها. المقاس والموضع لا يتغيّران.
+  final String? artworkSlot;
+
   final Widget? action;
   final EdgeInsetsGeometry margin;
 
@@ -145,7 +154,13 @@ class OtakuEditorialPanel extends StatelessWidget {
                 bottom: -12,
                 end: -10,
                 child: IgnorePointer(
-                  child: Image.asset(artwork!, height: artHeight),
+                  child: artworkSlot == null
+                      ? Image.asset(artwork!, height: artHeight)
+                      : ManagedArtwork(
+                          slot: artworkSlot!,
+                          fallbackAsset: artwork!,
+                          height: artHeight,
+                        ),
                 ),
               ),
             Padding(
@@ -349,7 +364,7 @@ class OtakuGroupLabel extends StatelessWidget {
           fontSize: 11.5,
           fontWeight: AppDimens.weightBold,
           letterSpacing: 0.7,
-          color: theme.colorScheme.outline,
+          color: theme.colorScheme.onSurfaceVariant,
         ),
       ),
     );
@@ -443,7 +458,7 @@ class OtakuSettingRow extends StatelessWidget {
                   ? Icons.arrow_forward_ios_rounded
                   : Icons.arrow_back_ios_new_rounded,
               size: 13,
-              color: theme.colorScheme.outline,
+              color: theme.colorScheme.onSurfaceVariant,
             ),
           ],
         ],

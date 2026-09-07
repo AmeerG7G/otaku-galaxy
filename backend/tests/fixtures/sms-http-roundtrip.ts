@@ -40,7 +40,7 @@ async function main() {
 
   let error: string | null = null;
   try {
-    await provider.send({ to: '07700000001', message: 'رمز الاختبار: 123456' });
+    await provider.send({ to: '+9647700000001', message: 'رمز الاختبار: 123456' });
   } catch (e) {
     error = (e as Error).message;
   }

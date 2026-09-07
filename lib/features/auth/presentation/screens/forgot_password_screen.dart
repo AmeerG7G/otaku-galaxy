@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/design_system/design_system.dart';
+import '../../../../core/l10n/gender.dart';
 import '../../../../core/errors/app_exception.dart';
 import '../../../../core/router/app_router.dart';
 import '../cubit/auth_cubit.dart';
 import '../widgets/auth_scaffold.dart';
 import 'otp_verification_screen.dart' show OtpPurpose;
+import '../../../visuals/domain/visual_slot.dart';
 
 /// «نسيت كلمة المرور» — رقم الهاتف فقط.
 ///
@@ -111,8 +113,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
         child: AuthScaffold(
           showBack: true,
           title: 'نسيت كلمة المرور',
-          subtitle: 'أدخل رقم هاتفك وراح نرسل لك رمز تحقق لإعادة التعيين.',
+          subtitle: context.g(GenderedStrings.enterPhoneForReset),
           artwork: 'assets/art/opt/a-luffy-kid.png',
+          artworkSlot: VisualSlots.forgotPassword,
           artworkHeight: 166,
           artworkBottom: -6,
           form: Form(

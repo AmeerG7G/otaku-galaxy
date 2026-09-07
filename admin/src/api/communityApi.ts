@@ -51,9 +51,7 @@ export function deleteFranchise(id: string) {
   return remove<null>(`/admin/franchises/${id}`)
 }
 
-export function productFranchises(productId: string) {
-  return get<{ franchiseIds: string[] }>(`/admin/products/${productId}/franchises`)
-}
+
 
 // ── مناطق التوصيل ──
 

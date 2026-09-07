@@ -17,6 +17,9 @@ export function toBannerDto(row: BannerRow) {
     id: row.id,
     imageUrl: row.image_url,
     title: row.title,
+    subtitle: row.subtitle ?? '',
+    /** أين يظهر في الرئيسية: `hero` اللوحة الكبيرة، `promo` الشريط تحتها. */
+    placement: row.placement ?? 'promo',
     destinationType: row.destination_type,
     destinationValue: row.destination_value,
     sortOrder: row.sort_order,
@@ -27,9 +30,12 @@ export function toBannerDto(row: BannerRow) {
 export type BannerDto = ReturnType<typeof toBannerDto>;
 
 export const bannerRepo = {
-  async listActive(db: pg.Pool | pg.PoolClient) {
+  async listActive(db: pg.Pool | pg.PoolClient, placement?: 'hero' | 'promo') {
     const { rows } = await db.query<BannerRow>(
-      `SELECT * FROM banners WHERE is_active = TRUE ORDER BY sort_order, created_at DESC`,
+      `SELECT * FROM banners
+        WHERE is_active = TRUE ${placement ? 'AND placement = $1' : ''}
+        ORDER BY sort_order, created_at DESC`,
+      placement ? [placement] : [],
     );
     return rows.map(toBannerDto);
   },
@@ -46,15 +52,26 @@ export const bannerRepo = {
     input: {
       imageUrl: string;
       title?: string | null;
+      subtitle?: string;
+      placement?: BannerRow['placement'];
       destinationType: BannerRow['destination_type'];
       destinationValue?: string | null;
       sortOrder?: number;
     },
   ) {
     const { rows } = await db.query<BannerRow>(
-      `INSERT INTO banners (image_url, title, destination_type, destination_value, sort_order)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [input.imageUrl, input.title ?? null, input.destinationType, input.destinationValue ?? null, input.sortOrder ?? 0],
+      `INSERT INTO banners
+         (image_url, title, subtitle, placement, destination_type, destination_value, sort_order)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [
+        input.imageUrl,
+        input.title ?? null,
+        input.subtitle ?? '',
+        input.placement ?? 'promo',
+        input.destinationType,
+        input.destinationValue ?? null,
+        input.sortOrder ?? 0,
+      ],
     );
     return toBannerDto(rows[0]!);
   },
@@ -65,6 +82,8 @@ export const bannerRepo = {
     input: {
       imageUrl?: string;
       title?: string | null;
+      subtitle?: string;
+      placement?: BannerRow['placement'];
       destinationType?: BannerRow['destination_type'];
       destinationValue?: string | null;
       sortOrder?: number;
@@ -80,6 +99,14 @@ export const bannerRepo = {
     if (input.title !== undefined) {
       values.push(input.title);
       sets.push(`title = $${values.length}`);
+    }
+    if (input.subtitle !== undefined) {
+      values.push(input.subtitle);
+      sets.push(`subtitle = $${values.length}`);
+    }
+    if (input.placement !== undefined) {
+      values.push(input.placement);
+      sets.push(`placement = $${values.length}`);
     }
     if (input.destinationType !== undefined) {
       values.push(input.destinationType);
@@ -118,6 +145,19 @@ export const governorateRepo = {
   async listActive(db: pg.Pool | pg.PoolClient) {
     const { rows } = await db.query<GovernorateRow>(
       `SELECT * FROM governorates WHERE is_active = TRUE ORDER BY sort_order, name`,
+    );
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      deliveryFee: Number(row.delivery_fee),
+      isActive: row.is_active,
+    }));
+  },
+
+  /** كل المحافظات للأدمن — النشطة والمعطَّلة، الإدارة تحتاج رؤيتهما معاً. */
+  async listAll(db: pg.Pool | pg.PoolClient) {
+    const { rows } = await db.query<GovernorateRow>(
+      `SELECT * FROM governorates ORDER BY is_active DESC, sort_order, name`,
     );
     return rows.map((row) => ({
       id: row.id,

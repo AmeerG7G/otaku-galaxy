@@ -1,6 +1,96 @@
+@font-face {
+  font-family: "Tajawal";
+  src: url("/fonts/Tajawal-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Tajawal";
+  src: url("/fonts/Tajawal-Medium.ttf") format("truetype");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Tajawal";
+  src: url("/fonts/Tajawal-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Tajawal";
+  src: url("/fonts/Tajawal-ExtraBold.ttf") format("truetype");
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Tajawal";
+  src: url("/fonts/Tajawal-Black.ttf") format("truetype");
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cairo";
+  src: url("/fonts/Cairo-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cairo";
+  src: url("/fonts/Cairo-Medium.ttf") format("truetype");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cairo";
+  src: url("/fonts/Cairo-SemiBold.ttf") format("truetype");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cairo";
+  src: url("/fonts/Cairo-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
-  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+  /* توكنات العلامة — نفس لوحة lib/core/design_system في تطبيق الزبائن */
+  --og-primary: #7c5cff;
+  --og-primary-hover: #9377ff;
+  --og-primary-active: #6a47f5;
+  --og-secondary: #ff3d8f;
+  --og-cyan: #4ea8ff;
+  --og-amber: #ffb02e;
+  --og-success: #22b07d;
+  --og-warning: #c77a12;
+  --og-error: #ff5a7a;
+  --og-info: #2b79c2;
+  --og-aubergine: #180f30;
+  --og-aubergine-soft: #241743;
+  --og-surface: #ffffff;
+  --og-surface-variant: #f6f2fe;
+  --og-background: #f7f5fc;
+  --og-background-secondary: #efe9fb;
+  --og-border: rgba(24, 15, 48, 0.12);
+  --og-text: #180f30;
+  --og-text-secondary: #6f6690;
+  --og-text-disabled: #9c94b8;
+  --og-gradient: linear-gradient(135deg, #ff3d8f 0%, #7c5cff 100%);
+
+  font-family: "Tajawal", "Cairo", "Segoe UI", Tahoma, Arial, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 * {
@@ -16,5 +106,54 @@ body,
 }
 
 body {
-  background-color: #f5f5f5;
+  background-color: var(--og-background);
+  color: var(--og-text);
+}
+
+/* شريط تمرير هادئ يتناسق مع الخلفية البنفسجية الفاتحة */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(24, 15, 48, 0.2);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(24, 15, 48, 0.35);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(24, 15, 48, 0.25) transparent;
+}
+
+/* إزالة الوميض الافتراضي للأزرار في المتصفحات الغربية داخل RTL */
+button,
+[role="button"] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* تحسين قابلية القراءة العامّة للمحتوى العربي */
+.ant-typography,
+.ant-card,
+.ant-table,
+.ant-btn,
+.ant-tabs,
+.ant-input,
+.ant-select,
+.ant-form,
+.ant-menu {
+  letter-spacing: 0;
+}
+
+/* أرقام لاتينية داخل النصوص العربية تبقى مقروءة (الأرقام الآتية من الخادم) */
+.tnum {
+  font-variant-numeric: tabular-nums;
 }

@@ -1,13 +1,41 @@
 import type { NextFunction, Request, Response } from 'express';
 import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
 import { config, isTest } from '../config/index.js';
-import { Errors } from '../utils/errors.js';
+import { AppError, Errors } from '../utils/errors.js';
 import { httpError } from '../utils/response.js';
 
-/** حاجز أخطاء عالمي — كل الأخطاء تمر من هنا بلا تسريب التفاصيل الداخلية. */
-export function errorHandler(error: unknown, _req: Request, res: Response, _next: NextFunction) {
-  // lazy import لتجنب دورة استيراد.
-  if (error instanceof SyntaxError) {
+/**
+ * هل هذا خطأ تحليل JSON قادم من `express.json()`؟
+ *
+ * محلّل الجسم يرمي `SyntaxError` ويعلّق عليه الجسمَ الخام. الفحص بـ
+ * `instanceof SyntaxError` وحده يبتلع أيضاً أي `SyntaxError` يقع في منطق
+ * التطبيق نفسه (تحليل قيمة فاسدة قادمة من القاعدة مثلاً) ويبلّغ عنه
+ * بـ«جسم الطلب غير صالح JSON» — رسالة تُرسل مطوِّراً في الاتجاه الخطأ
+ * تماماً وهو يطارد عطلاً لا علاقة له بالطلب.
+ */
+function isBodyParserSyntaxError(error: unknown): boolean {
+  return (
+    error instanceof SyntaxError &&
+    'body' in error &&
+    (error as { status?: number }).status === 400
+  );
+}
+
+/**
+ * حاجز أخطاء عالمي — كل الأخطاء تمر من هنا بلا تسريب التفاصيل الداخلية.
+ *
+ * [CRITICAL] الخطأ غير المتوقَّع يُسجَّل هنا قبل أن يُبتلع.
+ *
+ * كان `httpError` يردّ 500 عامّاً ويُسقط الخطأ الأصلي بلا أثر: لا رسالة،
+ * ولا كومة استدعاء، ولا مسار الطلب الذي فجّره. أي أن عطلاً في الإنتاج كان
+ * يصل العميلَ كـ«حدث خطأ غير متوقع» ويختفي من الخادم تماماً — لا شيء
+ * يمكن تشخيصه لاحقاً. إخفاء التفاصيل عن **العميل** صحيح؛ إخفاؤها عن
+ * **المشغّل** ليس أماناً بل عمى.
+ *
+ * `AppError` لا يُسجَّل: هو مسار أعمال متوقَّع (٤٠٤، ٤٠٩، تحقق) لا عطل.
+ */
+export function errorHandler(error: unknown, req: Request, res: Response, _next: NextFunction) {
+  if (isBodyParserSyntaxError(error)) {
     res.status(400).json({
       success: false,
       data: null,
@@ -16,6 +44,16 @@ export function errorHandler(error: unknown, _req: Request, res: Response, _next
     });
     return;
   }
+
+  if (!(error instanceof AppError)) {
+    // المسار والطريقة فقط — لا جسم الطلب ولا الرؤوس، فلا تتسرّب كلمة مرور
+    // ولا توكن إلى السجل.
+    console.error(
+      `[error] ${req.method} ${req.originalUrl} — خطأ غير متوقَّع:`,
+      error,
+    );
+  }
+
   httpError(res, error);
 }
 

@@ -170,6 +170,25 @@ export const pointsRepo = {
     }));
   },
 
+  /**
+   * مجموع نقاط التقييم الممنوحة عن طلب واحد.
+   *
+   * أساسُ سقف العشرين نقطة لكل طلب. يُحسب من الدفتر نفسه لا من عدّاد ثانٍ:
+   * أي عمود «مجموع مُنح» كان سيتباعد عن الحقيقة أول مرة يُسحب فيها اعتمادُ
+   * تقييم. ونقاط الشراء مستثناة بالسبب لا بالمقدار — السقف يخصّ التقييمات
+   * وحدها.
+   */
+  async reviewPointsForOrder(db: pg.Pool | pg.PoolClient, orderId: string) {
+    const { rows } = await db.query<{ total: string }>(
+      `SELECT COALESCE(SUM(amount), 0)::text AS total
+         FROM points_ledger
+        WHERE order_id = $1
+          AND reason IN ('review_approved', 'review_with_photo')`,
+      [orderId],
+    );
+    return Number(rows[0]?.total ?? 0);
+  },
+
   /** إزالة نقاط تقييم عند سحب الاعتماد (رفض بعد اعتماد). */
   async revokeForReview(db: pg.Pool | pg.PoolClient, reviewId: string) {
     await db.query('DELETE FROM points_ledger WHERE review_id = $1', [reviewId]);

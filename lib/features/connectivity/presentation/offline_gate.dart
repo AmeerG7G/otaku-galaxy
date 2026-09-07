@@ -228,13 +228,13 @@ class _OfflineCard extends StatelessWidget {
                 Icon(
                   Icons.wifi_off_rounded,
                   size: 54,
-                  color: theme.colorScheme.outline,
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
                 const SizedBox(height: 20),
                 FractionallySizedBox(
                   widthFactor: 0.78,
                   child: Text(
-                    'ما بيه اتصال بالإنترنت',
+                    'لا يوجد اتصال بالإنترنت',
                     style: theme.textTheme.headlineSmall?.copyWith(
                       fontFamily: 'Tajawal',
                       fontSize: 23,
@@ -247,8 +247,8 @@ class _OfflineCard extends StatelessWidget {
                 FractionallySizedBox(
                   widthFactor: 0.82,
                   child: Text(
-                    'تحقّق من اتصالك وحاول مرة أخرى — كل شي بالمتجر '
-                    'يحتاج إنترنت.',
+                    'تحقّق من اتصالك وحاول مرة أخرى — يحتاج المتجر '
+                    'إلى اتصال بالإنترنت.',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       fontSize: 14,
                       height: 1.85,

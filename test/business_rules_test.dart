@@ -7,7 +7,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:otaku_galaxy/features/cart/domain/entities/cart_item.dart';
 import 'package:otaku_galaxy/features/cart/presentation/cubit/cart_state.dart';
 import 'package:otaku_galaxy/features/orders/domain/entities/order.dart';
+import 'package:otaku_galaxy/core/l10n/gender.dart';
 import 'package:otaku_galaxy/features/points/domain/entities/otaku_level.dart';
+import 'package:otaku_galaxy/features/points/domain/repositories/points_repository.dart';
 import 'package:otaku_galaxy/features/products/domain/entities/product.dart';
 import 'package:otaku_galaxy/features/reviews/domain/entities/review.dart';
 import 'package:otaku_galaxy/features/notifications/domain/entities/app_notification.dart';
@@ -32,27 +34,172 @@ Product _product({
 }
 
 void main() {
-  group('otaku levels follow the v2 thresholds', () {
-    // حدود التصميم: ‎0 / 30 / 80 / 160.
-    test('boundaries land on the expected level', () {
-      expect(OtakuLevel.forPoints(0), OtakuLevel.newcomer);
-      expect(OtakuLevel.forPoints(29), OtakuLevel.newcomer);
-      expect(OtakuLevel.forPoints(30), OtakuLevel.active);
-      expect(OtakuLevel.forPoints(79), OtakuLevel.active);
-      expect(OtakuLevel.forPoints(80), OtakuLevel.golden);
-      expect(OtakuLevel.forPoints(159), OtakuLevel.golden);
-      expect(OtakuLevel.forPoints(160), OtakuLevel.legend);
-      expect(OtakuLevel.forPoints(10000), OtakuLevel.legend);
+  // عتبات المستويات (‎0/30/80/160) لم تعد تُحسب هنا.
+  //
+  // كانت `OtakuLevel` تحمل العتبات وتشتقّ المستوى من الرصيد، فكانت هذه
+  // المجموعة تختبر منطق أعمال داخل التطبيق. بعد نقل السلّم إلى القاعدة صار
+  // الخادم هو من يضع الزبون على السلّم، وحدودُ العتبات تُختبر هناك
+  // (`backend/tests/galaxy-levels.test.ts`) على القيم الحقيقية.
+  //
+  // ما بقي مسؤوليةَ التطبيق شيئان: أن يقرأ ما أرسله الخادم كما هو، وأن
+  // يختار صيغة الاسم العربية المناسبة لجنس القارئ — وهو قرار عرضٍ محض.
+  group('otaku level is read from the server, not derived', () {
+    Map<String, dynamic> levelJson(
+      int number,
+      String key,
+      int points, {
+      String? male,
+      String? female,
+      String? neutral,
+    }) => {
+      'key': key,
+      'number': number,
+      'nameMale': male ?? 'مستوى $number',
+      'nameFemale': female ?? 'مستوى $number',
+      'nameNeutral': neutral ?? 'مستوى $number',
+      'requiredPoints': points,
+      'reward': 'مزية $number',
+      'rewardKind': 'gift',
+    };
+
+    test('parses a level exactly as the server sent it', () {
+      final level = OtakuLevel.fromJson(
+        levelJson(
+          5,
+          'champion',
+          600,
+          male: 'بطل المجرة',
+          female: 'بطلة المجرة',
+          neutral: 'مستوى البطولة',
+        ),
+      );
+      expect(level.key, 'champion');
+      expect(level.number, 5);
+      expect(level.threshold, 600);
+      expect(level.reward, 'مزية 5');
+      expect(level.nameMale, 'بطل المجرة');
+      expect(level.nameFemale, 'بطلة المجرة');
+      expect(level.nameNeutral, 'مستوى البطولة');
     });
 
-    test('a single received order (+20) does not reach level two', () {
-      expect(OtakuLevel.forPoints(20), OtakuLevel.newcomer);
-      expect(OtakuLevel.forPoints(20).pointsToNext(20), 10);
+    test('picks the Arabic form that matches the reader', () {
+      final level = OtakuLevel.fromJson(
+        levelJson(
+          5,
+          'champion',
+          600,
+          male: 'بطل المجرة',
+          female: 'بطلة المجرة',
+          neutral: 'مستوى البطولة',
+        ),
+      );
+      expect(level.nameFor(AppGender.male), 'بطل المجرة');
+      expect(level.nameFor(AppGender.female), 'بطلة المجرة');
+      // [CRITICAL] المجهول لا يُخاطَب بالمذكّر — له صيغته المحايدة.
+      expect(level.nameFor(AppGender.unknown), 'مستوى البطولة');
     });
 
-    test('progress stays within bounds at the top level', () {
-      expect(OtakuLevel.legend.progress(1000), lessThanOrEqualTo(1));
-      expect(OtakuLevel.legend.pointsToNext(1000), 0);
+    test('falls back to the masculine form when the others are missing', () {
+      // ردٌّ قديم بلا الصيغتين: نصٌّ ظاهر أفضل من فراغ.
+      final level = OtakuLevel.fromJson({
+        'key': 'legend',
+        'number': 7,
+        'nameMale': 'أسطورة المجرة',
+        'requiredPoints': 1000,
+      });
+      expect(level.nameFor(AppGender.female), 'أسطورة المجرة');
+      expect(level.nameFor(AppGender.unknown), 'أسطورة المجرة');
+    });
+
+    test('summary carries the ladder and the server-computed placement', () {
+      final summary = PointsSummary.fromJson({
+        'balance': 150,
+        'activity': const [],
+        'levels': [
+          levelJson(1, 'beginner', 0),
+          levelJson(2, 'explorer', 100),
+          levelJson(3, 'voyager', 250),
+        ],
+        'level': levelJson(2, 'explorer', 100),
+        'nextLevel': levelJson(3, 'voyager', 250),
+        'pointsToNextLevel': 100,
+        'levelProgress': 0.33,
+      });
+
+      expect(summary.balance, 150);
+      expect(summary.levels, hasLength(3));
+      expect(summary.level?.threshold, 100);
+      expect(summary.nextLevel?.threshold, 250);
+      expect(summary.pointsToNextLevel, 100);
+      expect(summary.levelProgress, closeTo(0.33, 1e-9));
+    });
+
+    test('a top-level customer has no next level', () {
+      final summary = PointsSummary.fromJson({
+        'balance': 1000,
+        'levels': [levelJson(7, 'legend', 1000)],
+        'level': levelJson(7, 'legend', 1000),
+        'nextLevel': null,
+        'pointsToNextLevel': 0,
+        'levelProgress': 1,
+      });
+      expect(summary.nextLevel, isNull);
+      expect(summary.pointsToNextLevel, 0);
+      expect(summary.levelProgress, 1);
+    });
+
+    test('an empty payload yields no level instead of an invented one', () {
+      final summary = PointsSummary.fromJson(const {});
+      expect(summary.level, isNull);
+      expect(summary.levels, isEmpty);
+      expect(summary.balance, 0);
+      expect(summary.rewards, isEmpty);
+    });
+
+    test('reward state is read from the server, never derived locally', () {
+      final summary = PointsSummary.fromJson({
+        'balance': 500,
+        'levels': const [],
+        'rewards': [
+          {
+            'levelKey': 'explorer',
+            'requiredPoints': 100,
+            'kind': 'discount',
+            'percent': 3,
+            'capAmount': 5000,
+            'unlocked': true,
+            'claimed': true,
+            'consumed': false,
+            'claimable': false,
+            'claimedAt': '2026-01-01T00:00:00.000Z',
+          },
+          {
+            'levelKey': 'legend',
+            'requiredPoints': 1000,
+            'kind': 'gift',
+            'giftAmount': 25000,
+            'unlocked': false,
+            'claimed': false,
+            'consumed': false,
+            'claimable': false,
+          },
+        ],
+      });
+
+      final explorer = summary.rewards.first;
+      expect(explorer.isDiscount, isTrue);
+      expect(explorer.percent, 3);
+      expect(explorer.capAmount, 5000);
+      // مطالَب بها ولم تُصرف — «جاهزة»، ولا زرّ مطالبة ثانٍ.
+      expect(explorer.isReady, isTrue);
+      expect(explorer.claimable, isFalse);
+
+      final legend = summary.rewards.last;
+      expect(legend.isGift, isTrue);
+      expect(legend.giftAmount, 25000);
+      // [CRITICAL] مغلقة: التطبيق لا يقرّر الأهلية ولو كان الرصيد أمامه.
+      expect(legend.unlocked, isFalse);
+      expect(legend.claimable, isFalse);
     });
   });
 

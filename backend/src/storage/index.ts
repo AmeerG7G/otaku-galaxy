@@ -86,8 +86,18 @@ class LocalDiskStorage implements StorageDriver {
 
   async remove(storageKey: string) {
     // المفتاح يأتي من قاعدة البيانات؛ نمنع الخروج من جذر التخزين احتياطاً.
-    const absolute = path.resolve(this.rootDir, storageKey);
-    if (!absolute.startsWith(path.resolve(this.rootDir))) return;
+    //
+    // المقارنة بـ `path.relative` لا بـ `startsWith`: الثانية تقارن الحروف لا
+    // حدود المسار، فجذرٌ اسمه `/srv/uploads` كان يقبل `/srv/uploads-backup/x`
+    // — مجلّد شقيق خارج الجذر يبدأ اسمه بالاسم نفسه فحسب. الحارس الذي يُفترض
+    // أن يحبس الحذف داخل الجذر كان يسمح بتجاوزه.
+    const root = path.resolve(this.rootDir);
+    const absolute = path.resolve(root, storageKey);
+    const relative = path.relative(root, absolute);
+    // `''` تعني الجذر نفسه، و`..` تعني خارجه، والمطلق يعني قرصاً آخر.
+    if (relative === '' || relative.startsWith('..') || path.isAbsolute(relative)) {
+      return;
+    }
     await unlink(absolute).catch(() => undefined);
   }
 }

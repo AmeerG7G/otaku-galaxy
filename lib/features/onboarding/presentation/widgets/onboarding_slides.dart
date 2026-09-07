@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/design_system/design_system.dart';
+import '../../../visuals/domain/visual_slot.dart';
+import '../../../visuals/presentation/managed_artwork.dart';
 
 /// تركيبات شرائح التعريف الثلاث.
 ///
@@ -136,7 +138,15 @@ class OnboardingSlideText extends StatelessWidget {
 
 /// رسم تزييني — يختفي بهدوء إن تعذّر تحميله بدل كسر الشاشة.
 class _Art extends StatelessWidget {
-  const _Art({required this.asset, this.height, this.width});
+  const _Art({
+    required this.slot,
+    required this.asset,
+    this.height,
+    this.width,
+  });
+
+  /// فتحة هذه الشريحة بعينها — كل شريحة تُدار وحدها من اللوحة.
+  final String slot;
 
   final String asset;
   final double? height;
@@ -144,13 +154,15 @@ class _Art extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // الإطار الأول مضمَّن دائماً: [ManagedArtwork] يرسم الأصل المحلي فوراً
+    // ولا يبدّله إلا بعد وصول الإعداد وتحميل الصورة. شاشات الترحيب تسبق
+    // أول نداء ناجح، فلا يجوز أن تنتظر شبكة.
     return IgnorePointer(
-      child: Image.asset(
-        asset,
+      child: ManagedArtwork(
+        slot: slot,
+        fallbackAsset: asset,
         height: height,
         width: width,
-        fit: BoxFit.contain,
-        errorBuilder: (_, _, _) => const SizedBox.shrink(),
       ),
     );
   }
@@ -211,6 +223,7 @@ class OnboardingSlideOne extends StatelessWidget {
               top: 6,
               start: -30,
               child: _Art(
+                slot: VisualSlots.onboardingSlideOne,
                 asset: 'assets/art/opt/gojo-l.png',
                 height: constraints.maxHeight * 0.78,
               ),
@@ -243,7 +256,7 @@ class OnboardingSlideOne extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'حقائب، اكسسوارات، ملابس',
+                        'حقائب، اكسسوارات، ملابس، وأكثر.',
                         style: theme.textTheme.bodyMedium?.copyWith(
                           fontSize: 15,
                           height: 1.35,
@@ -280,8 +293,8 @@ class OnboardingSlideOne extends StatelessWidget {
                 child: const OnboardingSlideText(
                   title: 'أهلاً بك في مجرة الأوتاكو',
                   body:
-                      'متجر عربي متكامل لعشّاق الأنمي: ملابس، إكسسوارات، حقائب '
-                      'وقرطاسية بتصاميم مختارة.',
+                      'متجر عراقي متكامل لعشّاق الأنمي: ملابس، إكسسوارات، حقائب '
+                      'وقرطاسية بتصاميم الانمي.',
                   titleSize: 30,
                   titleWidthFactor: 0.88,
                   bodyWidthFactor: 0.9,
@@ -349,8 +362,7 @@ class OnboardingSlideTwo extends StatelessWidget {
               child: OnboardingSlideText(
                 title: 'كل ما يخص عالمك، بمكان واحد',
                 body:
-                    'منتجات حصرية ومبتكرة تلبي تطلعات كل أوتاكو يبحث عن التميز '
-                    'والفرادة.',
+                    'منتجات حصرية ومبتكرة تلبي تطلعاتكم ',
               ),
             ),
 
@@ -363,6 +375,7 @@ class OnboardingSlideTwo extends StatelessWidget {
                 // المصدر يحكم هذا الرسم بالعرض (‎132%) ويترك الارتفاع طبيعياً،
                 // فيملأ أسفل الشريحة ويُقصّ من الأعلى.
                 child: _Art(
+                  slot: VisualSlots.onboardingSlideTwo,
                   asset: 'assets/art/opt/trio-l.png',
                   width: constraints.maxWidth * 1.32,
                 ),
@@ -382,8 +395,20 @@ class OnboardingSlideTwo extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // فتحة صورة المنتج.
+                    //
+                    // المرجع يترك هنا فتحةً فارغة برمز صورة (`var(--ph)` مع
+                    // إطار متقطّع)، لأنه تلميحٌ مجرَّد لبطاقة المتجر. بطلبٍ
+                    // من المستخدم وُضعت صورة حقيقية مكان الرمز، مع الإبقاء
+                    // على هندسة المرجع حرفياً: ارتفاع ٥٢، نصف قطر ١٣، وعرضٌ
+                    // يملأ محتوى البطاقة (١١٢ − ٩×٢ = ٩٤).
+                    //
+                    // الأصل **مضمَّن** لا شبكي: شاشات الترحيب تسبق أول نداء
+                    // ناجح، وقد تُفتح بلا إنترنت أصلاً — صورةٌ من الشبكة هنا
+                    // تعني بطاقةً فارغة عند أول تشغيل، وهو نقيض الغرض.
                     Container(
                       height: 52,
+                      width: double.infinity,
                       decoration: BoxDecoration(
                         color: context.themeColors.photoSlot,
                         borderRadius: BorderRadius.circular(13),
@@ -391,11 +416,27 @@ class OnboardingSlideTwo extends StatelessWidget {
                           color: theme.colorScheme.outlineVariant,
                         ),
                       ),
-                      child: Center(
-                        child: Icon(
-                          Icons.image_outlined,
-                          size: 20,
-                          color: context.themeColors.photoSlotInk,
+                      // القصّ على نفس نصف القطر — الصورة تتبع حواف الفتحة
+                      // ولا تتجاوزها.
+                      clipBehavior: Clip.antiAlias,
+                      child: Image.asset(
+                        'assets/art/opt/a-luffy-kid.png',
+                        // `cover` يملأ الفتحة بلا تشويه نسب الصورة؛ الفتحة
+                        // عريضة (٩٤×٥٢) والأصل أقرب للمربّع، فالقصّ رأسي.
+                        fit: BoxFit.cover,
+                        // الوجه في أعلى الأصل — المحاذاة للأعلى تُبقيه داخل
+                        // القصّ بدل أن يُقتطع نصفه. (الأصل مختار في الخطوة ٣٠
+                        // بقرارٍ مؤكَّد؛ أُبقي عليه هنا ولم يُستبدل.)
+                        alignment: Alignment.topCenter,
+                        filterQuality: FilterQuality.medium,
+                        // أصلٌ حُذف من الحزمة سهواً يجب أن يترك الفتحة كما
+                        // كانت (خلفية ورمز) لا أن يُسقط الشريحة كلها.
+                        errorBuilder: (_, _, _) => Center(
+                          child: Icon(
+                            Icons.image_outlined,
+                            size: 20,
+                            color: context.themeColors.photoSlotInk,
+                          ),
                         ),
                       ),
                     ),
@@ -539,6 +580,7 @@ class OnboardingSlideThree extends StatelessWidget {
               bottom: -10,
               end: -30,
               child: _Art(
+                slot: VisualSlots.onboardingSlideThree,
                 asset: 'assets/art/opt/a-i0.png',
                 height: constraints.maxHeight * 0.70,
               ),
@@ -611,7 +653,7 @@ class OnboardingSlideThree extends StatelessWidget {
                     ),
                     const SizedBox(height: 11),
                     Text(
-                      'الدفع عند الاستلام، وتأكيد الطلب عبر واتساب.',
+                      'توصيل سريع وآمن.',
                       style: theme.textTheme.labelSmall?.copyWith(
                         fontSize: 11.5,
                         height: 1.6,

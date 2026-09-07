@@ -169,6 +169,7 @@ void main() {
           icon: Icons.grid_view_outlined,
           activeIcon: Icons.grid_view_rounded,
           label: 'الأقسام',
+          gridIconCount: 4,
         ),
         OtakuNavItem(
           icon: Icons.photo_library_outlined,
@@ -196,6 +197,10 @@ void main() {
     'narrow': Size(375, 812),
     // أصغر مقاس مدعوم — أكثر ما يكشف تجاوز التخطيط (overflow).
     'tiny': Size(320, 640),
+    // ألواح: الطرف الآخر من المدى. الضيق يكشف التجاوز، والاتّساع يكشف
+    // المكوّنات التي تتمدّد بلا حدّ أو تُبنى على عرضٍ مفترَض.
+    'tablet': Size(834, 1112),
+    'tablet-landscape': Size(1194, 834),
   };
 
   for (final entry in cases.entries) {

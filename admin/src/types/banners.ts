@@ -2,12 +2,28 @@ export type BannerDestinationType =
   | 'product'
   | 'category'
   | 'subcategory'
+  | 'anime'
   | 'none'
+
+/** أين يظهر البنر في الرئيسية. */
+export type BannerPlacement = 'hero' | 'promo'
+
+export const PLACEMENT_LABELS: Record<BannerPlacement, string> = {
+  hero: 'اللوحة الكبيرة',
+  promo: 'الشريط الترويجي',
+}
+
+export const PLACEMENT_HINTS: Record<BannerPlacement, string> = {
+  hero: 'أعلى الرئيسية. تُعرض واحدة فقط — الأولى ترتيباً بين البنرات المفعّلة.',
+  promo: 'الشريط الأفقي تحت اللوحة الكبيرة. عدد مفتوح، والترتيب يحدّده «الترتيب».',
+}
 
 export interface AdminBanner {
   id: string
   imageUrl: string
   title: string | null
+  subtitle: string
+  placement: BannerPlacement
   destinationType: BannerDestinationType
   destinationValue: string | null
   sortOrder: number
@@ -19,6 +35,8 @@ export interface AdminBannerListResponse {
 }
 
 export interface BannerCreatePayload {
+  subtitle?: string
+  placement?: BannerPlacement
   imageUrl: string
   title?: string | null
   destinationType?: BannerDestinationType
@@ -27,11 +45,15 @@ export interface BannerCreatePayload {
 }
 
 export interface BannerUpdatePayload {
+  subtitle?: string
+  placement?: BannerPlacement
   imageUrl?: string
   title?: string | null
   destinationType?: BannerDestinationType
   destinationValue?: string | null
   sortOrder?: number
+  /** الخادم يقبلها في PATCH — كانت الشاشة تفترض خطأً أنه لا يقبلها. */
+  isActive?: boolean
 }
 
 export interface BannerAdminRow {

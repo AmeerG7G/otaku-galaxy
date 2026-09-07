@@ -232,7 +232,7 @@ class _FieldError extends StatelessWidget {
         text,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
           fontSize: 11.5,
-          color: context.themeColors.error,
+          color: context.themeColors.errorText,
         ),
       ),
     );
@@ -288,7 +288,7 @@ class _ServerErrorCard extends StatelessWidget {
                   style: Theme.of(context).textTheme.labelMedium?.copyWith(
                     fontSize: 12.5,
                     fontWeight: AppDimens.weightBold,
-                    color: colors.error,
+                    color: colors.errorText,
                   ),
                 ),
                 const SizedBox(height: 6),

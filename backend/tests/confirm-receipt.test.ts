@@ -34,18 +34,24 @@ describe('customer confirms receipt', () => {
     const orderId = created.body.data.id as string;
 
     if (status === 'OUT_FOR_DELIVERY') {
-      for (const next of ['CONFIRMED', 'PREPARING', 'OUT_FOR_DELIVERY']) {
-        await api
-          .patch(`/api/admin/orders/${orderId}/status`)
-          .set('Authorization', `Bearer ${adminToken}`)
-          .send({ status: next })
-          .expect(200);
-      }
+      await api
+        .patch(`/api/admin/orders/${orderId}/status`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ status: 'OUT_FOR_DELIVERY' })
+        .expect(200);
     }
     return { user, orderId };
   }
 
-  it('completes the order and awards receipt points exactly once', async () => {
+  /**
+   * الطلب في هذه السويت منتجٌ واحد بـ١٥٬٠٠٠ دينار (بذور `seedTestCatalog`).
+   * قيمة الشراء المؤهَّلة ١٥٬٠٠٠ بلا خصم، فالنقاط `floor(15000/10000) × 5 = 5`
+   * — والباقي (٥٬٠٠٠) يُهمَل ولا يُرحَّل. كان المنح مبلغاً ثابتاً (٢٠) لا
+   * علاقة له بقيمة الطلب.
+   */
+  const EXPECTED_PURCHASE_POINTS = 5;
+
+  it('completes the order and awards purchase points exactly once', async () => {
     const { user, orderId } = await orderAt('OUT_FOR_DELIVERY');
 
     const before = await api
@@ -64,7 +70,7 @@ describe('customer confirms receipt', () => {
       .get('/api/points')
       .set('Authorization', `Bearer ${user.token}`)
       .expect(200);
-    expect(after.body.data.balance).toBe(20);
+    expect(after.body.data.balance).toBe(EXPECTED_PURCHASE_POINTS);
     expect(after.body.data.activity).toHaveLength(1);
   });
 
@@ -86,7 +92,7 @@ describe('customer confirms receipt', () => {
       .get('/api/points')
       .set('Authorization', `Bearer ${user.token}`)
       .expect(200);
-    expect(points.body.data.balance).toBe(20);
+    expect(points.body.data.balance).toBe(EXPECTED_PURCHASE_POINTS);
   });
 
   it('rejects confirmation before the order is out for delivery', async () => {
@@ -154,6 +160,6 @@ describe('customer confirms receipt', () => {
       .get('/api/points')
       .set('Authorization', `Bearer ${user.token}`)
       .expect(200);
-    expect(points.body.data.balance).toBe(20);
+    expect(points.body.data.balance).toBe(EXPECTED_PURCHASE_POINTS);
   });
 });

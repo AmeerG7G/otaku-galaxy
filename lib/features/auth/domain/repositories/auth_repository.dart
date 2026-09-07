@@ -4,10 +4,14 @@ import '../entities/user.dart';
 /// واجهة مستودع المصادقة (تعريف فقط).
 abstract class AuthRepository {
   /// إنشاء حساب — يُرسل رمز تحقق للهاتف (الحساب يُفعَّل بعد التحقق).
+  ///
+  /// [gender] مطلوب: الخادم يرفض التسجيل بدونه. الغرض نحويّ بحت — توافق
+  /// الخطاب العربي مع صاحب الحساب.
   Future<void> register({
     required String username,
     required String phone,
     required String password,
+    required String gender,
   });
 
   /// التحقق من رمز التسجيل — يعيد جلسة جاهزة.
@@ -37,6 +41,7 @@ abstract class AuthRepository {
     String? username,
     String? avatarUrl,
     bool clearAvatar = false,
+    String? gender,
   });
 
   /// تغيير كلمة المرور من الإعدادات — مستخدم مسجّل دخوله، بلا رمز تحقق.

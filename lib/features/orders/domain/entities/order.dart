@@ -50,8 +50,7 @@ class Order {
     this.zoneName,
     this.deliveryNote,
     this.deliveredAt,
-    this.ratingAvailableAt,
-    this.ratingAvailable = false,
+    this.canReview = false,
     this.statusHistory = const [],
   });
 
@@ -94,26 +93,19 @@ class Order {
   /// لحظة تأكيد الاستلام كما سجّلها الخادم؛ null قبل الاستلام.
   final DateTime? deliveredAt;
 
-  /// لحظة فتح التقييم (الاستلام + المهلة)؛ null قبل الاستلام.
-  final DateTime? ratingAvailableAt;
-
-  /// هل التقييم مسموح الآن؟ يقرّره الخادم — التطبيق يعرض ولا يحسب.
+  /// هل يستطيع صاحب الطلب تقييم منتجاته الآن؟
   ///
-  /// لا نشتقّها من ساعة الجهاز: تغيير وقت الهاتف يجب ألّا يفتح التقييم.
-  final bool ratingAvailable;
+  /// [CRITICAL] يقرّرها الخادم ويرسلها جاهزة — التطبيق يعرض ولا يحسب. لا
+  /// تُشتقّ من الحالة ولا من الطوابع الزمنية ولا من ساعة الجهاز، وإخفاء
+  /// الزرّ ليس الحارس: الخادم يرفض أي إرسال لطلبٍ لم يُستلم.
+  ///
+  /// حلّت محل `ratingAvailable` و`ratingAvailableAt`. تلك كانت تحمل مهلةً
+  /// يضبطها المسؤول تفصل بين تأكيد الاستلام وفتح التقييم؛ صار التقييم
+  /// يُفتح بالاستلام نفسه، فلا موعد يُنتظر ولا وقت متبقٍّ يُعرض.
+  final bool canReview;
 
   /// مسار الطلب بأوقاته كما سجّله الخادم (بلا هوية من غيّر الحالة).
   final List<OrderStatusEvent> statusHistory;
-
-  /// الوقت المتبقي حتى يُفتح التقييم، أو null إن كان مفتوحاً/غير منطبق.
-  ///
-  /// للعرض فقط: القرار النهائي هو [ratingAvailable] القادم من الخادم.
-  Duration? get timeUntilRating {
-    final at = ratingAvailableAt;
-    if (ratingAvailable || at == null) return null;
-    final remaining = at.difference(DateTime.now());
-    return remaining.isNegative ? Duration.zero : remaining;
-  }
 
   factory Order.fromJson(Map<String, dynamic> json) {
     return Order(
@@ -126,8 +118,7 @@ class Order {
       total: (json['total'] as num?)?.toDouble() ?? 0,
       productsTotal: (json['productsTotal'] as num?)?.toDouble() ?? 0,
       discount: (json['discount'] as num?)?.toDouble() ?? 0,
-      deliveryDiscount:
-          (json['deliveryDiscount'] as num?)?.toDouble() ?? 0,
+      deliveryDiscount: (json['deliveryDiscount'] as num?)?.toDouble() ?? 0,
       status: OrderStatus.fromString(json['status'] as String? ?? ''),
       items: (json['items'] as List? ?? const [])
           .map((e) => _mapItem(e as Map<String, dynamic>))
@@ -137,10 +128,7 @@ class Order {
       zoneName: json['zoneName'] as String?,
       deliveryNote: json['deliveryNote'] as String?,
       deliveredAt: DateTime.tryParse(json['deliveredAt'] as String? ?? ''),
-      ratingAvailableAt: DateTime.tryParse(
-        json['ratingAvailableAt'] as String? ?? '',
-      ),
-      ratingAvailable: json['ratingAvailable'] as bool? ?? false,
+      canReview: json['canReview'] as bool? ?? false,
       statusHistory: (json['statusHistory'] as List? ?? const [])
           .map((e) => OrderStatusEvent.fromJson(e as Map<String, dynamic>))
           .toList(),

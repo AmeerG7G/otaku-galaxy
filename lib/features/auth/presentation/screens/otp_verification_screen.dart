@@ -10,6 +10,7 @@ import '../widgets/otp_code_field.dart';
 import '../../../settings/data/personalize_storage.dart';
 import '../../../../core/config/app_config.dart';
 import '../../../../core/di/injection_container.dart';
+import '../../../visuals/domain/visual_slot.dart';
 
 /// رمز التطوير الثابت — يُعرض فقط حين تسمح الإعدادات (انظر
 /// [AppConfig.showDevOtpHint]). الخادم يقرّر فعلياً هل الرمز الثابت مفعَّل
@@ -135,9 +136,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen>
     // الخادم، وشاشة إعادة التعيين تحتاجه في نفس الطلب. نمرّره كما هو.
     if (widget.purpose == OtpPurpose.passwordReset) {
       setState(() => _otpStatus = OtpFieldStatus.valid);
-      context.router.push(
-        ResetPasswordRoute(phone: widget.phone, code: code),
-      );
+      context.router.push(ResetPasswordRoute(phone: widget.phone, code: code));
       return;
     }
 
@@ -180,9 +179,9 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen>
         position: _slideAnimation,
         child: AuthScaffold(
           title: 'رمز التحقق',
-          subtitle:
-              'أرسلنا رمزاً من ستة أرقام إلى رقم هاتفك عبر رسالة نصية.',
+          subtitle: 'أرسلنا رمزاً من ستة أرقام إلى رقم هاتفك عبر رسالة نصية.',
           artwork: 'assets/art/opt/a-i1.png',
+          artworkSlot: VisualSlots.otp,
           artworkHeight: 190,
           artworkWidth: 142,
           artworkBottom: -10,
@@ -242,7 +241,9 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen>
               ? Container(
                   padding: EdgeInsets.all(AppDimens.space4),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(AppDimens.radiusMd),
                     border: Border.all(
                       color: Theme.of(context).colorScheme.outlineVariant,

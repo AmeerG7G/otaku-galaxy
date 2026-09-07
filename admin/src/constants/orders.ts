@@ -9,13 +9,35 @@ export const ORDER_STATUSES: OrderStatus[] = [
   'REJECTED',
 ]
 
+/**
+ * مراحل دورة الطلب كما يعيشها المتجر اليوم — وهي ما تُبنى عليه العدّادات
+ * والتبويبات. القبولُ يخرج الطلب للتوصيل مباشرةً، فلم تعد «قيد التجهيز» أو
+ * «تم تأكيده» مرحلةً يمرّ بها طلب جديد؛ بقيتا حالتين قديمتين تظهر تبويبهما
+ * فقط إن بقي فيهما طلب.
+ */
+export const ORDER_STAGES: OrderStatus[] = [
+  'PENDING_ADMIN_CONFIRMATION',
+  'OUT_FOR_DELIVERY',
+  'COMPLETED',
+]
+
 export const STATUS_LABELS: Record<OrderStatus, string> = {
-  PENDING_ADMIN_CONFIRMATION: 'بانتظار تأكيد الإدارة',
-  CONFIRMED: 'تم تأكيده',
+  PENDING_ADMIN_CONFIRMATION: 'طلب جديد',
+  CONFIRMED: 'مؤكَّد (قديم)',
   PREPARING: 'قيد التجهيز',
   OUT_FOR_DELIVERY: 'قيد التوصيل',
-  COMPLETED: 'مكتمل',
+  COMPLETED: 'تم التسليم',
   REJECTED: 'مرفوض',
+}
+
+/** ألوان الحالة — مصدر واحد بدل تكرارها في كل جدول. */
+export const STATUS_COLORS: Record<OrderStatus, string> = {
+  PENDING_ADMIN_CONFIRMATION: 'gold',
+  CONFIRMED: 'default',
+  PREPARING: 'blue',
+  OUT_FOR_DELIVERY: 'cyan',
+  COMPLETED: 'green',
+  REJECTED: 'red',
 }
 
 export interface StatusAction {
@@ -24,12 +46,14 @@ export interface StatusAction {
 }
 
 const STATUS_ACTIONS: Record<OrderStatus, StatusAction[]> = {
+  // «تأكيد الطلب» هو الإرسال للتوصيل — خطوة واحدة تُخرج الطلب وتُعلم العميل.
   PENDING_ADMIN_CONFIRMATION: [
-    { to: 'CONFIRMED', label: 'تأكيد الطلب' },
+    { to: 'OUT_FOR_DELIVERY', label: 'تأكيد الطلب' },
     { to: 'REJECTED', label: 'رفض الطلب' },
   ],
+  // مسار موروث لطلبات وقفت عند «تم تأكيده» قبل الدمج.
   CONFIRMED: [
-    { to: 'PREPARING', label: 'بدء التجهيز' },
+    { to: 'PREPARING', label: 'نقل إلى التجهيز' },
     { to: 'REJECTED', label: 'رفض الطلب' },
   ],
   PREPARING: [

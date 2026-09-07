@@ -3,12 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/design_system/design_system.dart';
+import '../../../../core/l10n/gender.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../main_navigation/presentation/screens/main_navigation_screen.dart';
 import '../../../products/domain/entities/product.dart';
 import '../../../products/domain/usecases/search_products_usecase.dart';
 import '../../../../core/di/injection_container.dart';
 import '../../data/search_history_storage.dart';
+import '../../../visuals/domain/visual_slot.dart';
 
 /// شاشة البحث بتصميم Otaku Galaxy v2.
 ///
@@ -27,6 +29,7 @@ class SearchScreen extends StatefulWidget {
 
 class _SearchScreenState extends State<SearchScreen> {
   final _controller = TextEditingController();
+
   /// آخر عمليات البحث — تُحمَّل من التخزين المحلي وتبقى بعد إغلاق التطبيق.
   List<String> _recent = const [];
   List<Product> _results = [];
@@ -97,12 +100,17 @@ class _SearchScreenState extends State<SearchScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
-        child: Column(
-          children: [
-            _buildSearchBar(),
-            Expanded(child: _buildBody()),
-          ],
+      // إطار الشبكة: يمنع تمدّد المحتوى بلا حدّ ويترك للشبكة عرضاً
+      // يكفي أعمدةً أكثر. لا أثر له على الهاتف.
+      body: ResponsiveContentFrame(
+        maxWidth: kGridMaxWidth,
+        child: SafeArea(
+          child: Column(
+            children: [
+              _buildSearchBar(),
+              Expanded(child: _buildBody()),
+            ],
+          ),
         ),
       ),
     );
@@ -132,7 +140,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 hintText: 'ابحث عن منتج…',
                 hintStyle: theme.textTheme.bodyMedium?.copyWith(
                   fontSize: 14,
-                  color: theme.colorScheme.outline,
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
                 filled: true,
                 fillColor: theme.colorScheme.surface,
@@ -244,11 +252,13 @@ class _SearchScreenState extends State<SearchScreen> {
               ),
           ],
         ),
-        const OtakuEditorialPanel(
-          title: 'دوّر على أي شي يخطر ببالك',
-          body: 'اكتب اسم المنتج أو الأنمي، وراح نطلعلك كل الموجود بالمتجر.',
+        // لم تعد `const`: النصّ يُصرَّف بجنس صاحب الحساب فيُقرأ من السياق.
+        OtakuEditorialPanel(
+          title: 'ابحث عمّا يخطر ببالك',
+          body: context.g(GenderedStrings.searchHintBody),
           artwork: 'assets/art/a-l-detective.png',
-          margin: EdgeInsets.only(top: 24),
+          artworkSlot: VisualSlots.searchHeader,
+          margin: const EdgeInsets.only(top: 24),
           artHeight: 150,
           minHeight: 150,
           contentWidthFactor: 0.64,
@@ -313,9 +323,10 @@ class _SearchScreenState extends State<SearchScreen> {
 
   Widget _buildNoResults() {
     return AnimeEmptyState(
-      title: 'ما لكينا شي',
-      subtitle: 'جرّب كلمة أقصر أو تصفّح الأقسام — أكيد راح تلكي شي يعجبك.',
+      title: 'لا توجد نتائج',
+      subtitle: 'جرّب كلمة أقصر أو تصفّح الأقسام.',
       artwork: 'assets/art/opt/a-i1.png',
+      artworkSlot: VisualSlots.emptySearch,
       actionLabel: 'تصفّح الأقسام',
       onAction: () {
         mainNavIndex.value = MainTab.categories;

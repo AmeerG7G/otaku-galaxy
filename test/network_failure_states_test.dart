@@ -9,7 +9,7 @@ import 'package:otaku_galaxy/features/collections/presentation/cubit/collections
 import 'package:otaku_galaxy/features/notifications/domain/entities/app_notification.dart';
 import 'package:otaku_galaxy/features/notifications/domain/repositories/notification_repository.dart';
 import 'package:otaku_galaxy/features/notifications/presentation/cubit/notifications_cubit.dart';
-import 'package:otaku_galaxy/features/points/domain/entities/points_activity.dart';
+import 'package:otaku_galaxy/features/points/domain/entities/level_reward.dart';
 import 'package:otaku_galaxy/features/points/domain/repositories/points_repository.dart';
 import 'package:otaku_galaxy/features/points/presentation/cubit/points_cubit.dart';
 
@@ -20,9 +20,10 @@ class _Boom implements Exception {
 
 class _FailingPoints implements PointsRepository {
   @override
-  Future<int> fetchBalance() async => throw _Boom();
+  Future<PointsSummary> fetchSummary() async => throw _Boom();
+
   @override
-  Future<List<PointsActivity>> fetchActivity() async => throw _Boom();
+  Future<LevelReward> claimReward(String levelKey) async => throw _Boom();
 }
 
 class _FailingNotifications implements NotificationRepository {

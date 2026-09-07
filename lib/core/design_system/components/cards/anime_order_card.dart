@@ -2,8 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../../../../features/orders/domain/entities/order.dart';
 import '../../../../features/orders/presentation/widgets/order_status_utils.dart';
+import '../../../l10n/gender.dart';
 import '../../tokens/app_colors.dart';
+import '../../tokens/app_theme_colors.dart';
 import '../../tokens/app_dimens.dart';
+import '../buttons/anime_outlined_button.dart';
+import '../buttons/button_enums.dart';
 import '../feedback/product_photo_slot.dart';
 import '../layout/otaku_surfaces.dart';
 
@@ -11,11 +15,23 @@ import '../layout/otaku_surfaces.dart';
 ///
 /// سطح عائم يبدأ بالتاريخ وكبسولة الحالة، ثم ملخّص نصّي، ثم فاصل رفيع
 /// يفصل صفّ مصغّرات المنتجات عن الإجمالي — بلا `Card` مادي ولا `ListTile`.
+///
+/// [onReview] يظهر زرّ «قيّم طلبك» **داخل بطاقة هذا الطلب** حين يسمح الخادم
+/// بذلك. مربوطٌ بالطلب لا بالتطبيق: لا زرّ تقييم عام، ولا مسار يفتح التقييم
+/// بمعزل عن طلبٍ مؤهَّل. والشرط `order.canReview` قرارُ خادمٍ لا حسابُ واجهة.
 class AnimeOrderCard extends StatelessWidget {
-  const AnimeOrderCard({super.key, required this.order, this.onTap});
+  const AnimeOrderCard({
+    super.key,
+    required this.order,
+    this.onTap,
+    this.onReview,
+  });
 
   final Order order;
   final VoidCallback? onTap;
+
+  /// يُستدعى عند طلب تقييم **هذا** الطلب. `null` يُخفي الزرّ تماماً.
+  final VoidCallback? onReview;
 
   @override
   Widget build(BuildContext context) {
@@ -87,7 +103,7 @@ class AnimeOrderCard extends StatelessWidget {
                     style: theme.textTheme.bodySmall?.copyWith(
                       fontSize: 11.5,
                       height: 1.5,
-                      color: AppColors.error,
+                      color: context.themeColors.errorText,
                       fontWeight: AppDimens.weightMedium,
                     ),
                   ),
@@ -162,6 +178,18 @@ class AnimeOrderCard extends StatelessWidget {
               ),
             ],
           ),
+          if (onReview != null && order.canReview) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: AnimeOutlinedButton(
+                label: context.g(GenderedStrings.rateYourOrder),
+                onPressed: onReview,
+                icon: Icons.star_rounded,
+                iconPosition: IconPosition.start,
+              ),
+            ),
+          ],
         ],
       ),
     );
