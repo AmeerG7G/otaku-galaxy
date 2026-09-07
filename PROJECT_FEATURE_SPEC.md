@@ -5422,6 +5422,10 @@ loading bars). The reference asset tree also contains no product image at all
   `assets/branding/otaku-galaxy-logo.jpg`. The `assets/images/` folder holds
   uncutated downloaded anime images but is **not** registered in `pubspec.yaml`,
   so it is not bundled and was not used.
+  > **Superseded by STEP 46.** `otaku-galaxy-logo.jpg` was deleted in the brand
+  > refresh and replaced by `assets/branding/otaku-mark.png`. The decision this
+  > section records is unaffected — the asset chosen here was
+  > `assets/art/opt/a-luffy-kid.png`, which is unchanged.
 - **Chosen:** `assets/art/opt/a-luffy-kid.png` — an already-registered,
   locally-bundled anime figure render that reads as a compact merchandise
   visual inside the 112×52px mini card.
@@ -6549,9 +6553,16 @@ computed per WCAG:
 WCAG AA for large text is 3:1. Without the scrim **eight of the ten palette endpoints fall below
 it**, worst case 1.83:1. The decision to accept this is explicit and the reference agrees, so it is
 implemented as asked — and pinned by a test asserting the worst case is 1.83:1 and below 3.0, so the
-trade-off is tracked rather than forgotten. If contrast is wanted later, the remedy that does not
+trade-off is tracked rather than forgotten.
+
+If contrast is wanted later, the remedy that does not
 re-dull the colour is a shadow on the title text, or a scrim confined behind the title line alone —
 not a layer over the whole gradient.
+
+> **Updated by STEP 46.** The palette changed in the brand refresh and this test fired, which is what
+> it was built to do. The pinned worst case is now **1.66:1** on gold `#F6C144`; the aggregate improved
+> from 7 to 5 of 12 endpoints below 3:1. The `lessThan(3.0)` assertion was **not** weakened. The
+> table and figures above remain the STEP 36 record. See §46.7.
 
 ## 36.4 Tests
 
@@ -8149,3 +8160,258 @@ file in `lib/` and fails when a colour assignment inside a `TextStyle` /
 measures every text token against every surface it is drawn on, in both themes,
 and asserts AA. It was verified to fail — naming the exact file and line — by
 reintroducing the original defect, then verified to pass again once reverted.
+
+# STEP 46 — BRAND: OTAKU GALAXY VISUAL REFRESH (STAGE 12 APPLIED)
+
+The approved 14-stage brand system arrived with a prepared Flutter handoff
+(`12_APP_BRANDING/flutter-patch/`). This step applies it. It is a **visual
+rebrand, not an app redesign**: screen structure, navigation, IA, flows,
+features, business logic, API contracts, `AppDimens`, `AppBreakpoints`,
+`AppIcons` and the type scale are all unchanged, and no widget API moved.
+
+The handoff was written against `@prod` with read-only access and no Flutter
+toolchain. This repository had moved since. **The repository is the
+implementation source of truth; Stage 14 is the brand source of truth.** Where
+the handoff and the code disagreed, the code won and the deviation is recorded
+in §46.6.
+
+## 46.1 Commit boundary
+
+| | |
+|---|---|
+| Baseline | `e2af2599f10475732a7c6cb022b196cee5f8980f` |
+| Brand refresh | `a8f8369337dc17d4f4bc35f33d4d392c73e11b54` |
+
+The baseline commit captures accumulated development work that was sitting
+uncommitted; it contains **no** brand change. The refresh is the sole child of
+that baseline, so `git revert a8f8369` undoes the entire rebrand and nothing
+else. That separation was the reason for the baseline commit.
+
+Scope: **50 files, +249 / −175** — 23 text files, 27 assets (1 added, 1 deleted,
+25 replaced).
+
+## 46.2 Palette
+
+`app_colors.dart` was replaced with the approved Stage 02 palette: six brand
+colours — magenta `#F0459B`, violet `#8B5CF6`, blue `#4FA3F0`, indigo `#3B2FA8`,
+purple `#6D3BC0`, gold `#F6C144` — over the brand ground `#0B0718` and its
+surfaces `#120C24` / `#16102E` / `#241A54`. Added: `indigo`, `groundDark`,
+`surfaceDark*`, `onSurfaceDark*`, `onAccent`, `categoryGradients`.
+
+`animeHeroGradient` and `bannerGradient` were writing their three colours as
+literals; they now read the tokens, so they cannot drift from the palette again.
+Every gradient's `begin`, `end` and `stops` are untouched — only colours moved.
+
+**Deliberately unchanged:** every status colour (`success` / `warning` / `error`
+/ `info` and their `*Text` variants) and every light surface and light ink value.
+Status colours signal state, not identity; changing them would change meaning.
+
+## 46.3 Decisions taken
+
+**Decision 1 — category tiles: brand-pure remap accepted.** Pairs 2 (الحقائب)
+and 5 (مجسمات وهدايا) used `#22B07D`, the functional success green, as a
+*category identity* colour. They are now `[accentCyan, indigo]` and
+`[primary, primaryDark]`. This visibly changes the hue of two tiles. `#22B07D`
+remains in the palette and remains in use wherever it carries genuine success
+semantics — see the order status card in §46.5.
+
+**Decision 2 — splash: retinted, not redesigned.** The handoff instructed a flat
+`AppColors.groundDark` ground. That instruction targeted an older splash. The
+splash has since been rebuilt as a light, animated 1:1 reconstruction across
+`splash_backdrop.dart` / `splash_brand.dart` / `splash_loader.dart`, with
+near-black title ink `#1B1036`. A flat dark ground would have dropped the title
+to roughly 1.1:1 — unreadable. **The stale instruction was superseded.** The
+three backdrop stops were instead re-derived from the new brand: each old stop's
+white-blend alpha was solved against the old brand colour and reapplied to the
+new one. The screen stays light, every animation and the composition are intact.
+
+| stop | before | after | title contrast before → after |
+|---|---|---|---|
+| 0 | `#FDF3F8` | `#FEF3F9` | 16.48 → **16.53:1** |
+| 1 | `#F2EBFE` | `#F2EDFE` | 15.41 → **15.61:1** |
+| 2 | `#E9E2FB` | `#EBE3FD` | 14.26 → **14.43:1** |
+
+The halos already read `AppColors.secondary` / `.primary`, so they followed the
+palette with no edit. Title, tagline and loader ink were left alone as neutral
+values; readability is preserved to within 0.2 of the previous figures.
+
+**Decision 3 — colour literals: brand-derived only.** Literals provably derived
+from the old brand palette were moved onto tokens. Functional neutrals, ink,
+scrims, overlays, white-alpha values and third-party brand colours were **not**
+converted. `account_screen.dart` lines 228 / 237 / 246 hold `#1C1B22`,
+`#E1306C` and `#25D366` — TikTok, Instagram, WhatsApp — and are untouched.
+
+**Decision 4 — typography and iconography unchanged.** Cairo (body) + Tajawal
+(headings) are kept: Stage 03 records this as an explicit implementation
+exception, since Zen Kaku has no Arabic coverage and swapping the Arabic face
+reflows every screen. Material Icons are kept: Stage 07 states the app's icon
+migration is a separate job, so **zero icons changed** in this step.
+
+## 46.4 Logo
+
+The widget drew a JPEG with `BoxFit.cover` and `alignment: topCenter` inside a
+`ClipRRect` — the artwork was **cropped**, and JPEG carries no transparency so
+the mark dragged its own background. Both violate the Stage 01 lock. It is now
+`assets/branding/otaku-mark.png`, `BoxFit.contain`, no crop, no rounded corner.
+The asset is byte-identical (md5 `5bd5c07c…`) to the Stage 01 locked master
+`mark-transparent-png/otaku-mark-512.png`, and 88% of its pixels are fully
+transparent.
+
+The splash additionally wrapped the logo in a `DecoratedBox` carrying a 34px
+radius and a drop shadow. Stage 01 lists shadow and glow under NEVER; the plate
+only ever looked right because the JPEG was opaque and clipped. With a
+transparent PNG it renders as a rounded rectangle floating behind the artwork.
+Both were removed.
+
+Nine constructor parameters are now marked `@Deprecated` rather than deleted, so
+no call site breaks. Eight of them had no effect on `build()` before this step
+either — including `cupColor` and `steamColor`, left over from a previous
+coffee-cup logo concept. The ninth, `cornerRadius`, did have an effect: it set
+the radius of the `ClipRRect` that has now been removed.
+
+## 46.5 What the sweep did and did not touch
+
+| file | change | why |
+|---|---|---|
+| `otaku_sheet.dart` | `#0C0718` → `AppColors.groundDark` | brand ground |
+| `community_screen.dart` | `#08050F` → `AppColors.groundDark` | brand ground |
+| `personalize_cards.dart` | 3 dark values → tokens | it *previews* the theme, so it must read what it previews |
+| `account_screen.dart` | 2 gradients → tokens | brand |
+| `home_compositions.dart` | 4 promo pairs → tokens | decorative, no status meaning |
+| `onboarding_slides.dart` | 6 alpha-tinted values | alpha byte preserved |
+| `order_detail_screen.dart` | 4 status gradients → tokens | see below |
+
+The order status card keeps its meaning. `#22B07D` stays on *confirmed* and
+*completed* and `#FFB02E` stays on *pending*, now read as `AppColors.success`
+and `AppColors.warningLight`; only the decorative halves moved to the new brand.
+The *rejected* branch already read `colors.error` / `colors.errorLight`. The
+card now reads functional tokens throughout instead of mixing tokens and hex.
+
+Left unchanged as functional, not brand: `anime_product_card.dart:340` and
+`product_detail_screen.dart:183` (`#180F30` ink at alpha), `splash_loader.dart`
+(divider + caption ink), `splash_brand.dart` title/tagline/halo,
+`auth_scaffold.dart` ink pairs, `otaku_bottom_nav.dart` `--txt3` ink and white
+alphas, and `personalize_cards.dart` `ink` / `hairline`.
+
+## 46.6 Deviations from the handoff — all confirmed against the code
+
+1. **The JPEG had three call sites in `lib/`, not one.** The handoff states the
+   widget was "the only reference … I grepped". `force_update_screen.dart:109`
+   and `offline_gate.dart:123` also read it, each repeating the same crop.
+   Deleting the asset first — as instructed — would have crashed both screens at
+   runtime. All three were migrated first; the two inline copies now call
+   `OtakuStoreLogoSimple(size: 38)`, so the crop cannot come back. Branding
+   asset literals in `lib/` went from 3 to 1.
+2. **The splash had been rebuilt**, so the flat dark-ground instruction and its
+   `splash_screen.dart:113–196` line references were stale. See Decision 2.
+   `splash_screen.dart` now holds no colour at all; it is pure composition.
+3. **Six raster icon sizes did not exist in the brand set.** The handoff claims
+   "20/29/40/60/76/152/180/1024 cover every slot" — those are *point* sizes. The
+   required pixel sizes are 20 · 29 · 40 · 58 · 60 · 76 · 80 · 87 · 120 · 152 ·
+   167 · 180 · 1024, plus Android 144. Android **144** and iOS **58 · 60 · 80 ·
+   87 · 167** were absent and were rendered from the locked
+   `otaku-square-mark.svg` via Inkscape. The pipeline was validated by rendering
+   96px and diffing against the brand's own 96px PNG: mean channel delta
+   **0.39/255**. `Contents.json` needed no edit.
+4. **The predicted contrast failure was wrong.** The handoff warned
+   `header_contrast_test.dart` "will very likely fail". It passes unchanged —
+   measured worst case **3.18:1** against a 3.0 threshold. A different file
+   failed instead; see §46.7.
+5. **`home_compositions.dart:182` and `account_screen.dart:451`** were described
+   in the handoff as dark panel tints. They are `Text` colours inside white
+   pills, measuring 16.98:1 and 16.48:1. Left unchanged.
+6. **`authGradientLight` needed retinting and the handoff missed it.** The patch
+   retinted `AppColors.authGradient` — which is dead code, nothing references it
+   — and `AppThemeColors.authGradientDark`, but left `authGradientLight`, which
+   `auth_scaffold.dart:115` actually uses, on the old brand. The approved light
+   values were applied to the live token.
+7. **`otaku-mark-2x.png` was deliberately not shipped.** Flutter's
+   resolution-variant convention is a `2.0x/` subdirectory, not a `-2x`
+   filename, so as declared it would never have been selected. It is also
+   unnecessary: the largest runtime render is 150 logical px, and 150 × 3 = 450
+   < 512.
+
+Also corrected: the handoff's verification grep matches `FFB02E` and `4EA8FF`,
+which its own replacement file keeps as the functional `warningLight` and
+`infoLight`. It could never have returned "no matches". The corrected grep is:
+
+```
+grep -rniE '0xFF(7C5CFF|FF3D8F|A08CFF|4A2FBF|ECEBFF|FF6FAE|B8195F|EC914E|191131|231A44|A79DC9|3D2B7A|1A152C)|0xFF(FFB02E|4EA8FF)' lib/ | grep -vE 'warningLight = |infoLight = '
+```
+
+It returns one hit: a doc comment in `app_colors.dart` quoting the old value
+while explaining why `indigo` was added. That is documentation, not a live colour.
+
+## 46.7 Known accessibility debt — NOT introduced by this refresh
+
+`test/category_header_gradient_test.dart` carries a `[NOTE]` case that pins the
+worst white-on-gradient contrast in the category palette. Its comment states
+that any palette change must fail it so the trade-off is reconsidered
+deliberately. **It fired, exactly as designed.**
+
+| | worst bare contrast | palette colours below AA-large (3:1) |
+|---|---|---|
+| before (STEP 36 → baseline) | **1.83:1** on amber `#FFB02E` | 7 of 12 |
+| after (this step) | **1.66:1** on gold `#F6C144` | **5 of 12** |
+
+The single worst case is marginally worse because the approved gold is lighter
+than the old amber. The aggregate improved: two fewer palette endpoints fall
+below the threshold.
+
+**The debt itself predates this step.** It was created in STEP 36, which removed
+the 28% black scrim from the category header by explicit decision and recorded
+the cost in §36.3. This refresh did not introduce it, did not widen the
+decision, and did not reopen it. The pinned value and commentary were updated to
+the measured figures; **the assertion was not weakened** — `lessThan(3.0)` still
+stands, and the test still fails on the next palette change.
+
+Scoped follow-up, if it is ever wanted: a shadow on the title text, or a scrim
+confined behind the title line alone — not a layer over the whole gradient. That
+remains the remedy STEP 36 identified and it is still the right one.
+
+## 46.8 Verification
+
+`flutter analyze` — clean, before and after.
+
+`flutter test` — **814 passed, 2 skipped, 11 failed**, byte-identical to the
+pre-change baseline. All 11 failures are `test/api_integration_test.dart`, which
+targets `http://localhost:4000/api`; nothing is listening on 4000 or 4001, and
+the failures are `LateInitializationError` from the unreachable setup. They are
+**pre-existing and environmental**, not caused by this step. The brand, contrast,
+identity, splash, header, onboarding, personalize and responsive-layout subset —
+459 tests — passes in full.
+
+Measured from the committed values, not assumed:
+
+- category gradients, white title over the 28% scrim: worst **3.18:1** (≥ 3.0)
+- `onSurfaceDark` on `groundDark`: **16.73:1**; `onSurfaceDarkVariant`: **5.91:1**
+- `isDarkScheme` guard: `#0B0718` luminance **0.0029**, so the getter still
+  returns true and the dark theme still resolves
+- 19 iOS `Contents.json` slots and 5 Android mipmaps all present at the exact
+  required pixel size; no stock Flutter icon remains (originals were 442–1443 B)
+- every `assets/…` path referenced in `lib/` resolves on disk and is covered by
+  a `pubspec.yaml` entry
+
+Two changes were confirmed visually in the running app: the mark renders
+transparent and uncropped in the onboarding header, and
+`GET /assets/assets/branding/otaku-mark.png` returns 200.
+
+## 46.9 Android launch window — a flash fixed in passing
+
+`drawable-v21/launch_background.xml` used `?android:colorBackground`, which
+resolves **black** on a device in dark mode. The Flutter splash is always light,
+so dark-mode devices showed a black flash before it. Both launch backgrounds now
+point at `@color/brand_launch_background` (`#FEF3F9`, the splash's first stop),
+declared in the new `android/app/src/main/res/values/colors.xml`.
+
+## 46.10 Known remaining items
+
+- **iOS launch image is still a 1×1 placeholder.** All three
+  `LaunchImage.imageset` files are 68-byte 1×1 PNGs and were not touched.
+  `LaunchScreen.storyboard` paints pure white behind them, against the splash's
+  `#FEF3F9` — a near-imperceptible gap, unlike Android's black. Left alone
+  deliberately: changing it is a launch-screen change, not a brand token change.
+- **`README.md` §13.2's "47 asset literals"** no longer matches the source. It
+  did not match at the baseline either (52 by a plain literal count, 50 now), so
+  this is pre-existing drift from the STEP 28 scan, not a consequence of this
+  step. Re-deriving the 44-slot catalogue is out of scope here.
