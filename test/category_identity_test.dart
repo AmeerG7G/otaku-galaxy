@@ -207,12 +207,16 @@ void main() {
 
     test('التوزيع يتبع المرجع حيث يعرفه', () {
       // أربعة من الستة لها لونٌ محدَّد في مرجع التصميم (`CATS[].grad`).
+      //
+      // [STAGE 12] القيم محدَّثة إلى اللوحة المعتمدة. تُكتب هنا حرفياً عمداً
+      // ولا تُقرأ من `AppColors`: اختبارٌ يقرأ المصدر الذي يفحصه لا يحرس
+      // شيئاً. «حقائب» كان أخضر→أزرق، والأخضر لونٌ وظيفي لا لون علامة.
       const fromReference = {
-        'قرطاسية': [Color(0xFFFF9A5A), Color(0xFFFF3D8F)],
-        'ملابس': [Color(0xFF4EA8FF), Color(0xFF7C5CFF)],
-        'حقائب': [Color(0xFF22B07D), Color(0xFF4EA8FF)],
-        'إكسسوارات': [Color(0xFFFF3D8F), Color(0xFF7C5CFF)],
-        'منتجات أنمي متنوعة': [Color(0xFFFFB02E), Color(0xFFFF6F91)],
+        'قرطاسية': [Color(0xFFE09A3E), Color(0xFFF0459B)],
+        'ملابس': [Color(0xFF4FA3F0), Color(0xFF8B5CF6)],
+        'حقائب': [Color(0xFF4FA3F0), Color(0xFF3B2FA8)],
+        'إكسسوارات': [Color(0xFFF0459B), Color(0xFF8B5CF6)],
+        'منتجات أنمي متنوعة': [Color(0xFFF6C144), Color(0xFFF573B3)],
       };
       for (final entry in fromReference.entries) {
         expect(

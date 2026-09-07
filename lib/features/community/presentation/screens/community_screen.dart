@@ -670,7 +670,7 @@ class _CustomerPhotoViewerState extends State<CustomerPhotoViewer> {
     final current = widget.photos[_index];
 
     return Scaffold(
-      backgroundColor: const Color(0xFF08050F),
+      backgroundColor: AppColors.groundDark,
       body: SafeArea(
         child: Column(
           children: [

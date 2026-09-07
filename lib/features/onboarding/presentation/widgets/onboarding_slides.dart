@@ -215,8 +215,8 @@ class OnboardingSlideOne extends StatelessWidget {
               start: -64,
               child: _Glow(
                 size: 270,
-                from: Color(0x33FF3D8F),
-                to: Color(0x297C5CFF),
+                from: Color(0x33F0459B),
+                to: Color(0x298B5CF6),
               ),
             ),
             PositionedDirectional(
@@ -333,8 +333,8 @@ class OnboardingSlideTwo extends StatelessWidget {
               child: Center(
                 child: _Glow(
                   size: 300,
-                  from: const Color(0x337C5CFF),
-                  to: const Color(0x244EA8FF),
+                  from: const Color(0x338B5CF6),
+                  to: const Color(0x244FA3F0),
                 ),
               ),
             ),
@@ -572,8 +572,8 @@ class OnboardingSlideThree extends StatelessWidget {
               end: -80,
               child: _Glow(
                 size: 300,
-                from: Color(0x334EA8FF),
-                to: Color(0x297C5CFF),
+                from: Color(0x334FA3F0),
+                to: Color(0x298B5CF6),
               ),
             ),
             PositionedDirectional(

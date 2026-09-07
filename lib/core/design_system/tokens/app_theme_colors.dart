@@ -136,37 +136,37 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
     shadowLight: Color(0x40000000),
     shadowMedium: Color(0x59000000),
     shadowDark: Color(0x80000000),
-    glowPrimary: Color(0x557C5CFF),
-    glowSecondary: Color(0x55FF3D8F),
-    glowAccent: Color(0x55FFB02E),
+    glowPrimary: Color(0x558B5CF6),
+    glowSecondary: Color(0x55F0459B),
+    glowAccent: Color(0x55F6C144),
     primaryGradient: LinearGradient(
-      colors: [Color(0xFFFF3D8F), Color(0xFFB3A2FF)],
+      colors: [Color(0xFFF0459B), Color(0xFFB79DFA)],
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
     ),
     secondaryGradient: LinearGradient(
-      colors: [Color(0xFFFF7FAE), Color(0xFFFF3D8F)],
+      colors: [Color(0xFFF573B3), Color(0xFFF0459B)],
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
     ),
     accentGradient: LinearGradient(
-      colors: [Color(0xFFFFD98D), Color(0xFFEC914E)],
+      colors: [Color(0xFFF8D177), Color(0xFFE09A3E)],
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
     ),
     surfaceGradient: LinearGradient(
-      colors: [Color(0xFF0B0716), Color(0xFF130C24)],
+      colors: [Color(0xFF0B0718), Color(0xFF120C24)],
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
     ),
     animeHeroGradient: LinearGradient(
-      colors: [Color(0xFFFF3D8F), Color(0xFF7C5CFF), Color(0xFF4EA8FF)],
+      colors: [Color(0xFFF0459B), Color(0xFF8B5CF6), Color(0xFF4FA3F0)],
       stops: [0.0, 0.58, 1.0],
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
     ),
     bannerGradient: LinearGradient(
-      colors: [Color(0xFFFF3D8F), Color(0xFF7C5CFF), Color(0xFF4EA8FF)],
+      colors: [Color(0xFFF0459B), Color(0xFF8B5CF6), Color(0xFF4FA3F0)],
       stops: [0.0, 0.58, 1.0],
       begin: Alignment.centerLeft,
       end: Alignment.centerRight,
@@ -175,13 +175,13 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
 
   /// تدرّج ثابت (فاتح/داكن) لخلفية شاشات المصادقة — من هوية التصميم مباشرة.
   static const LinearGradient authGradientLight = LinearGradient(
-    colors: [Color(0xFFFFD9E7), Color(0xFFE9DCFF), Color(0xFFDBE6FF)],
+    colors: [Color(0xFFFDE0EC), Color(0xFFE9E1FD), Color(0xFFDCE9FC)],
     stops: [0.0, 0.52, 1.0],
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
   );
   static const LinearGradient authGradientDark = LinearGradient(
-    colors: [Color(0xFF3D1C44), Color(0xFF2B1A50), Color(0xFF1A2348)],
+    colors: [Color(0xFF31123F), Color(0xFF241A54), Color(0xFF16234A)],
     stops: [0.0, 0.52, 1.0],
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
@@ -197,16 +197,16 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
 
   /// خلفية حاوية صورة المنتج (--ph) — محايدة دائماً.
   Color get photoSlot =>
-      isDarkScheme ? const Color(0xFF221A3D) : const Color(0xFFEFEAFA);
+      isDarkScheme ? AppColors.surfaceDarkElevated : const Color(0xFFEFEAFA);
 
   /// لون مؤشّر الصورة داخل الحاوية (--ph-ink).
   Color get photoSlotInk =>
-      isDarkScheme ? const Color(0xFF6A5F92) : const Color(0xFFB3A9CF);
+      isDarkScheme ? AppColors.onSurfaceDarkVariant : const Color(0xFFB3A9CF);
 
   /// الظل الناعم (--sh-s) لبطاقات المنتجات والأسطح المرفوعة.
   List<BoxShadow> get shadowSoft => [
     BoxShadow(
-      color: isDarkScheme ? const Color(0x5C000000) : const Color(0x1A4A2C8C),
+      color: isDarkScheme ? const Color(0x5C000000) : const Color(0x1A3B2FA8),
       blurRadius: 20,
       offset: const Offset(0, 8),
     ),
@@ -215,7 +215,7 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
   /// ظل خفيف جداً (--sh-xs) للعناصر الصغيرة العائمة.
   List<BoxShadow> get shadowXSoft => [
     BoxShadow(
-      color: isDarkScheme ? const Color(0x4D000000) : const Color(0x144A2C8C),
+      color: isDarkScheme ? const Color(0x4D000000) : const Color(0x143B2FA8),
       blurRadius: 10,
       offset: const Offset(0, 3),
     ),
@@ -224,7 +224,7 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
   /// ظل عميق (--sh) للأسطح العائمة كشريط التنقل السفلي والأوراق.
   List<BoxShadow> get shadowFloating => [
     BoxShadow(
-      color: isDarkScheme ? const Color(0x80000000) : const Color(0x244A2C8C),
+      color: isDarkScheme ? const Color(0x80000000) : const Color(0x243B2FA8),
       blurRadius: 40,
       offset: const Offset(0, 18),
     ),

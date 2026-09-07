@@ -117,16 +117,9 @@ class _OfflineGateScreenState extends State<_OfflineGateScreen>
                     padding: const EdgeInsets.fromLTRB(22, 22, 22, 0),
                     child: Row(
                       children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Image.asset(
-                            'assets/branding/otaku-galaxy-logo.jpg',
-                            width: 38,
-                            height: 38,
-                            fit: BoxFit.cover,
-                            alignment: Alignment.topCenter,
-                          ),
-                        ),
+                        // [STAGE 12] كان JPEG مقصوصاً بـ ClipRRect + cover.
+                        // صار يمرّ بمكوّن الشعار الوحيد فلا يمكن أن ينحرف عنه.
+                        const OtakuStoreLogoSimple(size: 38),
                         const SizedBox(width: 11),
                         Text(
                           'مجرة الأوتاكو',

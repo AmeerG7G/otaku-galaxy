@@ -65,23 +65,13 @@ class SplashBrand extends StatelessWidget {
                       ),
                     ),
                   ),
-                  // الشعار — نفس صورة الترويسة (124px، زوايا 34).
-                  const DecoratedBox(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.all(Radius.circular(34)),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Color(0x424A2C8C),
-                          blurRadius: 44,
-                          offset: Offset(0, 20),
-                        ),
-                      ],
-                    ),
-                    child: OtakuStoreLogo(
-                      size: 124,
-                      cornerRadius: 34,
-                    ),
-                  ),
+                  // الشعار — نفس صورة الترويسة (124px).
+                  //
+                  // [STAGE 12] أُزيل الظلّ والزوايا المستديرة. قفل المرحلة ٠١
+                  // يمنع الظلّ والهالة على العلامة صراحةً، وكانا يعملان هنا
+                  // فقط لأن الشعار كان JPEG معتماً مقصوصاً في إطار مربّع؛ مع
+                  // PNG شفّاف يظهر الظلّ لوحاً مستطيلاً خلف عملٍ فنيّ شفّاف.
+                  const OtakuStoreLogo(size: 124),
                 ],
               ),
             ),

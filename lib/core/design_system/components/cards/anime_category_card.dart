@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../features/products/domain/entities/category.dart';
 import '../../../../features/products/domain/entities/category_order.dart';
+import '../../tokens/app_colors.dart';
 import '../../tokens/app_dimens.dart';
 import '../../tokens/app_theme_colors.dart';
 
@@ -37,20 +38,16 @@ class AnimeCategoryCard extends StatelessWidget {
   /// وضع الشريط الأفقي المضغوط.
   final bool rail;
 
-  /// تدرّجات الأقسام كما وردت في مصدر التصميم (زاوية ١٤٠ درجة).
-  /// لوحة تدرّجات الأقسام.
+  /// لوحة تدرّجات الأقسام — ستة أزواج بالترتيب نفسه.
   ///
-  /// الخمسة الأولى من مرجع التصميم حرفياً (`CATS[].grad`). السادس مضاف
-  /// لأن المتجر الحقيقي فيه ستة أقسام والمرجع يعرف خمسة — وهو مركَّب من
-  /// لونين موجودين في اللوحة نفسها (البنفسجي والأخضر) فلا لون جديد يُخترع.
-  static const List<List<Color>> gradients = [
-    [Color(0xFFFF9A5A), Color(0xFFFF3D8F)], // 0 — قرطاسية (المرجع)
-    [Color(0xFF4EA8FF), Color(0xFF7C5CFF)], // 1 — ملابس (المرجع)
-    [Color(0xFF22B07D), Color(0xFF4EA8FF)], // 2 — حقائب (المرجع)
-    [Color(0xFFFF3D8F), Color(0xFF7C5CFF)], // 3 — إكسسوارات (المرجع)
-    [Color(0xFFFFB02E), Color(0xFFFF6F91)], // 4 — منتجات أنمي متنوعة (المرجع)
-    [Color(0xFF7C5CFF), Color(0xFF22B07D)], // 5 — مجسمات وهدايا
-  ];
+  /// [STAGE 12] كانت تُكتب حرفياً هنا فتتجاوز طبقة الرموز كلّها. انتقلت إلى
+  /// [AppColors.categoryGradients] فصارت تتبع اللوحة المعتمدة تلقائياً.
+  ///
+  /// الخمسة الأولى من مرجع التصميم (`CATS[].grad`) والسادس مضاف لأن المتجر
+  /// فيه ستة أقسام والمرجع يعرف خمسة. الزوجان ٢ و٥ كانا يستعملان الأخضر
+  /// `#22B07D` — وهو لون **وظيفي** (نجاح) لا لون علامة — فأُبدلا بالنيلي
+  /// والبنفسجي الداكن ضمن الألوان الستّة المعتمدة.
+  static const List<List<Color>> gradients = AppColors.categoryGradients;
 
   /// تدرّج ثابت لكل قسم رئيسي، مفتاحه هويةُ القسم لا موضعُه.
   ///

@@ -5,7 +5,7 @@ import '../../../../core/design_system/tokens/app_colors.dart';
 /// الخلفية الثابتة لشاشة البداية كما في مرجع التصميم.
 ///
 /// تتألف من:
-/// - تدرّج خلفية فاتح ثابت `linear-gradient(170deg,#fdf3f8,#f2ebfe 46%,#e9e2fb)`
+/// - تدرّج خلفية فاتح ثابت `linear-gradient(170deg,#fef3f9,#f2edfe 46%,#ebe3fd)`
 ///   يعمل بالهوية نفسها في الوضعين الفاتح والداكن (المرجع يبقى هذه الدرجات
 ///   المشفّرة حرفياً ولا يبدّلها مع السمة الداكنة).
 /// - هالتان لونيتان: وردية أعلى الجهة اليمنى الفيزيائية، وبنفسجية أسفل
@@ -17,13 +17,19 @@ import '../../../../core/design_system/tokens/app_colors.dart';
 class SplashBackdrop extends StatelessWidget {
   const SplashBackdrop({super.key});
 
-  /// `linear-gradient(170deg,#fdf3f8 0%,#f2ebfe 46%,#e9e2fb 100%)` —
+  /// `linear-gradient(170deg,#fef3f9 0%,#f2edfe 46%,#ebe3fd 100%)` —
   /// نفسه دوماً في الوضعين الفاتح والداكن كما في المرجع.
+  ///
+  /// [STAGE 12] الدرجات الثلاث مشتقّة من ألوان العلامة الجديدة بالطريقة
+  /// نفسها التي اشتُقّت بها القديمة: نسبةُ مزج كلِّ درجة فوق الأبيض حُلَّت
+  /// من اللون القديم ثم أُعيد تطبيقها على الجديد. التباين محفوظ —
+  /// العنوان على الدرجات الثلاث: 16.53 · 15.61 · 14.43:1
+  /// (كان 16.48 · 15.41 · 14.26:1). الشاشة تبقى فاتحة وحركتها كما هي.
   static const LinearGradient gradient = LinearGradient(
     colors: [
-      Color(0xFFFDF3F8),
-      Color(0xFFF2EBFE),
-      Color(0xFFE9E2FB),
+      Color(0xFFFEF3F9),
+      Color(0xFFF2EDFE),
+      Color(0xFFEBE3FD),
     ],
     stops: [0, 0.46, 1],
     begin: Alignment.topCenter,

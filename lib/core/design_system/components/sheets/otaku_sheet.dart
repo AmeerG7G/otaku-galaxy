@@ -101,7 +101,7 @@ Future<T?> showOtakuSheet<T>({
     isDismissible: isDismissible,
     enableDrag: isDismissible,
     backgroundColor: Colors.transparent,
-    barrierColor: const Color(0xFF0C0718).withValues(alpha: 0.46),
+    barrierColor: AppColors.groundDark.withValues(alpha: 0.46),
     builder: builder,
   );
 }

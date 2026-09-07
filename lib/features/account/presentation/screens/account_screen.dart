@@ -377,7 +377,7 @@ class _GuestCard extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [Color(0xFF7C5CFF), Color(0xFFFF3D8F)],
+          colors: [AppColors.primary, AppColors.secondary],
           begin: Alignment.topRight,
           end: Alignment.bottomLeft,
         ),
@@ -509,7 +509,7 @@ class _ProfileCardState extends State<_ProfileCard> {
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
               gradient: const LinearGradient(
-                colors: [Color(0xFFFF3D8F), Color(0xFF7C5CFF)],
+                colors: [AppColors.secondary, AppColors.primary],
                 begin: Alignment.topRight,
                 end: Alignment.bottomLeft,
               ),

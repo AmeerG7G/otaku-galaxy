@@ -222,11 +222,13 @@ class HomePromoRail extends StatelessWidget {
   final void Function(model.Banner banner)? onOpenBanner;
 
   /// تدرّجات البطاقات المُدارة — تدور على اللوحة نفسها فتتنوّع بلا إعداد.
+  // [STAGE 12] تزيينية بحتة لا دلالة حالة فيها، فالأخضر هنا كان يُستعمل
+  // لوناً لا إشارة — أُبدل بالنيلي تبعاً للزوج ٢ في لوحة الأقسام.
   static const List<List<Color>> _palettes = [
-    [Color(0xFF4EA8FF), Color(0xFF7C5CFF)],
-    [Color(0xFFFFB02E), Color(0xFFFF3D8F)],
-    [Color(0xFF22B07D), Color(0xFF4EA8FF)],
-    [Color(0xFFFF9A5A), Color(0xFFFF3D8F)],
+    [AppColors.accentCyan, AppColors.primary],
+    [AppColors.accent, AppColors.secondary],
+    [AppColors.accentCyan, AppColors.indigo],
+    [AppColors.accentOrange, AppColors.secondary],
   ];
 
   /// ارتفاع البطاقة عند مقياس خطٍّ عادي — من المرجع:

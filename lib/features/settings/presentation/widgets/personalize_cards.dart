@@ -125,9 +125,9 @@ class ThemePreviewCard extends StatelessWidget {
     final colors = context.themeColors;
 
     // ألوان المعاينة ثابتة — تمثّل الوضع المعروض لا الوضع الحالي.
-    final canvas = dark ? const Color(0xFF0B0716) : const Color(0xFFF7F5FC);
-    final surface = dark ? const Color(0xFF191131) : Colors.white;
-    final slot = dark ? const Color(0xFF221A3D) : const Color(0xFFEFEAFA);
+    final canvas = dark ? AppColors.groundDark : AppColors.background;
+    final surface = dark ? AppColors.surfaceDark : Colors.white;
+    final slot = dark ? AppColors.surfaceDarkElevated : const Color(0xFFEFEAFA);
     final ink = dark
         ? Colors.white.withValues(alpha: 0.20)
         : const Color(0xFF1C103A).withValues(alpha: 0.16);

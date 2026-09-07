@@ -146,7 +146,7 @@ class AppTheme {
       navigationBarTheme: NavigationBarThemeData(
         height: AppDimens.bottomNavHeight,
         elevation: 0,
-        backgroundColor: isLight ? colors.surface : const Color(0xFF1A152C),
+        backgroundColor: isLight ? colors.surface : AppColors.surfaceDark,
         surfaceTintColor: Colors.transparent,
         indicatorColor: isLight
             ? colors.primaryContainer

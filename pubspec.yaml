@@ -75,7 +75,7 @@ flutter:
   uses-material-design: true
 
   assets:
-    - assets/branding/otaku-galaxy-logo.jpg
+    - assets/branding/otaku-mark.png
     - assets/art/a-l-detective.png
     - assets/art/opt/
 
