@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../core/l10n/app_strings.dart';
 
 import '../../../../core/design_system/tokens/app_colors.dart';
 import '../../../../core/design_system/tokens/app_dimens.dart';
@@ -6,9 +7,10 @@ import '../../../../core/design_system/tokens/app_dimens.dart';
 /// شريط التحميل وشرحته، مثبّتان أسفل الشاشة كما في المرجع
 /// (`position:absolute; bottom:64px`).
 ///
-/// يتلقّى قيمة الحركة ([loadFill]) من الوالد: عرض التعبئة يصعد وفق
-/// `og-load 2.1s ease forwards`. الألوان ألوان المرجع الثابتة — لا تعتمد
-/// على السمة.
+/// يتلقّى قيمة الحركة ([loadFill]) من الوالد. [CRITICAL] القيمة تمثّل
+/// **نسبة خطوات الإقلاع المنجزة** (`StartupProgress.progress`) لا زمناً
+/// مضى؛ الشاشة تنتقل حين تبلغ هذه القيمة نهايتها. الألوان ألوان المرجع
+/// الثابتة — لا تعتمد على السمة.
 ///
 /// [مخالفتان مقصودتان عن المرجع، بطلبٍ صريح من المستخدم — لا سهواً]
 /// ١) اتجاه الامتلاء معكوسٌ عن المصدر — انظر التعليق على `Align.alignment`.
@@ -21,9 +23,17 @@ class SplashLoader extends StatelessWidget {
   /// شريط تحميل يتمدد بـ `og-load` — قيمته المسترجعة هي `t` من ٠ إلى ١.
   final Animation<double> loadFill;
 
+  // ═══ ألوان تتبع المظهر ═══
+  //
+  // المسار والشرح كانا مضبوطين لخلفية فاتحة؛ على تدرّج داكن يذوب المسار
+  // ويبهت الشرح. التعبئة (التدرّج الوردي/البنفسجي) لا تتغيّر — هي هوية
+  // العلامة وتُقرأ على الخلفيتين معاً.
+
   /// لون خلفية المسار — `rgba(28,16,58,.10)` في المصدر.
-  static const _trackColor = Color(0x1A1C103A);
-  static const _captionColor = Color(0xFF9187B0);
+  static const _trackLight = Color(0x1A1C103A);
+  static const _trackDark = Color(0x33FFFFFF);
+  static const _captionLight = Color(0xFF9187B0);
+  static const _captionDark = Color(0xFFB3A9CF);
 
   /// `linear-gradient(90deg, var(--pink), var(--violet))` — تدرّجٌ بزاوية
   /// مطلقة في CSS لا يتأثر باتجاه النص، فوردي دائماً في الطرف **الفيزيائي**
@@ -42,6 +52,7 @@ class SplashLoader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return PositionedDirectional(
       start: 0,
       end: 0,
@@ -60,7 +71,7 @@ class SplashLoader extends StatelessWidget {
               width: 168,
               height: 5,
               decoration: BoxDecoration(
-                color: _trackColor,
+                color: isDark ? _trackDark : _trackLight,
                 borderRadius: BorderRadius.circular(AppDimens.radiusFull),
               ),
               clipBehavior: Clip.antiAlias,
@@ -90,8 +101,8 @@ class SplashLoader extends StatelessWidget {
                     // بصرياً — أُزيلت إعادة الصياغة: `widthFactor` الآن
                     // *نفس* قيمة الحركة الحقيقية بلا تحوير، فيبدأ العرض من
                     // صفرٍ فعلي وينتهي عند الواحد الصحيح. المدة والمنحنى
-                    // (`SplashTiming.load`، `Curves.ease`) لم يتغيّرا؛
-                    // الفرق بصريّ بحت في نقطة البداية لا في زمن الحركة.
+                    // لم تتغيّر؛ الفرق بصريّ بحت في نقطة البداية. والقيمة
+                    // نفسها صارت تأتي من [StartupProgress] لا من مؤقّت.
                     widthFactor: loadFill.value,
                     // [CRITICAL] `heightFactor: 1` ضروري — بدونه لا يحصل
                     // التعبئة على قيد ارتفاع مُحكَم فيرثه `DecoratedBox`
@@ -115,10 +126,10 @@ class SplashLoader extends StatelessWidget {
             ),
             const SizedBox(height: 14),
             Text(
-              'جاري التحميل…',
+              context.strings('loading'),
               style: TextStyle(
                 fontSize: 11.5,
-                color: _captionColor,
+                color: isDark ? _captionDark : _captionLight,
               ),
             ),
           ],

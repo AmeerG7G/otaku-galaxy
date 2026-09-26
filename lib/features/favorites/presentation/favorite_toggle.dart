@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../../core/l10n/gender.dart';
+import '../../../core/l10n/app_strings.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/auth/require_auth.dart';
@@ -13,8 +15,8 @@ Future<void> toggleFavoriteGuarded(
 ) async {
   final authenticated = await requireAuthentication(
     context,
-    title: 'سجّل دخولك أولاً',
-    body: 'حفظ المفضلة يحتاج تسجيل الدخول لحسابك في مجرة الأوتاكو.',
+    title: context.gNow(GenderedStrings.loginFirst),
+    body: context.strings('loginRequiredForFavorites'),
   );
   if (!authenticated || !context.mounted) return;
   await context.read<FavoritesCubit>().toggle(product);

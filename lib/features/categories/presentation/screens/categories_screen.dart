@@ -1,4 +1,6 @@
 import 'package:auto_route/auto_route.dart';
+import '../../../../core/l10n/app_strings.dart';
+import '../../../../core/l10n/locale_refetch.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -20,7 +22,7 @@ class CategoriesScreen extends StatefulWidget {
   State<CategoriesScreen> createState() => _CategoriesScreenState();
 }
 
-class _CategoriesScreenState extends State<CategoriesScreen> {
+class _CategoriesScreenState extends State<CategoriesScreen> with LocaleRefetch {
   List<Category> _categories = [];
   bool _loading = true;
   String? _error;
@@ -30,6 +32,10 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     super.initState();
     _load();
   }
+
+  /// المحتوى الخادمي يُصرَّف لحظة الجلب — يُعاد جلبه بلغة الواجهة الجديدة.
+  @override
+  void onLanguageChanged() => _load();
 
   Future<void> _load() async {
     setState(() {
@@ -58,11 +64,13 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
       bottom: false,
       child: Column(
         children: [
-          const OtakuScreenHeader.tab(
-            title: 'الأقسام',
-            subtitle: 'تصفّح المتجر حسب ما تحتاجه',
+          OtakuScreenHeader.tab(
+            title: context.strings('navCategories'),
+            subtitle: context.strings('categoriesSubtitle'),
             artwork: 'assets/art/opt/a-i2.png',
             artworkSlot: VisualSlots.categoriesHeader,
+            artworkWidth: 110,
+            artworkEnd: -10,
           ),
           Expanded(child: _buildBody()),
         ],
@@ -84,11 +92,10 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
       return AnimeErrorState(message: _error!, onAction: _load);
     }
     if (_categories.isEmpty) {
-      return const AnimeEmptyState(
-        title: 'لا توجد أقسام بعد',
-        subtitle: 'لا توجد أقسام متاحة حالياً — عد لاحقاً.',
+      return AnimeEmptyState(
+        title: context.strings('noCategoriesTitle'),
+        subtitle: context.strings('noCategoriesBody'),
         artwork: 'assets/art/opt/a-i2.png',
-        artworkSlot: VisualSlots.emptyCategories,
       );
     }
 

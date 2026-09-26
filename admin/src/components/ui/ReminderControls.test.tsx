@@ -20,13 +20,18 @@ function renderWithProviders(ui: React.ReactElement) {
   )
 }
 
+/**
+ * الطلب **كما يرسله الخادم فعلاً** (`orderRepo.mapOrder`): موعد التذكير هو
+ * `ratingReminderAt`. لا `ratingAvailableAt` ولا `ratingAvailable` على
+ * السلك منذ صار التقييم يُفتح بالاستلام — حقلان كانت اللوحة تقرؤهما فتعرض
+ * «—» دائماً مكان موعدٍ موجود.
+ */
 const unsentOrder = {
   id: 'order-1',
   number: '1001',
   dispatchedAt: '2026-08-01T10:00:00Z',
   deliveredAt: null,
-  ratingAvailableAt: '2026-08-02T10:00:00Z',
-  ratingAvailable: false,
+  ratingReminderAt: '2026-08-02T10:00:00Z',
   ratingReminderSentAt: null,
 } as AdminOrder
 
@@ -43,6 +48,14 @@ describe('ReminderControls', () => {
     expect(screen.getByRole('button', { name: '1 ساعة' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '48 ساعة' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'إرسال الإشعار الآن' })).toBeInTheDocument()
+  })
+
+  it('[CRITICAL] موعد التذكير المعروض هو `ratingReminderAt` كما يرسله الخادم — لا «—»', () => {
+    renderWithProviders(<ReminderControls order={unsentOrder} variant="modal" />)
+    // الموعد يُعرض بصيغة التاريخ؛ الشرط الحاسم أن الشَّرطة «—» لا تظهر مكانه.
+    expect(screen.getByText(/موعد التذكير الحالي/)).toBeInTheDocument()
+    expect(screen.queryByText('—')).not.toBeInTheDocument()
+    expect(screen.getByText(/2026/)).toBeInTheDocument()
   })
 
   it('الطلب المرسل له يتعطّل ويَظهر «أُرسل التذكير للعميل»', () => {

@@ -32,6 +32,7 @@ import {
   zoneIdParamSchema,
 } from '../validators/franchises.js';
 import {
+  adminProductIdSchema,
   giftClaimsQuerySchema,
 } from '../validators/admin.js';
 import {
@@ -276,7 +277,9 @@ export const adminExtrasController = {
   }) as RequestHandler,
 
   productFranchises: (async (req, res) => {
-    const productId = String(req.params.id);
+    // المعرّف يُتحقَّق منه عند الحدّ كسائر المسارات: نصٌّ ليس UUID كان يصل
+    // الاستعلام فيرميه PostgreSQL (`22P02`) ويخرج ٥٠٠ بدل ٤٠٠.
+    const { id: productId } = parse(adminProductIdSchema, req.params);
     return ok(res, { franchiseIds: await franchiseRepo.franchiseIdsForProduct(db, productId) });
   }) as RequestHandler,
 };

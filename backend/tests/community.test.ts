@@ -6,6 +6,7 @@ import {
   registerAndLogin,
   registerUploadedPhoto,
   seedTestCatalog,
+  storeToday,
 } from './helpers.js';
 
 /**
@@ -357,11 +358,11 @@ describe('birthday discount', () => {
     expect(unlocked.body.data.unlocked).toBe(true);
 
     // نضبط عيد الميلاد على اليوم الحالي ليصبح الخصم متاحاً.
-    const today = new Date();
+    const today = await storeToday();
     await api
       .post('/api/birthday')
       .set('Authorization', `Bearer ${user.token}`)
-      .send({ day: today.getDate(), month: today.getMonth() + 1 })
+      .send({ day: today.day, month: today.month })
       .expect(200);
 
     // لا يمكن تغييره بعد الحفظ.

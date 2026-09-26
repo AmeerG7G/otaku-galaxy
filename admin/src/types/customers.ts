@@ -88,3 +88,46 @@ export interface ToggleUserActiveResult {
   id: string
   isActive: boolean
 }
+
+/** طلب شراء مختصر داخل ملفّ الزبون — الشكل الذي يعيده `orderRepo.listByUser`. */
+export interface AdminCustomerOrderSummary {
+  id: string
+  status: string
+  total: number
+  createdAt: string
+  items?: Array<{ productName: string; quantity: number }>
+}
+
+/**
+ * ملفّ الزبون الكامل من مكانٍ واحد.
+ *
+ * [CRITICAL] لا `passwordHash` ولا `tokenVersion` ولا أي سرّ هنا — الخادم
+ * لا يخرجها من هذا المسار، والواجهة لا تملك ما تعرضه غير ما يصل.
+ */
+export interface AdminCustomerDetail {
+  profile: {
+    id: string
+    username: string
+    phone: string
+    gender: CustomerGender | null
+    avatarUrl: string | null
+    isActive: boolean
+    isVerified: boolean
+    verifiedAt: string | null
+    preferredLanguage: string
+    createdAt: string
+  }
+  points: {
+    balance: number
+    levelKey: string
+    levelNumber: number
+    levelName: string
+    nextLevelKey: string | null
+    pointsToNextLevel: number | null
+  }
+  orders: {
+    items: AdminCustomerOrderSummary[]
+    total: number
+  }
+  requests: import('./accountRequests').AccountRequest[]
+}

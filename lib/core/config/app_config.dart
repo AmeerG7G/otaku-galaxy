@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart'
-    show TargetPlatform, defaultTargetPlatform, kDebugMode, kIsWeb;
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 
 /// بيئات التشغيل لتطبيق مجرات الاوتاكو.
 enum Environment {
@@ -38,12 +38,6 @@ enum Environment {
 // [DEV]: يمكن تجاوز العنوان أثناء التطوير دون تعديل الكود:
 // flutter run --dart-define=API_BASE_URL=http://192.168.1.x:4000/api
 const String _apiBaseUrlOverride = String.fromEnvironment('API_BASE_URL');
-
-/// تعطيل ملاحظة رمز التجربة صراحةً: `--dart-define=SHOW_DEV_OTP_HINT=false`.
-const bool _devOtpHintAllowed = bool.fromEnvironment(
-  'SHOW_DEV_OTP_HINT',
-  defaultValue: true,
-);
 
 enum AppConfig {
   // [DEV]: يمكن تجاوز العنوان أثناء التطوير دون تعديل الكود:
@@ -111,15 +105,6 @@ enum AppConfig {
   bool get usesPlaceholderApi =>
       _apiBaseUrlOverride.isEmpty &&
       (apiBaseUrl?.contains('otaku-galaxy.example') ?? false);
-
-  /// هل تُعرض ملاحظة «رمز التجربة» في شاشة التحقق؟
-  ///
-  /// الرمز الثابت صار خياراً صريحاً في الخادم (`DEV_OTP_ENABLED`) ومستحيلاً
-  /// في الإنتاج، فعرضُه في الواجهة يجب أن يتبع نفس القيد: بيئة تطوير **و**
-  /// بناء تصحيح. نسخة الإصدار لا تعرضه مهما كانت البيئة، ويمكن إطفاؤه
-  /// صراحةً بـ `--dart-define=SHOW_DEV_OTP_HINT=false` عند الاختبار على جهاز.
-  bool get showDevOtpHint =>
-      kDebugMode && environment.isDevelopment && _devOtpHintAllowed;
 
   /// عنوان قاعدة الـ API الفعلي المستخدم:
   /// 1) تجاوز صريح عبر `--dart-define=API_BASE_URL` (أجهزة حقيقية / شبكة محلية).

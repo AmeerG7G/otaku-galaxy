@@ -1,4 +1,7 @@
 import type pg from 'pg';
+import { userRepo } from '../repositories/userRepo.js';
+import { renderNotification } from '../domain/notificationTemplates.js';
+import { DEFAULT_LOCALE, isAppLocale, type AppLocale } from '../utils/locale.js';
 import { config } from '../config/index.js';
 import { sendRatingReminderNow } from '../jobs/ratingReminderJob.js';
 import { db, withTransaction } from '../database/pool.js';
@@ -16,33 +19,113 @@ import { orderRepo, type OrderItemSnapshot, type OrderWithItems } from '../repos
 import { pointsRepo } from '../repositories/pointsRepo.js';
 import { zoneRepo } from '../repositories/zonesRepo.js';
 import { ORDER_STATUSES as ALL_ORDER_STATUSES } from '../types/order-status.js';
-import {
-  CUSTOMER_CANCELLABLE_STATUSES,
-  ORDER_STATUS_TRANSITIONS,
-  type OrderStatus,
-} from '../types/index.js';
+import { ORDER_STATUS_TRANSITIONS, type OrderStatus } from '../types/index.js';
 import { Errors } from '../utils/errors.js';
 import { loyaltyRewardsService } from './loyaltyRewardsService.js';
+import { restockService } from './restockService.js';
 
 /**
- * رفض طلب داخل معاملة واحدة: تحديث الحالة + استرجاع المخزون المحجوز.
- * — تُسترد الكميات مرة واحدة (التحديث نفسه يسجَّل في order_status_history).
- * — تُحمى من الاسترجاع المزدوج: إذا كان الطلب مرفوضاً أصلاً لا يُسترد شيء.
- * يعتمد هذا المسارُ الموحّدَ في رفض الإدارة وفي إلغاء العميل.
+ * استهلاك مخزون طلبٍ لحظةَ **قبوله** — داخل معاملة القبول وبعد قفل صفّ الطلب.
+ *
+ * ═══ العقد (قرار عمل 2026-09-14) ═══
+ *   إرسال الزبون      ← لا تنزيل ولا حجز.
+ *   رفضُ طلبٍ منتظر   ← لا مساس بالمخزون (لا يوجد ما يُسترد).
+ *   قبول الإدارة      ← هنا وحده: قفلٌ، قراءةُ المخزون **الحالي**، تنزيلٌ
+ *                        كامل أو لا شيء.
+ *   رفضٌ بعد القبول   ← يُرجع ما استُهلك (`releaseStockOnRejection`) —
+ *                        القاعدة القائمة قبل نقل التنزيل، ولم تتغيّر.
+ *
+ * [CRITICAL] القفل بترتيبٍ ثابت (`ORDER BY id FOR UPDATE`) يمنع الجمود بين
+ * قبولَين يحملان المنتجين نفسيهما بترتيبين متعاكسين، ويُسلسل القبولَين
+ * المتنافسَين على المنتج نفسه: الثاني ينتظر التزام الأول ثم يقرأ المخزون
+ * المحدَّث — فيفشل بـ`INSUFFICIENT_STOCK` بدل أن يبيع ما بيع. يصحّ ذلك عبر
+ * عمليات خادم مستقلّة لأن الحارس في PostgreSQL لا في الذاكرة
+ * (`scripts/oversell-multi-instance.ts`).
+ *
+ * [CRITICAL] الكمية تُجمع على **المنتج** لا على السطر: سطران بخيارين لمنتجٍ
+ * مخزونه ٣ يُقاسان معاً. والتنزيل مشروط (`stock >= qty`) رغم القفل —
+ * حارسٌ ثانٍ لا يكلّف شيئاً. أي رمي هنا يُسقط المعاملة كلها: لا تنزيل
+ * جزئي، ولا يتحرّك الطلب من الانتظار.
  */
-async function rejectOrderInTransaction(
-  tx: pg.PoolClient,
-  order: OrderWithItems,
-  status: OrderStatus,
-  note: string | null,
-  changedBy: string,
-) {
-  await orderRepo.updateStatus(tx, order.id, status, note, changedBy);
+async function consumeStockOnApproval(tx: pg.PoolClient, order: OrderWithItems) {
+  const wanted = new Map<string, { name: string; quantity: number }>();
   for (const item of order.items) {
-    await tx.query('UPDATE products SET stock = stock + $2 WHERE id = $1', [
-      item.productId,
-      item.quantity,
-    ]);
+    const current = wanted.get(item.productId);
+    wanted.set(item.productId, {
+      name: item.productName,
+      quantity: (current?.quantity ?? 0) + item.quantity,
+    });
+  }
+  const ids = [...wanted.keys()].sort();
+  if (ids.length === 0) return;
+
+  const { rows } = await tx.query<{ id: string; name: string; stock: string }>(
+    `SELECT id, name, stock FROM products WHERE id = ANY($1::uuid[]) ORDER BY id FOR UPDATE`,
+    [ids],
+  );
+  const locked = new Map(rows.map((row) => [row.id, row]));
+
+  for (const [productId, line] of wanted) {
+    const product = locked.get(productId);
+    if (!product) {
+      throw Errors.conflict(`«${line.name}» لم يعد موجوداً في الكتالوج`, 'PRODUCT_UNAVAILABLE');
+    }
+    const available = Number(product.stock);
+    if (available < line.quantity) {
+      throw Errors.conflict(
+        `مخزون «${product.name}» غير كافٍ (المتاح: ${available})`,
+        'INSUFFICIENT_STOCK',
+      );
+    }
+  }
+
+  for (const [productId, line] of wanted) {
+    const { rowCount } = await tx.query(
+      'UPDATE products SET stock = stock - $2 WHERE id = $1 AND stock >= $2',
+      [productId, line.quantity],
+    );
+    if ((rowCount ?? 0) === 0) {
+      const available = Number(locked.get(productId)?.stock ?? 0);
+      throw Errors.conflict(
+        `مخزون «${line.name}» غير كافٍ (المتاح: ${available})`,
+        'INSUFFICIENT_STOCK',
+      );
+    }
+  }
+}
+
+/**
+ * إرجاع مخزون طلبٍ **استُهلك** ثم رُفض — داخل معاملة الرفض وبعد قفل صفّ الطلب.
+ *
+ * يُستدعى فقط لطلبٍ غادر الانتظار (قُبل فنُزِّل مخزونه، أو طلبٍ موروث في
+ * `CONFIRMED`/`PREPARING` نُزِّل عند إنشائه تحت النموذج القديم). رفضُ
+ * المنتظر لا يمرّ من هنا: لم يُنزَّل شيء فلا شيء يُرجَع. وتكرار الرفض
+ * «حالةٌ نفسها» فلا يُرجع ثانيةً — مرةً واحدة بالبناء.
+ *
+ * الإرجاع بترتيب المعرّفات نفسه الذي يقفل به القبول، فلا يتقاطع رفضٌ
+ * وقبولٌ متزامنان على المنتجين نفسيهما بترتيبين متعاكسين. المنتج المحذوف
+ * من القاعدة (`product_id` فارغ) لا شيء يُرجَع إليه.
+ *
+ * [CRITICAL] إرجاعٌ يُعيد منتجاً من صفر هو «عودة التوفر» بعينها: عقد
+ * «أعلمني عند توفره» (§42.5) يسري هنا كما يسري على حفظ المسؤول
+ * (`restockService.stockReturned`) — في المعاملة نفسها، ومرة واحدة لأن تكرار
+ * الرفض «حالةٌ نفسها» لا يمرّ من هنا.
+ */
+async function releaseStockOnRejection(tx: pg.PoolClient, order: OrderWithItems) {
+  const released = new Map<string, number>();
+  for (const item of order.items) {
+    if (!item.productId) continue;
+    released.set(item.productId, (released.get(item.productId) ?? 0) + item.quantity);
+  }
+  for (const productId of [...released.keys()].sort()) {
+    const { rows } = await tx.query<{ name: string; previous: number }>(
+      'UPDATE products SET stock = stock + $2 WHERE id = $1 RETURNING name, stock - $2 AS previous',
+      [productId, released.get(productId)],
+    );
+    const product = rows[0];
+    if (product && Number(product.previous) === 0) {
+      await restockService.stockReturned(tx, productId, product.name);
+    }
   }
 }
 
@@ -58,7 +141,14 @@ function reviewReminderDelayHours(): number {
 
 
 export const orderService = {
-  /** إنشاء طلب: معاملة واحدة — تحقق المخزون، لقطات، إنشاء، تنزيل المخزون، تفريغ العربة. */
+  /**
+   * إنشاء طلب: معاملة واحدة — بوّابة الطلب، لقطات، إنشاء، تفريغ العربة.
+   *
+   * [CRITICAL] **لا تنزيل مخزون هنا.** الطلب يدخل الانتظار والمخزون كما
+   * هو؛ الاستهلاك يقع عند قبول الإدارة (`consumeStockOnApproval`). ما يبقى
+   * هنا «هل يجوز للزبون أن يطلب هذه الكمية الآن؟» — بوّابةُ طلبٍ لا حجزٌ:
+   * طلبان منتظران قد يطلبان المخزون نفسه، ويحسم القبولُ بينهما.
+   */
   async create(
     userId: string,
     input: { governorateId: string; fullAddress: string; phone: string; zoneId?: string | null },
@@ -88,22 +178,41 @@ export const orderService = {
         throw Errors.badRequest('هذه المحافظة بلا مناطق توصيل', 'ZONE_NOT_SUPPORTED');
       }
 
-      const cartItems = await cartRepo.listItems(tx, userId);
-      if (cartItems.length === 0) throw Errors.badRequest('العربة فارغة — أضف منتجات أولاً');
+      // [CRITICAL] العربة مقفولة لهذه المعاملة: إرسالٌ متزامن ينتظر ثم يجد
+      // عربةً فارغة — لا طلبين من عربة واحدة (انظر `listItemsForCheckout`).
+      const cartItems = await cartRepo.listItemsForCheckout(tx, userId);
+      if (cartItems.length === 0) throw Errors.badRequest('العربة فارغة — أضف منتجات أولاً', 'EMPTY_CART');
 
       const snapshots: OrderItemSnapshot[] = [];
       // خصم التوصيل: مجموع مبالغ الترويج عن الكميات المطلوبة. يُحتسب على
       // الخادم من بيانات المنتج وقت الطلب — لا يُقرأ أي مبلغ من العميل.
       let deliveryPromoTotal = 0;
+      // قراءةٌ واحدة لكل منتجات العربة لا قراءةٌ لكل سطر.
+      const products = await productRepo.findByIds(
+        tx,
+        [...new Set(cartItems.map((line) => line.productId))],
+      );
       for (const item of cartItems) {
-        const product = await productRepo.findById(tx, item.productId);
+        const product = products.get(item.productId);
         if (!product || !product.isActive) {
           throw Errors.conflict(`«${item.productName}» لم يعد متاحاً — أزله من العربة`);
         }
+        // [CRITICAL] المقارنة بمجموع الطلب من هذا المنتج لا بكمية السطر.
+        // التحقق سطراً سطراً كان يمرّر عربةً فيها ثلاثة أسطر من منتجٍ
+        // مخزونه ٣، كلٌّ منها قطعة، فيُباع أربعٌ أو خمس. القيد في القاعدة
+        // (هجرة ٠٤٦) يمنع انقسام الأسطر، وهذا يحرس المجموع مهما انقسمت.
+        //
+        // بوّابةُ طلبٍ لا استهلاك: قراءةٌ بلا قفل تكفي لأن لا شيء يُكتب
+        // في المنتج هنا. الحكم النهائي عند القبول بالرمز نفسه
+        // (`INSUFFICIENT_STOCK`) بعد قفلٍ وقراءةٍ للمخزون الحالي.
         const maxQty = Number(product.stock);
-        if (maxQty < item.quantity) {
+        const orderedFromProduct = cartItems
+          .filter((line) => line.productId === item.productId)
+          .reduce((sum, line) => sum + line.quantity, 0);
+        if (maxQty < orderedFromProduct) {
           throw Errors.conflict(
             `مخزون «${item.productName}» غير كافٍ (المتاح: ${maxQty})`,
+            'INSUFFICIENT_STOCK',
           );
         }
         if (product.hasDeliveryPromo && product.deliveryPromoAmount > 0) {
@@ -128,7 +237,8 @@ export const orderService = {
       // خصم عيد الميلاد: نسبة **ثابتة** في `domain/birthday.ts` لا إعداد.
       // الأهلية والاستهلاك مرة واحدة سنوياً كما كانا — تغيّر مصدر النسبة
       // وحده.
-      const birthday = await birthdayRepo.status(tx, userId);
+      // الأهلية بتقويم المتجر — التقويم نفسه الذي يرى به المسؤول «عيد اليوم».
+      const birthday = await birthdayRepo.status(tx, userId, config.storeTimezone);
       const productsTotal = snapshots.reduce((sum, item) => sum + item.lineTotal, 0);
       const birthdayDiscount = birthday.rewardAvailable
         ? birthdayDiscountAmount(productsTotal)
@@ -164,7 +274,13 @@ export const orderService = {
       if (birthdayDiscount > 0) {
         // القيد الفريد هو الحارس الحقيقي: إن فشل الإدراج فالخصم مستهلك
         // بالفعل هذه السنة، فنتراجع عن الطلب كاملاً بدل منحه مرتين.
-        const consumed = await birthdayRepo.consume(tx, userId, order.id, birthdayDiscount);
+        const consumed = await birthdayRepo.consume(
+          tx,
+          userId,
+          order.id,
+          birthdayDiscount,
+          config.storeTimezone,
+        );
         if (!consumed) {
           throw Errors.conflict('خصم عيد الميلاد مستخدم هذه السنة', 'BIRTHDAY_DISCOUNT_USED');
         }
@@ -216,19 +332,6 @@ export const orderService = {
     return order;
   },
 
-  async cancelOrder(userId: string, orderId: string) {
-    const order = await orderRepo.findById(db, orderId);
-    if (!order || order.customer?.id !== userId) throw Errors.notFound('الطلب غير موجود');
-    if (!(CUSTOMER_CANCELLABLE_STATUSES as readonly OrderStatus[]).includes(order.status)) {
-      throw Errors.conflict('لا يمكن إلغاء طلب في هذه المرحلة');
-    }
-    // تحديث الحالة + استرجاع المخزون في معاملة واحدة (نفس مسار رفض الإدارة).
-    await withTransaction((tx) =>
-      rejectOrderInTransaction(tx, order, 'REJECTED', 'أُلغي من قبل العميل', userId),
-    );
-    return orderRepo.findById(db, order.id);
-  },
-
   async adminList(page: number, limit: number, status?: OrderStatus) {
     const [orders, statusCounts] = await Promise.all([
       orderRepo.listAll(db, page, limit, status),
@@ -244,7 +347,7 @@ export const orderService = {
   },
 
   /**
-   * تحديث حالة الطلب. إضافةً للتحقق من الانتقال واسترجاع المخزون عند الرفض،
+   * تحديث حالة الطلب. إضافةً للتحقق من الانتقال واستهلاك المخزون عند القبول،
    * يتولّى هذا المسار الآثار الجانبية كلها داخل معاملة واحدة:
    * - إشعار العميل بكل انتقال يهمّه.
    * - منح نقاط المجرّة عند الاستلام (مرة واحدة لكل طلب).
@@ -255,9 +358,9 @@ export const orderService = {
     orderId: string,
     input: { status: OrderStatus; note?: string },
   ) {
-    const order = await orderRepo.findById(db, orderId);
-    if (!order) throw Errors.notFound('الطلب غير موجود');
-    return applyStatusTransition(order, input.status, input.note, adminId);
+    // القراءة تحت القفل داخل `applyStatusTransition` هي التي تحسم الوجود
+    // والحالة معاً؛ قراءةٌ قبلها كانت تُنفَّذ ثم تُهمَل.
+    return applyStatusTransition(orderId, input.status, input.note, adminId);
   },
 
   /**
@@ -307,8 +410,15 @@ export const orderService = {
       );
     }
 
+    // الحارس كله في الجملة الواحدة؛ الرفض يُقرأ بعدها لتسمية سببه. طلبٌ مستلَم
+    // لم يُرسَل تذكيره ورفضته الجملة لم يبقَ فيه ما يُقيَّم (CA-16) — تذكيرٌ
+    // «اكسب نقاط المجرّة» عنه وعدٌ لا يتحقق.
     const sent = await sendRatingReminderNow(orderId);
     if (!sent) {
+      const current = await orderRepo.findById(db, orderId);
+      if (current && !current.ratingReminderSentAt && current.reviewableProductCount === 0) {
+        throw Errors.conflict('قيّم العميل كل منتجات الطلب — لا تذكير يُرسل', 'NOTHING_TO_REVIEW');
+      }
       throw Errors.conflict('أُرسل التذكير مسبقاً', 'REMINDER_ALREADY_SENT');
     }
     return orderRepo.findById(db, orderId);
@@ -342,43 +452,64 @@ export const orderService = {
       );
     }
 
-    return applyStatusTransition(order, 'COMPLETED', undefined, userId);
+    return applyStatusTransition(order.id, 'COMPLETED', undefined, userId);
   },
 };
 
 /**
  * المسار الموحّد لأي انتقال حالة — تستخدمه الإدارة وتأكيد العميل معاً.
  *
- * كل الآثار الجانبية داخل معاملة واحدة: استرجاع المخزون عند الرفض، منح
- * نقاط الاستلام مرة واحدة (يحرسها فهرس فريد)، وإشعار العميل. الاحتفاظ
+ * كل الآثار الجانبية داخل معاملة واحدة: استهلاك المخزون عند القبول وإرجاعه
+ * عند رفض ما قُبل، منح نقاط الاستلام مرة واحدة (يحرسها فهرس فريد)، وإشعار
+ * العميل. الاحتفاظ
  * بها هنا يمنع ازدواج المنطق بين مدخلَي الإدارة والعميل.
+ *
+ * [CRITICAL] القرار كله **داخل** المعاملة وبعد قفل صفّ الطلب: الحالة تُقرأ
+ * من جديد تحت القفل لا من نسخةٍ قرأها المستدعي قبل لحظة. بلا ذلك يجتاز
+ * قبولان متزامنان للطلب نفسه فحصَ الانتقال معاً فيُستهلك المخزون مرتين؛
+ * ومع القفل يرى الثاني الحالة الجديدة فيصير «الحالة نفسها» بلا أثر.
  */
 async function applyStatusTransition(
-  order: OrderWithItems,
+  orderId: string,
   status: OrderStatus,
   rawNote: string | undefined,
   changedBy: string,
 ) {
-  const allowed = ORDER_STATUS_TRANSITIONS[order.status] ?? [];
-  if (!allowed.includes(status) && order.status !== status) {
-    throw Errors.conflict(`غير مسموح بالانتقال من ${order.status} إلى ${status}`);
-  }
-
   const note = rawNote?.trim() || null;
   const isRejection = status === 'REJECTED';
   if (isRejection && !note) {
     throw Errors.badRequest('سبب الرفض مطلوب', 'REJECTION_REASON_REQUIRED');
   }
 
-  const alreadyRejected = order.status === 'REJECTED';
-  const customerId = order.customer?.id ?? null;
-
   await withTransaction(async (tx) => {
-    if (isRejection && !alreadyRejected) {
-      await rejectOrderInTransaction(tx, order, status, note, changedBy);
-    } else {
-      await orderRepo.updateStatus(tx, order.id, status, note, changedBy);
+    await orderRepo.lockForUpdate(tx, orderId);
+    const order = await orderRepo.findById(tx, orderId);
+    if (!order) throw Errors.notFound('الطلب غير موجود');
+
+    const allowed = ORDER_STATUS_TRANSITIONS[order.status] ?? [];
+    if (!allowed.includes(status) && order.status !== status) {
+      throw Errors.conflict(`غير مسموح بالانتقال من ${order.status} إلى ${status}`);
     }
+
+    const customerId = order.customer?.id ?? null;
+
+    // القبول = أول خروجٍ من الانتظار إلى غير الرفض. هنا وحده يُستهلك
+    // المخزون؛ رفضُ المنتظر لا يمسّه (لم يُحجز شيء)، وإعادة القبول «حالةٌ
+    // نفسها» فلا تمرّ من هنا — التنزيل مرة واحدة بالبناء لا بالعدّ.
+    const isApproval =
+      order.status === 'PENDING_ADMIN_CONFIRMATION' && !isRejection && status !== order.status;
+    if (isApproval) {
+      await consumeStockOnApproval(tx, order);
+    }
+    // رفضُ طلبٍ استُهلك مخزونه (غادر الانتظار ولم يُرفض بعد) يُرجعه. الحالة
+    // تُقرأ تحت القفل، فرفضان متزامنان يمرّ أحدهما والآخر يرى `REJECTED`.
+    const isReleasingRejection =
+      isRejection && order.status !== 'PENDING_ADMIN_CONFIRMATION' && order.status !== 'REJECTED';
+    if (isReleasingRejection) {
+      await releaseStockOnRejection(tx, order);
+    }
+
+    await orderRepo.updateStatus(tx, order.id, status, note, changedBy);
 
     // موعد **تذكير** التقييم يُثبَّت ساعةَ يخرج الطلب للتوصيل — وهو فعل
     // الإدارة. لا علاقة له بفتح التقييم: ذاك يقع بتأكيد الاستلام.
@@ -418,7 +549,9 @@ async function applyStatusTransition(
       }
     }
 
-    const notification = buildStatusNotification(order.status, status, note);
+    // لغة **المستلِم** لا لغة المسؤول الذي غيّر الحالة.
+    const recipientLocale = await userRepo.localeOf(tx, customerId);
+    const notification = buildStatusNotification(order.status, status, note, recipientLocale);
     if (notification && status !== order.status) {
       await notificationRepo.create(tx, {
         userId: customerId,
@@ -430,7 +563,7 @@ async function applyStatusTransition(
     }
   });
 
-  return orderRepo.findById(db, order.id);
+  return orderRepo.findById(db, orderId);
 }
 
 /**
@@ -446,6 +579,7 @@ function buildStatusNotification(
   from: OrderStatus,
   status: OrderStatus,
   note: string | null,
+  locale: AppLocale,
 ):
   | {
       type: 'orderAccepted' | 'orderRejected' | 'deliveryUpdate' | 'receiptReminder';
@@ -456,46 +590,24 @@ function buildStatusNotification(
   switch (status) {
     // المسار الموروث: طلبات توقّفت عند «تم تأكيده» قبل الدمج الأول.
     case 'CONFIRMED':
-      return {
-        type: 'orderAccepted',
-        title: 'تم قبول طلبك 🎉',
-        body: note ?? 'طلبك مقبول وقيد التجهيز، وراح يوصلك قريباً.',
-      };
+      return { type: 'orderAccepted', ...renderNotification('orderAccepted', locale, note) };
     // المسار الموروث: طلبات توقّفت عند «قيد التجهيز» قبل الدمج الثاني.
     case 'PREPARING':
       if (from !== 'PENDING_ADMIN_CONFIRMATION') return null;
-      return {
-        type: 'orderAccepted',
-        title: 'تم قبول طلبك 🎉',
-        body: note ?? 'طلبك مقبول وقيد التجهيز، وراح يوصلك قريباً.',
-      };
+      return { type: 'orderAccepted', ...renderNotification('orderAccepted', locale, note) };
     case 'OUT_FOR_DELIVERY':
       // القبول الجديد: الانتظار → التوصيل في خطوة واحدة — إشعار القبول.
       if (from === 'PENDING_ADMIN_CONFIRMATION') {
         return {
           type: 'orderAccepted',
-          title: 'تم قبول طلبك 🎉',
-          body: note ?? 'طلبك مقبول وخرج للتوصيل — الدفع عند الاستلام.',
+          ...renderNotification('orderAcceptedDispatched', locale, note),
         };
       }
-      return {
-        type: 'deliveryUpdate',
-        title: 'طلبك بالطريق 🚚',
-        // ملاحظة الإدارة هنا هي وقت الوصول المتوقع (مثل: سيصل غداً).
-        body: note ?? 'طلبك خرج للتوصيل — الدفع عند الاستلام.',
-      };
+      return { type: 'deliveryUpdate', ...renderNotification('deliveryUpdate', locale, note) };
     case 'COMPLETED':
-      return {
-        type: 'receiptReminder',
-        title: 'تم استلام طلبك',
-        body: note ?? 'نتمنى المنتجات عجبتك — شاركنا رأيك واكسب نقاط المجرّة.',
-      };
+      return { type: 'receiptReminder', ...renderNotification('orderCompleted', locale, note) };
     case 'REJECTED':
-      return {
-        type: 'orderRejected',
-        title: 'ما تم قبول طلبك',
-        body: note ?? 'تكدر تتواصل ويانا أو تسوي طلب جديد.',
-      };
+      return { type: 'orderRejected', ...renderNotification('orderRejected', locale, note) };
     default:
       return null;
   }

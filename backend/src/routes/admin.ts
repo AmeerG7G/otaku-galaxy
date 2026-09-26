@@ -3,6 +3,8 @@ import { adminController } from '../controllers/adminController.js';
 import { adminExtrasController } from '../controllers/adminExtrasController.js';
 import { mediaController } from '../controllers/mediaController.js';
 import { adminVisualsController } from '../controllers/visualsController.js';
+import { config } from '../config/index.js';
+import { uploadRateLimiter } from '../middleware/error-handler.js';
 import { uploadSingleImage } from '../middleware/upload.js';
 
 /** مسارات الإدارة — تتطلب مصادقة + دور admin. */
@@ -62,7 +64,18 @@ adminRoutes.get('/notifications/stats', adminController.notificationStats);
 adminRoutes.get('/notifications', adminController.listNotifications);
 
 adminRoutes.get('/customers/birthdays', adminController.listBirthdayCustomers);
-adminRoutes.patch('/users/:id/active', adminController.toggleUserActive);
+adminRoutes.patch('/users/:id/active', adminController.setUserActive);
+
+// ===== ملفّ الزبون وطلبات الحساب (إنشاء / إعادة تعيين) =====
+//
+// [CRITICAL] كل ما هنا خلف `authenticate` + `requireAdmin` المطبَّقين على
+// الموجِّه كلّه (انظر أعلى الملف). لا نقطة عامة تفعّل حساباً أو تضع كلمة مرور.
+adminRoutes.get('/customers/:id', adminController.customerDetail);
+adminRoutes.patch('/customers/:id/password', adminController.setCustomerPassword);
+adminRoutes.get('/account-requests', adminController.listAccountRequests);
+adminRoutes.get('/account-requests/:id', adminController.accountRequestDetail);
+adminRoutes.post('/account-requests/:id/approve', adminController.approveAccountRequest);
+adminRoutes.post('/account-requests/:id/reject', adminController.rejectAccountRequest);
 
 // ── أرقام لوحة التحكم ──
 adminRoutes.get('/stats', adminExtrasController.dashboard);
@@ -103,15 +116,18 @@ adminRoutes.post('/notifications', adminExtrasController.createNotification);
 adminRoutes.post('/notifications/broadcast', adminExtrasController.broadcastNotification);
 adminRoutes.post('/notifications/audience', adminExtrasController.audiencePreview);
 
-// ── الرسوم المُدارة (فتحات الشخصيات) ──
+// ── الرسوم المُدارة (فتحات الشخصيات): صورة دائمة واحدة لكل موضع، ومؤقّتة واحدة فوقها ──
+// لا إنشاء فتحات ولا حذفها من اللوحة (تُعرَّف بالهجرات)، ولا قوائم صور.
 adminRoutes.get('/visual-slots', adminVisualsController.list);
-adminRoutes.post('/visual-slots', adminVisualsController.createSlot);
-adminRoutes.patch('/visual-slots/:id', adminVisualsController.updateSlot);
-adminRoutes.delete('/visual-slots/:id', adminVisualsController.deleteSlot);
-adminRoutes.post('/visual-slots/:id/images', adminVisualsController.addImage);
-adminRoutes.patch('/visual-slots/:id/images/reorder', adminVisualsController.reorderImages);
-adminRoutes.patch('/visual-slots/:id/images/:imageId', adminVisualsController.updateImage);
-adminRoutes.delete('/visual-slots/:id/images/:imageId', adminVisualsController.deleteImage);
+adminRoutes.put('/visual-slots/:id/image', adminVisualsController.setImage);
+adminRoutes.delete('/visual-slots/:id/image', adminVisualsController.clearImage);
+adminRoutes.put('/visual-slots/:id/temporary-image', adminVisualsController.setTemporaryImage);
+adminRoutes.delete('/visual-slots/:id/temporary-image', adminVisualsController.clearTemporaryImage);
 
 // ── رفع صور المنتجات والبنرات والأنمي ──
-adminRoutes.post('/uploads', uploadSingleImage, mediaController.upload);
+adminRoutes.post(
+  '/uploads',
+  uploadRateLimiter({ limit: config.rateLimit.uploadMaxPerAdmin }),
+  uploadSingleImage,
+  mediaController.upload,
+);

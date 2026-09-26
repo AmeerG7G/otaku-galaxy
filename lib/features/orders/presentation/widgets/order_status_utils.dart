@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/design_system/design_system.dart';
+import '../../../../core/l10n/app_strings.dart';
 import '../../domain/entities/order.dart';
 
 /// مراحل الطلب كما يراها العميل.
@@ -9,21 +10,21 @@ import '../../domain/entities/order.dart';
 /// «تم تأكيده» و«قيد التجهيز»، فبدت الأخيرة مرحلةً داخلية لا تعني العميل.
 /// بعد دمج التأكيد في التجهيز صار التجهيز هو مرحلة القبول نفسها، وعرضه
 /// «قيد التوصيل» كان سيَعِد العميل بشاحنة لم تتحرك بعد.
-String orderStatusLabel(OrderStatus status) {
+String orderStatusLabel(BuildContext context, OrderStatus status) {
   switch (status) {
     case OrderStatus.pending:
     case OrderStatus.waitingAdmin:
-      return 'بانتظار تأكيد الإدارة';
+      return context.strings('statusWaitingAdmin');
     // حالة موروثة: طلبات قديمة توقّفت عند «تم تأكيده» قبل الدمج.
     case OrderStatus.confirmed:
     case OrderStatus.processing:
-      return 'قيد التجهيز';
+      return context.strings('statusProcessing');
     case OrderStatus.delivering:
-      return 'قيد التوصيل';
+      return context.strings('statusDelivering');
     case OrderStatus.completed:
-      return 'تم التسليم';
+      return context.strings('statusCompleted');
     case OrderStatus.rejected:
-      return 'مرفوض';
+      return context.strings('statusRejected');
   }
 }
 

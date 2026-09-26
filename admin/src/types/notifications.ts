@@ -8,6 +8,8 @@ export const NOTIFICATION_TYPES = [
   'reviewRejected',
   'backInStock',
   'promotion',
+  'rewardClaimed',
+  'restockScheduled',
 ] as const
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number]
@@ -22,6 +24,8 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
   reviewRejected: 'رفض تقييم',
   backInStock: 'عاد للمخزون',
   promotion: 'إعلان',
+  rewardClaimed: 'مزيّة مستوى',
+  restockScheduled: 'موعد توفر',
 }
 
 export interface AdminNotification {

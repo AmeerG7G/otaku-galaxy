@@ -19,6 +19,15 @@ describe('فائض خصم التوصيل', () => {
   /** رسوم محافظة هذه السويت — ٥٬٠٠٠ كما في مثال العمل. */
   const DELIVERY_FEE = 5000;
   const PRICE = 15000;
+  /**
+   * هاتف الطلب بالصيغة المعتمدة E.164 — ما يُنتجه `normalizeIraqiPhone` لـ`07700000000`.
+   *
+   * [CRITICAL] الإدراجات المباشرة في `orders` أدناه تتجاوز المُدقّق، فلا شيء
+   * يوحّد الرقم قبل القيد. كان النصّ المحلي يمرّ فقط لأن PostgreSQL صادف أن
+   * يقيّم قيود التوصيل قبل `orders_phone_check` (E.164 منذ الهجرة 037) —
+   * بالصيغة المعتمدة يصير القيد المقصود وحده سبب الرفض.
+   */
+  const ORDER_PHONE = '+9647700000000';
 
   let governorateId: string;
   let productA: string; // خصم ١٬٠٠٠ للقطعة
@@ -78,7 +87,7 @@ describe('فائض خصم التوصيل', () => {
     const res = await api
       .post('/api/orders')
       .set('Authorization', `Bearer ${token}`)
-      .send({ governorateId, fullAddress: 'بغداد، الكرادة', phone: '07700000000' })
+      .send({ governorateId, fullAddress: 'بغداد، الكرادة', phone: ORDER_PHONE })
       .expect(201);
     return res.body.data;
   }
@@ -224,9 +233,9 @@ describe('فائض خصم التوصيل', () => {
              (number, user_id, governorate_id, province, delivery_fee,
               full_address, phone, products_total, discount, total, status,
               delivery_discount, delivery_discount_excess)
-           VALUES ('X-EXCESS', $1, $2, 'اختبار', 5000, 'عنوان', '07700000000',
+           VALUES ('X-EXCESS', $1, $2, 'اختبار', 5000, 'عنوان', $3,
                    1000, 0, 3000, 'PENDING_ADMIN_CONFIRMATION', 2000, 500)`,
-          [userId, governorateId],
+          [userId, governorateId, ORDER_PHONE],
         ),
       ).rejects.toThrow(/orders_delivery_excess_only_when_fee_covered/);
     });
@@ -239,9 +248,9 @@ describe('فائض خصم التوصيل', () => {
              (number, user_id, governorate_id, province, delivery_fee,
               full_address, phone, products_total, discount, total, status,
               delivery_discount, delivery_discount_excess)
-           VALUES ('X-NEG', $1, $2, 'اختبار', 5000, 'عنوان', '07700000000',
+           VALUES ('X-NEG', $1, $2, 'اختبار', 5000, 'عنوان', $3,
                    1000, 0, 1000, 'PENDING_ADMIN_CONFIRMATION', 5000, -1)`,
-          [userId, governorateId],
+          [userId, governorateId, ORDER_PHONE],
         ),
       ).rejects.toThrow(/delivery_discount_excess/);
     });
@@ -336,7 +345,7 @@ describe('فائض خصم التوصيل', () => {
         .send({
           governorateId,
           fullAddress: 'بغداد، الكرادة',
-          phone: '07700000000',
+          phone: ORDER_PHONE,
           // كلها مُلفَّقة — يعيد الخادم حسابها من بياناته وحدها.
           deliveryDiscount: 999999,
           deliveryDiscountExcess: 0,

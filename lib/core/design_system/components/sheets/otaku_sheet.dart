@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../tokens/app_breakpoints.dart';
 import '../../tokens/app_colors.dart';
 import '../../tokens/app_dimens.dart';
+import '../buttons/anime_primary_button.dart';
+import '../inputs/anime_text_field.dart';
 
 /// الحاوية الأساسية لكل الأوراق السفلية في Otaku Galaxy v2.
 ///
@@ -103,6 +105,100 @@ Future<T?> showOtakuSheet<T>({
     backgroundColor: Colors.transparent,
     barrierColor: AppColors.groundDark.withValues(alpha: 0.46),
     builder: builder,
+  );
+}
+
+/// ورقة إدخال نصّ واحد (اسم، عنوان مجموعة…) تعيد النصّ عند الحفظ.
+///
+/// [CRITICAL] المتحكّم يملكه هذا الودجة ويحرّره في `dispose` — أي **بعد**
+/// زوال الورقة من الشجرة، لا لحظة اكتمال `showModalBottomSheet`. كان كل
+/// مستدعٍ ينشئ `TextEditingController` محلياً ويحرّره في `finally` فور عودة
+/// النتيجة، بينما الحقل ما يزال مركّباً طوال حركة الخروج ويكتب في متحكّمه
+/// عند فقدان التركيز ونزول لوحة المفاتيح؛ النتيجة «used after being disposed»
+/// أثناء البناء، ثم شجرةٌ يتيمة تُسقط أول إخطار موروث تالٍ (شاشة حمراء
+/// عند تبديل المظهر). النصوص تُقرأ بسياق الورقة نفسها لا بسياق المستدعي.
+class OtakuTextPromptSheet extends StatefulWidget {
+  const OtakuTextPromptSheet({
+    super.key,
+    required this.title,
+    required this.saveLabel,
+    this.label,
+    this.hint,
+    this.initialValue,
+    this.prefixIcon,
+  });
+
+  final String title;
+  final String saveLabel;
+  final String? label;
+  final String? hint;
+  final String? initialValue;
+  final IconData? prefixIcon;
+
+  @override
+  State<OtakuTextPromptSheet> createState() => _OtakuTextPromptSheetState();
+}
+
+class _OtakuTextPromptSheetState extends State<OtakuTextPromptSheet> {
+  late final TextEditingController _controller =
+      TextEditingController(text: widget.initialValue ?? '');
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: OtakuSheet(
+        title: widget.title,
+        titleSize: 19,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimeTextField(
+              controller: _controller,
+              label: widget.label,
+              hint: widget.hint,
+              prefixIcon: widget.prefixIcon,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => Navigator.of(context).pop(_controller.text),
+            ),
+            const SizedBox(height: 20),
+            AnimePrimaryButton(
+              label: widget.saveLabel,
+              onPressed: () => Navigator.of(context).pop(_controller.text),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// يعرض [OtakuTextPromptSheet] ويعيد النصّ المحفوظ أو `null` عند الإغلاق.
+Future<String?> showOtakuTextPrompt({
+  required BuildContext context,
+  required String title,
+  required String saveLabel,
+  String? label,
+  String? hint,
+  String? initialValue,
+  IconData? prefixIcon,
+}) {
+  return showOtakuSheet<String>(
+    context: context,
+    builder: (_) => OtakuTextPromptSheet(
+      title: title,
+      saveLabel: saveLabel,
+      label: label,
+      hint: hint,
+      initialValue: initialValue,
+      prefixIcon: prefixIcon,
+    ),
   );
 }
 

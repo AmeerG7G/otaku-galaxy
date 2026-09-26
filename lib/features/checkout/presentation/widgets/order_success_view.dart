@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../core/l10n/app_strings.dart';
 
 import '../../../../core/design_system/design_system.dart';
 import '../../../visuals/domain/visual_slot.dart';
@@ -69,12 +70,12 @@ class _OrderSuccessViewState extends State<OrderSuccessView>
                         child: const ManagedArtwork(
                           slot: VisualSlots.orderSuccess,
                           fallbackAsset: 'assets/art/opt/a-i6.png',
-                          width: 196,
+                          width: 137,
                         ),
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'تم إرسال طلبك',
+                        context.strings('orderSent'),
                         textAlign: TextAlign.center,
                         style: theme.textTheme.headlineSmall?.copyWith(
                           fontFamily: 'Tajawal',
@@ -111,7 +112,7 @@ class _OrderSuccessViewState extends State<OrderSuccessView>
                             ),
                             const SizedBox(width: 9),
                             Text(
-                              'بانتظار الموافقة',
+                              context.strings('pendingApproval'),
                               style: theme.textTheme.labelMedium?.copyWith(
                                 fontSize: 12.5,
                                 fontWeight: AppDimens.weightBold,
@@ -125,8 +126,7 @@ class _OrderSuccessViewState extends State<OrderSuccessView>
                       ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 290),
                         child: Text(
-                          'سنتواصل معك عبر واتساب لتأكيد التفاصيل، وبعد '
-                          'الموافقة يبدأ تجهيز الطلب.',
+                          context.strings('orderSuccessNote'),
                           textAlign: TextAlign.center,
                           style: theme.textTheme.bodyMedium?.copyWith(
                             fontSize: 13.5,
@@ -142,7 +142,7 @@ class _OrderSuccessViewState extends State<OrderSuccessView>
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'الخطوات التالية',
+                              context.strings('nextSteps'),
                               style: theme.textTheme.titleSmall?.copyWith(
                                 fontFamily: 'Tajawal',
                                 fontSize: 14.5,
@@ -150,10 +150,10 @@ class _OrderSuccessViewState extends State<OrderSuccessView>
                               ),
                             ),
                             const SizedBox(height: 14),
-                            for (final (index, label) in const [
-                              'مراجعة الطلب من الإدارة',
-                              'تأكيد عبر واتساب',
-                              'التجهيز والتوصيل',
+                            for (final (index, label) in [
+                              context.strings('stepAdminReview'),
+                              context.strings('stepWhatsappConfirm'),
+                              context.strings('stepPrepareDeliver'),
                             ].indexed) ...[
                               if (index > 0) const SizedBox(height: 13),
                               _StepRow(number: index + 1, label: label),
@@ -170,7 +170,7 @@ class _OrderSuccessViewState extends State<OrderSuccessView>
                 child: Column(
                   children: [
                     AnimePrimaryButton(
-                      label: 'طلباتي',
+                      label: context.strings('myOrders'),
                       onPressed: widget.onOpenOrders,
                       height: AppDimens.buttonHeightXl,
                       borderRadius: AppDimens.radiusMd,
@@ -178,7 +178,7 @@ class _OrderSuccessViewState extends State<OrderSuccessView>
                     ),
                     const SizedBox(height: 10),
                     AnimeTextButton(
-                      label: 'متابعة التسوق',
+                      label: context.strings('continueShopping'),
                       onPressed: widget.onKeepShopping,
                     ),
                   ],
@@ -214,7 +214,9 @@ class _StepRow extends StatelessWidget {
           ),
           child: Text(
             // المرجع يستخدم الأرقام العربية-الهندية: ١ ٢ ٣.
-            const ['١', '٢', '٣'][number - 1],
+            context.strings(
+              ['stepNumeral1', 'stepNumeral2', 'stepNumeral3'][number - 1],
+            ),
             style: theme.textTheme.labelSmall?.copyWith(
               fontSize: 12,
               fontWeight: AppDimens.weightExtraBold,

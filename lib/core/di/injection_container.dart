@@ -18,10 +18,7 @@ import '../../features/auth/domain/usecases/get_me_usecase.dart';
 import '../../features/auth/domain/usecases/login_usecase.dart';
 import '../../features/auth/domain/usecases/forgot_password_usecase.dart';
 import '../../features/auth/domain/usecases/register_usecase.dart';
-import '../../features/auth/domain/usecases/reset_password_usecase.dart';
-import '../../features/auth/domain/usecases/send_otp_usecase.dart';
 import '../../features/auth/domain/usecases/update_profile_usecase.dart';
-import '../../features/auth/domain/usecases/verify_otp_usecase.dart';
 import '../../features/auth/presentation/cubit/auth_cubit.dart';
 import '../../features/birthday/data/birthday_storage.dart';
 import '../../features/cart/data/repositories/cart_repository_impl.dart';
@@ -103,6 +100,26 @@ Future<void> init({AppConfig? config}) async {
     sl<ThemeCubit>().loadPreference();
     sl<LocaleCubit>().loadPreference();
 
+    // تبديل اللغة من الإعدادات يُدفع إلى الخادم للحساب المسجَّل — وإلّا بقي
+    // عمود `preferred_language` على العربية وبقيت إشعارات الخادم عربيةً.
+    //
+    // [CRITICAL] وما تحمله المكعّبات المشتركة من نصوص خادمية — أسماء منتجات
+    // السلة والمفضلة والتقييمات والمجموعات، تسميات النقاط، الإشعارات — يُعاد
+    // جلبه بلغة الواجهة الجديدة. الشاشات تعيد جلب محتواها بنفسها عبر
+    // `LocaleRefetch`. لا انتظار للمزامنة: الخادم يقرأ `Accept-Language` قبل
+    // العمود، فالجلب صحيح اللغة من أول طلب. الزائر لا يحمل شيئاً من هذه.
+    sl<LocaleCubit>().onLanguageChanged = (_) async {
+      if (sl<AuthCubit>().isLoggedIn) {
+        sl<CartCubit>().load();
+        sl<FavoritesCubit>().load();
+        sl<PointsCubit>().load();
+        sl<NotificationsCubit>().load();
+        sl<ReviewsCubit>().load();
+        sl<CollectionsCubit>().load();
+      }
+      await sl<AuthCubit>().syncPreferredLanguage();
+    };
+
     if (kDebugMode) {
       // [DEBUG]: سجل نجاح التهيئة أثناء التطوير فقط.
       log('Dependency injection initialized successfully for $appConfig');
@@ -150,6 +167,8 @@ void _initCore() {
     config: sl<AppConfig>(),
     // قراءة متزامنة من الذاكرة — القيمة مهيّأة في `_initExternal`.
     appVersionProvider: () => sl<InstalledVersionSource>().cached,
+    // لغة الواجهة مع كل طلب — بها يحسم الخادم المحتوى المترجَم للزائر.
+    languageProvider: () => sl<LocaleCubit>().state.code,
   );
   // [CRITICAL]: كل مستودع يجب أن يستقبل عميل الـ API المشترك.
   // البناء الافتراضي (`.new` بلا وسائط) كان يُنشئ عميلاً جديداً بلا
@@ -220,7 +239,7 @@ void _initEngagementFeatures() {
       () => StoreSettingsRepository(api: sl<ApiClient>()),
     )
     ..registerLazySingleton<VisualsRepository>(
-      () => VisualsRepository(api: sl<ApiClient>()),
+      () => VisualsRepository(api: sl<ApiClient>(), prefs: sl<SharedPreferences>()),
     )
     ..registerLazySingleton<PersonalizeStorage>(
       () => PersonalizeStorage(sl<SharedPreferences>()),
@@ -278,17 +297,8 @@ void _initAuthFeature() {
     ..registerLazySingleton<RegisterUsecase>(
       () => RegisterUsecase(sl<AuthRepository>()),
     )
-    ..registerLazySingleton<SendOtpUsecase>(
-      () => SendOtpUsecase(sl<AuthRepository>()),
-    )
     ..registerLazySingleton<ForgotPasswordUsecase>(
       () => ForgotPasswordUsecase(sl<AuthRepository>()),
-    )
-    ..registerLazySingleton<VerifyOtpUsecase>(
-      () => VerifyOtpUsecase(sl<AuthRepository>()),
-    )
-    ..registerLazySingleton<ResetPasswordUsecase>(
-      () => ResetPasswordUsecase(sl<AuthRepository>()),
     )
     ..registerLazySingleton<GetMeUsecase>(
       () => GetMeUsecase(sl<AuthRepository>()),
@@ -306,13 +316,11 @@ void _initAuthFeature() {
         localStorage: sl<AuthLocalStorage>(),
         loginUsecase: sl<LoginUsecase>(),
         registerUsecase: sl<RegisterUsecase>(),
-        sendOtpUsecase: sl<SendOtpUsecase>(),
         forgotPasswordUsecase: sl<ForgotPasswordUsecase>(),
-        verifyOtpUsecase: sl<VerifyOtpUsecase>(),
-        resetPasswordUsecase: sl<ResetPasswordUsecase>(),
         getMeUsecase: sl<GetMeUsecase>(),
         updateProfileUsecase: sl<UpdateProfileUsecase>(),
         changePasswordUsecase: sl<ChangePasswordUsecase>(),
+        languageOf: () => sl<LocaleCubit>().state,
       ),
     );
 }

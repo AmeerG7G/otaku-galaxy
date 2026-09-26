@@ -1,8 +1,24 @@
 import 'package:flutter/material.dart';
+import '../../themes/app_theme.dart';
 
+import '../../../../features/orders/domain/entities/order.dart';
+import '../../../../features/orders/presentation/widgets/order_status_utils.dart';
 import '../../tokens/app_colors.dart';
 import '../../tokens/app_dimens.dart';
 
+/// شارة حالة الطلب — أيقونة وتدرّج ونصّ.
+///
+/// [CRITICAL] الهوية هنا [OrderStatus]، لا النصّ المعروض. كانت الشارة
+/// تُبدّل على نصٍّ عربيٍّ حرفيّ (`case 'قيد التوصيل':`)، أي أنها تستعمل
+/// **الترجمة** مُعرِّفاً للحالة. النتيجة في واجهةٍ كردية ليست خطأً صاخباً بل
+/// صمتٌ تام: لا حالة تُطابق، فتسقط كلُّ الطلبات إلى الفرع الافتراضي
+/// (رمادي + `help_outline`) ويقرأ الزبون الكرديُّ حالةَ طلبه بلا لون ولا
+/// معنى. ولأن `default` كان يبتلع كلَّ ما لا يُطابق، ما كان لاختبارٍ ولا
+/// لمحلّلٍ أن يصرخ.
+///
+/// الآن: `switch` على التعداد — شامل، يرفض المترجمُ إضافةَ حالةٍ بلا شارة —
+/// والنصُّ وحده يأتي من [orderStatusLabel]. طبقة الترجمة تقدّم عرضاً لا
+/// هوية.
 class AnimeOrderStatusBadge extends StatelessWidget {
   const AnimeOrderStatusBadge({
     super.key,
@@ -10,7 +26,7 @@ class AnimeOrderStatusBadge extends StatelessWidget {
     this.size = BadgeSize.medium,
   });
 
-  final String status;
+  final OrderStatus status;
   final BadgeSize size;
 
   @override
@@ -55,9 +71,12 @@ class AnimeOrderStatusBadge extends StatelessWidget {
           Icon(config.icon, size: fontSize + 2, color: Colors.white),
           SizedBox(width: AppDimens.space2),
           Text(
-            config.label,
+            // المصدر الوحيد لنصّ الحالة — لا نسخةٌ ثانية مختصرة هنا.
+            orderStatusLabel(context, status),
             style: TextStyle(
               fontFamily: 'Cairo',
+              // نصٌّ مترجَم بـTextStyle جديد: لا يرث احتياط الثيم فيُذكر صراحةً.
+              fontFamilyFallback: kArabicScriptFallback,
               fontSize: fontSize,
               fontWeight: AppDimens.weightBold,
               color: Colors.white,
@@ -69,109 +88,81 @@ class AnimeOrderStatusBadge extends StatelessWidget {
     );
   }
 
-  _StatusConfig _getStatusConfig(String status) {
-    switch (status) {
-      case 'طلب جديد':
-        return _StatusConfig(
-          label: 'طلب جديد',
-          icon: Icons.receipt_long,
-          gradient: LinearGradient(
-            colors: [AppColors.info, AppColors.infoLight],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          glowColor: AppColors.info,
-        );
-      case 'بانتظار تأكيد الإدارة':
-        return _StatusConfig(
-          label: 'بانتظار التأكيد',
-          icon: Icons.hourglass_top,
-          gradient: LinearGradient(
-            colors: [AppColors.warning, AppColors.warningLight],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          glowColor: AppColors.warning,
-        );
-      case 'تم تأكيد الطلب':
-        return _StatusConfig(
-          label: 'تم التأكيد',
-          icon: Icons.verified,
-          gradient: LinearGradient(
-            colors: [AppColors.success, AppColors.successLight],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          glowColor: AppColors.success,
-        );
-      case 'قيد التجهيز':
-        return _StatusConfig(
-          label: 'قيد التجهيز',
-          icon: Icons.build,
-          gradient: LinearGradient(
-            colors: [AppColors.primary, AppColors.primaryLight],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          glowColor: AppColors.primary,
-        );
-      case 'قيد التوصيل':
-        return _StatusConfig(
-          label: 'قيد التوصيل',
-          icon: Icons.local_shipping,
-          gradient: LinearGradient(
-            colors: [AppColors.accentCyan, AppColors.accent],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          glowColor: AppColors.accentCyan,
-        );
-      case 'مكتمل':
-        return _StatusConfig(
-          label: 'مكتمل',
-          icon: Icons.check_circle,
-          gradient: LinearGradient(
-            colors: [AppColors.success, AppColors.accent],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          glowColor: AppColors.success,
-        );
-      case 'مرفوض':
-        return _StatusConfig(
-          label: 'مرفوض',
-          icon: Icons.cancel,
-          gradient: LinearGradient(
-            colors: [AppColors.error, AppColors.errorLight],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          glowColor: AppColors.error,
-        );
-      default:
-        return _StatusConfig(
-          label: status,
-          icon: Icons.help_outline,
-          gradient: LinearGradient(
-            colors: [AppColors.onSurfaceDisabled, AppColors.onSurfaceVariant],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          glowColor: AppColors.onSurfaceDisabled,
-        );
-    }
-  }
+  /// الشكل وحده — بلا نصّ. شاملٌ عمداً: لا `default` يبتلع حالةً جديدة.
+  _StatusConfig _getStatusConfig(OrderStatus status) => switch (status) {
+    OrderStatus.pending => _StatusConfig(
+      icon: Icons.receipt_long,
+      gradient: LinearGradient(
+        colors: [AppColors.info, AppColors.infoLight],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
+      glowColor: AppColors.info,
+    ),
+    OrderStatus.waitingAdmin => _StatusConfig(
+      icon: Icons.hourglass_top,
+      gradient: LinearGradient(
+        colors: [AppColors.warning, AppColors.warningLight],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
+      glowColor: AppColors.warning,
+    ),
+    OrderStatus.confirmed => _StatusConfig(
+      icon: Icons.verified,
+      gradient: LinearGradient(
+        colors: [AppColors.success, AppColors.successLight],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
+      glowColor: AppColors.success,
+    ),
+    OrderStatus.processing => _StatusConfig(
+      icon: Icons.build,
+      gradient: LinearGradient(
+        colors: [AppColors.primary, AppColors.primaryLight],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
+      glowColor: AppColors.primary,
+    ),
+    OrderStatus.delivering => _StatusConfig(
+      icon: Icons.local_shipping,
+      gradient: LinearGradient(
+        colors: [AppColors.accentCyan, AppColors.accent],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
+      glowColor: AppColors.accentCyan,
+    ),
+    OrderStatus.completed => _StatusConfig(
+      icon: Icons.check_circle,
+      gradient: LinearGradient(
+        colors: [AppColors.success, AppColors.accent],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
+      glowColor: AppColors.success,
+    ),
+    OrderStatus.rejected => _StatusConfig(
+      icon: Icons.cancel,
+      gradient: LinearGradient(
+        colors: [AppColors.error, AppColors.errorLight],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
+      glowColor: AppColors.error,
+    ),
+  };
 }
 
 class _StatusConfig {
   const _StatusConfig({
-    required this.label,
     required this.icon,
     required this.gradient,
     required this.glowColor,
   });
 
-  final String label;
   final IconData icon;
   final LinearGradient gradient;
   final Color glowColor;

@@ -20,7 +20,8 @@ import {
 import { ReloadOutlined, SearchOutlined, StarOutlined, WhatsAppOutlined } from '@ant-design/icons'
 import type { TablePaginationConfig } from 'antd'
 import { useEffect, useState } from 'react'
-import { listCustomers, toggleUserActive } from '../api/customersApi'
+import { Link } from 'react-router-dom'
+import { listCustomers, setUserActive } from '../api/customersApi'
 import { getCustomerPoints } from '../api/pointsApi'
 import type { PointsLedgerEntry, PointsReason } from '../types/points'
 import { ApiError } from '../api/client'
@@ -37,6 +38,17 @@ import EmptyState from '../components/EmptyState'
 import { PageHeader } from '../components/ui/PageHeader'
 
 const PAGE_SIZE = 12
+
+/** سلّم المجرّة الثابت — سبعة مستويات كما في `domain/galaxyPoints.ts`. */
+const GALAXY_LEVEL_OPTIONS = [
+  { value: 'beginner', label: '1 · مبتدئ المجرة' },
+  { value: 'explorer', label: '2 · مستكشف المجرة' },
+  { value: 'voyager', label: '3 · رحّالة المجرة' },
+  { value: 'warrior', label: '4 · محارب المجرة' },
+  { value: 'champion', label: '5 · بطل المجرة' },
+  { value: 'star', label: '6 · نجم المجرة' },
+  { value: 'legend', label: '7 · أسطورة المجرة' },
+]
 
 /** مهلة الكتابة قبل إطلاق البحث — طلب لكل حرف يُغرق الخادم بلا فائدة. */
 const SEARCH_DEBOUNCE_MS = 350
@@ -63,6 +75,7 @@ export default function CustomersPage() {
   const [birthday, setBirthday] = useState<BirthdayFilter>('all')
   const [orders, setOrders] = useState<OrdersFilter>('all')
   const [gender, setGender] = useState<CustomerGenderFilter>('all')
+  const [levelKey, setLevelKey] = useState<string>('all')
   const [sort, setSort] = useState<CustomerSort>('newest')
 
   // البحث يُرسَل بعد سكون الكتابة، ويعود بالقائمة إلى صفحتها الأولى: البقاء
@@ -96,6 +109,7 @@ export default function CustomersPage() {
     ...(tri(birthday) === undefined ? {} : { hasBirthday: tri(birthday) }),
     ...(tri(orders) === undefined ? {} : { hasOrders: tri(orders) }),
     ...(gender === 'all' ? {} : { gender }),
+    ...(levelKey === 'all' ? {} : { levelKey }),
     sort,
   }
 
@@ -111,6 +125,7 @@ export default function CustomersPage() {
     setBirthday('all')
     setOrders('all')
     setGender('all')
+    setLevelKey('all')
     setSort('newest')
     setPage(1)
   }
@@ -120,14 +135,15 @@ export default function CustomersPage() {
     activity !== 'all' ||
     birthday !== 'all' ||
     orders !== 'all' ||
-    gender !== 'all'
+    gender !== 'all' ||
+    levelKey !== 'all'
 
   const invalidateCustomers = () => {
     queryClient.invalidateQueries({ queryKey: ['customers'] })
   }
 
   const toggleMutation = useMutation({
-    mutationFn: toggleUserActive,
+    mutationFn: setUserActive,
     onSuccess: (result) => {
       message.success(result.message)
       invalidateCustomers()
@@ -147,7 +163,7 @@ export default function CustomersPage() {
       okText: blocking ? 'حظر' : 'تفعيل',
       okButtonProps: { danger: blocking },
       cancelText: 'إلغاء',
-      onOk: () => toggleMutation.mutateAsync(customer.id),
+      onOk: () => toggleMutation.mutateAsync({ id: customer.id, isActive: !blocking }),
     })
   }
 
@@ -161,7 +177,14 @@ export default function CustomersPage() {
             {customer.username.charAt(0)}
           </Avatar>
           <div>
-            <Typography.Text strong>{customer.username}</Typography.Text>
+            <Link to={`/customers/${customer.id}`}>
+              <Typography.Text strong>{customer.username}</Typography.Text>
+            </Link>
+            <div>
+              <Typography.Text type="secondary" style={{ fontSize: 11 }} copyable={{ text: customer.id }}>
+                {customer.id.slice(0, 8)}
+              </Typography.Text>
+            </div>
           </div>
         </Flex>
       ),
@@ -274,7 +297,7 @@ export default function CustomersPage() {
             <Button
               size="small"
               danger={customer.isActive}
-              loading={toggleMutation.isPending && toggleMutation.variables === customer.id}
+              loading={toggleMutation.isPending && toggleMutation.variables?.id === customer.id}
               onClick={() => confirmToggle(customer)}
             >
               {customer.isActive ? 'حظر' : 'تفعيل'}
@@ -317,7 +340,7 @@ export default function CustomersPage() {
           <Input
             allowClear
             prefix={<SearchOutlined />}
-            placeholder="ابحث بالاسم أو رقم الهاتف"
+            placeholder="ابحث بالاسم أو رقم الهاتف أو معرّف الحساب"
             value={searchInput}
             onChange={(event) => setSearchInput(event.target.value)}
             style={{ maxWidth: 280, flex: '1 1 220px' }}
@@ -371,6 +394,19 @@ export default function CustomersPage() {
               { label: 'الذكور', value: 'male' },
               { label: 'الإناث', value: 'female' },
               { label: 'غير محدد', value: 'unknown' },
+            ]}
+          />
+          {/* المستوى مشتقٌّ من الرصيد على الخادم — الترشيح هناك لا هنا. */}
+          <Select
+            value={levelKey}
+            style={{ minWidth: 170 }}
+            onChange={(value) => {
+              setLevelKey(value)
+              setPage(1)
+            }}
+            options={[
+              { value: 'all', label: 'كل المستويات' },
+              ...GALAXY_LEVEL_OPTIONS,
             ]}
           />
           <Select

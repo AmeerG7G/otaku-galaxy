@@ -30,7 +30,12 @@ import {
   adminProductsQuerySchema,
   adminProductUpdateSchema,
   adminSubcategorySchema,
+  adminUserActiveSchema,
   adminUserIdSchema,
+  adminAccountRequestIdSchema,
+  adminAccountRequestsQuerySchema,
+  adminResolveRequestSchema,
+  adminSetCustomerPasswordSchema,
 } from '../validators/admin.js';
 
 /**
@@ -265,9 +270,53 @@ export const adminController = {
     return ok(res, await adminService.listBirthdayCustomers(query));
   }) as RequestHandler,
 
-  toggleUserActive: (async (req, res) => {
+  setUserActive: (async (req, res) => {
     const { id } = parse(adminUserIdSchema, req.params);
-    const data = await adminService.toggleUserActive(id);
+    // Express 5 يترك `req.body` غير معرَّف لطلبٍ بلا جسم (نسخة لوحة أقدم).
+    const { isActive } = parse(adminUserActiveSchema, req.body ?? {});
+    const data = await adminService.setUserActive(id, isActive);
     return ok(res, data, 'حُدّثت حالة المستخدم');
+  }) as RequestHandler,
+
+  // ===== ملفّ الزبون وطلبات الحساب =====
+
+  customerDetail: (async (req, res) => {
+    const { id } = parse(adminCustomerIdSchema, req.params);
+    return ok(res, await adminService.getCustomerDetail(id));
+  }) as RequestHandler,
+
+  /**
+   * المسؤول يضع كلمة مرور جديدة **دائمة** للزبون بعد تحقّق واتساب.
+   * الردّ لا يحمل كلمة المرور بأي صورة.
+   */
+  setCustomerPassword: (async (req, res) => {
+    const { id } = parse(adminCustomerIdSchema, req.params);
+    const input = parse(adminSetCustomerPasswordSchema, req.body);
+    const data = await adminService.setCustomerPassword(id, req.auth!.id, input);
+    return ok(res, data, 'وُضعت كلمة المرور الجديدة — بلّغها الزبون عبر واتساب');
+  }) as RequestHandler,
+
+  listAccountRequests: (async (req, res) => {
+    const query = parse(adminAccountRequestsQuerySchema, req.query);
+    return ok(res, await adminService.listAccountRequests(query));
+  }) as RequestHandler,
+
+  accountRequestDetail: (async (req, res) => {
+    const { id } = parse(adminAccountRequestIdSchema, req.params);
+    return ok(res, await adminService.getAccountRequest(id));
+  }) as RequestHandler,
+
+  approveAccountRequest: (async (req, res) => {
+    const { id } = parse(adminAccountRequestIdSchema, req.params);
+    const { note } = parse(adminResolveRequestSchema, req.body ?? {});
+    const data = await adminService.approveAccountRequest(id, req.auth!.id, note);
+    return ok(res, data, 'تمت الموافقة — الحساب مفعَّل');
+  }) as RequestHandler,
+
+  rejectAccountRequest: (async (req, res) => {
+    const { id } = parse(adminAccountRequestIdSchema, req.params);
+    const { note } = parse(adminResolveRequestSchema, req.body ?? {});
+    const data = await adminService.rejectAccountRequest(id, req.auth!.id, note);
+    return ok(res, data, 'رُفض الطلب وبقي في السجل');
   }) as RequestHandler,
 };

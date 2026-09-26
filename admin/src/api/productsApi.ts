@@ -73,6 +73,7 @@ function publicProductToDraft(product: PublicProduct): ProductFormDraft {
     hasDeliveryPromo: product.hasDeliveryPromo,
     deliveryPromoAmount: product.deliveryPromoAmount ?? 0,
     franchiseIds: product.franchiseIds,
+    restockAt: product.restockAt ?? null,
   }
 }
 

@@ -7,18 +7,19 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// `birthday`، فأيّ محاولة لحفظه كانت سترتدّ بخطأ تحقّق — عطلٌ كان مستتراً
 /// ما دام التطبيق لا يخاطب الخادم أصلاً.
 enum NotificationPref {
-  orders('orders', 'الطلبات', true),
-  reviews('reviews', 'التقييمات', true),
-  stock('stock', 'توفر المنتجات', true),
-  offers('offers', 'العروض', false),
-  points('points', 'نقاط المجرّة', true),
-  birthday('birthday', 'عيد الميلاد', true);
+  orders('orders', 'prefOrders', true),
+  reviews('reviews', 'prefReviews', true),
+  stock('stock', 'prefStock', true),
+  offers('offers', 'prefOffers', false),
+  points('points', 'prefPoints', true),
+  birthday('birthday', 'prefBirthday', true);
 
-  const NotificationPref(this.key, this.label, this.defaultValue);
+  const NotificationPref(this.key, this.labelKey, this.defaultValue);
 
   /// المفتاح المعتمد لدى الخادم — لا يُغيَّر بلا تغيير القيد في القاعدة.
   final String key;
-  final String label;
+  /// مفتاح `AppStrings` لا نصّ معروض — التعداد ثابتٌ بلا سياق.
+  final String labelKey;
   final bool defaultValue;
 }
 

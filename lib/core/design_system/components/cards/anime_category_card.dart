@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../../l10n/app_strings.dart';
+import '../../themes/app_theme.dart';
 
 import '../../../../features/products/domain/entities/category.dart';
 import '../../../../features/products/domain/entities/category_order.dart';
@@ -98,7 +100,8 @@ class AnimeCategoryCard extends StatelessWidget {
   /// [NOTE] الأقسام خارج الستة تعود إلى تجزئة المعرّف: ثابتة لكل قسم، وقد
   /// تشارك أحدَ الستة لونَه. المطلوب أن تتمايز الستة فيما بينها، وهو مضمون.
   static List<Color> gradientForCategory(Category category) {
-    final slot = _gradientByKey[canonicalCategoryKey(category.name)];
+    // `stableKey` لا `name`: الاسم المعروض قد يكون كردياً، والهوية عربية دائماً.
+    final slot = _gradientByKey[canonicalCategoryKey(category.stableKey)];
     if (slot != null) return gradients[slot];
 
     final id = category.id;
@@ -118,15 +121,9 @@ class AnimeCategoryCard extends StatelessWidget {
     final mark = category.name.trim().isEmpty
         ? '؟'
         : category.name.trim().characters.first;
-    // صورة القسم التي يرفعها المسؤول. الحرف المائي يبقى بديلاً حين لا توجد
-    // صورة — لا يُستبدل بمربّع فارغ.
-    final imageUrl = category.imageUrl?.trim();
-    final hasImage = imageUrl != null && imageUrl.isNotEmpty;
     final count = category.subcategories.length;
 
     final radius = rail ? AppDimens.radiusMd : AppDimens.radiusLg;
-    // منطقة الرسم: مساحة مخصَّصة بعرض ثابت، لا خلفية للبطاقة كلها.
-    final artWidth = rail ? 56.0 : 96.0;
 
     return InkWell(
       onTap: onTap,
@@ -145,76 +142,55 @@ class AnimeCategoryCard extends StatelessWidget {
           boxShadow: rail ? colors.shadowXSoft : colors.shadowSoft,
         ),
         clipBehavior: Clip.antiAlias,
-        child: rail
-            ? _railBody(theme, mark, hasImage, imageUrl)
-            : _wideBody(theme, mark, count, hasImage, imageUrl, artWidth),
+        child: rail ? _railBody(theme, mark) : _wideBody(context, theme, count),
       ),
     );
   }
 
-  /// البطاقة العريضة: النص في جهة البداية، ومنطقة الرسم في جهة النهاية.
+  /// البطاقة العريضة: نصٌّ وحده، موسَّطٌ أفقياً وعمودياً على التدرّج.
   ///
-  /// [CRITICAL] الرسم **ليس خلفية**. كان يُرسم بـ`BoxFit.cover` فوق البطاقة
-  /// كلها ثم يُغطّى بحجاب متدرّج ليبقى النص مقروءاً — أي أن صورة القسم كانت
-  /// تبتلع البطاقة ويختفي نصفها تحت الحجاب. الآن لها مساحتها الخاصة:
-  /// `BoxFit.contain` بلا حجاب وبلا خلفية، فتبقى شفافية PNG كما هي ولا
-  /// يُمطّ الرسم.
-  Widget _wideBody(
-    ThemeData theme,
-    String mark,
-    int count,
-    bool hasImage,
-    String? imageUrl,
-    double artWidth,
-  ) {
-    return Row(
-      children: [
-        Expanded(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                category.name,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.titleLarge?.copyWith(
-                  fontFamily: 'Tajawal',
-                  fontWeight: AppDimens.weightBlack,
-                  fontSize: 20,
-                  height: 1.25,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                count > 0 ? '$count قسم فرعي' : 'تصفّح القسم',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  fontSize: 12,
-                  color: Colors.white.withValues(alpha: 0.85),
-                ),
-              ),
-            ],
+  /// [PRODUCT] قرار 2026-09-15: لا صورةَ قسمٍ ولا حرفاً مائياً ولا مساحةً
+  /// محجوزة لرسم — بطاقة القسم الرئيسي نظيفةٌ نصّية: الاسم ثم عدد الأقسام
+  /// الفرعية في المنتصف. الصورة التي كان يرفعها المسؤول (`imageUrl`) لم تعد
+  /// تُقرأ في أي شاشة، ولوحة التحكم لم تعد تعرضها أو تطلبها.
+  Widget _wideBody(BuildContext context, ThemeData theme, int count) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Text(
+            category.name,
+            maxLines: 2,
+            textAlign: TextAlign.center,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontFamily: 'Tajawal',
+              fontWeight: AppDimens.weightBlack,
+              fontSize: 20,
+              height: 1.25,
+              color: Colors.white,
+            ),
           ),
-        ),
-        const SizedBox(width: 12),
-        SizedBox(
-          width: artWidth,
-          height: double.infinity,
-          child: _art(mark, hasImage, imageUrl, markSize: 84),
-        ),
-      ],
+          const SizedBox(height: 4),
+          Text(
+            count > 0
+                ? context.strings.p('subcategoriesCount', {'count': '$count'})
+                : context.strings('browseCategory'),
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontSize: 12,
+              color: Colors.white.withValues(alpha: 0.85),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  /// نسخة الشريط الأفقي — الرسم خلف الاسم كما في التصميم.
-  Widget _railBody(
-    ThemeData theme,
-    String mark,
-    bool hasImage,
-    String? imageUrl,
-  ) {
+  /// نسخة الشريط الأفقي — الحرف المائي خلف الاسم كما في التصميم (بلا صورة).
+  Widget _railBody(ThemeData theme, String mark) {
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -223,9 +199,7 @@ class AnimeCategoryCard extends StatelessWidget {
           end: -4,
           width: 56,
           height: 56,
-          child: IgnorePointer(
-            child: _art(mark, hasImage, imageUrl, markSize: 54),
-          ),
+          child: IgnorePointer(child: _watermark(mark, 54)),
         ),
         Align(
           alignment: AlignmentDirectional.bottomStart,
@@ -253,29 +227,6 @@ class AnimeCategoryCard extends StatelessWidget {
     );
   }
 
-  /// محتوى منطقة الرسم: صورة القسم، أو الحرف المائي حين لا توجد صورة.
-  Widget _art(
-    String mark,
-    bool hasImage,
-    String? imageUrl, {
-    required double markSize,
-  }) {
-    if (hasImage) {
-      return Image.network(
-        imageUrl!,
-        // `contain` لا `cover`: الشخصية تُعرض كاملةً بنسبها الأصلية بدل أن
-        // تُقتطع لتملأ المساحة.
-        fit: BoxFit.contain,
-        alignment: Alignment.bottomCenter,
-        // فشل التحميل يعود للحرف المائي بدل أيقونة كسر.
-        errorBuilder: (_, _, _) => _watermark(mark, markSize),
-        loadingBuilder: (context, child, progress) =>
-            progress == null ? child : _watermark(mark, markSize),
-      );
-    }
-    return _watermark(mark, markSize);
-  }
-
   Widget _watermark(String mark, double size) => FittedBox(
     fit: BoxFit.scaleDown,
     alignment: Alignment.bottomCenter,
@@ -283,6 +234,8 @@ class AnimeCategoryCard extends StatelessWidget {
       mark,
       style: TextStyle(
         fontFamily: 'Tajawal',
+        // نصٌّ مترجَم بـTextStyle جديد: لا يرث احتياط الثيم فيُذكر صراحةً.
+        fontFamilyFallback: kArabicScriptFallback,
         fontWeight: AppDimens.weightBlack,
         fontSize: size,
         height: 1,

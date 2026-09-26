@@ -12,10 +12,12 @@ class UpdateProfileUsecase {
     String? avatarUrl,
     bool clearAvatar = false,
     String? gender,
+    String? preferredLanguage,
   }) => _repository.updateProfile(
     username: username,
     avatarUrl: avatarUrl,
     clearAvatar: clearAvatar,
     gender: gender,
+    preferredLanguage: preferredLanguage,
   );
 }

@@ -1,5 +1,4 @@
 import { useEffect } from 'react'
-import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Alert, App, Button, Card, Form, Input, Space } from 'antd'
 import {
@@ -46,34 +45,7 @@ export default function SettingsPage() {
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <PageHeader
         title="إعدادات المتجر"
-        description="روابط التواصل ووصف الحساب التي تظهر في التطبيق، وإعدادات نسخة التطبيق."
-      />
-
-      <Alert
-        type="info"
-        showIcon
-        message="اترك الحقل فارغاً إذا لم تكن جاهزاً — التطبيق يعرض «الرابط يُضاف لاحقاً» بدل فتح رابط معطّل."
-      />
-
-      {/*
-        الأيقونة والرابط يُضبطان في مكانين مختلفين لأنهما شيئان مختلفان:
-        الرابط نصٌّ في إعدادات المتجر، والأيقونة صورةٌ مرفوعة تديرها منظومة
-        الفتحات البصرية نفسها التي تدير بقية رسوم التطبيق. نسخُ رفع الصور
-        إلى هنا كان سيصنع منظومة رفعٍ ثانية موازية. ما ينقص هو الإشارة —
-        فمن يبحث عن أيقونة تيك توك لا يخطر له أنها تحت «رسوم الشخصيات».
-      */}
-      <Alert
-        type="info"
-        showIcon
-        message="أيقونات تيك توك وإنستغرام وواتساب تُرفع من صفحة «رسوم الشخصيات»"
-        description={
-          <>
-            هذه الصفحة تضبط <b>الروابط</b>. أمّا <b>صور الأيقونات</b> فتُرفع من{' '}
-            <Link to="/visuals">رسوم الشخصيات → مجموعة «الحساب»</Link> (فتحات:
-            أيقونة تيك توك، أيقونة إنستغرام، أيقونة واتساب). ما دامت الأيقونة غير
-            مرفوعة يعرض التطبيق أيقونته الافتراضية، والرابط يعمل كالمعتاد.
-          </>
-        }
+        description="روابط التواصل التي تظهر في التطبيق، وإعدادات نسخة التطبيق."
       />
 
       <Card variant="outlined" loading={settingsQuery.isPending}>
@@ -83,19 +55,6 @@ export default function SettingsPage() {
           style={{ maxWidth: 520 }}
           onFinish={(values) => save.mutate(values)}
         >
-          <Form.Item
-            name="social_description"
-            label="وصف الحساب"
-            extra="سطرٌ قصير يظهر أسفل اسم المتجر في صفحة الحساب داخل التطبيق — 60 حرفاً كحد أقصى."
-            rules={[{ max: 60 }]}
-          >
-            <Input.TextArea
-              rows={2}
-              showCount
-              maxLength={60}
-              placeholder="متجر أقيم عالمياً… شحن سريع بكل المحافظات"
-            />
-          </Form.Item>
           <Form.Item
             name="social_tiktok"
             label="تيك توك"

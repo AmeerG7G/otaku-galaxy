@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
+import '../../../l10n/app_strings.dart';
 
 import '../../tokens/app_dimens.dart';
 import '../../tokens/app_theme_colors.dart';
 import '../buttons/anime_primary_button.dart';
 import '../../../../features/visuals/presentation/managed_artwork.dart';
-import '../../../../features/visuals/domain/visual_slot.dart';
 
 /// بطاقة «أنت تتصفح كزائر» بتصميم Otaku Galaxy v2 — لوحة مستديرة موسّطة
 /// مع هالة لونية ورسم شخصية يخرج من الحافة، وزر تسجيل دخول واضح.
@@ -16,7 +16,7 @@ class AnimeGuestPrompt extends StatelessWidget {
     required this.onLogin,
     this.icon = Icons.person_outline,
     this.artwork = 'assets/art/opt/a-i0.png',
-    this.artworkSlot = VisualSlots.guestPrompt,
+    required this.artworkSlot,
   });
 
   final String title;
@@ -25,11 +25,14 @@ class AnimeGuestPrompt extends StatelessWidget {
   final IconData icon;
   final String? artwork;
 
-  /// مفتاح الفتحة البصرية التي يديرها المسؤول من لوحة التحكم.
+  /// مفتاح الفتحة البصرية التي يديرها المسؤول من لوحة التحكم — **إلزامي
+  /// وتمرّره الشاشة** (`VisualSlots.cartGuestPrompt` في السلة،
+  /// `favoritesGuestPrompt` في المفضلة).
   ///
-  /// حين يُمرَّر، يصير [artwork] هو الأصل الاحتياطي: يُعرض كما هو ما دامت
-  /// الفتحة غير مضبوطة أو تعذّر تحميل صورتها. المقاس والموضع لا يتغيّران.
-  final String? artworkSlot;
+  /// كان للمكوّن مفتاحٌ افتراضي واحد (`guest_prompt_character`) يخدم التبويبين
+  /// معاً، فيبدّل المسؤول شخصية السلة فتتبدّل المفضلة. المكوّن المشترك لا
+  /// يملك موضعاً؛ الموضع للشاشة (الهجرة ٠٥٤). [artwork] هو الأصل الاحتياطي.
+  final String artworkSlot;
 
   @override
   Widget build(BuildContext context) {
@@ -72,13 +75,11 @@ class AnimeGuestPrompt extends StatelessWidget {
                 PositionedDirectional(
                   bottom: -14,
                   start: -26,
-                  child: artworkSlot == null
-                      ? Image.asset(artwork!, height: 132, fit: BoxFit.contain)
-                      : ManagedArtwork(
-                          slot: artworkSlot!,
-                          fallbackAsset: artwork!,
-                          height: 132,
-                        ),
+                  child: ManagedArtwork(
+                    slot: artworkSlot,
+                    fallbackAsset: artwork!,
+                    height: 132,
+                  ),
                 ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
@@ -121,7 +122,7 @@ class AnimeGuestPrompt extends StatelessWidget {
                     ),
                     const SizedBox(height: AppDimens.space6),
                     AnimePrimaryButton(
-                      label: 'تسجيل الدخول',
+                      label: context.strings('login'),
                       onPressed: onLogin,
                       height: AppDimens.buttonHeightXl,
                     ),

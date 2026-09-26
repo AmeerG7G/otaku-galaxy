@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../l10n/app_strings.dart';
 
 import '../../tokens/app_dimens.dart';
 
@@ -6,15 +7,34 @@ import '../../tokens/app_dimens.dart';
 ///
 /// [STAGE 12 · DECISION 02] كان الشعار صورةَ JPEG تُرسم بـ `BoxFit.cover`
 /// مع `alignment: topCenter` داخل قصٍّ دائري — أي أن العمل الفني كان
-/// **مقصوصاً**، وأن JPEG لا يحمل شفافية فكان الشعار يجرّ خلفيته معه.
-/// كلاهما يخالف قفل الشعار في المرحلة ٠١.
+/// **مقصوصاً**. وقفُ القصّ و`BoxFit.contain` قرارٌ قائم لم يتغيّر.
 ///
-/// الآن: PNG شفاف، `BoxFit.contain`، بلا قصّ وبلا زوايا مستديرة. النسب
-/// محفوظة والمساحة الآمنة (١٩٫١٪) جزء من العمل الفني نفسه.
+/// [التحديث] الأصل الآن **العلامة المربّعة بأرضيتها** —
+/// `masters/otaku-square-mark.svg`، وهي «التهيئة الرسمية أ» في قفل
+/// المرحلة ٠١: العلامة وحدها بلا نصّ، حبرُها يملأ ١/φ من البلاطة،
+/// فالمساحة الآمنة (١٩٫١٪) مقيسةٌ داخل الأصل لا مضافةٌ هنا. الأرضية
+/// مخبوزة عن قصد: هي أرضية العلامة المعتمدة (`#0B0718` شعاعياً) لا
+/// خلفيةُ صورةٍ عرَضية كما كانت في عهد JPEG.
+///
+/// وهي التهيئة نفسها التي تحملها أيقونةُ التطبيق على أندرويد وiOS
+/// والويب — فما يراه المستخدم في الإشعار وفي الترويسة صار شيئاً واحداً.
+///
+/// `BoxFit.contain` داخل `SizedBox.square` والأصل مربّع ١:١، فلا تمطيط
+/// مهما كان [size].
+///
+/// [2026-09-14 · زوايا مستديرة على مستوى العرض] الأصل مربّعٌ بزوايا حادّة،
+/// وعلى واجهةٍ كلُّ سطوحها مستديرة كان يبدو غريباً. القصّ هنا
+/// (`ClipRRect` بنصف قطر [AppDimens.logoCornerRatio] × [size]) لا في ملف
+/// الصورة: الأصل يبقى كما هو بايتاً بايتاً، والقصّ مستقلّ عن الكثافة ولا
+/// يُعيد أخذ عيّنات البتّات، والزوايا المقصوصة أرضيةٌ محضة (العمل الفني داخل
+/// المنطقة الآمنة ١٩٫١٪) فلا يُمسّ. ما يظهر خلف الزوايا هو خلفية الشاشة —
+/// وهو ما يجعله طبيعياً على الفاتح والداكن معاً. [cornerRadius] يُخصَّص
+/// لسطحٍ يحتاج مطابقةَ حاويته؛ `0` يُلغي الاستدارة.
 class OtakuStoreLogo extends StatelessWidget {
   const OtakuStoreLogo({
     super.key,
     this.size = AppDimens.iconLogo,
+    this.cornerRadius,
     @Deprecated('لا أثر له — الشعار عملٌ فني واحد بلا نصّ منفصل')
     this.showText = true,
     @Deprecated('لا أثر له') this.textSize,
@@ -24,10 +44,16 @@ class OtakuStoreLogo extends StatelessWidget {
     @Deprecated('لا أثر له — لا هالة على الشعار') this.glowEnabled = true,
     @Deprecated('لا أثر له — الشعار ساكن') this.animationDuration =
         AppDimens.durationSlow,
-    @Deprecated('لا أثر له — لم يبقَ قصٌّ يُستدار') this.cornerRadius,
   });
 
   final double size;
+
+  /// نصف قطر الزوايا؛ الافتراضي نسبةٌ من [size] (انظر [AppDimens.logoCornerRatio]).
+  final double? cornerRadius;
+
+  /// نصف القطر الفعلي المطبَّق في الرسم.
+  double get effectiveCornerRadius =>
+      cornerRadius ?? size * AppDimens.logoCornerRatio;
 
   // ═══ معطيات مهملة ═══
   //
@@ -41,19 +67,22 @@ class OtakuStoreLogo extends StatelessWidget {
   final Color? steamColor;
   final bool glowEnabled;
   final Duration animationDuration;
-  final double? cornerRadius;
 
   @override
   Widget build(BuildContext context) {
     return Semantics(
       image: true,
-      label: 'مجرة الأوتاكو',
+      label: context.strings('brandName'),
       child: SizedBox.square(
         dimension: size,
-        child: Image.asset(
-          'assets/branding/otaku-mark.png',
-          fit: BoxFit.contain,
-          filterQuality: FilterQuality.high,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(effectiveCornerRadius),
+          clipBehavior: Clip.antiAlias,
+          child: Image.asset(
+            'assets/branding/otaku-square-mark.png',
+            fit: BoxFit.contain,
+            filterQuality: FilterQuality.high,
+          ),
         ),
       ),
     );

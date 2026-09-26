@@ -1,4 +1,5 @@
 import 'package:auto_route/auto_route.dart';
+import '../../../../core/l10n/app_strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -8,7 +9,7 @@ import '../../../../core/router/app_router.dart';
 import '../../../products/domain/entities/product.dart';
 import '../../../products/domain/usecases/fetch_product_details_usecase.dart';
 import '../cubit/collections_cubit.dart';
-import '../../../visuals/domain/visual_slot.dart';
+import '../../../main_navigation/presentation/screens/main_navigation_screen.dart';
 
 /// تفاصيل مجموعة بتصميم Otaku Galaxy v2.
 ///
@@ -78,8 +79,8 @@ class _CollectionDetailScreenState extends State<CollectionDetailScreen> {
             OtakuScreenHeader(
               title: widget.collectionName,
               subtitle: _loading
-                  ? 'جاري التحميل…'
-                  : '${_products.length} منتج في هذه المجموعة',
+                  ? context.strings('loading')
+                  : context.strings.p('productsInThisCollectionCount', {'count': '${_products.length}'}),
               onBack: () => context.router.maybePop(),
             ),
             Expanded(child: _buildBody()),
@@ -94,10 +95,18 @@ class _CollectionDetailScreenState extends State<CollectionDetailScreen> {
     if (_products.isEmpty) {
       // لم تعد `const`: النصّ يُصرَّف بجنس صاحب الحساب فيُقرأ من السياق.
       return AnimeEmptyState(
-        title: 'المجموعة فارغة',
+        title: context.strings('collectionEmpty'),
         subtitle: context.g(GenderedStrings.addProductsToCollection),
         artwork: 'assets/art/opt/a-i5.png',
-        artworkSlot: VisualSlots.emptyCollection,
+        // نمط السلة الفارغة: الرسم فوق، ثم النصّ، ثم زرّ «تصفّح الأقسام» —
+        // كلٌّ في وسط اللوحة. المجموعة تُملأ من الأقسام، فالزرّ يذهب إليها
+        // (كما في البحث بلا نتائج) لا إلى شاشةٍ لا تضيف شيئاً.
+        actionLabel: context.strings('browseCategories'),
+        onAction: () {
+          mainNavIndex.value = MainTab.categories;
+          context.router.popUntilRoot();
+        },
+        centered: true,
       );
     }
 
@@ -120,12 +129,13 @@ class _CollectionDetailScreenState extends State<CollectionDetailScreen> {
   Future<void> _confirmRemove(Product product) async {
     final confirmed = await showOtakuConfirm(
       context: context,
-      title: 'إزالة من المجموعة',
+      title: context.strings('removeFromCollection'),
       message:
-          'سيُزال «${product.name}» من هذه المجموعة، ويبقى المنتج '
-          'في المتجر وفي مفضلتك.',
-      confirmLabel: 'إزالة',
-      cancelLabel: 'إلغاء',
+          context.strings.p('removeFromCollectionConfirm', {
+            'name': product.name,
+          }),
+      confirmLabel: context.strings('remove'),
+      cancelLabel: context.strings('cancel'),
       destructive: true,
     );
     if (confirmed != true || !mounted) return;

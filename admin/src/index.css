@@ -68,9 +68,11 @@
   --og-primary-hover: #9377ff;
   --og-primary-active: #6a47f5;
   --og-secondary: #ff3d8f;
+  --og-secondary-hover: #ff5fa0;
   --og-cyan: #4ea8ff;
   --og-amber: #ffb02e;
   --og-success: #22b07d;
+  --og-success-hover: #2ed68f;
   --og-warning: #c77a12;
   --og-error: #ff5a7a;
   --og-info: #2b79c2;
@@ -85,12 +87,46 @@
   --og-text-secondary: #6f6690;
   --og-text-disabled: #9c94b8;
   --og-gradient: linear-gradient(135deg, #ff3d8f 0%, #7c5cff 100%);
+  --og-sidebar-text: #e9e4f8;
+  --og-sidebar-text-muted: #9c94b8;
+  --og-sidebar-divider: rgba(233, 228, 248, 0.12);
+  --og-sidebar-gradient: linear-gradient(180deg, #180f30 0%, #241743 100%);
 
   font-family: "Tajawal", "Cairo", "Segoe UI", Tahoma, Arial, sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+.dark {
+  --og-primary: #9377ff;
+  --og-primary-hover: #a88fff;
+  --og-primary-active: #7c5cff;
+  --og-secondary: #ff5fa0;
+  --og-secondary-hover: #ff7fc0;
+  --og-cyan: #6ec0ff;
+  --og-amber: #ffc45e;
+  --og-success: #3ee09f;
+  --og-success-hover: #5ee8ad;
+  --og-warning: #e0942a;
+  --og-error: #ff7a94;
+  --og-info: #5aa3e0;
+  --og-aubergine: #0b0718;
+  --og-aubergine-soft: #120c24;
+  --og-surface: #120c24;
+  --og-surface-variant: #16102e;
+  --og-background: #0b0718;
+  --og-background-secondary: #16102e;
+  --og-border: rgba(255, 255, 255, 0.12);
+  --og-text: #edeaf6;
+  --og-text-secondary: #8e86b8;
+  --og-text-disabled: #6b6390;
+  --og-gradient: linear-gradient(135deg, #ff5fa0 0%, #9377ff 100%);
+  --og-sidebar-text: #edeaf6;
+  --og-sidebar-text-muted: #8e86b8;
+  --og-sidebar-divider: rgba(255, 255, 255, 0.12);
+  --og-sidebar-gradient: linear-gradient(180deg, #0b0718 0%, #120c24 100%);
 }
 
 * {

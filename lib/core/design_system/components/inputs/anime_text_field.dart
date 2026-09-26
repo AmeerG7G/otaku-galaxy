@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../tokens/app_dimens.dart';
 import '../../tokens/app_theme_colors.dart';
@@ -23,6 +24,11 @@ class AnimeTextField extends StatelessWidget {
     this.readOnly = false,
     this.maxLines = 1,
     this.initialValue,
+    this.inputFormatters,
+    this.maxLength,
+    this.focusNode,
+    this.prefixText,
+    this.textDirection,
   });
 
   final TextEditingController? controller;
@@ -43,13 +49,35 @@ class AnimeTextField extends StatelessWidget {
   final int maxLines;
   final String? initialValue;
 
+  /// تسهيلات كتابة (حروف مسموحة، حدّ طول) — لا تحقّق.
+  final List<TextInputFormatter>? inputFormatters;
+
+  /// حدّ أقصى للطول بلا عدّاد مرئي — مرآةٌ لحدّ الخادم.
+  final int? maxLength;
+
+  final FocusNode? focusNode;
+
+  /// نصٌّ ثابت داخل الحقل قبل ما يكتبه المستخدم (بادئة الهاتف `07`).
+  final String? prefixText;
+
+  /// اتجاه النصّ داخل الحقل — الأرقام تُكتب LTR ولو كانت الواجهة عربية.
+  final TextDirection? textDirection;
+
   @override
   Widget build(BuildContext context) {
     return TextFormField(
       controller: controller,
+      focusNode: focusNode,
+      textDirection: textDirection,
       initialValue: initialValue,
       obscureText: obscureText,
       keyboardType: keyboardType,
+      inputFormatters: inputFormatters,
+      maxLength: maxLength,
+      // بلا عدّاد «0/300» تحت الحقل: الحدّ يمنع لا يُعدّ.
+      buildCounter: maxLength == null
+          ? null
+          : (_, {required currentLength, required isFocused, maxLength}) => null,
       textInputAction: textInputAction,
       textAlign: textAlign ?? TextAlign.start,
       onChanged: onChanged,
@@ -65,6 +93,12 @@ class AnimeTextField extends StatelessWidget {
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
+        hintTextDirection: textDirection,
+        prefixText: prefixText,
+        prefixStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
+          fontWeight: AppDimens.weightBold,
+          color: Theme.of(context).colorScheme.onSurface,
+        ),
         prefixIcon: prefixIcon != null
             ? Icon(prefixIcon, size: AppDimens.iconMd)
             : null,

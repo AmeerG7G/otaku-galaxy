@@ -1,4 +1,7 @@
 import 'package:auto_route/auto_route.dart';
+import '../../../../core/l10n/gender.dart';
+import '../../../../core/l10n/app_strings.dart';
+import '../../../../core/l10n/locale_refetch.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -26,7 +29,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with LocaleRefetch {
   late Future<HomeData> _future;
 
   // اكتشف المنتجات: تغذية مستمرة بمنتجات عشوائية عند التمرير.
@@ -39,6 +42,13 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _future = context.read<FetchHomeUsecase>()();
+  }
+
+  /// الرئيسية كلها محتوى خادمي مصرَّف (أقسام، بانرات، أسماء منتجات) —
+  /// تُعاد بلغة الواجهة الجديدة بنفس مسار السحب للتحديث.
+  @override
+  void onLanguageChanged() {
+    setState(() => _future = context.read<FetchHomeUsecase>()());
   }
 
   Future<void> _loadMoreExplore() async {
@@ -145,7 +155,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         if (data.offers.isNotEmpty)
                           SliverToBoxAdapter(
                             child: ProductSection(
-                              title: 'العروض',
+                              title: context.strings('offers'),
                               products: data.offers,
                               onSeeAll: () =>
                                   mainNavIndex.value = MainTab.categories,
@@ -156,7 +166,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         if (data.selectedProducts.isNotEmpty)
                           SliverToBoxAdapter(
                             child: ProductSection(
-                              title: 'منتجات مختارة',
+                              title: context.strings('selectedProducts'),
                               products: data.selectedProducts,
                             ),
                           ),
@@ -255,14 +265,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      'أهلاً بك في',
+                      context.strings('welcomeTo'),
                       style: theme.textTheme.bodySmall?.copyWith(
                         fontSize: 12,
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
                     Text(
-                      'مجرة الأوتاكو',
+                      context.strings('brandName'),
                       style: theme.textTheme.titleLarge?.copyWith(
                         fontFamily: 'Tajawal',
                         fontSize: 18,
@@ -319,7 +329,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(width: 10),
             Text(
-              'ابحث عن منتجك المفضّل…',
+              context.strings('homeSearchHint'),
               style: theme.textTheme.bodyMedium?.copyWith(
                 fontSize: 13.5,
                 color: theme.colorScheme.onSurfaceVariant,
@@ -331,7 +341,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildExploreHeader() => const SectionHeader(title: 'اكتشف المنتجات');
+  Widget _buildExploreHeader() => SectionHeader(title: context.strings('discover'));
 
   /// يفتح وجهة البنر التي ضبطها المسؤول.
   ///
@@ -393,8 +403,8 @@ class _NotificationsBellState extends State<_NotificationsBell> {
   Future<void> _open() async {
     if (!await requireAuthentication(
       context,
-      title: 'سجّل دخولك أولاً',
-      body: 'الإشعارات تحتاج تسجيل الدخول لحسابك في مجرة الأوتاكو.',
+      title: context.gNow(GenderedStrings.loginFirst),
+      body: context.strings('loginRequiredForNotifications'),
     )) {
       return;
     }
@@ -431,7 +441,7 @@ class _NotificationsBellState extends State<_NotificationsBell> {
                   Icons.notifications_none_rounded,
                   size: 22,
                 ),
-                tooltip: 'الإشعارات',
+                tooltip: context.strings('notifications'),
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints.tightFor(
                   width: 42,

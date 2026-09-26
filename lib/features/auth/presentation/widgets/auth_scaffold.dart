@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/design_system/design_system.dart';
 import '../../../visuals/presentation/managed_artwork.dart';
-import '../../../visuals/domain/visual_slot.dart';
 
 /// هيكل شاشات المصادقة بتصميم Otaku Galaxy v2.
 ///
@@ -23,6 +22,9 @@ class AuthScaffold extends StatelessWidget {
     this.artworkWidth = 142,
     this.artworkBottom = -12,
     this.ctaArtWidth = 84,
+    required this.ctaSlot,
+    required this.ctaArtwork,
+    this.subtitleSpacing,
   });
 
   final String title;
@@ -58,6 +60,21 @@ class AuthScaffold extends StatelessWidget {
 
   /// عرض الرسم الصغير المتدلّي من زاوية بطاقة النموذج (٩٦ لشاشة الرمز).
   final double ctaArtWidth;
+
+  /// فتحة رسم الزاوية — **إلزامية ولكل شاشةٍ فتحتُها** (`VisualSlots.loginCta`،
+  /// `registerCta`، `forgotPasswordCta`).
+  ///
+  /// كانت الفتحة واحدةً مشتركة (`auth_cta_character`) داخل هذا الهيكل، فيبدّل
+  /// المسؤول رسمَ زاوية شاشة الدخول فيتبدّل في الشاشتين الأخريين. الموضع
+  /// موضعٌ لكل شاشة، والشاشةُ تمرّر مفتاحها (الهجرة ٠٥٤).
+  final String ctaSlot;
+
+  /// الأصل المضمَّن لرسم الزاوية — يُعرض ما دامت الفتحة بلا صورة.
+  final String ctaArtwork;
+
+  /// تباعد بين العنوان والنص التوضيحي في الرأس. القيمة الافتراضية `space2`.
+  /// شاشة «نسيت كلمة المرور» تمرّر قيمة أصغر لتحريك النص قليلاً للأعلى.
+  final double? subtitleSpacing;
 
   @override
   Widget build(BuildContext context) {
@@ -205,8 +222,9 @@ class AuthScaffold extends StatelessWidget {
                                                   color: headerInk,
                                                 ),
                                           ),
-                                          const SizedBox(
-                                            height: AppDimens.space2,
+                                          SizedBox(
+                                            height: subtitleSpacing ??
+                                                AppDimens.space2,
                                           ),
                                           Text(
                                             subtitle,
@@ -274,10 +292,9 @@ class AuthScaffold extends StatelessWidget {
                                 end: -18,
                                 child: IgnorePointer(
                                   child: ManagedArtwork(
-                                    slot: VisualSlots.authCta,
-                                    fallbackAsset: 'assets/art/opt/a-i3.png',
+                                    slot: ctaSlot,
+                                    fallbackAsset: ctaArtwork,
                                     width: ctaArtWidth,
-                                    opacity: 0.95,
                                   ),
                                 ),
                               ),

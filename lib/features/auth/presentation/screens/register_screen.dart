@@ -1,12 +1,16 @@
 import 'package:auto_route/auto_route.dart';
+import '../../../../core/l10n/app_strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../../core/constants/validation_rules.dart';
 import '../../../../core/design_system/design_system.dart';
 import '../../../../core/errors/app_exception.dart';
-import '../../../../core/l10n/gender.dart';
+import '../../../../core/l10n/gender.dart' show AppGender, GenderedStrings;
 import '../../../../core/router/app_router.dart';
-import '../cubit/auth_cubit.dart';
+import '../../../../core/utils/iraqi_phone.dart';
+import '../../domain/entities/account_request.dart';
+import '../cubit/auth_cubit.dart' show AuthCubit;
 import '../widgets/auth_field.dart';
 import '../widgets/auth_scaffold.dart';
 import '../../../visuals/domain/visual_slot.dart';
@@ -100,13 +104,19 @@ class _RegisterScreenState extends State<RegisterScreen>
     try {
       await context.read<AuthCubit>().register(
         username: _usernameController.text.trim(),
-        phone: _phoneController.text.trim(),
+        phone:
+            normalizeIraqiPhone(
+              iraqiPhoneFromLocalDigits(_phoneController.text.trim()),
+            ) ??
+            iraqiPhoneFromLocalDigits(_phoneController.text.trim()),
         password: _passwordController.text,
         gender: gender.value!,
       );
       if (!mounted) return;
-      context.router.push(
-        OtpVerificationRoute(phone: _phoneController.text.trim()),
+      // لا شاشة رمز: الطلب قيد مراجعة الإدارة. `replace` لا `push` حتى لا
+      // يعود الزبون بالسهم إلى استمارةٍ أُرسلت فعلاً.
+      context.router.replace(
+        AccountPendingRoute(kind: AccountRequestKind.registration),
       );
     } catch (e) {
       if (!mounted) return;
@@ -118,8 +128,11 @@ class _RegisterScreenState extends State<RegisterScreen>
 
   /// يعرض رسالة الخطأ الواضحة من الخادم عند توفّرها، مع رسالة عامة غير ذلك.
   String _messageOf(Object e) {
-    if (e is AppException && e.message.trim().isNotEmpty) return e.message;
-    return 'حدث خطأ غير متوقع، يرجى المحاولة مرة أخرى';
+    if (e is AppException) {
+      final text = e.localizedMessage(context);
+      if (text.trim().isNotEmpty) return text;
+    }
+    return context.strings('unexpectedError');
   }
 
   @override
@@ -129,12 +142,19 @@ class _RegisterScreenState extends State<RegisterScreen>
       child: SlideTransition(
         position: _slideAnimation,
         child: AuthScaffold(
-          title: 'إنشاء حساب',
+          title: context.strings('register'),
           // المخاطَب مجهول بالضرورة في هذه الشاشة: لم يُنشأ الحساب بعد ولم
           // يُسأل عن جنسه، فالصيغة المحايدة هي الصحيحة هنا لا المذكّرة.
-          subtitle: GenderedStrings.galaxyResident.of(AppGender.unknown),
+          // `ofLocale` لا `of`: الثانية تعرف الجنس ولا تعرف اللغة فتُرجع
+          // العربية دائماً — فكانت هذه الجملة عربيةً في واجهةٍ كردية.
+          subtitle: GenderedStrings.galaxyResident.ofLocale(
+            AppGender.unknown,
+            context.language,
+          ),
           artwork: 'assets/art/opt/a-i0.png',
-          artworkSlot: VisualSlots.register,
+          artworkSlot: VisualSlots.registerHeader,
+          ctaSlot: VisualSlots.registerCta,
+          ctaArtwork: 'assets/art/opt/a-i0.png',
           artworkHeight: 178,
           artworkWidth: 150,
           artworkBottom: -8,
@@ -146,15 +166,15 @@ class _RegisterScreenState extends State<RegisterScreen>
                 // حقل اسم المستخدم
                 AuthField(
                   controller: _usernameController,
-                  label: 'اسم المستخدم',
-                  hint: 'عمر الطيار',
+                  label: context.strings('username'),
+                  hint: context.strings('usernameHintExample'),
                   textInputAction: TextInputAction.next,
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
-                      return 'يرجى إدخال اسم المستخدم';
+                      return context.strings('usernameRequired');
                     }
-                    if (value.trim().length < 3) {
-                      return 'اسم المستخدم قصير جداً';
+                    if (value.trim().length < kUsernameMinLength) {
+                      return context.strings('usernameTooShort');
                     }
                     return null;
                   },
@@ -163,19 +183,27 @@ class _RegisterScreenState extends State<RegisterScreen>
                 const SizedBox(height: 15),
 
                 // حقل رقم الهاتف
-                AuthField(
+                AnimeTextField(
                   controller: _phoneController,
-                  label: 'رقم الهاتف',
-                  hint: '0770 123 4567',
+                  label: context.strings('phoneNumber'),
+                  hint: context.strings('phoneHintExample'),
+                  prefixIcon: Icons.phone_outlined,
                   textDirection: TextDirection.ltr,
                   keyboardType: TextInputType.phone,
+                  // §49.2: البادئة `07` ثابتة في الحقل والمستخدم يكتب التسعة التي تليها؛
+                  // المُنسّق يُسقط `+964`/`00964`/`07` مما يُلصق بدل أن يقصّه.
+                  prefixText: kIraqiLocalPrefix,
+                  inputFormatters: const [IraqiLocalDigitsFormatter()],
                   textInputAction: TextInputAction.next,
+                  maxLength: kIraqiLocalDigits,
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
-                      return 'يرجى إدخال رقم الهاتف';
+                      return context.strings('phoneRequiredShort');
                     }
-                    if (value.trim().length < 10) {
-                      return 'رقم الهاتف غير صحيح';
+                    if (!isValidIraqiPhone(
+                      iraqiPhoneFromLocalDigits(value.trim()),
+                    )) {
+                      return context.strings('phoneInvalid');
                     }
                     return null;
                   },
@@ -186,7 +214,7 @@ class _RegisterScreenState extends State<RegisterScreen>
                 // حقل كلمة المرور
                 AuthField(
                   controller: _passwordController,
-                  label: 'كلمة المرور',
+                  label: context.strings('password'),
                   hint: '••••••••',
                   obscureText: _obscure,
                   textInputAction: TextInputAction.done,
@@ -203,10 +231,12 @@ class _RegisterScreenState extends State<RegisterScreen>
                   ),
                   validator: (value) {
                     if (value == null || value.isEmpty) {
-                      return 'يرجى إدخال كلمة المرور';
+                      return context.strings('passwordRequired');
                     }
-                    if (value.length < 6) {
-                      return 'كلمة المرور قصيرة جداً (6 أحرف على الأقل)';
+                    // الحدّ نفسه الذي يفرضه الخادم — لا ٦ التي كان يقبلها
+                    // التطبيق ويرفضها الخادم بعد الإرسال.
+                    if (value.length < kPasswordMinLength) {
+                      return context.strings('passwordMinLength');
                     }
                     return null;
                   },
@@ -219,7 +249,7 @@ class _RegisterScreenState extends State<RegisterScreen>
                   value: _gender,
                   onChanged: (value) => setState(() => _gender = value),
                   errorText: _submitted && _gender == null
-                      ? GenderedStrings.genderRequired
+                      ? context.strings('genderRequired')
                       : null,
                 ),
 
@@ -227,7 +257,8 @@ class _RegisterScreenState extends State<RegisterScreen>
 
                 // زر إنشاء الحساب
                 AnimePrimaryButton(
-                  label: 'إرسال رمز التحقق',
+                  // لا رمز يُرسل: الزرّ يسمّي ما يحدث فعلاً — طلب إنشاء حساب.
+                  label: context.strings('submitRequest'),
                   onPressed: _register,
                   loading: _loading,
                   height: AppDimens.buttonHeightXl,
@@ -238,7 +269,11 @@ class _RegisterScreenState extends State<RegisterScreen>
                 SizedBox(height: AppDimens.space3),
 
                 Text(
-                  GenderedStrings.termsNotice.of(_gender ?? AppGender.unknown),
+                  // بلغة الواجهة — لا `of` التي تُرجع العربية دائماً.
+                  GenderedStrings.termsNotice.ofLocale(
+                    _gender ?? AppGender.unknown,
+                    context.language,
+                  ),
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
                     height: 1.7,
@@ -250,7 +285,7 @@ class _RegisterScreenState extends State<RegisterScreen>
           ),
           footer: Center(
             child: AnimeTextButton(
-              label: 'عندك حساب؟ تسجيل الدخول',
+              label: context.strings('haveAccountLogin'),
               onPressed: () => Navigator.of(context).pop(),
             ),
           ),

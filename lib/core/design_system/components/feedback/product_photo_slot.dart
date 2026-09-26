@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../l10n/app_strings.dart';
 
 import '../../tokens/app_dimens.dart';
 import '../../tokens/app_theme_colors.dart';
@@ -71,7 +72,7 @@ class _Placeholder extends StatelessWidget {
           if (showLabel) ...[
             const SizedBox(height: AppDimens.space2),
             Text(
-              'صورة المنتج',
+              context.strings('productPhoto'),
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
                 fontSize: 9.5,
                 color: colors.photoSlotInk,

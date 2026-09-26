@@ -1,4 +1,6 @@
 import 'package:auto_route/auto_route.dart';
+import '../../../../core/l10n/app_strings.dart';
+import '../../../../core/l10n/locale_refetch.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -20,7 +22,7 @@ class OrdersScreen extends StatefulWidget {
   State<OrdersScreen> createState() => _OrdersScreenState();
 }
 
-class _OrdersScreenState extends State<OrdersScreen> {
+class _OrdersScreenState extends State<OrdersScreen> with LocaleRefetch {
   List<Order> _orders = [];
   bool _loading = true;
   String? _error;
@@ -30,6 +32,10 @@ class _OrdersScreenState extends State<OrdersScreen> {
     super.initState();
     _load();
   }
+
+  /// المحتوى الخادمي يُصرَّف لحظة الجلب — يُعاد جلبه بلغة الواجهة الجديدة.
+  @override
+  void onLanguageChanged() => _load();
 
   Future<void> _load() async {
     setState(() {
@@ -63,8 +69,8 @@ class _OrdersScreenState extends State<OrdersScreen> {
         child: Column(
           children: [
             OtakuScreenHeader(
-              title: 'طلباتي',
-              subtitle: 'تابع حالة طلباتك خطوة بخطوة',
+              title: context.strings('myOrders'),
+              subtitle: context.strings('ordersSubtitle'),
               artwork: 'assets/art/opt/a-i4.png',
               artworkSlot: VisualSlots.ordersHeader,
               onBack: () => context.router.maybePop(),
@@ -84,11 +90,11 @@ class _OrdersScreenState extends State<OrdersScreen> {
     }
     if (_orders.isEmpty) {
       return AnimeEmptyState(
-        title: 'لا توجد طلبات بعد',
-        subtitle: 'كل طلب تكمله سيظهر هنا مع حالته ومحتوياته وتفاصيل توصيله.',
+        title: context.strings('noOrdersTitle'),
+        subtitle: context.strings('noOrdersBody'),
         artwork: 'assets/art/opt/a-luffy-kid.png',
         artworkSlot: VisualSlots.emptyOrders,
-        actionLabel: 'ابدأ التسوق',
+        actionLabel: context.strings('startShopping'),
         onAction: () => context.router.maybePop(),
       );
     }

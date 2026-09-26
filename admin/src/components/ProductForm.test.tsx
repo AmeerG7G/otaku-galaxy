@@ -45,6 +45,59 @@ function renderForm(initialValues = {}) {
   return { onSubmit }
 }
 
+describe('متوقع التوفر في نموذج المنتج', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(listAdminCategories).mockResolvedValue({
+      items: [{ id: 'c1', name: 'قسم', subcategories: [] }],
+    } as never)
+    vi.mocked(listFranchises).mockResolvedValue({ items: [] } as never)
+  })
+
+  it('الحقل موجود ومعنون «متوقع التوفر»', async () => {
+    renderForm({ stock: 0 })
+    expect(await screen.findByText('متوقع التوفر')).toBeInTheDocument()
+  })
+
+  it('اختياري — لا يمنع الحفظ حين يُترك فارغاً', async () => {
+    renderForm({ stock: 0 })
+    await screen.findByText('متوقع التوفر')
+    const input = document.querySelector<HTMLInputElement>('#restockAt')
+    expect(input?.value).toBe('')
+    expect(input?.getAttribute('required')).toBeNull()
+  })
+
+  it('القيمة المحفوظة تظهر عند فتح منتج له موعد', async () => {
+    renderForm({ stock: 0, restockAt: '2026-10-15T09:00:00.000Z' })
+    await screen.findByText('متوقع التوفر')
+    const input = document.querySelector<HTMLInputElement>('#restockAt')
+    expect(input?.value).toContain('2026')
+  })
+
+  // ═══ معاينة حالة الزبون — نفس قاعدة التطبيق، فلا يخمّن المسؤول ═══
+
+  it('[CRITICAL] مخزون ٠ + موعد ⇒ يعلن «قريباً يتوفر»', async () => {
+    renderForm({ stock: 0, restockAt: '2026-10-15T09:00:00.000Z' })
+    expect(await screen.findByText(/قريباً يتوفر/)).toBeInTheDocument()
+  })
+
+  it('مخزون ٠ بلا موعد ⇒ يعلن «غير متوفر» مع زر التنبيه', async () => {
+    renderForm({ stock: 0 })
+    expect(await screen.findByText(/غير متوفر/)).toBeInTheDocument()
+    expect(screen.queryByText(/قريباً يتوفر/)).not.toBeInTheDocument()
+  })
+
+  it('[CRITICAL] مخزون موجب ⇒ «متوفر» مهما بقي من موعد', async () => {
+    renderForm({ stock: 3, restockAt: '2026-10-15T09:00:00.000Z' })
+    expect(await screen.findByText(/متوفر — يمكن للزبون الشراء الآن/)).toBeInTheDocument()
+    expect(screen.queryByText(/قريباً يتوفر/)).not.toBeInTheDocument()
+    // ويشرح للمسؤول لماذا لن يُعرض التاريخ.
+    expect(
+      screen.getByText(/المخزون يتقدّم على الموعد/),
+    ).toBeInTheDocument()
+  })
+})
+
 describe('ضبط خصم التوصيل في نموذج المنتج', () => {
   beforeEach(() => {
     vi.clearAllMocks()

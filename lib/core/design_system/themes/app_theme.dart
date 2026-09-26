@@ -4,6 +4,22 @@ import '../tokens/app_colors.dart';
 import '../tokens/app_dimens.dart';
 import '../tokens/app_theme_colors.dart';
 
+/// احتياط الخط للمحارف التي يعجز عنها خطّ العلامة.
+///
+/// [CRITICAL] Cairo ينقصه ێ ۆ ڕ ڵ، وTajawal ينقصه معها ک ژ گ — وهي حروف
+/// أساسية في الكردية (ڕێکخستنەکان، خاڵەکانی گەلاکسی، دڵخوازەکان). بدون
+/// احتياط يرسم المحرّك مربّعاً لكل حرف ناقص، **ويقيسه بمقاييس خطّ النظام**
+/// فيخرج السطر أعرض مما يتوقّعه التخطيط ويتجاوز الحاوية. أي أن العطل
+/// البصري والعطل التخطيطي سببهما واحد.
+///
+/// الاحتياط لا يبدّل خطّ العلامة: المحرّك يستعمله **للمحرف الواحد** الذي
+/// لا يجده في الخطّ الأساسي فقط. العربية والإنجليزية تُرسمان بـCairo
+/// وTajawal حرفاً حرفاً كما كانتا — لا تتغيّر بكسلاً.
+///
+/// يُسجَّل هنا مرّةً واحدة على `base` و`heading` وعلى `ThemeData` نفسها،
+/// فترثه كلُّ `copyWith` في التطبيق (٤٩ موضعاً) بلا لمسها.
+const List<String> kArabicScriptFallback = <String>['NotoSansArabic'];
+
 class AppTheme {
   AppTheme._();
 
@@ -24,6 +40,7 @@ class AppTheme {
       colorScheme: colors,
       scaffoldBackgroundColor: isLight ? AppColors.background : colors.surface,
       fontFamily: 'Cairo',
+      fontFamilyFallback: kArabicScriptFallback,
       textTheme: text,
       extensions: [brand],
       appBarTheme: AppBarTheme(
@@ -259,9 +276,14 @@ class AppTheme {
     const base = TextStyle(
       height: AppDimens.lineHeightNormal,
       fontFamily: 'Cairo',
+      fontFamilyFallback: kArabicScriptFallback,
     );
     // العناوين تستخدم Tajawal بخط أثقل — تطابق الهوية الجديدة.
-    const heading = TextStyle(fontFamily: 'Tajawal', letterSpacing: -0.3);
+    const heading = TextStyle(
+      fontFamily: 'Tajawal',
+      letterSpacing: -0.3,
+      fontFamilyFallback: kArabicScriptFallback,
+    );
     return TextTheme(
       headlineLarge: base
           .copyWith(fontSize: 32, fontWeight: AppDimens.weightBlack)

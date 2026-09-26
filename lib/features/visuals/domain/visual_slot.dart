@@ -1,73 +1,83 @@
-/// فتحة بصرية كما يرسلها الخادم.
+/// فتحة بصرية كما يرسلها الخادم: مفتاحُ موضعٍ وصورتُه الفعّالة الآن.
 ///
-/// «الفتحة» دورٌ في الواجهة لا موضعٌ بعينه: «الحالة الفارغة للسلة» فتحة
-/// واحدة مهما تعدّدت الشاشات التي تعرضها. المفتاح عقدٌ ثابت بين الخادم
-/// وكود التطبيق — يُكتب حرفياً في [VisualSlots].
+/// [PRODUCT] موضعٌ واحد = فتحةٌ واحدة = صورةٌ فعّالة واحدة (قرار 2026-09-20،
+/// الهجرتان ٠٥٤ و٠٥٥). لا تدوير ولا قائمة صور: الخادم يرسل صورةً واحدة
+/// للفتحة أو لا يرسل الفتحة أصلاً — وعندها يُعرض الأصل المضمَّن.
+///
+/// للموضع في اللوحة صورةٌ دائمة وقد تُوضع فوقها صورةٌ **مؤقّتة** إلى لحظة؛
+/// الحكم بينهما على الخادم وحده بساعته، فلا يعرف التطبيق أيّهما وصلته —
+/// ولا يحتاج. حين تنتهي المؤقّتة يعيد الخادم الدائمة في الردّ التالي،
+/// ويجدول [VisualsRepository] ذلك الردّ لحظةَ الانتهاء نفسها.
 class VisualSlot {
-  const VisualSlot({
-    required this.slotKey,
-    required this.currentUrl,
-    this.urls = const [],
-    this.rotationMode = 'fixed',
-    this.validUntil,
-  });
+  const VisualSlot({required this.slotKey, required this.currentUrl});
 
   final String slotKey;
 
-  /// الرابط الذي **اختاره الخادم** للعرض الآن.
+  /// الصورة الفعّالة للفتحة كما حسمها الخادم (مرجع نسبي أو رابط مطلق).
   ///
-  /// الاختيار على الخادم لا في التطبيق: لو اختار التطبيق لتبدّلت الشخصية
-  /// مع كل إعادة بناء لعنصر الواجهة، ولاختلفت بين جهازين بحسب ساعتيهما.
+  /// الاسم على السلك بقي `currentUrl` كي تقرأه إصدارات التطبيق المنشورة؛
+  /// معناه اليوم: الصورة الوحيدة المعروضة الآن، لا «المختارة» من قائمة.
   final String currentUrl;
 
-  /// كل الروابط النشطة — للتحميل المسبق فقط، لا للاختيار.
-  final List<String> urls;
-
-  final String rotationMode;
-
-  /// متى يتبدّل الاختيار (تدوير يومي)، أو null للثابت.
-  final DateTime? validUntil;
-
-  factory VisualSlot.fromJson(Map<String, dynamic> json) {
-    final raw = json['validUntil'] as String?;
-    return VisualSlot(
-      slotKey: json['slotKey']?.toString() ?? '',
-      currentUrl: json['currentUrl']?.toString() ?? '',
-      urls: (json['urls'] as List? ?? const [])
-          .map((e) => e?.toString() ?? '')
-          .where((e) => e.isNotEmpty)
-          .toList(),
-      rotationMode: json['rotationMode']?.toString() ?? 'fixed',
-      validUntil: raw == null ? null : DateTime.tryParse(raw),
-    );
-  }
+  factory VisualSlot.fromJson(Map<String, dynamic> json) => VisualSlot(
+    slotKey: json['slotKey']?.toString() ?? '',
+    currentUrl: json['currentUrl']?.toString() ?? '',
+  );
 }
 
 /// مفاتيح الفتحات التي يعرفها التطبيق.
 ///
 /// [CRITICAL] هذه ثوابت لا إعدادات: كل مفتاح هنا يجب أن يطابق `slot_key` في
-/// القاعدة حرفياً (تزرعها الهجرة ٠٢٩). مفتاح لا يقابله صفّ لا يكسر شيئاً —
-/// تُعتبر الفتحة غير مضبوطة ويُعرض الأصل المضمَّن.
+/// القاعدة حرفياً (تزرعها الهجرات ٠٢٩ و٠٥٤ و٠٥٥). مفتاح لا يقابله صفّ لا يكسر
+/// شيئاً — تُعتبر الفتحة غير مضبوطة ويُعرض الأصل المضمَّن.
 ///
-/// التجزئة: **فتحة لكل موضع** يريد صاحب المتجر تغييره وحده. «شخصية تسجيل
-/// الدخول» و«شخصية إنشاء الحساب» شاشتان مختلفتان عنده وإن تشابه الرسم.
-/// الاستثناءان الوحيدان موضعان مشتركان في الكود نفسه لا في التصميم:
-/// [authCta] (لوحة واحدة في `AuthScaffold` تخدم شاشات المصادقة الأربع)،
-/// و[guestPrompt] (قيمة افتراضية واحدة تخدم السلة والمفضلة).
+/// **الفتحة موضعٌ لا شخصية.** الشخصية نفسها قد تظهر في شاشتين، لكن لكل
+/// موضعٍ مفتاحُه المستقل، فلا يبدّل المسؤول صورةَ شاشةٍ فتتبدّل أخرى. لذلك:
+/// كل ثابت هنا يستهلكه **ملفٌ واحد** في `lib/` (يحرسه
+/// `test/visual_slot_contract_test.dart` و`tests/visual-catalogue.test.ts`)،
+/// ولا يجوز لمكوّنٍ مشترك في `core/design_system` أن يحمل مفتاحاً افتراضياً —
+/// الشاشةُ هي التي تمرّر مفتاحها. الفتحات التي كانت مشتركة (`register`،
+/// `forgot_password`، `auth_cta`، `guest_prompt`) جُزّئت بالهجرة ٠٥٤
+/// ومفاتيحها القديمة متقاعدة لا تعود.
 ///
-/// المستبعَدة عمداً — لا مفاتيح لها ولا صفوف: شعار المتجر، رسوم شاشة
-/// البداية، ورسم شاشة انقطاع الاتصال. ثلاثتها تُعرض قبل وجود شبكة أو
-/// أثناء غيابها، فربطها بالخادم يعني شاشةً فارغة في أسوأ لحظة ممكنة.
+/// الاستثناء الوحيد لـ«سطرٍ واحد لكل ثابت»: موضعٌ واحد يُبنى من سطرين في
+/// الملف نفسه — البنر الرئيسي (بديلُ فشل صورة البنر، ولا بنر)، وبطاقة الترويج
+/// الأولى وبطاقات ما بعدها (بنراتٌ مُدارة، أو البطاقات الافتراضية). البطاقات
+/// من الثانية فصاعداً موضعٌ واحد متكرّر لعددٍ يقرّره المسؤول؛ صورةُ بطاقةٍ
+/// بعينها هي صورة بنرها لا فتحة.
+///
+/// [CRITICAL] ثابتٌ لا يستهلكه أي `ManagedArtwork` في `lib/` هو فتحة ميتة:
+/// تبقى في اللوحة يرفع إليها المسؤول صورةً لا تظهر عند أحد. حين تُحذف
+/// شاشة يُحذف مفتاحها من هنا **ومن القاعدة بهجرة** (كما في ٠٣١ و٠٤٩).
+///
+/// المستبعَدة عمداً — لا مفاتيح لها ولا صفوف: شعار المتجر، ورسوم شاشة
+/// البداية وشاشة التحديث الإلزامي. ثلاثتها تُعرض قبل أن يُسمح للتطبيق
+/// بالاتصال أصلاً، فربطها بالخادم يعني شاشةً فارغة في أسوأ لحظة ممكنة.
+/// (شاشة انقطاع الاتصال فتحةٌ منذ الهجرة ٠٥٥: صورتها تُقرأ من ذاكرة القرص
+/// التي يملؤها الإقلاع، والمضمَّن بديلُها كأي فتحة — فلا تفرغ بلا شبكة.)
+/// وأيقونات التواصل (تيك توك، إنستغرام، واتساب) أصولٌ ثابتة بقرار منتج
+/// (2026-09-15): كانت فتحاتٍ (`social_*`، الهجرة ٠٣٢) وأُسقطت بالهجرة ٠٥٣؛
+/// الرابط وحده يُدار من إعدادات المتجر.
 class VisualSlots {
   VisualSlots._();
 
   // ── المصادقة ──
+  /// شاشة تسجيل الدخول — الترويسة.
   static const String login = 'login_character';
-  static const String register = 'register_character';
-  static const String otp = 'otp_character';
-  static const String forgotPassword = 'forgot_password_character';
-  static const String authCta = 'auth_cta_character';
-  static const String guestPrompt = 'guest_prompt_character';
+  /// شاشة تسجيل الدخول — زاوية بطاقة النموذج فوق زر الإجراء.
+  static const String loginCta = 'login_cta_character';
+  /// شاشة إنشاء الحساب — الترويسة.
+  static const String registerHeader = 'register_header_character';
+  /// شاشة إنشاء الحساب — زاوية بطاقة النموذج.
+  static const String registerCta = 'register_cta_character';
+  /// شاشة «بانتظار الموافقة» بعد إرسال طلب إنشاء الحساب.
+  static const String registerPending = 'register_pending_character';
+  /// شاشة استعادة كلمة المرور — الترويسة.
+  static const String forgotPasswordHeader = 'forgot_password_header_character';
+  /// شاشة استعادة كلمة المرور — زاوية بطاقة النموذج.
+  static const String forgotPasswordCta = 'forgot_password_cta_character';
+  /// شاشة «بانتظار الموافقة» بعد إرسال طلب استعادة كلمة المرور.
+  static const String forgotPasswordPending = 'forgot_password_pending_character';
 
   // ── الرئيسية ──
   static const String homeHero = 'home_hero_character';
@@ -77,11 +87,16 @@ class VisualSlots {
 
   // ── التسوّق ──
   static const String emptyCart = 'empty_cart_character';
+  /// تبويب السلة — بطاقة دعوة الزائر لتسجيل الدخول.
+  static const String cartGuestPrompt = 'cart_guest_prompt_character';
   static const String cartCheckout = 'cart_checkout_character';
   static const String emptyFavorites = 'empty_favorites_character';
+  /// تبويب المفضلة — بطاقة دعوة الزائر لتسجيل الدخول.
+  static const String favoritesGuestPrompt = 'favorites_guest_prompt_character';
   static const String categoriesHeader = 'categories_header_character';
-  static const String emptyCategories = 'empty_categories_character';
+  /// شاشة منتجات القسم — حين لا منتجات في القسم كلّه (الترويسة نفسها بلا رسم).
   static const String categoryProductsHeader = 'category_products_header_character';
+  /// شاشة منتجات القسم — حين لا منتجات في القسم الفرعي المختار.
   static const String emptyCategoryProducts = 'empty_category_products_character';
   static const String productDetail = 'product_detail_character';
   static const String productDetailReviews = 'product_detail_reviews_character';
@@ -109,19 +124,11 @@ class VisualSlots {
   static const String reviewSubmitted = 'review_submitted_character';
 
   // ── المجموعات ──
+  /// المفضلة ← تبويب «مجموعاتي» — حين لا مجموعات بعد.
   static const String collectionsTab = 'collections_tab_character';
-  static const String emptyCollection = 'empty_collection_character';
 
   // ── الحساب والإشعارات ──
-  static const String account = 'account_character';
   static const String notificationsHeader = 'notifications_header_character';
-
-  // ── أيقونات التواصل ──
-  // ليست شخصيات، لكنها صور واجهة يديرها المسؤول: لا شعار مضمَّن في الحزمة
-  // (علامات تجارية)، ولا حزمة أيقونات مرخَّصة في المشروع تحملها.
-  static const String socialTiktok = 'social_tiktok';
-  static const String socialInstagram = 'social_instagram';
-  static const String socialWhatsapp = 'social_whatsapp';
 
   // ── الترحيب والتخصيص ──
   static const String onboardingSlideOne = 'onboarding_slide_one_character';
@@ -129,23 +136,30 @@ class VisualSlots {
   static const String onboardingSlideThree = 'onboarding_slide_three_character';
   static const String personalize = 'personalize_character';
 
+  // ── انقطاع الاتصال ──
+  /// شاشة انقطاع الاتصال — الرسم أعلى اللوحة (تُقرأ من ذاكرة القرص).
+  static const String offlineGate = 'offline_gate_character';
+
   /// كل المفاتيح — تستعملها الاختبارات للتحقق من مطابقة الفهرس.
   static const List<String> all = [
     login,
-    register,
-    otp,
-    forgotPassword,
-    authCta,
-    guestPrompt,
+    loginCta,
+    registerHeader,
+    registerCta,
+    registerPending,
+    forgotPasswordHeader,
+    forgotPasswordCta,
+    forgotPasswordPending,
     homeHero,
     homePromoPrimary,
     homePromoSecondary,
     homeDelivery,
     emptyCart,
+    cartGuestPrompt,
     cartCheckout,
     emptyFavorites,
+    favoritesGuestPrompt,
     categoriesHeader,
-    emptyCategories,
     categoryProductsHeader,
     emptyCategoryProducts,
     productDetail,
@@ -165,15 +179,11 @@ class VisualSlots {
     rateOrder,
     reviewSubmitted,
     collectionsTab,
-    emptyCollection,
-    account,
     notificationsHeader,
-    socialTiktok,
-    socialInstagram,
-    socialWhatsapp,
     onboardingSlideOne,
     onboardingSlideTwo,
     onboardingSlideThree,
     personalize,
+    offlineGate,
   ];
 }

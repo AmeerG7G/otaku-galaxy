@@ -1,8 +1,12 @@
 import type pg from 'pg';
+import { GALAXY_LEVELS } from '../domain/galaxyPoints.js';
+import { DEFAULT_LOCALE, isAppLocale, type AppLocale } from '../utils/locale.js';
 import type { Gender, PublicUser, Role } from '../types/index.js';
 import { phoneSearchFragment } from '../utils/phone.js';
 
 export interface UserRow {
+  /** لغة المخاطبة المختارة (هجرة ٠٤٦) — `ar` افتراضاً لكل حساب قائم. */
+  preferred_language: string;
   id: string;
   username: string;
   phone: string;
@@ -28,6 +32,9 @@ export function toPublicUser(row: UserRow): PublicUser {
     role: row.role,
     gender: row.gender,
     isPhoneVerified: row.phone_verified_at !== null,
+    preferredLanguage: isAppLocale(row.preferred_language)
+      ? row.preferred_language
+      : DEFAULT_LOCALE,
     createdAt: row.created_at.toISOString(),
   };
 }
@@ -130,6 +137,15 @@ export const userRepo = {
     return rows[0] ?? null;
   },
 
+  /** عدّة حسابات بمعرّفاتها في جملة واحدة — لصفحةٍ تعرض صفوفاً لحساباتٍ شتّى. */
+  async findByIds(db: pg.Pool | pg.PoolClient, ids: string[]): Promise<Map<string, UserRow>> {
+    const users = new Map<string, UserRow>();
+    if (ids.length === 0) return users;
+    const { rows } = await db.query<UserRow>('SELECT * FROM users WHERE id = ANY($1::uuid[])', [ids]);
+    for (const row of rows) users.set(row.id, row);
+    return users;
+  },
+
   async create(
     db: pg.Pool | pg.PoolClient,
     input: {
@@ -162,6 +178,7 @@ export const userRepo = {
       username?: string;
       avatarUrl?: string | null;
       gender?: Gender;
+      preferredLanguage?: AppLocale;
       passwordHash?: string;
       isActive?: boolean;
       phoneVerifiedAt?: Date | null;
@@ -174,6 +191,10 @@ export const userRepo = {
     if (input.username !== undefined) {
       values.push(input.username);
       sets.push(`username = $${values.length}`);
+    }
+    if (input.preferredLanguage !== undefined) {
+      values.push(input.preferredLanguage);
+      sets.push(`preferred_language = $${values.length}`);
     }
     if (input.avatarUrl !== undefined) {
       values.push(input.avatarUrl);
@@ -217,18 +238,71 @@ export const userRepo = {
    * للإذن لأنه ثابتٌ لسبعة أيام بينما الإيقاف لحظي. هذا هو الفارق بين
    * «إيقاف الحساب» و«إيقاف الحساب فعلاً».
    */
+  /**
+   * لغة مخاطبة مستخدمٍ بعينه — للإشعارات.
+   *
+   * [CRITICAL] المُرسِل ليس المستلِم: الإدارة تغيّر حالة الطلب، والإشعار
+   * يذهب للزبون. أخذُ اللغة من `req.auth` كان سيرسل للزبون الكرديّ إشعاراً
+   * بلغة المسؤول. تُقرأ من صفّ المستلِم دائماً.
+   */
+  async localeOf(db: pg.Pool | pg.PoolClient, userId: string): Promise<AppLocale> {
+    const { rows } = await db.query<{ preferred_language: string }>(
+      'SELECT preferred_language FROM users WHERE id = $1',
+      [userId],
+    );
+    const value = rows[0]?.preferred_language;
+    return isAppLocale(value) ? value : DEFAULT_LOCALE;
+  },
+
+  /**
+   * تقسيم قائمة مستلِمين حسب لغتهم — للإشعارات الجماعية.
+   *
+   * [CRITICAL] `createMany` يكتب صفّاً واحداً بنصٍّ واحد لكل المستلِمين.
+   * مشتركو منتجٍ واحد قد يكون بعضهم عربياً وبعضهم كردياً، فإرسالٌ واحد كان
+   * سيصل نصفَهم بلغةٍ ليست لغتهم. التقسيم هنا يجعل كل لغةٍ إرسالاً مستقلاً.
+   */
+  async groupIdsByLocale(
+    db: pg.Pool | pg.PoolClient,
+    userIds: string[],
+  ): Promise<Map<AppLocale, string[]>> {
+    const groups = new Map<AppLocale, string[]>();
+    if (userIds.length === 0) return groups;
+    const { rows } = await db.query<{ id: string; preferred_language: string }>(
+      'SELECT id, preferred_language FROM users WHERE id = ANY($1::uuid[])',
+      [userIds],
+    );
+    for (const row of rows) {
+      const locale = isAppLocale(row.preferred_language)
+        ? row.preferred_language
+        : DEFAULT_LOCALE;
+      const bucket = groups.get(locale) ?? [];
+      bucket.push(row.id);
+      groups.set(locale, bucket);
+    }
+    return groups;
+  },
+
   async findAuthState(
     db: pg.Pool | pg.PoolClient,
     id: string,
-  ): Promise<{ id: string; role: Role; phone: string; isActive: boolean; tokenVersion: number } | null> {
+  ): Promise<{
+    id: string;
+    role: Role;
+    phone: string;
+    isActive: boolean;
+    tokenVersion: number;
+    locale: AppLocale;
+  } | null> {
     const { rows } = await db.query<{
       id: string;
       role: Role;
       phone: string;
       is_active: boolean;
       token_version: number;
+      preferred_language: string;
     }>(
-      'SELECT id, role, phone, is_active, token_version FROM users WHERE id = $1',
+      `SELECT id, role, phone, is_active, token_version, preferred_language
+         FROM users WHERE id = $1`,
       [id],
     );
     const row = rows[0];
@@ -239,6 +313,7 @@ export const userRepo = {
       phone: row.phone,
       isActive: row.is_active,
       tokenVersion: row.token_version,
+      locale: isAppLocale(row.preferred_language) ? row.preferred_language : DEFAULT_LOCALE,
     };
   },
 
@@ -456,6 +531,8 @@ export const userRepo = {
        * لا في المتجر كله — رقمٌ يبدو جواباً وهو ليس كذلك.
        */
       gender?: Gender | 'unknown';
+      /** ترشيح بمستوى المجرّة — مدى نقاطٍ من السلّم الثابت. */
+      levelKey?: string;
       sort?: CustomerSort;
     },
   ) {
@@ -475,15 +552,32 @@ export const userRepo = {
       // المخزَّن — فيبقى البحث بالصيغة القديمة صالحاً بعد التحويل.
       const fragment = phoneSearchFragment(options.search);
       const like = push(`%${options.search}%`);
+      // معرّف الحساب أيضاً: المسؤول يلصق معرّفاً من طلبٍ أو تذكرة دعم فيجد
+      // صاحبه. مطابقةٌ من البداية (بادئة) لا احتواء — المعرّف ليس اسماً.
+      const idLike = push(`${options.search.trim().toLowerCase()}%`);
       if (fragment) {
         const digitsLike = push(`%${fragment}%`);
-        conditions.push(`(u.username ILIKE ${like} OR u.phone ILIKE ${digitsLike})`);
+        conditions.push(
+          `(u.username ILIKE ${like} OR u.phone ILIKE ${digitsLike} OR u.id::text LIKE ${idLike})`,
+        );
       } else {
-        conditions.push(`(u.username ILIKE ${like} OR u.phone ILIKE ${like})`);
+        conditions.push(
+          `(u.username ILIKE ${like} OR u.phone ILIKE ${like} OR u.id::text LIKE ${idLike})`,
+        );
       }
     }
     if (options.isActive !== undefined) {
       conditions.push(`u.is_active = ${push(options.isActive)}`);
+    }
+    if (options.levelKey !== undefined) {
+      // المستوى مشتقٌّ من الرصيد لا عمودٌ: المدى [عتبة المستوى، عتبة التالي).
+      const index = GALAXY_LEVELS.findIndex((l) => l.key === options.levelKey);
+      if (index >= 0) {
+        const floor = GALAXY_LEVELS[index]!.requiredPoints;
+        const next = GALAXY_LEVELS[index + 1];
+        conditions.push(`${POINTS_BALANCE} >= ${push(floor)}`);
+        if (next) conditions.push(`${POINTS_BALANCE} < ${push(next.requiredPoints)}`);
+      }
     }
     if (options.hasBirthday !== undefined) {
       conditions.push(`u.birth_day IS ${options.hasBirthday ? 'NOT NULL' : 'NULL'}`);

@@ -28,7 +28,6 @@ import 'package:otaku_galaxy/features/products/domain/repositories/product_repos
 /// ضد الخادم المحلي. يُتخطى تلقائياً إذا كان الخادم متوقفاً.
 void main() {
   const base = 'http://localhost:4000/api';
-  const otp = '123456';
 
   late ApiClient api;
   late AuthRepository auth;
@@ -67,13 +66,29 @@ void main() {
     orders = OrderRepositoryImpl(api: api);
 
     try {
-      await auth.register(
+      final receipt = await auth.register(
         username: 'فحص تكاملي',
         phone: phone,
         password: password,
         gender: 'male',
       );
-      await auth.verifyOtp(phone, otp);
+      // لا رمز: الحساب يُفعَّل بموافقة الإدارة عبر المسار الإداري الحقيقي.
+      // بلا مسؤولٍ مزروع لا يمكن تفعيل أي حساب، فتُتخطّى السويت كلّها —
+      // وهذا هو السلوك المطلوب لا عيباً في الاختبار.
+      final adminApi = ApiClient(dio: Dio(BaseOptions(baseUrl: base)));
+      final AuthSession adminSession;
+      try {
+        adminSession = await AuthRepositoryImpl(api: adminApi)
+            .login('07700000000', 'admin123');
+      } on AppException catch (e) {
+        markTestSkipped(
+          'لا مسؤول مزروع في قاعدة التطوير (${e.message}) — '
+          'شغّل db:seed مع SEED_ADMIN_PHONE و SEED_ADMIN_PASSWORD',
+        );
+        return;
+      }
+      adminApi.tokenProvider = () => adminSession.token;
+      await adminApi.post('/admin/account-requests/${receipt.id}/approve');
       final session = await auth.login(phone, password);
       api.tokenProvider = () => session.token;
     } catch (e) {

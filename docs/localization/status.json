@@ -1,0 +1,51 @@
+{
+ "locale": "ckb",
+ "locale_name": "Central Kurdish (Sorani)",
+ "production_status": "PROVISIONALLY_ACCEPTED_FOR_PRODUCTION",
+ "native_review_status": "PENDING_NO_HUMAN_NATIVE_REVIEW_PERFORMED",
+ "native_approved_count": 0,
+ "needs_native_review_count": 523,
+ "total_strings": 523,
+ "accepted_on": "2026-09-08",
+ "accepted_by": "product decision — not a linguistic decision",
+ "reason": "Current Kurdish user base is small; localization is being shipped provisionally and will be refined through future native review and user feedback.",
+ "what_this_status_means": [
+  "The Kurdish corpus is technically complete and passes every automated guarantee.",
+  "It is acceptable to ship at the current product stage.",
+  "Native linguistic review remains an open, optional quality-improvement task."
+ ],
+ "what_this_status_does_NOT_mean": [
+  "It is NOT native approval.",
+  "No Sorani speaker has read any of these 523 strings.",
+  "native_approved_count is 0 and must stay 0 until a named human reviewer approves keys individually in review-queue.json."
+ ],
+ "review_queue": "docs/localization/review-queue.json",
+ "style_lock": "docs/localization/sorani-style-lock.md",
+ "future_review_priority": [
+  {
+   "priority": "HIGH",
+   "count": 119,
+   "scope": "checkout and delivery, errors, order statuses, loyalty and rewards, login gates, long sentences, strings mirroring backend notification text"
+  },
+  {
+   "priority": "MEDIUM",
+   "count": 249,
+   "scope": "product UI, settings, account, search and filters, counters"
+  },
+  {
+   "priority": "LOW",
+   "count": 155,
+   "scope": "generic labels, navigation, short buttons"
+  }
+ ],
+ "known_followups": [
+  "rewardClaimedDiscount — backend notification says خاڵەکەت (point) where the glossary locks خەڵات (reward); backend-side fix, out of scope here",
+  "promoBadge — داشکاندن is shown precisely when no discount percentage exists; alternative تایبەت needs a product/glossary decision covering the offers section title too",
+  "cancel — پاشگەزبوونەوە is glossary-locked and passes the responsive matrix; shorter وازهێنان only if a real usability problem is demonstrated",
+  "genderPickerNote — the note promises gendered address that Sorani does not inflect; product decision, no artificial Kurdish gender variants invented",
+  "search chips — chip text doubles as the search query; Kurdish matching depends on backend name_ckb and cannot be verified locally, needs integration QA",
+  "genderMale/genderFemale — نێر/مێ are option nouns and must stay distinct (a picker with two identical labels is unusable); conjugated address stays one Kurdish form. Native reviewer to confirm مێ vs مێینە for a formal UI.",
+  "2026-09-12 audit — Kurdish now also flows through: backend error messages (domain/errorMessages.ts, ~80), the 7 loyalty level names, category/subcategory/option/governorate/zone/product content (migration 047 + seed). All AI-drafted, none native-reviewed; they live outside review-queue.json and need the same review pass.",
+  "2026-09-12 admin-managed accounts — 18 keys for the registration/forgot-password request flow (account_pending_screen, forgot_password_screen). The OTP-era keys sendCodeShort/enterPhoneForReset/… stay in the corpus unused until a cleanup pass; the screens that used them are in legacy/otp/."
+ ]
+}

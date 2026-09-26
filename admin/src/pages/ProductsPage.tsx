@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -5,6 +6,7 @@ import {
   App,
   Button,
   Card,
+  Input,
   Space,
   Table,
   Tag,
@@ -14,6 +16,7 @@ import {
   EditOutlined,
   PlusOutlined,
   ReloadOutlined,
+  SearchOutlined,
   StarFilled,
 } from '@ant-design/icons'
 import { deleteProduct, listProducts } from '../api/productsApi'
@@ -28,6 +31,9 @@ import { useTableState } from '../hooks/useTableState'
 
 const PAGE_LIMIT = 12
 
+/** مهلة سكون الكتابة قبل إرسال البحث — نفس إيقاع صفحة العملاء. */
+const SEARCH_DEBOUNCE_MS = 350
+
 export default function ProductsPage() {
   const navigate = useNavigate()
   const { message, modal } = App.useApp()
@@ -39,12 +45,52 @@ export default function ProductsPage() {
   const categoryId = value('categoryId')
   const subcategoryId = value('subcategoryId')
 
+  // البحث بالاسم: يُكتب محلياً، ويُدفع إلى الرابط (`q`) بعد سكون الكتابة،
+  // ويعود بالقائمة إلى صفحتها الأولى — البقاء على الصفحة الخامسة بعد تضييق
+  // النتائج يعرض جدولاً فارغاً بلا سبب ظاهر. البحث نفسه على الخادم.
+  //
+  // [CRITICAL] الرابط مصدرُ الحقيقة للبحث المُثبَت. `q` قد يتغيّر من خارج
+  // الحقل — رجوع/تقدّم المتصفّح، رابط قسم، «عرض كل المنتجات» — وكان الحقل
+  // يحتفظ بقيمته ثم تدفعها مهلةُ السكون إلى الرابط من جديد، فيعود بحثٌ قديم
+  // يطمس ما اختاره المسؤول للتوّ. `lastPushed` يميّز صدى دفعتنا (يُتجاهَل،
+  // فلا تُقاطَع الكتابة) عن تغيّرٍ خارجي (يُنسخ إلى الحقل).
+  const search = value('q') ?? ''
+  const [searchInput, setSearchInput] = useState(search)
+  const lastPushed = useRef(search)
+
+  useEffect(() => {
+    if (search === lastPushed.current) return
+    lastPushed.current = search
+    setSearchInput(search)
+  }, [search])
+
+  useEffect(() => {
+    const next = searchInput.trim()
+    if (next === search) return
+    const timer = setTimeout(() => {
+      lastPushed.current = next
+      // الصيغة الوظيفية تقرأ أحدث معاملات الرابط لحظةَ الدفع لا لحظةَ
+      // الجدولة — فلا تُلتقط نسخةٌ قديمة ولا حاجة لإدراجها في الاعتماديات.
+      setSearchParams((current) => {
+        const nextParams = new URLSearchParams(current)
+        if (next === '') nextParams.delete('q')
+        else nextParams.set('q', next)
+        nextParams.set('page', '1')
+        return nextParams
+      })
+    }, SEARCH_DEBOUNCE_MS)
+    // تغيّرُ `search` من الخارج أثناء السكون يُلغي المؤقّت هنا، ويُعيد
+    // الأثرُ الأول ضبطَ الحقل — فلا تصل الدفعة العالقة إلى الرابط أبداً.
+    return () => clearTimeout(timer)
+  }, [searchInput, search, setSearchParams])
+
   const productsQuery = useQuery({
-    queryKey: ['products', { page, categoryId, subcategoryId }],
+    queryKey: ['products', { page, categoryId, subcategoryId, q: search }],
     queryFn: () =>
       listProducts({
         page,
         limit: PAGE_LIMIT,
+        ...(search ? { q: search } : {}),
         ...(categoryId ? { categoryId } : {}),
         ...(subcategoryId ? { subcategoryId } : {}),
       }),
@@ -246,6 +292,15 @@ export default function ProductsPage() {
       />
 
       <Card>
+        <Input
+          allowClear
+          prefix={<SearchOutlined />}
+          placeholder="ابحث باسم المنتج"
+          aria-label="بحث المنتجات بالاسم"
+          value={searchInput}
+          onChange={(event) => setSearchInput(event.target.value)}
+          style={{ maxWidth: 360, marginBottom: 16 }}
+        />
         {productsQuery.isError ? (
           <Alert
             type="error"
@@ -267,11 +322,15 @@ export default function ProductsPage() {
             scroll={{ x: 1300 }}
             locale={{
               emptyText: (
-                <EmptyState
-                  description="لا توجد منتجات حالياً"
-                  actionLabel="إضافة أول منتج"
-                  onAction={() => navigate('/products/new')}
-                />
+                search ? (
+                  <EmptyState description={`لا منتج يطابق «${search}»`} />
+                ) : (
+                  <EmptyState
+                    description="لا توجد منتجات حالياً"
+                    actionLabel="إضافة أول منتج"
+                    onAction={() => navigate('/products/new')}
+                  />
+                )
               ),
             }}
             pagination={{

@@ -6,7 +6,8 @@ import { api, createAdminUser, registerAndLogin, seedTestCatalog } from './helpe
  * اختبارات سلامة البيانات (Data Integrity Regressions):
  * 1) PATCH المنتج: الحقول الغائبة (صور/خيارات/وصف/عروض) يجب ألا تُمسح،
  *    والمصفوفة الفارغة الصريحة تُطبَّق كما هي.
- * 2) رفض الطلب (إدارة أو إلغاء عميل): المخزون يُسترد مرة واحدة فقط.
+ * 2) دورة المخزون: الإرسال ورفضُ المنتظر لا يمسّانه، والقبول يستهلكه مرة
+ *    واحدة، ورفضُ ما قُبل يُرجعه مرة واحدة.
  */
 
 describe('admin product PATCH integrity', () => {
@@ -136,7 +137,7 @@ describe('admin product PATCH integrity', () => {
   });
 });
 
-describe('order rejection stock integrity', () => {
+describe('order stock lifecycle — consumed at approval only', () => {
   let adminToken: string;
   let governorateId: string;
   let rejectProductId: string;
@@ -182,10 +183,15 @@ describe('order rejection stock integrity', () => {
     return { orderId: order.body.data.id as string, token };
   }
 
-  it('admin rejection restores stock exactly once (idempotent retry)', async () => {
+  /**
+   * [CONTRACT 2026-09-14] كان هذا الاختبار «الرفض يُرجع المخزون مرة واحدة»
+   * لأن الإرسال كان ينزّله. صار الإرسال بلا أثر على المخزون، فالرفض بلا
+   * استرجاع — والاختبار يثبت الغياب لا الاسترجاع.
+   */
+  it('submission leaves stock untouched; rejection (and its retry) changes nothing', async () => {
     const before = await stockOf(rejectProductId!);
     const { orderId } = await placeOrder(rejectProductId!, 2);
-    expect(await stockOf(rejectProductId!)).toBe(before - 2);
+    expect(await stockOf(rejectProductId!)).toBe(before);
 
     const rejected = await api
       .patch(`/api/admin/orders/${orderId}/status`)
@@ -204,12 +210,12 @@ describe('order rejection stock integrity', () => {
     expect(await stockOf(rejectProductId!)).toBe(before);
   });
 
-  it('non-rejection transitions do not touch stock, rejection restores once', async () => {
+  it('approval consumes stock exactly once; a later rejection restores it once', async () => {
     const before = await stockOf(rejectProductId!);
     const { orderId } = await placeOrder(rejectProductId!, 1);
-    expect(await stockOf(rejectProductId!)).toBe(before - 1);
+    expect(await stockOf(rejectProductId!)).toBe(before);
 
-    // الموافقة تنقل مباشرةً إلى «قيد التوصيل» — لا مرحلة تجهيز — دون لمس المخزون.
+    // الموافقة تنقل مباشرةً إلى «قيد التوصيل» — وهنا وحده يُستهلك المخزون.
     await api
       .patch(`/api/admin/orders/${orderId}/status`)
       .set('Authorization', `Bearer ${adminToken}`)
@@ -217,6 +223,23 @@ describe('order rejection stock integrity', () => {
       .expect(200);
     expect(await stockOf(rejectProductId!)).toBe(before - 1);
 
+    // تكرار القبول لا ينزّل ثانيةً.
+    await api
+      .patch(`/api/admin/orders/${orderId}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'OUT_FOR_DELIVERY' })
+      .expect(200);
+    expect(await stockOf(rejectProductId!)).toBe(before - 1);
+
+    // رفضُ طلبٍ مقبول يُرجع ما استُهلك عند القبول — القاعدة القائمة.
+    await api
+      .patch(`/api/admin/orders/${orderId}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'REJECTED', note: 'نفد المخزون' })
+      .expect(200);
+    expect(await stockOf(rejectProductId!)).toBe(before);
+
+    // وتكرار الرفض لا يُرجع ثانيةً.
     await api
       .patch(`/api/admin/orders/${orderId}/status`)
       .set('Authorization', `Bearer ${adminToken}`)
@@ -235,22 +258,35 @@ describe('order rejection stock integrity', () => {
     expect(response.status).toBe(400);
   });
 
-  it('customer cancellation restores stock atomically, second cancel refused', async () => {
+  /**
+   * [PRODUCT] الإلغاء صلاحية إدارة لا عميل.
+   *
+   * لا يكفي أن يردّ المسار 404: يُقاس المخزون والحالة بعد المحاولة أيضاً —
+   * الطلب يبقى منتظراً، ولا بابَ خلفياً يُغيّر شيئاً بطلبٍ من العميل.
+   */
+  it('[PRODUCT] العميل لا يملك إلغاء — والطلب يبقى منتظراً', async () => {
     const before = await stockOf(cancelProductId!);
     const { orderId, token } = await placeOrder(cancelProductId!, 2);
-    expect(await stockOf(cancelProductId!)).toBe(before - 2);
-
-    const cancelled = await api
-      .post(`/api/orders/${orderId}/cancel`)
-      .set('Authorization', `Bearer ${token}`);
-    expect(cancelled.status).toBe(200);
-    expect(cancelled.body.data.status).toBe('REJECTED');
     expect(await stockOf(cancelProductId!)).toBe(before);
 
-    const second = await api
+    const attempt = await api
       .post(`/api/orders/${orderId}/cancel`)
       .set('Authorization', `Bearer ${token}`);
-    expect(second.status).toBe(409);
+    expect(attempt.status).toBe(404);
+
+    expect(await stockOf(cancelProductId!)).toBe(before);
+    const still = await api
+      .get(`/api/orders/${orderId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(still.body.data.status).toBe('PENDING_ADMIN_CONFIRMATION');
+
+    // وللإدارة وحدها أن ترفضه — بلا أثر على المخزون.
+    const rejected = await api
+      .patch(`/api/admin/orders/${orderId}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'REJECTED', note: 'أُلغي من قبل الإدارة' });
+    expect(rejected.status).toBe(200);
     expect(await stockOf(cancelProductId!)).toBe(before);
   });
 });

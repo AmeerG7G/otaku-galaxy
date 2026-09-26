@@ -15,13 +15,7 @@ import 'package:otaku_galaxy/features/visuals/presentation/managed_artwork.dart'
 
 const _fallback = 'assets/art/opt/a-i0.png';
 
-VisualSlot _slot(String key, String url, {List<String>? urls, String mode = 'fixed'}) =>
-    VisualSlot(
-      slotKey: key,
-      currentUrl: url,
-      urls: urls ?? [url],
-      rotationMode: mode,
-    );
+VisualSlot _slot(String key, String url) => VisualSlot(slotKey: key, currentUrl: url);
 
 Future<void> _pump(WidgetTester tester) async {
   await tester.pumpWidget(
@@ -133,7 +127,9 @@ void main() {
       expect(widget.width, 120);
     });
 
-    testWidgets('الشفافية تُطبَّق على البعيد والمضمَّن معاً', (tester) async {
+    testWidgets('[CRITICAL] لا شفافية على الرسم المُدار — بعيداً كان أو مضمَّناً', (tester) async {
+      // [PRODUCT] قرار 2026-09-15: الشخصية تُعرض كصورتها الأصلية. كان المكوّن
+      // يقبل `opacity` فتبدو الشخصية التي يرفعها المسؤول باهتة.
       for (final seeded in [true, false]) {
         if (seeded) {
           repository.seed({
@@ -144,14 +140,12 @@ void main() {
         }
         await tester.pumpWidget(
           const MaterialApp(
-            home: ManagedArtwork(
-              slot: VisualSlots.emptyCart,
-              fallbackAsset: _fallback,
-              opacity: 0.2,
-            ),
+            home: ManagedArtwork(slot: VisualSlots.emptyCart, fallbackAsset: _fallback),
           ),
         );
-        expect(find.byType(Opacity), findsWidgets);
+        expect(find.byType(Opacity), findsNothing, reason: 'seeded=$seeded');
+        expect(find.byType(ColorFiltered), findsNothing);
+        expect(find.byType(ShaderMask), findsNothing);
       }
     });
   });
@@ -209,50 +203,32 @@ void main() {
   });
 
   group('VisualSlot — عقد الخادم', () {
-    test('يقرأ التدوير الثابت', () {
+    test('يقرأ المفتاح والصورة الثابتة', () {
       final slot = VisualSlot.fromJson(const {
-        'slotKey': 'empty_cart',
+        'slotKey': 'empty_cart_character',
         'currentUrl': '/uploads/a.png',
-        'urls': ['/uploads/a.png', '/uploads/b.png'],
-        'rotationMode': 'fixed',
-        'validUntil': null,
       });
-      expect(slot.rotationMode, 'fixed');
+      expect(slot.slotKey, 'empty_cart_character');
       expect(slot.currentUrl, '/uploads/a.png');
-      expect(slot.urls, hasLength(2));
-      // الثابت بلا انتهاء صلاحية — لا شيء يُنتظر تبدّله.
-      expect(slot.validUntil, isNull);
     });
 
-    test('يقرأ التدوير اليومي ولحظة تبدّله', () {
+    test('حقول التدوير القديمة — إن أرسلها خادمٌ أقدم — تُهمَل بلا أثر', () {
+      // [PRODUCT] لا تدوير ولا قائمة صور (الهجرة ٠٥٤): الصورة واحدة، والتطبيق
+      // لا يختار من قائمة ولا ينتظر «انتهاء صلاحية».
       final slot = VisualSlot.fromJson(const {
-        'slotKey': 'empty_cart',
+        'slotKey': 'empty_cart_character',
         'currentUrl': '/uploads/b.png',
         'urls': ['/uploads/a.png', '/uploads/b.png'],
         'rotationMode': 'daily',
         'validUntil': '2026-09-01T21:00:00.000Z',
       });
-      expect(slot.rotationMode, 'daily');
-      // الاختيار جاء محسوباً من الخادم — التطبيق لا يختار.
       expect(slot.currentUrl, '/uploads/b.png');
-      expect(slot.validUntil, DateTime.parse('2026-09-01T21:00:00.000Z'));
     });
 
     test('حمولة ناقصة لا تُسقط التحليل', () {
       final slot = VisualSlot.fromJson(const {});
       expect(slot.slotKey, '');
       expect(slot.currentUrl, '');
-      expect(slot.urls, isEmpty);
-      expect(slot.validUntil, isNull);
-    });
-
-    test('الروابط الفارغة تُسقَط من القائمة', () {
-      final slot = VisualSlot.fromJson(const {
-        'slotKey': 'k',
-        'currentUrl': '/uploads/a.png',
-        'urls': ['/uploads/a.png', '', null],
-      });
-      expect(slot.urls, ['/uploads/a.png']);
     });
   });
 

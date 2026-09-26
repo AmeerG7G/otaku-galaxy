@@ -21,10 +21,19 @@ const photoUrls = z
   .max(MAX_REVIEW_PHOTOS, `الحد الأقصى ${MAX_REVIEW_PHOTOS} صور للتقييم الواحد`)
   .default([]);
 
+/**
+ * النجوم رقمٌ من ١ إلى ٥ — **بلا إكراه**.
+ *
+ * [CRITICAL] `z.coerce.number()` كان يقبل `true` نجمةً واحدة و`"3"` ثلاثاً:
+ * قيمةٌ منطقية في حقلٍ تجاري تصير تقييماً محفوظاً يُحدّث متوسّط المنتج.
+ * التطبيق يرسل عدداً صحيحاً، وما عداه خطأ إدخال يُرفض لا يُفسَّر.
+ */
+const rating = z.number().int().min(1, 'التقييم من ١ إلى ٥').max(5, 'التقييم من ١ إلى ٥');
+
 export const submitReviewSchema = z.object({
   orderId: z.string().uuid('معرّف طلب غير صالح'),
   productId: z.string().uuid('معرّف منتج غير صالح'),
-  rating: z.coerce.number().int().min(1, 'التقييم من ١ إلى ٥').max(5, 'التقييم من ١ إلى ٥'),
+  rating,
   comment: z.string().trim().max(1000, 'التعليق طويل جداً').default(''),
   photoUrls,
 });
@@ -35,7 +44,7 @@ export const communityPhotosQuerySchema = z.object({
 });
 
 export const resubmitReviewSchema = z.object({
-  rating: z.coerce.number().int().min(1).max(5),
+  rating,
   comment: z.string().trim().max(1000).default(''),
   photoUrls,
 });
@@ -175,9 +184,11 @@ export const audiencePreviewSchema = z.discriminatedUnion('audience', [
 
 // ── عيد الميلاد ──
 
+// بلا إكراه: `true` كان يصير «١ كانون الثاني» — وتاريخ الميلاد يُضبط مرّةً
+// واحدة إلى الأبد، فقيمةٌ مفسَّرة خطأً لا تُصحَّح لاحقاً.
 export const setBirthdaySchema = z.object({
-  day: z.coerce.number().int().min(1, 'يوم غير صالح').max(31, 'يوم غير صالح'),
-  month: z.coerce.number().int().min(1, 'شهر غير صالح').max(12, 'شهر غير صالح'),
+  day: z.number().int().min(1, 'يوم غير صالح').max(31, 'يوم غير صالح'),
+  month: z.number().int().min(1, 'شهر غير صالح').max(12, 'شهر غير صالح'),
 });
 
 // ── الوسائط ──

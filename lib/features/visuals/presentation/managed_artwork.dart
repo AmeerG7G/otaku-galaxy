@@ -23,47 +23,32 @@ class ManagedArtwork extends StatelessWidget {
     this.width,
     this.height,
     this.fit = BoxFit.contain,
-    this.opacity,
-  }) : fallbackWidget = null;
-
-  /// نسخة يكون فيها البديل عنصر واجهة لا أصلاً مضمَّناً.
-  ///
-  /// لبعض المواضع لا يوجد أصل في الحزمة أصلاً — أيقونات التواصل مثلاً،
-  /// حيث البديل أيقونة Material. الضمانة نفسها لا تتغيّر: مسار فشل واحد
-  /// ينتهي دائماً إلى شيء مرئي.
-  const ManagedArtwork.orWidget({
-    super.key,
-    required this.slot,
-    required Widget fallback,
-    this.width,
-    this.height,
-    this.fit = BoxFit.contain,
-    this.opacity,
-  }) : fallbackAsset = null,
-       fallbackWidget = fallback;
+  });
 
   /// مفتاح الفتحة — من `VisualSlots`.
   final String slot;
 
-  /// الرسم المضمَّن الذي يُعرض متى تعذّر البعيد. إلزامي عمداً في المُنشئ
-  /// الأساسي — أحد البديلين موجود دائماً.
-  final String? fallbackAsset;
-
-  /// بديل كعنصر واجهة (انظر [ManagedArtwork.orWidget]).
-  final Widget? fallbackWidget;
+  /// الرسم المضمَّن الذي يُعرض متى تعذّر البعيد. إلزامي عمداً.
+  ///
+  /// (كانت هناك نسخة `orWidget` ببديلٍ من الودجات لأيقونات التواصل؛ صارت
+  /// تلك أصولاً ثابتة فحُذفت النسخة — كل موضعٍ مُدارٍ له أصلٌ مضمَّن.)
+  final String fallbackAsset;
 
   final double? width;
   final double? height;
   final BoxFit fit;
 
-  /// شفافية اختيارية — بعض المواضع تعرض الرسم خلفيةً خافتة.
-  final double? opacity;
+  // [PRODUCT] لا شفافية على رسوم الشخصيات المُدارة (قرار 2026-09-15).
+  // كان المكوّن يقبل `opacity` فيرسم شخصيةً اختارها المسؤول بـ١٦٪ — فتبدو
+  // باهتةً كأن الصورة نفسها معطوبة. الشخصية تُعرض كما صورتها الأصلية؛ ما
+  // كان مقصوداً في المرجع «رسمٌ خلفيّ باهت» كان يقصد الأصل المضمَّن لا صورةً
+  // يرفعها صاحب المتجر. الهالات والظلال حول الرسم ليست هنا ولم تُمسّ.
 
   @override
   Widget build(BuildContext context) {
     // القراءة عند البناء لا في المُنشئ: التسجيل في حاوية الاعتماديات قد
     // يتأخّر في الاختبارات، والعنصر يجب أن يعمل قبله وبعده.
-    if (!sl.isRegistered<VisualsRepository>()) return _wrap(_bundled());
+    if (!sl.isRegistered<VisualsRepository>()) return _bundled();
 
     final repository = sl<VisualsRepository>();
 
@@ -72,21 +57,14 @@ class ManagedArtwork extends StatelessWidget {
       valueListenable: repository.revision,
       builder: (context, _, _) {
         final url = repository.urlFor(slot);
-        return _wrap(url == null ? _bundled() : _remote(url));
+        return url == null ? _bundled() : _remote(url);
       },
     );
   }
 
-  Widget _wrap(Widget child) =>
-      opacity == null ? child : Opacity(opacity: opacity!, child: child);
-
   Widget _bundled() {
-    final widgetFallback = fallbackWidget;
-    if (widgetFallback != null) {
-      return SizedBox(width: width, height: height, child: widgetFallback);
-    }
     return Image.asset(
-      fallbackAsset!,
+      fallbackAsset,
       width: width,
       height: height,
       fit: fit,
@@ -98,14 +76,23 @@ class ManagedArtwork extends StatelessWidget {
 
   Widget _remote(String url) {
     return CachedNetworkImage(
+      // [CRITICAL] مفتاحٌ بالفتحة: عنصرُ صورةٍ يُعاد استعماله لفتحةٍ أخرى في
+      // الموضع نفسه (شاشة الانتظار تبدّل بين التسجيل والاستعادة، وبطاقات
+      // الترويج بين الأولى والثانية) كان سيُبقي إطار الفتحة السابقة معروضاً
+      // حتى تُحلّ صورة الجديدة. بالمفتاح لا تحمل فتحةٌ صورةَ غيرها ولو لإطار.
+      key: ValueKey<String>('managed-artwork:$slot'),
       imageUrl: url,
       width: width,
       height: height,
       fit: fit,
-      // أثناء التحميل يُعرض المضمَّن لا هيكلٌ فارغ: لا وميض، ولا قفزة
-      // تخطيط، ولا لحظة تكون فيها الشاشة ناقصة رسمها.
+      // أثناء التحميل الأول يُعرض المضمَّن لا هيكلٌ فارغ: لا قفزة تخطيط،
+      // ولا لحظة تكون فيها الشاشة ناقصة رسمها. (صورةٌ في ذاكرة الصور —
+      // كما يدفّئها الإقلاع — تُرسم في البناء نفسه فلا يظهر البديل أصلاً.)
       placeholder: (_, _) => _bundled(),
       errorWidget: (_, _, _) => _bundled(),
+      // حين يبدّل المسؤول الصورة ويصل الإعداد الجديد تبقى الصورة الحالية
+      // معروضةً حتى تُحلّ الجديدة — لا رجوعٌ إلى المضمَّن بينهما.
+      useOldImageOnUrlChange: true,
       fadeInDuration: Duration.zero,
       fadeOutDuration: Duration.zero,
     );

@@ -113,27 +113,45 @@ describe('دورة حالة الطلب المبسّطة', () => {
     expect(rows[0]!.body).toContain('خرج للتوصيل');
   });
 
-  it('العميل يلغي قبل القبول والمخزون يُسترجع', async () => {
-    const before = await stockOf(productId);
+  /**
+   * [PRODUCT] الإلغاء ليس ميزةً للعميل.
+   *
+   * كان `POST /api/orders/:id/cancel` موجوداً ومختبَراً، ثم أُزيل بقرار منتج:
+   * الإلغاء صلاحيةُ إدارة. ما يُحرَس هنا **غيابُ المسار** — لا رسالة خطأ
+   * بعينها: 404 من `notFoundHandler` هو الردّ الصحيح لمسارٍ لم يعد يُسجَّل،
+   * و409 كان سيعني أن المسار ما يزال قائماً ويرفض لسببٍ آخر.
+   */
+  it('[PRODUCT] مسار إلغاء العميل غير موجود — قبل القبول وبعده', async () => {
     const { user, orderId } = await placeOrder();
-    expect(await stockOf(productId)).toBe(before - 1);
 
-    const cancelled = await api
-      .post(`/api/orders/${orderId}/cancel`)
-      .set('Authorization', `Bearer ${user.token}`)
-      .expect(200);
-    expect(cancelled.body.data.status).toBe('REJECTED');
-    expect(await stockOf(productId)).toBe(before);
-  });
-
-  it('لا إلغاء بعد خروج الطلب للتوصيل', async () => {
-    const { user, orderId } = await placeOrder();
-    await setStatus(orderId, 'OUT_FOR_DELIVERY').expect(200);
-
-    const refused = await api
+    const beforeAccept = await api
       .post(`/api/orders/${orderId}/cancel`)
       .set('Authorization', `Bearer ${user.token}`);
-    expect(refused.status).toBe(409);
+    expect(beforeAccept.status).toBe(404);
+
+    await setStatus(orderId, 'OUT_FOR_DELIVERY').expect(200);
+
+    const afterDispatch = await api
+      .post(`/api/orders/${orderId}/cancel`)
+      .set('Authorization', `Bearer ${user.token}`);
+    expect(afterDispatch.status).toBe(404);
+  });
+
+  /**
+   * والإلغاء الإداري — رفضٌ بسبب — ما يزال يعمل.
+   *
+   * [CONTRACT 2026-09-14] الإرسال لا ينزّل المخزون (يُستهلك عند القبول
+   * وحده)، فرفضُ طلبٍ منتظر لا يُرجع شيئاً لأن شيئاً لم يُنزَّل.
+   */
+  it('الإدارة ترفض قبل القبول — المخزون لم يُمسّ أصلاً ولا يتغيّر', async () => {
+    const before = await stockOf(productId);
+    const { orderId } = await placeOrder();
+    expect(await stockOf(productId)).toBe(before);
+
+    const rejected = await setStatus(orderId, 'REJECTED', 'أُلغي من قبل الإدارة');
+    expect(rejected.status).toBe(200);
+    expect(rejected.body.data.status).toBe('REJECTED');
+    expect(await stockOf(productId)).toBe(before);
   });
 
   /**
@@ -165,19 +183,27 @@ describe('دورة حالة الطلب المبسّطة', () => {
     expect(Number(rows[0]!.total)).toBe(1);
   });
 
-  it('الرفض يشترط سبباً ويسترجع المخزون — من الانتظار أو قيد التوصيل', async () => {
+  /**
+   * الرفض يشترط سبباً. أثره على المخزون يتبع ما استُهلك فعلاً:
+   * - من الانتظار: لا شيء نُزِّل فلا شيء يُرجَع.
+   * - من قيد التوصيل: القبول نزّل المخزون، فالرفض (لم يستلم العميل)
+   *   يُعيد البضاعة إلى الرفّ — القاعدة القائمة قبل نقل التنزيل إلى القبول.
+   */
+  it('الرفض يشترط سبباً — لا أثر من الانتظار، واسترجاعٌ من قيد التوصيل', async () => {
     const before = await stockOf(productId);
 
-    // رفضاً من الانتظار.
+    // رفضاً من الانتظار: المخزون لم يُمسّ بالإرسال ولا بالرفض.
     const { orderId: pendingOrder } = await placeOrder();
+    expect(await stockOf(productId)).toBe(before);
     const noReason = await setStatus(pendingOrder, 'REJECTED');
     expect(noReason.status).toBe(400);
-    expect(await stockOf(productId)).toBe(before - 1);
+    expect(await stockOf(productId)).toBe(before);
     await setStatus(pendingOrder, 'REJECTED', 'نفد المخزون').expect(200);
     expect(await stockOf(productId)).toBe(before);
 
-    // رفضاً من بعد خروج الطلب للتوصيل.
+    // رفضاً من بعد خروج الطلب للتوصيل: القبول استهلك، والرفض يُرجع.
     const { orderId: shippedOrder } = await placeOrder();
+    expect(await stockOf(productId)).toBe(before);
     await setStatus(shippedOrder, 'OUT_FOR_DELIVERY').expect(200);
     expect(await stockOf(productId)).toBe(before - 1);
     await setStatus(shippedOrder, 'REJECTED', 'العميل لم يستلم').expect(200);

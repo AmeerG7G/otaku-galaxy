@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../../l10n/gender.dart';
+import '../../../l10n/app_strings.dart';
 
 import '../../tokens/app_breakpoints.dart';
 import '../../tokens/app_dimens.dart';
@@ -110,7 +112,7 @@ class _LoginGateSheet extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                title ?? 'سجّل دخولك أولاً',
+                                title ?? context.g(GenderedStrings.loginFirst),
                                 style: Theme.of(context).textTheme.titleMedium
                                     ?.copyWith(
                                       fontSize: 19,
@@ -120,7 +122,7 @@ class _LoginGateSheet extends StatelessWidget {
                               const SizedBox(height: 6),
                               Text(
                                 body ??
-                                    'هذه الميزة تحتاج تسجيل الدخول لحسابك في مجرة الأوتاكو.',
+                                    context.strings('loginGateDefaultBody'),
                                 style: Theme.of(context).textTheme.bodySmall
                                     ?.copyWith(
                                       fontSize: 13,
@@ -137,7 +139,7 @@ class _LoginGateSheet extends StatelessWidget {
                     ),
                     const SizedBox(height: 18),
                     AnimePrimaryButton(
-                      label: 'تسجيل الدخول',
+                      label: context.strings('login'),
                       onPressed: () => Navigator.of(context).pop(true),
                       height: AppDimens.buttonHeightXl,
                     ),
@@ -164,7 +166,7 @@ class _LoginGateSheet extends StatelessWidget {
                           ),
                         ),
                         child: Text(
-                          'إلغاء',
+                          context.strings('cancel'),
                           style: Theme.of(context).textTheme.labelLarge
                               ?.copyWith(
                                 fontWeight: AppDimens.weightBold,

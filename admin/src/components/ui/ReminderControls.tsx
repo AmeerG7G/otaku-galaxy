@@ -106,9 +106,9 @@ export function ReminderControls({ order, variant = 'inline', onDone }: Reminder
     return (
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-          موعد فتح التقييم الحالي:{' '}
+          موعد التذكير الحالي:{' '}
           <strong>
-            {order.ratingAvailableAt ? formatDateTime(order.ratingAvailableAt) : '—'}
+            {order.ratingReminderAt ? formatDateTime(order.ratingReminderAt) : '—'}
           </strong>
         </Typography.Paragraph>
         <Form
@@ -171,8 +171,7 @@ export function ReminderControls({ order, variant = 'inline', onDone }: Reminder
           {order.deliveredAt ? formatDateTime(order.deliveredAt) : 'لم يؤكّد بعد'}
         </Descriptions.Item>
         <Descriptions.Item label="موعد التذكير الحالي">
-          {order.ratingAvailableAt ? formatDateTime(order.ratingAvailableAt) : '—'}
-          {order.ratingAvailable ? ' (مستحق الآن)' : ''}
+          {order.ratingReminderAt ? formatDateTime(order.ratingReminderAt) : '—'}
         </Descriptions.Item>
       </Descriptions>
 

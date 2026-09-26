@@ -17,6 +17,7 @@ import 'package:otaku_galaxy/core/di/injection_container.dart';
 import 'package:otaku_galaxy/core/router/app_router.dart';
 import 'package:otaku_galaxy/features/auth/data/datasources/auth_local_storage.dart';
 import 'package:otaku_galaxy/features/auth/domain/entities/auth_session.dart';
+import 'package:otaku_galaxy/features/auth/domain/entities/account_request.dart';
 import 'package:otaku_galaxy/features/auth/domain/entities/user.dart';
 import 'package:otaku_galaxy/features/auth/domain/repositories/auth_repository.dart';
 import 'package:otaku_galaxy/features/auth/domain/usecases/change_password_usecase.dart';
@@ -24,10 +25,7 @@ import 'package:otaku_galaxy/features/auth/domain/usecases/forgot_password_useca
 import 'package:otaku_galaxy/features/auth/domain/usecases/get_me_usecase.dart';
 import 'package:otaku_galaxy/features/auth/domain/usecases/login_usecase.dart';
 import 'package:otaku_galaxy/features/auth/domain/usecases/register_usecase.dart';
-import 'package:otaku_galaxy/features/auth/domain/usecases/reset_password_usecase.dart';
-import 'package:otaku_galaxy/features/auth/domain/usecases/send_otp_usecase.dart';
 import 'package:otaku_galaxy/features/auth/domain/usecases/update_profile_usecase.dart';
-import 'package:otaku_galaxy/features/auth/domain/usecases/verify_otp_usecase.dart';
 import 'package:otaku_galaxy/features/auth/presentation/cubit/auth_cubit.dart';
 import 'package:otaku_galaxy/features/onboarding/data/onboarding_storage.dart';
 import 'package:otaku_galaxy/features/settings/data/store_settings_repository.dart';
@@ -48,6 +46,7 @@ const _user = User(
 const _brandTitle = 'مجرة الأوتاكو';
 const _brandTagline = 'عالم الأنمي بين يديك';
 const _loadCaption = 'جاري التحميل…';
+const _retryLabel = 'إعادة المحاولة';
 
 // ─────────────────────────────────────────────────────────────────────────
 // مكوّنات العرض — تُبنى مستقلة بلا حاجة إلى شبكة/DI.
@@ -368,7 +367,10 @@ void main() {
       expect(router.current.name, SplashRoute.name);
 
       // ما زال خلفية/NavigationRoute مدمجة في رواتر الاختبار كوجهات مسجّلة.
+      // [CRITICAL] الانتقال صار مشروطاً بتمام كل خطوات الإقلاع **و** بلوغ
+      // الشريط نهايته — لا بمؤقّتٍ يسابق الحركة. لذلك يُنتظر التنعيم أيضاً.
       await tester.pump(SplashTiming.referenceTransitionDelay);
+      await tester.pump(SplashTiming.progressEase);
       await tester.pump(const Duration(milliseconds: 200));
 
       // لا نصبّ Easy؛ يكفي أن العملية جرت دون اشتقاق/خروج:
@@ -480,60 +482,100 @@ void main() {
     // بطلبٍ صريح من المستخدم — الشريط بدا "سريعاً جداً ويبدأ من نحو ٦٪"
     // بصرياً — صار يبدأ من صفرٍ فعلي بلا إعادة صياغة. المدة (٢٫١ث) والمنحنى
     // (`ease`) لم يتغيّرا؛ هذا الاختبار يحرس القرار الجديد **المقصود**.
-    testWidgets(
-        '[CRITICAL] بقرارٍ صريح: og-load يتقدم خطّياً من صفر٪ إلى ١٠٠٪ '
-        'على مدة الشاشة كاملة',
+    // [CRITICAL] الشريط يمثّل عملاً منجزاً لا وقتاً مضى.
+    //
+    // كان هذان الاختباران يقيسان حركةً زمنية: تقدّمٌ خطّي على مدة ثابتة
+    // (٢٫٣ث) تُقارَن بمؤقّت انتقالٍ مستقلّ بالمدة نفسها. وذاك بالضبط ما
+    // كان معطوباً — رقمان لا يعرف أحدهما الآخر: المؤقّت يبدأ عند
+    // `initState` والحركة لا تبدأ إلا مع أول إطار، فأيّ تأخّرٍ في أول إطار
+    // يجعل الانتقال يسبق امتلاء الشريط.
+    //
+    // النية محفوظة وأقوى: لا امتلاء مبكّر يجلس ساكناً، ولا انتقال قبل
+    // الامتلاء — لكنها تُقاس الآن على الشرط الحقيقي (تمام الخطوات) لا على
+    // تزامن مؤقّتين.
+    testWidgets('[CRITICAL] يبدأ من صفر ولا يبلغ ١٠٠٪ قبل تمام الخطوات',
         (tester) async {
       await pumpSplash(tester);
 
-      // البداية: صفرٌ حقيقي — لا إعادة صياغة إلى ٦٪.
       await tester.pump(Duration.zero);
-      expect(barWidthFactorOf(tester), closeTo(0.0, 0.001));
+      final atStart = barWidthFactorOf(tester);
+      expect(atStart, lessThan(1.0), reason: 'لا يبدأ ممتلئاً');
 
-      // [CRITICAL] التقدّم **خطّي** — هذا ما يجعل الحركة مرئية.
-      //
-      // كان المنحنى `ease` يبلغ ٧٢٪ في الثانية الأولى ثم يزحف، فبدا الشريط
-      // «يمتلئ فوراً ثم يتجمّد». نفحص أرباع المدة: كل ربع زمني يجب أن يقابل
-      // ربعاً من التقدّم تقريباً — وهو ما يميّز الخطّي من `ease` قطعاً
-      // (`ease` عند الربع الأول يكون قد تجاوز ٤٠٪).
-      final quarter = SplashTiming.load ~/ 4;
-      await tester.pump(quarter);
-      expect(barWidthFactorOf(tester), closeTo(0.25, 0.02),
-          reason: 'الربع الأول ≈ ٢٥٪ — لا ٤٠٪+ كما يفعل ease');
-      await tester.pump(quarter);
-      expect(barWidthFactorOf(tester), closeTo(0.50, 0.02),
-          reason: 'المنتصف ≈ ٥٠٪');
-      await tester.pump(quarter);
-      expect(barWidthFactorOf(tester), closeTo(0.75, 0.02),
-          reason: 'الربع الثالث ≈ ٧٥٪');
+      // خطوة «لحظة الهوية» لم تتمّ بعد، فالشريط لا يجوز أن يكتمل مهما
+      // مرّ من وقتٍ دونها.
+      await tester.pump(
+        SplashTiming.referenceTransitionDelay - const Duration(milliseconds: 200),
+      );
+      expect(barWidthFactorOf(tester), lessThan(1.0),
+          reason: 'خطوة مطلوبة ناقصة — لا اكتمال');
 
-      // النهاية عند مدة الشاشة نفسها — لا قبلها.
-      await tester.pump(quarter);
+      // بعد تمامها كلها: يكتمل.
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump(SplashTiming.progressEase);
       expect(barWidthFactorOf(tester), closeTo(1.0, 0.001));
-
-      // تصريف عدّاد `armSplash` قبل نهاية الاختبار.
       await tester.pump(const Duration(milliseconds: 400));
     });
 
-    // [CRITICAL] الشريط لا يكتمل قبل انتهاء انتظار الشاشة.
-    //
-    // كان `load` ٢٫١ث و`referenceTransitionDelay` ٢٫٣ث، فيصل الشريط ١٠٠٪
-    // ثم يجلس ساكناً مئتَي مللي ثانية والمستخدم ما زال ينتظر — إحساسٌ
-    // بالتعطّل. اشتقاق المدة من مدة الشاشة يجعل الحدثين يتزامنان.
-    testWidgets('[CRITICAL] الشريط لا يبلغ ١٠٠٪ قبل نهاية انتظار الشاشة',
+    testWidgets('[CRITICAL] الشريط يتقدّم فعلاً — لا يقفز ثم يتجمّد',
         (tester) async {
-      expect(SplashTiming.load, SplashTiming.referenceTransitionDelay,
-          reason: 'مدة الشريط مشتقّة من مدة الشاشة — لا قيمة مستقلّة تتباعد');
-
+      // النية الأصلية: أن تُرى الحركة. تبقى محفوظة — لكن التقدّم صار
+      // مرتبطاً بإنجازٍ حقيقي: كل خطوة تُتمّ ترفع القيمة.
       await pumpSplash(tester);
-      // قُبيل نهاية المدة بقليل: لم يكتمل بعد.
-      await tester.pump(SplashTiming.load - const Duration(milliseconds: 150));
-      expect(barWidthFactorOf(tester), lessThan(1.0),
-          reason: 'لا يكتمل مبكّراً ثم ينتظر');
+      await tester.pump(Duration.zero);
+      final samples = <double>[barWidthFactorOf(tester)];
 
-      await tester.pump(const Duration(milliseconds: 400));
-      expect(barWidthFactorOf(tester), closeTo(1.0, 0.001));
-      await tester.pump(const Duration(milliseconds: 400));
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(const Duration(milliseconds: 250));
+        samples.add(barWidthFactorOf(tester));
+      }
+      // القيمة لا تتراجع أبداً، وقد تحرّكت فعلاً عن نقطة البداية.
+      for (var i = 1; i < samples.length; i++) {
+        expect(samples[i], greaterThanOrEqualTo(samples[i - 1] - 0.001),
+            reason: 'التقدّم لا يتراجع');
+      }
+      expect(samples.last, greaterThan(samples.first),
+          reason: 'تحرّك فعلاً — لا شريط جامد');
+
+      await tester.pump(SplashTiming.referenceTransitionDelay);
+      await tester.pump(const Duration(milliseconds: 600));
+    });
+
+
+
+    testWidgets(
+        '[CRITICAL] عطب ← «إعادة المحاولة» ← إقلاعٌ تامّ ← انتقال: خطوة الرسوم تُعاد فلا يبقى الشريط عند ٧٥٪',
+        (tester) async {
+      final router = _SplashRouter();
+      tester.view.physicalSize = const Size(412, 892);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        BlocProvider<AuthCubit>.value(
+          value: _brokenSessionCubit(),
+          child: MaterialApp.router(
+            theme: ThemeData.light(),
+            routerConfig: router.config(),
+          ),
+        ),
+      );
+      // استعادة الجلسة تفشل فوراً — قبل أن تتمّ خطوة الرسوم أو لحظة الهوية.
+      await tester.pump(Duration.zero);
+      await tester.pump(SplashTiming.referenceTransitionDelay);
+      await tester.pump(SplashTiming.progressEase);
+      expect(find.text(_retryLabel), findsOneWidget, reason: 'حالة العطب لم تظهر');
+      expect(router.current.name, SplashRoute.name);
+
+      await tester.tap(find.text(_retryLabel));
+      await tester.pump(Duration.zero);
+      expect(find.text(_retryLabel), findsNothing, reason: 'العطب لم يُمسح عند إعادة المحاولة');
+
+      await tester.pump(SplashTiming.referenceTransitionDelay);
+      await tester.pump(SplashTiming.progressEase);
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(router.current.name, OnboardingRoute.name,
+          reason: 'بعد إعادة المحاولة لم ينتقل — خطوةٌ لم تُعَد فبقي الإقلاع ناقصاً');
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('لا تبقى عدّادات أو مؤقتات بعد فك الشاشة (dispose كامل)',
@@ -630,14 +672,38 @@ AuthCubit _guestCubit() {
     localStorage: _GuestStorage(),
     loginUsecase: LoginUsecase(repo),
     registerUsecase: RegisterUsecase(repo),
-    sendOtpUsecase: SendOtpUsecase(repo),
     forgotPasswordUsecase: ForgotPasswordUsecase(repo),
-    verifyOtpUsecase: VerifyOtpUsecase(repo),
-    resetPasswordUsecase: ResetPasswordUsecase(repo),
     getMeUsecase: GetMeUsecase(repo),
     updateProfileUsecase: UpdateProfileUsecase(repo),
     changePasswordUsecase: ChangePasswordUsecase(repo),
   );
+}
+
+/// جلسةٌ محفوظة يتعذّر استعادتها **ويرمي** المخزن عند قراءة النسخة المحفوظة —
+/// المسار الوحيد الذي يُخرج استثناءً من `loadSession` (هي تبتلع أخطاء الشبكة).
+AuthCubit _brokenSessionCubit() {
+  final repo = _StubAuthRepository();
+  return AuthCubit(
+    localStorage: _BrokenStorage(),
+    loginUsecase: LoginUsecase(repo),
+    registerUsecase: RegisterUsecase(repo),
+    forgotPasswordUsecase: ForgotPasswordUsecase(repo),
+    getMeUsecase: GetMeUsecase(_UnreachableAuthRepository()),
+    updateProfileUsecase: UpdateProfileUsecase(repo),
+    changePasswordUsecase: ChangePasswordUsecase(repo),
+  );
+}
+
+class _BrokenStorage extends _GuestStorage {
+  @override
+  bool get isLoggedIn => true;
+  @override
+  String? getUserJson() => throw StateError('مخزن الجلسة تالف');
+}
+
+class _UnreachableAuthRepository extends _StubAuthRepository {
+  @override
+  Future<User> me() async => throw Exception('لا شبكة');
 }
 
 class _GuestStorage implements AuthLocalStorage {
@@ -664,31 +730,30 @@ class _StubAuthRepository implements AuthRepository {
   Future<AuthSession> login(String phone, String password) async =>
       const AuthSession(token: 't', user: _user);
   @override
-  Future<void> register({
+  Future<AccountRequestReceipt> register({
     required String username,
     required String phone,
     required String password,
     required String gender,
-  }) async {}
+  }) async => const AccountRequestReceipt(id: 'req-1', status: 'pending', createdAt: null);
   @override
-  Future<AuthSession> verifyOtp(String phone, String code) async =>
-      const AuthSession(token: 't', user: _user);
-  @override
-  Future<void> sendOtp(String phone) async {}
-  @override
-  Future<void> forgotPassword(String phone) async {}
-  @override
-  Future<void> resetPassword(String p, String c, String n) async {}
+  Future<AccountRequestReceipt> forgotPassword({
+    required String phone,
+    required String username,
+    required String gender,
+    required String levelKey,
+  }) async => const AccountRequestReceipt(id: 'req-1', status: 'pending', createdAt: null);
   @override
   Future<User> updateProfile({
     String? username,
     String? avatarUrl,
     bool clearAvatar = false,
     String? gender,
+    String? preferredLanguage,
   }) async => _user;
   @override
-  Future<void> changePassword({
+  Future<AuthSession> changePassword({
     required String currentPassword,
     required String newPassword,
-  }) async {}
+  }) async => AuthSession(token: 't', user: await me());
 }

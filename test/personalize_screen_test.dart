@@ -6,6 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otaku_galaxy/core/design_system/design_system.dart';
+import 'package:otaku_galaxy/core/l10n/app_strings.dart';
+import 'package:otaku_galaxy/features/settings/presentation/screens/personalize_screen.dart';
+import 'package:otaku_galaxy/features/visuals/presentation/managed_artwork.dart';
 import 'package:otaku_galaxy/features/settings/presentation/cubit/locale_cubit.dart';
 import 'package:otaku_galaxy/features/settings/presentation/cubit/theme_cubit.dart';
 import 'package:otaku_galaxy/features/settings/presentation/cubit/theme_state.dart';
@@ -111,6 +114,56 @@ void main() {
         await tester.pumpWidget(host(dark: dark));
         await tester.pump(const Duration(milliseconds: 300));
         expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
+  // [REGRESSION GUARD] الشاشة الحقيقية لا نسخةً من جسمها.
+  //
+  // الاختبارات أعلاه تبني نسخةً من `ListView` وحده، فلم ترَ الترويسة قطّ.
+  // حين نُقل سطر الوصف (`FractionallySizedBox(widthFactor: 0.84)`) إلى داخل
+  // `Row` صار عرضه `0.84 × ∞` — الصفّ يعطي أطفاله غير المرنة عرضاً غير
+  // محدود — فانهار تخطيط الشاشة كلها وظهرت بيضاء بعد الترحيب مباشرة.
+  for (final dark in [false, true]) {
+    for (final size in sizes.entries) {
+      final mode = dark ? 'داكن' : 'فاتح';
+      testWidgets('real PersonalizeScreen lays out — $mode — ${size.key}', (
+        tester,
+      ) async {
+        tester.view.physicalSize = size.value;
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+
+        await tester.pumpWidget(
+          MultiBlocProvider(
+            providers: [
+              BlocProvider(create: (_) => LocaleCubit(prefs)),
+              BlocProvider(create: (_) => ThemeCubit(prefs)),
+            ],
+            child: MaterialApp(
+              theme: AppTheme.light,
+              darkTheme: AppTheme.dark,
+              themeMode: dark ? ThemeMode.dark : ThemeMode.light,
+              home: const Directionality(
+                textDirection: TextDirection.rtl,
+                child: PersonalizeScreen(),
+              ),
+            ),
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(tester.takeException(), isNull);
+
+        // ما يراه العميل فعلاً: العنوان والوصف والرسم وزر المتابعة.
+        expect(find.text(AppStrings.arabic('personalizeTitle')), findsOneWidget);
+        expect(find.text(AppStrings.arabic('personalizeBody')), findsOneWidget);
+        expect(find.byType(ManagedArtwork), findsOneWidget);
+        expect(find.text(AppStrings.arabic('continueLabel')), findsOneWidget);
+        final body = tester.getSize(
+          find.text(AppStrings.arabic('personalizeBody')),
+        );
+        expect(body.width, greaterThan(0));
+        expect(body.width.isFinite, isTrue);
       });
     }
   }

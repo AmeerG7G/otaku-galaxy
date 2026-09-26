@@ -20,6 +20,19 @@ export const pointsRepo = {
     return Number(rows[0]?.balance ?? 0);
   },
 
+  /** أرصدة عدّة زبائن في جملة واحدة — من لا سطر له في الدفتر رصيده صفر. */
+  async balances(db: pg.Pool | pg.PoolClient, userIds: string[]): Promise<Map<string, number>> {
+    const balances = new Map<string, number>(userIds.map((id) => [id, 0]));
+    if (userIds.length === 0) return balances;
+    const { rows } = await db.query<{ user_id: string; balance: string }>(
+      `SELECT user_id, SUM(amount)::text AS balance FROM points_ledger
+        WHERE user_id = ANY($1::uuid[]) GROUP BY user_id`,
+      [userIds],
+    );
+    for (const row of rows) balances.set(row.user_id, Number(row.balance));
+    return balances;
+  },
+
   async listActivity(db: pg.Pool | pg.PoolClient, userId: string, limit = 100) {
     const { rows } = await db.query<PointsLedgerRow>(
       `SELECT * FROM points_ledger

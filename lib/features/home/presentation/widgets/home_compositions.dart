@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../core/l10n/app_strings.dart';
 
 import '../../../../core/design_system/design_system.dart';
 import '../../../visuals/domain/visual_slot.dart';
@@ -33,7 +34,7 @@ class SectionHeader extends StatelessWidget {
             GestureDetector(
               onTap: onSeeAll,
               child: Text(
-                'عرض الكل',
+                context.strings('seeAll'),
                 style: Theme.of(context).textTheme.labelMedium?.copyWith(
                   fontSize: 12.5,
                   fontWeight: AppDimens.weightBold,
@@ -139,7 +140,7 @@ class HomeHeroCard extends StatelessWidget {
                       child: Text(
                         (banner?.subtitle.trim().isNotEmpty ?? false)
                             ? banner!.subtitle.trim()
-                            : 'تشكيلة جديدة',
+                            : context.strings('heroNewCollection'),
                         style: Theme.of(context).textTheme.labelSmall?.copyWith(
                           fontSize: 10.5,
                           fontWeight: AppDimens.weightExtraBold,
@@ -151,7 +152,7 @@ class HomeHeroCard extends StatelessWidget {
                     Text(
                       (banner?.title?.trim().isNotEmpty ?? false)
                           ? banner!.title!.trim()
-                          : 'موسم جديد من\nعالم الأنمي',
+                          : context.strings('heroNewSeason'),
                       style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                         fontSize: 23,
                         height: 1.3,
@@ -174,7 +175,7 @@ class HomeHeroCard extends StatelessWidget {
                           ),
                         ),
                         child: Text(
-                          'تسوّق الآن',
+                          context.strings('shopNow'),
                           style: Theme.of(context).textTheme.labelMedium
                               ?.copyWith(
                                 fontSize: 12.5,
@@ -279,7 +280,7 @@ class HomePromoRail extends StatelessWidget {
                   _PromoCard(
                     title: banner.title?.trim().isNotEmpty == true
                         ? banner.title!.trim()
-                        : 'عرض',
+                        : context.strings('promoBadge'),
                     subtitle: banner.subtitle,
                     slot: index == 0
                         ? VisualSlots.homePromoPrimary
@@ -298,8 +299,8 @@ class HomePromoRail extends StatelessWidget {
               ]
             : [
                 _PromoCard(
-                  title: 'موسم المدرسة',
-                  subtitle: 'دفاتر وأقلام',
+                  title: context.strings('promoSchoolSeason'),
+                  subtitle: context.strings('promoSchoolSeasonSub'),
                   slot: VisualSlots.homePromoPrimary,
                   art: 'assets/art/opt/a-i0.png',
                   height: cardHeight,
@@ -309,8 +310,8 @@ class HomePromoRail extends StatelessWidget {
                 if (maxDiscount != null) ...[
                   const SizedBox(width: AppDimens.space4),
                   _PromoCard(
-                    title: 'خصومات فعّالة',
-                    subtitle: 'حتى $maxDiscount٪',
+                    title: context.strings('promoActiveDiscounts'),
+                    subtitle: context.strings.p('promoUpToDiscount', {'percent': '$maxDiscount'}),
                     slot: VisualSlots.homePromoSecondary,
                     art: 'assets/art/opt/a-i6.png',
                     height: cardHeight,
@@ -462,7 +463,7 @@ class DeliveryAssuranceStrip extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'توصيل لكل المحافظات',
+                    context.strings('deliveryAllGovernorates'),
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
                       fontSize: 16,
                       fontWeight: AppDimens.weightExtraBold,
@@ -470,7 +471,7 @@ class DeliveryAssuranceStrip extends StatelessWidget {
                   ),
                   const SizedBox(height: AppDimens.space2),
                   Text(
-                    'الدفع عند الاستلام، وتأكيد الطلب عبر واتساب قبل الإرسال.',
+                    context.strings('deliveryCodWhatsapp'),
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       fontSize: 12.5,
                       height: 1.7,

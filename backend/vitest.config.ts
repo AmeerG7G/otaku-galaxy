@@ -12,9 +12,6 @@ export default defineConfig({
      */
     env: {
       NODE_ENV: 'test',
-      DEV_OTP_ENABLED: 'true',
-      DEV_OTP_CODE: '123456',
-      SMS_PROVIDER: 'noop',
       // لا دفع حقيقي في الاختبارات — المسار يُتحقَّق كاملاً بلا شبكة.
       PUSH_PROVIDER: 'noop',
     },

@@ -192,20 +192,6 @@ const databaseUrl = requireInProduction(
 
 // ===== رموز التحقق (OTP) =====
 /**
- * الرمز الثابت 123456 لا يُفعَّل إلا بطلب صريح، ولا يُفعَّل في الإنتاج أبداً
- * مهما كان المتغيّر. السلوك السابق كان يشتغل لمجرّد غياب الإعداد — أي أن
- * نشرةً بلا NODE_ENV كانت تقبل 123456 لكل حساب.
- */
-const devOtpRequested = process.env.DEV_OTP_ENABLED === 'true';
-const devOtpEnabled = devOtpRequested && !requiresRealSecrets;
-
-if (devOtpRequested && requiresRealSecrets) {
-  fatalConfigErrors.push(
-    `DEV_OTP_ENABLED=true في ${appEnv} — رمز تحقق ثابت خارج التطوير غير مقبول.`,
-  );
-}
-
-/**
  * إعدادات النشر التي بديلها **خاطئ** لا مجرّد ناقص.
  *
  * تختلف عن `CORS_ORIGINS`: بديلها (قائمة فارغة) يمنع كل أصل، وهو الفشل في
@@ -264,36 +250,12 @@ export const config = {
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '7d',
   bcryptRounds: Number(process.env.BCRYPT_ROUNDS ?? 10),
 
-  verification: {
-    /** رمز التطوير الثابت — مفعَّل فقط بطلب صريح وخارج الإنتاج. */
-    devOtpEnabled,
-    devOtpCode: process.env.DEV_OTP_CODE ?? process.env.DEVELOPMENT_OTP_CODE ?? '123456',
-    lifetimeMinutes: Number(process.env.VERIFICATION_CODE_LIFETIME_MINUTES ?? 10),
-    maxAttempts: Number(process.env.VERIFICATION_MAX_ATTEMPTS ?? 5),
-    /** أقصى عدد إرسالات لنفس الرقم داخل نافذة إعادة الإرسال. */
-    maxSendsPerWindow: Number(process.env.VERIFICATION_MAX_SENDS_PER_WINDOW ?? 5),
-    resendWindowMinutes: Number(process.env.VERIFICATION_RESEND_WINDOW_MINUTES ?? 15),
-    /** أقل فاصل زمني بين إرسالين لنفس الرقم (ثوانٍ). */
-    resendCooldownSeconds: Number(process.env.VERIFICATION_RESEND_COOLDOWN_SECONDS ?? 60),
-  },
 
-  /**
-   * مزوّد الرسائل — حدّ التماس مع الخارج.
-   *
-   * `console`: يطبع الرمز محلياً (تطوير فقط).
-   * `http`:    مزوّد HTTP عام يُضبَط بالكامل من البيئة.
-   * `noop`:    لا يرسل شيئاً (اختبارات).
-   * لا اسم مزوّد مخبوز في الكود — تبديله إعدادٌ لا إعادة كتابة.
-   */
-  sms: {
-    provider: (process.env.SMS_PROVIDER ?? (requiresRealSecrets ? 'http' : 'console')).toLowerCase(),
-    apiKey: process.env.SMS_API_KEY ?? '',
-    apiSecret: process.env.SMS_API_SECRET ?? '',
-    sender: process.env.SMS_SENDER ?? '',
-    /** نقطة النهاية لدى المزوّد (مطلوبة لمزوّد http). */
-    baseUrl: process.env.SMS_BASE_URL ?? '',
-    timeoutMs: Number(process.env.SMS_TIMEOUT_MS ?? 10_000),
-  },
+  // ═══ ما لم يعد هنا ═══ `verification` (رمز SMS) و`sms` (المزوّد) و
+  // `DEV_OTP_ENABLED`: أُزيل رمز SMS كلّه. التسجيل ونسيان كلمة المرور صارا
+  // طلبين تحسمهما الإدارة يدوياً — لا مزوّد رسائل يُهيَّأ ولا يُفحص عند
+  // الإقلاع. الملفات القديمة محفوظة في `legacy/otp/` خارج البناء.
+
 
   /**
    * مزوّد الإشعارات الفورية — نفس نمط `sms` أعلاه ونفس ضماناته.
@@ -332,6 +294,21 @@ export const config = {
     publicPath: process.env.UPLOADS_PUBLIC_PATH ?? '/uploads',
     /** أقصى حجم للصورة الواحدة. */
     maxBytes: Number(process.env.UPLOADS_MAX_BYTES ?? 5 * 1024 * 1024),
+
+    /**
+     * حصّة البايتات لكل زبون في نافذة متدحرجة (٢٤ ساعة).
+     *
+     * السقف الحالي للملف الواحد ٥ ميغابايت بلا حدٍّ لعددها، فحسابٌ واحد
+     * يستطيع ملء القرص. الحصّة تُقاس بالبايتات لا بالعدد لأن المشكلة
+     * مساحةٌ لا عدد طلبات.
+     *
+     * ٥٠ ميغابايت = عشرة ملفات بالحجم الأقصى يومياً. التقييم الواحد يقبل
+     * خمس صور، فهذا ضِعف أكبر استعمال مشروع. **الإدارة معفاة**: عملها
+     * رفعٌ بالجملة للكتالوج، وتقييدها يكسر سير عمل حقيقياً.
+     */
+    dailyBytesPerCustomer: Number(
+      process.env.UPLOADS_DAILY_BYTES_PER_CUSTOMER ?? 50 * 1024 * 1024,
+    ),
   },
 
   orders: {
@@ -387,8 +364,20 @@ export const config = {
     /** محاولات تسجيل الدخول لكل (رقم + IP) — هذا هو الحاجز ضد تخمين كلمة المرور. */
     loginMaxPerPhone: Number(process.env.RATE_LIMIT_LOGIN_MAX_PER_PHONE ?? 10),
     /** محاولات التحقق من الرمز لكل (رقم + IP). */
-    otpVerifyMaxPerPhone: Number(process.env.RATE_LIMIT_OTP_VERIFY_MAX ?? 10),
-    /** طلبات إرسال رمز لكل IP (الحدّ بالرقم يُطبَّق في otpService). */
-    otpSendMaxPerIp: Number(process.env.RATE_LIMIT_OTP_SEND_MAX ?? 20),
+    /** طلبات إنشاء حساب/إعادة تعيين لكل (رقم + عنوان) في النافذة. */
+    accountRequestMaxPerPhone: Number(process.env.RATE_LIMIT_ACCOUNT_REQUEST_MAX ?? 10),
+
+    /**
+     * الرفع — سقفان مختلفان لأن سير العمل مختلف.
+     *
+     * الزبون يرفع صور تقييم (خمس كحدّ أقصى للتقييم) وصورة حساب. عشرون في
+     * ربع ساعة تكفي عدّة تقييمات متتالية.
+     *
+     * الإدارة ترفع صور المنتجات والبنرات والفتحات البصرية بالجملة — جلسةُ
+     * تحرير كتالوج واحدة قد تتجاوز المئة. سقفٌ ضيّق هنا يكسر عملاً مشروعاً،
+     * والغرضُ حدُّ الإساءة لا خنقُ الاستعمال.
+     */
+    uploadMaxPerCustomer: Number(process.env.RATE_LIMIT_UPLOAD_MAX ?? 20),
+    uploadMaxPerAdmin: Number(process.env.RATE_LIMIT_UPLOAD_MAX_ADMIN ?? 200),
   },
 } as const;

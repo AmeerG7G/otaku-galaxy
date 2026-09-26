@@ -88,6 +88,56 @@ describe('سلّم نقاط المجرّة الثابت', () => {
     expect(byKey.champion!.nameNeutral).not.toBe(byKey.champion!.nameMale);
   });
 
+  /**
+   * المبلغ في وصف المزيّة: يُذكر للهدية ولا يُذكر للخصم.
+   *
+   * الفرق مقصود. قيمة الهدية **هي** المزيّة، فحذفها يترك «هدية من المتجر»
+   * بلا معنى ويجعل المستويات الثلاث للهدايا نصّاً واحداً. أما سقف الخصم
+   * فقيدٌ على المزيّة لا المزيّة نفسها، وقد طُلب إخفاؤه.
+   *
+   * [CRITICAL] المبالغ تبقى **بيانات** (`capAmount` / `giftAmount`) في
+   * الحالتين لأن الخصم والهدية يُحسبان منها. المحذوف ظهور السقف في النصّ
+   * وحده. اختبارٌ يكتفي بفحص النصّ كان سيسمح بحذف البيانات معه فيصمت بينما
+   * ينكسر الحساب — لذلك يُفحص الرقم في النصّ **مشتقّاً من البيانات** لا مكتوباً.
+   */
+  it('وصف الخصم بلا سقف · وصف الهدية بقيمتها · والبيانات سليمة', () => {
+    const currency = /دينار|IQD|د\.ع/;
+    /** ١٠٬٠٠٠ ← 10_000، بالأرقام العربية-الهندية وفاصل الآلاف نفسه. */
+    const arabicAmount = (n: number) =>
+      n.toLocaleString('en-US').replace(/,/g, '٬').replace(/\d/g, (d) => '٠١٢٣٤٥٦٧٨٩'[+d]!);
+
+    for (const level of GALAXY_LEVELS) {
+      const where = `المستوى ${level.key}`;
+
+      if (level.reward.kind === 'discount') {
+        // لا عملة ولا سقف في النصّ…
+        expect(level.rewardLabel, where).not.toMatch(currency);
+        expect(level.rewardLabel, where).not.toContain(arabicAmount(level.reward.capAmount));
+        // …والنسبة باقية، فالمزيّة ما تزال مفهومة.
+        expect(level.rewardLabel, where).toContain(`${arabicAmount(level.reward.percent)}٪`);
+      }
+
+      if (level.reward.kind === 'gift') {
+        // القيمة مذكورة، ومشتقّة من البيانات لا مكتوبة في الاختبار.
+        expect(level.rewardLabel, where).toMatch(currency);
+        expect(level.rewardLabel, where).toContain(arabicAmount(level.reward.giftAmount));
+      }
+
+      if (level.reward.kind === 'none') {
+        expect(level.rewardLabel, where).not.toMatch(currency);
+      }
+    }
+
+    // البيانات المالية لم تُمسّ — لا للخصم ولا للهدية.
+    const byKey = Object.fromEntries(GALAXY_LEVELS.map((l) => [l.key, l.reward]));
+    expect(byKey.explorer).toMatchObject({ kind: 'discount', percent: 3, capAmount: 5_000 });
+    expect(byKey.voyager).toMatchObject({ kind: 'gift', giftAmount: 5_000 });
+    expect(byKey.warrior).toMatchObject({ kind: 'discount', percent: 5, capAmount: 10_000 });
+    expect(byKey.champion).toMatchObject({ kind: 'gift', giftAmount: 10_000 });
+    expect(byKey.star).toMatchObject({ kind: 'discount', percent: 10, capAmount: 20_000 });
+    expect(byKey.legend).toMatchObject({ kind: 'gift', giftAmount: 25_000 });
+  });
+
   it('السلّم يُقرأ بلا مصادقة — الشاشة تعرضه قبل التسجيل', async () => {
     const res = await api.get('/api/catalog/loyalty-levels').expect(200);
     expect((res.body.data.items as unknown[]).length).toBe(7);

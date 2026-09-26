@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../core/l10n/app_strings.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/design_system/design_system.dart';
@@ -61,7 +62,7 @@ class _AddToCollectionSheetState extends State<_AddToCollectionSheet> {
         bottom: MediaQuery.of(context).viewInsets.bottom,
       ),
       child: OtakuSheet(
-        title: 'إضافة إلى مجموعة',
+        title: context.strings('addToCollection'),
         titleSize: 19,
         child: BlocBuilder<CollectionsCubit, CollectionsState>(
           builder: (context, state) {
@@ -74,7 +75,7 @@ class _AddToCollectionSheetState extends State<_AddToCollectionSheet> {
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 6),
                       child: Text(
-                        'لا توجد مجموعات بعد — أنشئ أول مجموعة.',
+                        context.strings('noCollectionsYet'),
                         style: theme.textTheme.bodySmall?.copyWith(
                           fontSize: 12.5,
                           height: 1.7,
@@ -123,7 +124,7 @@ class _AddToCollectionSheetState extends State<_AddToCollectionSheet> {
                   if (_creating) ...[
                     AnimeTextField(
                       controller: _nameController,
-                      hint: 'اسم المجموعة',
+                      hint: context.strings('collectionName'),
                       onSubmitted: (_) => _createNew(),
                     ),
                     const SizedBox(height: 10),
@@ -131,14 +132,14 @@ class _AddToCollectionSheetState extends State<_AddToCollectionSheet> {
                       children: [
                         Expanded(
                           child: AnimeOutlinedButton(
-                            label: 'إلغاء',
+                            label: context.strings('cancel'),
                             onPressed: () => setState(() => _creating = false),
                           ),
                         ),
                         const SizedBox(width: 10),
                         Expanded(
                           child: AnimePrimaryButton(
-                            label: 'إنشاء',
+                            label: context.strings('create'),
                             onPressed: _createNew,
                           ),
                         ),
@@ -146,22 +147,13 @@ class _AddToCollectionSheetState extends State<_AddToCollectionSheet> {
                     ),
                   ] else
                     AnimeOutlinedButton(
-                      label: 'مجموعة جديدة',
+                      label: context.strings('newCollection'),
                       onPressed: () => setState(() => _creating = true),
                       icon: Icons.add,
                       iconPosition: IconPosition.start,
                     ),
-
-                  const SizedBox(height: 12),
-                  Center(
-                    child: Text(
-                      'مجموعاتك خاصة بك ولا تظهر لأحد.',
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        fontSize: 11.5,
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
+                  // [PRODUCT] جملة «مجموعاتك خاصة بك ولا تظهر لأحد» أُزيلت
+                  // من الورقة كما أُزيلت من تبويب المجموعات (قرار 2026-09-20).
                 ],
               ),
             );
@@ -228,7 +220,7 @@ class _CollectionToggleRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '$count منتج',
+                  context.strings.p('productsCount', {'count': '$count'}),
                   style: theme.textTheme.labelSmall?.copyWith(
                     fontSize: 11,
                     color: theme.colorScheme.onSurfaceVariant,
@@ -251,7 +243,7 @@ class _CollectionToggleRow extends StatelessWidget {
                   : null,
             ),
             child: Text(
-              selected ? 'إزالة' : 'إضافة',
+              selected ? context.strings('remove') : context.strings('add'),
               style: theme.textTheme.labelSmall?.copyWith(
                 fontSize: 11.5,
                 fontWeight: AppDimens.weightBold,

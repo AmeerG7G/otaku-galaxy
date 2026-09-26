@@ -90,6 +90,15 @@ export async function patch<T>(
   return response.data.data as T
 }
 
+export async function put<T>(
+  url: string,
+  data?: unknown,
+  config?: AxiosRequestConfig,
+): Promise<T> {
+  const response = await client.put<ApiEnvelope<T>>(url, data, config)
+  return response.data.data as T
+}
+
 export async function remove<T>(url: string, config?: AxiosRequestConfig): Promise<T> {
   const response = await client.delete<ApiEnvelope<T>>(url, config)
   return response.data.data as T

@@ -24,7 +24,6 @@ import {
   ReloadOutlined,
 } from '@ant-design/icons'
 import {
-  createGovernorate,
   deleteGovernorate,
   listAdminGovernorates,
   updateGovernorate,
@@ -99,10 +98,12 @@ export default function DeliveryPage() {
   }
 
   const saveGovernorate = useMutation({
-    mutationFn: (values: GovernorateFormValues) =>
-      governorateEditor?.governorate
-        ? updateGovernorate(governorateEditor.governorate.id, values)
-        : createGovernorate({ name: values.name, deliveryFee: values.deliveryFee }),
+    mutationFn: (values: GovernorateFormValues) => {
+      if (!governorateEditor?.governorate) {
+        throw new Error('لا توجد محافظة للتعديل')
+      }
+      return updateGovernorate(governorateEditor.governorate.id, values)
+    },
     onSuccess: async (result) => {
       message.success(result.message || 'تم الحفظ')
       setGovernorateEditor(null)
@@ -168,12 +169,12 @@ export default function DeliveryPage() {
     onError: (error: Error) => message.error(error.message),
   })
 
-  function openGovernorate(governorate?: AdminGovernorate) {
+  function openGovernorate(governorate: AdminGovernorate) {
     setGovernorateEditor({ governorate })
     governorateForm.setFieldsValue({
-      name: governorate?.name ?? '',
-      deliveryFee: governorate?.deliveryFee ?? 0,
-      isActive: governorate?.isActive ?? true,
+      name: governorate.name,
+      deliveryFee: governorate.deliveryFee,
+      isActive: governorate.isActive,
     })
   }
 
@@ -382,9 +383,6 @@ export default function DeliveryPage() {
             >
               تحديث
             </Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => openGovernorate()}>
-              محافظة جديدة
-            </Button>
           </Space>
         }
       />
@@ -411,9 +409,7 @@ export default function DeliveryPage() {
           locale={{
             emptyText: (
               <EmptyState
-                description="لا توجد محافظات بعد"
-                actionLabel="إضافة محافظة"
-                onAction={() => openGovernorate()}
+                description="لا توجد محافظات"
               />
             ),
           }}
@@ -422,7 +418,7 @@ export default function DeliveryPage() {
 
       <Modal
         open={governorateEditor !== null}
-        title={governorateEditor?.governorate ? 'تعديل المحافظة' : 'محافظة جديدة'}
+        title="تعديل المحافظة"
         okText="حفظ"
         cancelText="إلغاء"
         confirmLoading={saveGovernorate.isPending}

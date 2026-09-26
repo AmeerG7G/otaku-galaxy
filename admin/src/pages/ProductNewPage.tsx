@@ -63,6 +63,8 @@ export default function ProductNewPage() {
       categoryId: values.categoryId,
       subcategoryId: values.subcategoryId ?? null,
       stock: values.stock,
+      // `null` صريحة تمسح الموعد؛ الحقل الغائب يعني «لا تغيّر».
+      restockAt: values.restockAt ?? null,
       images: values.images,
       options: values.options,
       isOffer: values.isOffer,

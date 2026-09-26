@@ -52,6 +52,16 @@ export interface OrderWithItems {
    * لا في التطبيق — الواجهة تعرض القرار ولا تتخذه.
    */
   canReview: boolean;
+  /**
+   * عدد منتجات الطلب التي ما زال لصاحبه فيها ما يفعله: بلا تقييم بعد، أو
+   * تقييمٌ مرفوض يمكن تصحيحه. المعلَّق والمنشور لا يُحتسبان.
+   *
+   * [CRITICAL] `canReview` بوّابة الاستلام وتبقى صحيحة إلى الأبد؛ وحدها كانت
+   * تُبقي زرّ «قيّم طلبك» ظاهراً بعد أن قُيّم كل منتج في الطلب. هذا العدد
+   * هو ما يُخفي الزرّ — على الخادم لا بتخمين التطبيق. المنتج المحذوف من
+   * الكتالوج (`product_id` فارغ في اللقطة) لا يُعدّ قابلاً للتقييم.
+   */
+  reviewableProductCount: number;
   /** لحظة إرسال تذكير التقييم؛ null إن لم يُرسل بعد. */
   ratingReminderSentAt: Date | null;
   /** سجل انتقالات الحالة بأوقاتها (بلا هوية من غيّرها — لا تُكشف للعميل). */
@@ -64,6 +74,28 @@ export interface OrderStatusEvent {
   note: string | null;
   createdAt: Date;
 }
+
+/**
+ * منتجات الطلب `o` التي ما زال لصاحبه فيها ما يفعله: بلا تقييم، أو تقييمٌ
+ * مرفوض يُصحَّح. المعلَّق والمنشور نهائيان (القيد الفريد على (الزبون،
+ * المنتج) يمنع ثانياً، §40.5).
+ *
+ * [CRITICAL] **التعريف الوحيد** — يقرؤه عدّ `reviewableProductCount` (الذي
+ * يُخفي به التطبيق كل دعوة تقييم) وأهليةُ تذكير التقييم (المجدول و«أرسل
+ * الآن»). تعريفان كانا سيتباعدان: التطبيق يقول «لا شيء يُقيَّم» والتذكير
+ * يعد بنقاط عنه (CA-16). يُستعمل بعد `SELECT …`/`EXISTS (SELECT 1 …` ويحتاج
+ * الاسم المستعار `o` لصفّ الطلب.
+ */
+export const REVIEWABLE_ITEMS_OF_ORDER = `
+    FROM order_items oi
+   WHERE oi.order_id = o.id
+     AND oi.product_id IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM reviews r
+        WHERE r.user_id = o.user_id
+          AND r.product_id = oi.product_id
+          AND r.status <> 'rejected'
+     )`;
 
 const ORDER_WITH_CUSTOMER = `
   SELECT o.*,
@@ -96,6 +128,8 @@ const ORDER_WITH_CUSTOMER = `
          -- rating_available_at بالساعة، أي مهلةً يضبطها المسؤول تفصل بين
          -- ضغطة «استلمت طلبي» وفتح التقييم. صارت: استُلم الطلب ⇒ يُقيَّم.
          (o.delivered_at IS NOT NULL) AS can_review,
+         -- انظر REVIEWABLE_ITEMS_OF_ORDER — التعريف نفسه لأهلية تذكير التقييم.
+         (SELECT COUNT(DISTINCT oi.product_id) ${REVIEWABLE_ITEMS_OF_ORDER}) AS reviewable_product_count,
          (SELECT h.note FROM order_status_history h
           WHERE h.order_id = o.id AND h.status = 'REJECTED'
           ORDER BY h.created_at DESC LIMIT 1) AS rejection_reason,
@@ -148,6 +182,7 @@ function mapOrder(row: Record<string, unknown>): OrderWithItems {
       ? new Date(row.rating_reminder_at as string)
       : null,
     canReview: row.can_review === true,
+    reviewableProductCount: Number(row.reviewable_product_count ?? 0),
     ratingReminderSentAt: row.rating_reminder_sent_at
       ? new Date(row.rating_reminder_sent_at as string)
       : null,
@@ -190,7 +225,15 @@ export const orderRepo = {
     return rows[0]?.id ?? null;
   },
 
-  /** إنشاء الطلب داخل المعاملة: لقطات + تنزيل المخزون + سجل الحالة. */
+  /**
+   * إنشاء الطلب داخل المعاملة: لقطات + سجل الحالة — **بلا تنزيل مخزون**.
+   *
+   * [CRITICAL] المخزون يُستهلك عند **قبول الإدارة** لا هنا (قرار عمل
+   * 2026-09-14؛ انظر `consumeStockOnApproval` في `orderService`). الطلب
+   * المنتظر لا يحجز شيئاً، فلا يوجد ما يُسترد عند رفضه. كان التنزيل
+   * المشروط يقع هنا ويُسترد في الرفض؛ حُذف الاثنان معاً — إبقاءُ أحدهما
+   * وحده يُنتج مخزوناً مزدوج الحساب.
+   */
   async create(
     db: pg.PoolClient,
     input: {
@@ -283,10 +326,6 @@ export const orderRepo = {
            order_id, product_id, product_name, image_url, option_value, price, quantity, line_total
          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [order.id, item.productId, item.productName, item.imageUrl, item.optionValue, item.price, item.quantity, item.lineTotal],
-      );
-      await db.query(
-        'UPDATE products SET stock = stock - $2 WHERE id = $1 AND stock >= $2',
-        [item.productId, item.quantity],
       );
     }
 

@@ -1,4 +1,5 @@
 import 'package:auto_route/auto_route.dart';
+import '../../../../core/l10n/app_strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -22,6 +23,9 @@ class CollectionsTab extends StatefulWidget {
 class _CollectionsTabState extends State<CollectionsTab> {
   final _nameController = TextEditingController();
 
+  /// حقل الاسم — زرّ الحالة الفارغة ينقل التركيز إليه.
+  final _nameFocus = FocusNode();
+
   @override
   void initState() {
     super.initState();
@@ -31,6 +35,7 @@ class _CollectionsTabState extends State<CollectionsTab> {
   @override
   void dispose() {
     _nameController.dispose();
+    _nameFocus.dispose();
     super.dispose();
   }
 
@@ -43,54 +48,29 @@ class _CollectionsTabState extends State<CollectionsTab> {
   }
 
   Future<void> _renameCollection(Collection collection) async {
-    final controller = TextEditingController(text: collection.name);
-    // الورقة تُغلق بحفظ أو بسحب أو بزر الرجوع، و`finally` يغطّي الثلاثة.
-    // المتحكّم هنا محلّي لا حقل في الصنف، فلا يمرّ على `dispose` أعلاه.
-    try {
-      final name = await showOtakuSheet<String>(
-        context: context,
-        builder: (sheetContext) => Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
-          ),
-          child: OtakuSheet(
-            title: 'إعادة تسمية المجموعة',
-            titleSize: 19,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                AnimeTextField(
-                  controller: controller,
-                  label: 'اسم المجموعة',
-                  hint: 'مثلاً: أريد شراءها لاحقاً',
-                  prefixIcon: Icons.collections_bookmark_outlined,
-                ),
-                const SizedBox(height: 20),
-                AnimePrimaryButton(
-                  label: 'حفظ',
-                  onPressed: () =>
-                      Navigator.of(sheetContext).pop(controller.text),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-      if (name == null || name.trim().isEmpty || !mounted) return;
-      await context.read<CollectionsCubit>().rename(collection.id, name.trim());
-    } finally {
-      controller.dispose();
-    }
+    // الورقة المشتركة تملك متحكّمها وتحرّره بعد زوالها من الشجرة — لا
+    // متحكّم محلّياً ولا `finally` (انظر `OtakuTextPromptSheet`).
+    final name = await showOtakuTextPrompt(
+      context: context,
+      title: context.strings('renameCollection'),
+      saveLabel: context.strings('save'),
+      label: context.strings('collectionName'),
+      hint: context.strings('collectionNameHint'),
+      initialValue: collection.name,
+      prefixIcon: Icons.collections_bookmark_outlined,
+    );
+    if (name == null || name.trim().isEmpty || !mounted) return;
+    await context.read<CollectionsCubit>().rename(collection.id, name.trim());
   }
 
   Future<void> _deleteCollection(Collection collection) async {
     final confirmed = await showOtakuConfirm(
       context: context,
-      title: 'حذف المجموعة',
+      title: context.strings('deleteCollection'),
       message:
-          'سيُحذف «${collection.name}»، وتبقى المنتجات في مفضلتك.',
-      confirmLabel: 'حذف',
-      cancelLabel: 'إلغاء',
+          context.strings.p('deleteCollectionConfirm', {'name': collection.name}),
+      confirmLabel: context.strings('delete'),
+      cancelLabel: context.strings('cancel'),
       destructive: true,
     );
     if (confirmed != true || !mounted) return;
@@ -102,9 +82,9 @@ class _CollectionsTabState extends State<CollectionsTab> {
     final action = await showOtakuPicker<String>(
       context: context,
       title: collection.name,
-      options: const [
-        OtakuPickerOption(value: 'rename', label: 'إعادة تسمية'),
-        OtakuPickerOption(value: 'delete', label: 'حذف المجموعة'),
+      options: [
+        OtakuPickerOption(value: 'rename', label: context.strings('rename')),
+        OtakuPickerOption(value: 'delete', label: context.strings('deleteCollection')),
       ],
     );
     if (action == 'rename') await _renameCollection(collection);
@@ -131,17 +111,12 @@ class _CollectionsTabState extends State<CollectionsTab> {
           padding: const EdgeInsets.fromLTRB(18, 16, 18, 104),
           children: [
             if (state.items.isEmpty)
-              const OtakuEditorialPanel(
-                title: 'أنشئ مجموعتك الأولى',
-                body:
-                    'جمّع منتجاتك بمجموعات مثل «أشياء أريدها» أو «للدراسة» '
-                    'لتصل إليها بسرعة.',
+              AnimeEmptyState(
+                title: context.strings('firstCollectionTitle'),
+                subtitle: context.strings('firstCollectionBody'),
                 artwork: 'assets/art/opt/a-luffy-kid.png',
                 artworkSlot: VisualSlots.collectionsTab,
-                margin: EdgeInsets.zero,
-                minHeight: 200,
-                artHeight: 150,
-                contentWidthFactor: 0.66,
+                centered: true,
               )
             else
               for (final collection in state.items) ...[
@@ -174,7 +149,7 @@ class _CollectionsTabState extends State<CollectionsTab> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'مجموعة جديدة',
+                    context.strings('newCollection'),
                     style: theme.textTheme.titleMedium?.copyWith(
                       fontFamily: 'Tajawal',
                       fontWeight: AppDimens.weightExtraBold,
@@ -184,24 +159,16 @@ class _CollectionsTabState extends State<CollectionsTab> {
                   const SizedBox(height: 12),
                   AnimeTextField(
                     controller: _nameController,
-                    hint: 'اسم المجموعة',
+                    focusNode: _nameFocus,
+                    hint: context.strings('collectionName'),
                     onSubmitted: (_) => _createCollection(),
                   ),
                   const SizedBox(height: 12),
                   AnimePrimaryButton(
-                    label: 'إنشاء',
+                    label: context.strings('create'),
                     onPressed: _createCollection,
                   ),
                 ],
-              ),
-            ),
-            const SizedBox(height: 13),
-            Text(
-              'مجموعاتك خاصة بك ولا تظهر لأحد.',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontSize: 11.5,
-                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
           ],
@@ -297,7 +264,7 @@ class _CollectionRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  '${collection.productIds.length} منتج',
+                  context.strings.p('productsCount', {'count': '${collection.productIds.length}'}),
                   style: theme.textTheme.bodySmall?.copyWith(
                     fontSize: 11.5,
                     color: theme.colorScheme.onSurfaceVariant,

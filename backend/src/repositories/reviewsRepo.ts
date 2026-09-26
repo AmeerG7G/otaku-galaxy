@@ -129,7 +129,13 @@ export const reviewRepo = {
     return shapeReview(rows[0]!);
   },
 
-  /** تعديل تقييم مرفوض وإعادته لقائمة الانتظار. */
+  /**
+   * تعديل تقييم مرفوض وإعادته لقائمة الانتظار.
+   *
+   * الشرط `status = 'rejected'` في الجملة لا في الخدمة وحدها: صفرُ صفوف يعني
+   * أن التقييم لم يعد مرفوضاً (اعتُمد في اللحظة نفسها) أو حُذف — فلا يُعاد
+   * تقييمٌ معتمَد إلى الانتظار وله نقاطُ اعتماد في الدفتر.
+   */
   async resubmit(
     db: pg.Pool | pg.PoolClient,
     id: string,
@@ -144,7 +150,7 @@ export const reviewRepo = {
               rejection_reason = NULL,
               reviewed_by = NULL,
               reviewed_at = NULL
-        WHERE id = $1
+        WHERE id = $1 AND status = 'rejected'
         RETURNING *`,
       [id, input.rating, input.comment, input.photoUrls],
     );

@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
-  Alert,
   Button,
   Card,
   Col,
@@ -152,9 +151,9 @@ export default function NotificationsPage() {
       ),
     },
     {
-      title: 'موعد فتح التقييم',
-      dataIndex: 'ratingAvailableAt',
-      key: 'ratingAvailableAt',
+      title: 'موعد التذكير',
+      dataIndex: 'ratingReminderAt',
+      key: 'ratingReminderAt',
       render: (value: string | null) => (value ? formatDateTime(value) : '—'),
     },
     {
@@ -202,13 +201,6 @@ export default function NotificationsPage() {
             إشعار جديد
           </Button>
         }
-      />
-
-      <Alert
-        type="info"
-        showIcon
-        message="السجل للقراءة، والإرسال من «إشعار جديد»"
-        description="«مقروء» حالةٌ يملكها العميل نفسه، فلا تُعدَّل من هنا. الإشعار المُرسَل يُكتب في صندوق الزبون داخل التطبيق — لا مزوّد إشعارات دفع مربوطاً بعد. تذكير الاستلام قابل للضبط لكل طلب، وهو محميّ من التكرار: أول إرسال — يدوياً كان أو مجدولاً — يعلّم الطلب فلا يُرسل ثانيةً."
       />
 
       <BroadcastComposer open={composerOpen} onClose={() => setComposerOpen(false)} />

@@ -1,9 +1,14 @@
+import 'dart:async';
+
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/auth/require_auth.dart';
+import '../../../reviews/presentation/cubit/reviews_cubit.dart';
 import '../../../../core/design_system/design_system.dart';
+import '../../../../core/l10n/app_strings.dart';
+import '../../../../core/l10n/gender.dart';
 import '../../../orders/presentation/widgets/delivery_confirmation_sheet.dart';
 import '../../../orders/domain/repositories/order_repository.dart';
 import '../../../auth/presentation/cubit/auth_cubit.dart';
@@ -97,7 +102,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // «فتح التطبيق» يشمل العودة إليه من الخلفية، لا الإقلاع البارد فقط.
-    if (state == AppLifecycleState.resumed) _checkPendingConfirmation();
+    if (state != AppLifecycleState.resumed) return;
+    _checkPendingConfirmation();
+    // قرار الإدارة في تقييمٍ (نُشر/رُفض) يصل غالباً والتطبيق في الخلفية؛
+    // إعادة التحميل هنا هي ما يُزيل لافتة «صورتك قيد المراجعة» بعد الموافقة.
+    if (context.read<AuthCubit>().isLoggedIn) {
+      unawaited(context.read<ReviewsCubit>().load());
+    }
   }
 
   /// يسأل الخادم إن كان هناك طلب ينتظر تأكيد استلام، ويعرض الورقة.
@@ -172,10 +183,21 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
               pendingProtectedTab = null; // إلغاء أي طلب قديم لم يُنجز.
               final granted = await requireAuthentication(
                 context,
-                title: 'سجّل دخولك أولاً',
+                // [CRITICAL] `gNow` لا `g`.
+                //
+                // هذا الجسم يعمل **عند الضغط** لا أثناء البناء، رغم وقوعه
+                // لفظياً داخل `build`. و`context.g` يقرأ الجنس بـ`watch`،
+                // و`watch` خارج البناء يرمي تأكيداً: «Tried to listen to a
+                // value exposed with provider, from outside of the widget
+                // tree». والوسائط تُقيَّم قبل استدعاء الدالة، فكان الرمي يقع
+                // **قبل** أن يُسأل `isLoggedIn` أصلاً — فيموت المعالِج قبل
+                // `setState`، فلا يتحرّك التبويب ولا تظهر رسالة: مستخدمٌ
+                // مسجَّل يضغط السلة أو الحساب فلا يحدث شيء. `gNow` تقرأ
+                // بـ`read` فتصحّ خارج البناء.
+                title: context.gNow(GenderedStrings.loginFirst),
                 body: index == MainTab.cart
-                    ? 'سلة التسوق ميزة خاصة بالحساب — سجّل دخولك لتشاهد أغراضك وتتابع طلبك.'
-                    : 'حسابك الشخصي يحتاج تسجيل دخول لتعرض ملفك وطلباتك.',
+                    ? context.strings('loginRequiredForCart')
+                    : context.strings('loginRequiredForAccount'),
                 onLoginRequested: () => pendingProtectedTab = index,
               );
               if (!granted || !mounted) return;
@@ -185,32 +207,32 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
             mainNavIndex.value = index;
           },
           items: [
-            const OtakuNavItem(
+            OtakuNavItem(
               icon: Icons.home_outlined,
               activeIcon: Icons.home_rounded,
-              label: 'الرئيسية',
+              label: context.strings('navHome'),
             ),
-            const OtakuNavItem(
+            OtakuNavItem(
               icon: Icons.grid_view_outlined,
               activeIcon: Icons.grid_view_rounded,
-              label: 'الأقسام',
+              label: context.strings('navCategories'),
               gridIconCount: 4,
             ),
-            const OtakuNavItem(
+            OtakuNavItem(
               icon: Icons.photo_library_outlined,
               activeIcon: Icons.photo_library_rounded,
-              label: 'المجتمع',
+              label: context.strings('navCommunity'),
             ),
             OtakuNavItem(
               icon: Icons.shopping_bag_outlined,
               activeIcon: Icons.shopping_bag_rounded,
-              label: 'السلة',
+              label: context.strings('navCart'),
               badgeCount: cart.count,
             ),
-            const OtakuNavItem(
+            OtakuNavItem(
               icon: Icons.person_outline,
               activeIcon: Icons.person_rounded,
-              label: 'الحساب',
+              label: context.strings('navAccount'),
             ),
           ],
         ),

@@ -17,6 +17,7 @@ class ApiClient {
     this.tokenProvider,
     this.onUnauthorized,
     this.appVersionProvider,
+    this.languageProvider,
     Dio? dio,
   }) : _dio =
            dio ??
@@ -54,6 +55,14 @@ class ApiClient {
           if (appVersion != null && appVersion.isNotEmpty) {
             options.headers['X-App-Version'] = appVersion;
           }
+          // لغة الواجهة — بها يحسم الخادم أسماء الأقسام والمنتجات والخيارات
+          // ورسائل الخطأ للزائر (الرئيسية والأقسام والتفاصيل تُقرأ بلا
+          // مصادقة). للمسجَّل يسبقها عمود `preferred_language` الذي يزامنه
+          // `AuthCubit`. بلا هذه الترويسة كان الخادم يرى كل طلب عربياً.
+          final language = languageProvider?.call();
+          if (language != null && language.isNotEmpty) {
+            options.headers['Accept-Language'] = language;
+          }
           _log(
             '▶ [$platformLabel] base=${_dio.options.baseUrl} '
             '${options.method} ${options.uri}',
@@ -73,7 +82,7 @@ class ApiClient {
             'response=${response?.data}',
           );
           if (_endsSession(response?.statusCode, response?.data)) {
-            onUnauthorized?.call();
+            _endSession(error.requestOptions, response?.statusCode, response?.data);
           }
           handler.next(error);
         },
@@ -82,19 +91,41 @@ class ApiClient {
   }
 
 
+  /// رموز 401 التي تعني فعلاً أن التوكن مرفوض — وهي وحدها ما يُنهي الجلسة.
+  ///
+  /// `UNAUTHORIZED` هو رمز وسيط المصادقة (توكن غائب/منتهٍ/حساب محذوف)،
+  /// و`SESSION_REVOKED` هو إبطال النسخة بعد تغيير كلمة المرور أو الإيقاف.
+  static const _sessionEndingCodes = {'UNAUTHORIZED', 'SESSION_REVOKED'};
+
   /// هل تعني هذه الاستجابة أن الجلسة انتهت فعلاً؟
   ///
-  /// 401 = رفض التوكن (منتهٍ، أو أُبطل بعد تغيير كلمة المرور).
+  /// 401 = رفض التوكن (منتهٍ، أو أُبطل بعد تغيير كلمة المرور) — **بشرط** أن
+  /// يكون رمز الخطأ رمزَ توكن (أو غائباً: ردٌّ ليس من الـAPI أصلاً). كان كل
+  /// 401 يُنهي الجلسة، فأي 401 «تجاري» من خدمةٍ ما (كلمة حالية خاطئة عند
+  /// تغيير كلمة المرور) يُخرج صاحبَ جلسةٍ صالحة. الخادم صار يردّ 400 على
+  /// ذلك، وهذا الشرط يحمي من أي رمزٍ مشابه يظهر لاحقاً.
   /// 403 مع `ACCOUNT_SUSPENDED` = الحساب أُوقف بعد إصدار التوكن؛ بدون هذه
   /// الحالة يبقى المستخدم «مسجّلاً» شكلاً بينما يُرفض كل طلب، فيرى أخطاءً
   /// متكررة بلا تفسير. أما 403 الأخرى (نقص صلاحية، رقم غير مفعَّل) فليست
   /// نهايةَ جلسة ولا يجوز أن تُخرجه.
   bool _endsSession(int? status, dynamic data) {
-    if (status == 401) return true;
+    final code = data is Map<String, dynamic> ? _codeFrom(data) : null;
+    if (status == 401) {
+      return code == null || _sessionEndingCodes.contains(code);
+    }
     if (status != 403) return false;
-    if (data is! Map<String, dynamic>) return false;
-    final error = data['error'];
-    return error is Map && error['code'] == 'ACCOUNT_SUSPENDED';
+    return code == 'ACCOUNT_SUSPENDED';
+  }
+
+  /// يُنهي الجلسة ويسجّل — في التطوير — أيَّ طلبٍ تسبّب في ذلك، حتى يُقرأ
+  /// «خرجتُ فجأة» من السجل لا من التخمين.
+  void _endSession(RequestOptions? request, int? status, dynamic data) {
+    _log(
+      '⛔ [$platformLabel] session ended by '
+      '${request?.method} ${request?.uri} status=$status '
+      'code=${data is Map<String, dynamic> ? _codeFrom(data) : null}',
+    );
+    onUnauthorized?.call();
   }
 
   /// وصف منصة التشغيل الحالية للتشخيص (ويب / أندرويد / آيفون / سطح مكتب).
@@ -134,6 +165,10 @@ class ApiClient {
 
   /// النسخة المثبَّتة المعلَنة للخادم (تُقرأ عند كل طلب، متزامنةً).
   String? Function()? appVersionProvider;
+
+  /// رمز لغة الواجهة (`ar` / `ckb`) لترويسة `Accept-Language` — يُقرأ عند
+  /// كل طلب لأن اللغة تتبدّل بعد بناء العميل.
+  String? Function()? languageProvider;
 
   /// ربط الجلسة بعد بناء العميل (لتجنب الاعتماد الدائري في DI).
   void attachAuth({
@@ -222,31 +257,32 @@ class ApiClient {
   Future<dynamic> _request(Future<Response<dynamic>> Function() send) async {
     try {
       final response = await send();
-      return _unwrap(response.statusCode ?? 0, response.data);
+      return _unwrap(response.statusCode ?? 0, response.data, response.requestOptions);
     } on DioException catch (e) {
-      if (_endsSession(e.response?.statusCode, e.response?.data)) {
-        onUnauthorized?.call();
-      }
+      // المعترِض أنهى الجلسة أصلاً لهذا الخطأ؛ `forceLogout` يتجاهل التكرار.
       throw _toAppException(e);
     }
   }
 
   /// فكّ المغلف الموحّد: نجاح = `data`، فشل = [AppException] برسالة الخادم.
-  dynamic _unwrap(int statusCode, dynamic data) {
+  dynamic _unwrap(int statusCode, dynamic data, [RequestOptions? request]) {
     if (_endsSession(statusCode, data)) {
-      onUnauthorized?.call();
+      _endSession(request, statusCode, data);
     }
     if (data is! Map<String, dynamic>) {
       throw AppException(
-        'استجابة غير متوقعة من الخادم',
+        'unexpected_response',
+        messageKey: 'errUnexpectedResponse',
         statusCode: statusCode,
       );
     }
     if (data['success'] == true) {
       return data['data'];
     }
+    final serverMessage = _serverMessage(data);
     throw AppException(
-      _messageFrom(data, statusCode),
+      serverMessage ?? 'http_$statusCode',
+      messageKey: serverMessage == null ? _fallbackKeyFor(statusCode) : null,
       statusCode: statusCode,
       code: _codeFrom(data),
     );
@@ -262,26 +298,23 @@ class ApiClient {
     return null;
   }
 
-  String _messageFrom(Map<String, dynamic> data, int statusCode) {
+  /// رسالة الخادم إن وُجدت — وهي مصرَّفةٌ بلغة صاحبها أصلاً.
+  String? _serverMessage(Map<String, dynamic> data) {
     final message = data['message'];
     if (message is String && message.trim().isNotEmpty) return message;
-    switch (statusCode) {
-      case 400:
-        return 'طلب غير صالح';
-      case 401:
-        return 'انتهت الجلسة — سجّل الدخول مجدداً';
-      case 403:
-        return 'لا تملك صلاحية تنفيذ هذا الإجراء';
-      case 404:
-        return 'غير موجود';
-      case 409:
-        return 'تعارض مع البيانات الحالية';
-      case 429:
-        return 'طلبات كثيرة جداً — حاول لاحقاً';
-      default:
-        return 'تعذر الاتصال بالخادم';
-    }
+    return null;
   }
+
+  /// مفتاح النصّ الاحتياطي حين لا يرسل الخادم رسالة.
+  String _fallbackKeyFor(int statusCode) => switch (statusCode) {
+        400 => 'errBadRequest',
+        401 => 'errSessionExpired',
+        403 => 'errForbidden',
+        404 => 'errNotFound',
+        409 => 'errConflict',
+        429 => 'errTooManyRequests',
+        _ => 'errServerUnreachable',
+      };
 
   AppException _toAppException(DioException error) {
     final response = error.response;
@@ -289,14 +322,17 @@ class ApiClient {
       final data = response.data;
       final status = response.statusCode ?? 500;
       if (data is Map<String, dynamic>) {
+        final serverMessage = _serverMessage(data);
         return AppException(
-          _messageFrom(data, status),
+          serverMessage ?? 'http_$status',
+          messageKey: serverMessage == null ? _fallbackKeyFor(status) : null,
           statusCode: status,
           code: _codeFrom(data),
         );
       }
       return AppException(
-        'خطأ من الخادم (${response.statusCode})',
+        'http_$status',
+        messageKey: 'errServerStatus',
         statusCode: status,
       );
     }
@@ -305,15 +341,19 @@ class ApiClient {
       case DioExceptionType.sendTimeout:
       case DioExceptionType.receiveTimeout:
         return AppException(
-          'انتهت مهلة الاتصال — حاول مرة أخرى (${error.message ?? 'timeout'})',
+          error.message ?? 'timeout',
+          messageKey: 'errTimeout',
         );
       case DioExceptionType.connectionError:
         return AppException(
-          'تعذر الاتصال بالخادم — تحقق من الإنترنت '
-          '(${error.message ?? 'connection error'})',
+          error.message ?? 'connection error',
+          messageKey: 'errConnection',
         );
       default:
-        return AppException(error.message ?? 'حدث خطأ غير متوقع');
+        return AppException(
+          error.message ?? 'unexpected',
+          messageKey: error.message == null ? 'unexpectedError' : null,
+        );
     }
   }
 }

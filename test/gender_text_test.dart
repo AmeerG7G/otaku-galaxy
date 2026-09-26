@@ -12,9 +12,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otaku_galaxy/core/design_system/design_system.dart';
+import 'package:otaku_galaxy/core/l10n/app_strings.dart';
 import 'package:otaku_galaxy/core/l10n/gender.dart';
 import 'package:otaku_galaxy/features/auth/data/datasources/auth_local_storage.dart';
 import 'package:otaku_galaxy/features/auth/domain/entities/auth_session.dart';
+import 'package:otaku_galaxy/features/auth/domain/entities/account_request.dart';
 import 'package:otaku_galaxy/features/auth/domain/entities/user.dart';
 import 'package:otaku_galaxy/features/auth/domain/repositories/auth_repository.dart';
 import 'package:otaku_galaxy/features/auth/domain/usecases/change_password_usecase.dart';
@@ -22,10 +24,7 @@ import 'package:otaku_galaxy/features/auth/domain/usecases/forgot_password_useca
 import 'package:otaku_galaxy/features/auth/domain/usecases/get_me_usecase.dart';
 import 'package:otaku_galaxy/features/auth/domain/usecases/login_usecase.dart';
 import 'package:otaku_galaxy/features/auth/domain/usecases/register_usecase.dart';
-import 'package:otaku_galaxy/features/auth/domain/usecases/reset_password_usecase.dart';
-import 'package:otaku_galaxy/features/auth/domain/usecases/send_otp_usecase.dart';
 import 'package:otaku_galaxy/features/auth/domain/usecases/update_profile_usecase.dart';
-import 'package:otaku_galaxy/features/auth/domain/usecases/verify_otp_usecase.dart';
 import 'package:otaku_galaxy/features/auth/presentation/cubit/auth_cubit.dart';
 import 'package:otaku_galaxy/features/auth/presentation/screens/register_screen.dart';
 import 'package:otaku_galaxy/features/points/domain/entities/otaku_level.dart';
@@ -49,37 +48,36 @@ class _StubAuthRepository implements AuthRepository {
   Future<AuthSession> login(String phone, String password) async =>
       AuthSession(token: 't', user: user);
   @override
-  Future<void> register({
+  Future<AccountRequestReceipt> register({
     required String username,
     required String phone,
     required String password,
     required String gender,
-  }) async {}
+  }) async => const AccountRequestReceipt(id: 'req-1', status: 'pending', createdAt: null);
   @override
-  Future<AuthSession> verifyOtp(String phone, String code) async =>
-      AuthSession(token: 't', user: user);
-  @override
-  Future<void> sendOtp(String phone) async {}
-  @override
-  Future<void> forgotPassword(String phone) async {}
-  @override
-  Future<void> resetPassword(String p, String c, String n) async {}
+  Future<AccountRequestReceipt> forgotPassword({
+    required String phone,
+    required String username,
+    required String gender,
+    required String levelKey,
+  }) async => const AccountRequestReceipt(id: 'req-1', status: 'pending', createdAt: null);
   @override
   Future<User> updateProfile({
     String? username,
     String? avatarUrl,
     bool clearAvatar = false,
     String? gender,
+    String? preferredLanguage,
   }) async {
     user = user.copyWith(gender: gender);
     return user;
   }
 
   @override
-  Future<void> changePassword({
+  Future<AuthSession> changePassword({
     required String currentPassword,
     required String newPassword,
-  }) async {}
+  }) async => AuthSession(token: 't', user: await me());
 }
 
 class _InMemoryAuthStorage implements AuthLocalStorage {
@@ -110,10 +108,7 @@ AuthCubit _cubitFor(String? gender) {
     localStorage: _InMemoryAuthStorage(user),
     loginUsecase: LoginUsecase(repo),
     registerUsecase: RegisterUsecase(repo),
-    sendOtpUsecase: SendOtpUsecase(repo),
     forgotPasswordUsecase: ForgotPasswordUsecase(repo),
-    verifyOtpUsecase: VerifyOtpUsecase(repo),
-    resetPasswordUsecase: ResetPasswordUsecase(repo),
     getMeUsecase: GetMeUsecase(repo),
     updateProfileUsecase: UpdateProfileUsecase(repo),
     changePasswordUsecase: ChangePasswordUsecase(repo),
@@ -320,10 +315,7 @@ void main() {
         localStorage: _InMemoryAuthStorage(_userWith(null)),
         loginUsecase: LoginUsecase(repo),
         registerUsecase: _RecordingRegister(repo, calls),
-        sendOtpUsecase: SendOtpUsecase(repo),
         forgotPasswordUsecase: ForgotPasswordUsecase(repo),
-        verifyOtpUsecase: VerifyOtpUsecase(repo),
-        resetPasswordUsecase: ResetPasswordUsecase(repo),
         getMeUsecase: GetMeUsecase(repo),
         updateProfileUsecase: UpdateProfileUsecase(repo),
         changePasswordUsecase: ChangePasswordUsecase(repo),
@@ -350,7 +342,7 @@ void main() {
       await tester.enterText(fields.at(2), 'secret123');
       await tester.pump();
 
-      await tester.tap(find.text('إرسال رمز التحقق'));
+      await tester.tap(find.text(AppStrings.arabic('submitRequest')));
       await tester.pump();
 
       // لم يُرسَل شيء، وظهرت رسالة التحقق.
@@ -370,10 +362,7 @@ void main() {
         localStorage: _InMemoryAuthStorage(_userWith(null)),
         loginUsecase: LoginUsecase(repo),
         registerUsecase: RegisterUsecase(repo),
-        sendOtpUsecase: SendOtpUsecase(repo),
         forgotPasswordUsecase: ForgotPasswordUsecase(repo),
-        verifyOtpUsecase: VerifyOtpUsecase(repo),
-        resetPasswordUsecase: ResetPasswordUsecase(repo),
         getMeUsecase: GetMeUsecase(repo),
         updateProfileUsecase: UpdateProfileUsecase(repo),
         changePasswordUsecase: ChangePasswordUsecase(repo),
@@ -441,7 +430,7 @@ void main() {
               body: GenderSelector(
                 value: null,
                 onChanged: (_) {},
-                errorText: GenderedStrings.genderRequired,
+                errorText: AppStrings.arabic('genderRequired'),
               ),
             ),
           ),
@@ -476,14 +465,14 @@ class _RecordingRegister implements RegisterUsecase {
   final List<String> calls;
 
   @override
-  Future<void> call({
+  Future<AccountRequestReceipt> call({
     required String username,
     required String phone,
     required String password,
     required String gender,
   }) async {
     calls.add(gender);
-    await _repo.register(
+    return _repo.register(
       username: username,
       phone: phone,
       password: password,

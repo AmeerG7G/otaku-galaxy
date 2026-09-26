@@ -5,10 +5,7 @@ class ApiEndpoints {
   // المصادقة.
   static const String login = '/auth/login';
   static const String register = '/auth/register';
-  static const String sendOtp = '/auth/resend-code';
-  static const String verifyOtp = '/auth/verify';
   static const String forgotPassword = '/auth/forgot-password';
-  static const String resetPassword = '/auth/reset-password';
   static const String me = '/auth/me';
   static const String changePassword = '/auth/me/password';
 
@@ -28,7 +25,6 @@ class ApiEndpoints {
   static const String cartItem = '/cart/';
   static const String orders = '/orders';
   static const String orderDetails = '/orders/';
-  static const String cancelOrder = '/orders/';
   /// تأكيد العميل استلام طلبه: ‎/orders/{id}/confirm-receipt
   static const String confirmReceiptSuffix = '/confirm-receipt';
   /// الطلب المنتظر تأكيد استلامه — يقرؤه التطبيق عند كل فتح.
@@ -45,6 +41,10 @@ class ApiEndpoints {
 
   // نقاط المجرّة.
   static const String points = '/points';
+
+  /// سلّم المستويات وحده — عامّ، يُقرأ قبل تسجيل الدخول (استمارة نسيان
+  /// كلمة المرور تسأل الزبون عن مستواه).
+  static const String loyaltyLevels = '/catalog/loyalty-levels';
 
   /// المطالبة بمزيّة مستوى — مفتاح المستوى في المسار، ولا حمولة.
   ///

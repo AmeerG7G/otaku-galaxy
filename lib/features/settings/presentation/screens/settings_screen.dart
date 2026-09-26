@@ -1,4 +1,5 @@
 import 'package:auto_route/auto_route.dart';
+import '../../../../core/l10n/app_strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -10,6 +11,7 @@ import '../../../../core/router/app_router.dart';
 import '../../../auth/presentation/cubit/auth_cubit.dart';
 import '../../../auth/presentation/cubit/auth_state.dart';
 import '../../../../core/auth/require_auth.dart';
+import '../../../../core/constants/validation_rules.dart';
 import '../../data/notification_prefs_repository.dart';
 import '../../data/notification_prefs_storage.dart';
 import '../cubit/theme_cubit.dart';
@@ -80,8 +82,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _togglePref(NotificationPref pref, bool value) async {
     final authenticated = await requireAuthentication(
       context,
-      title: context.g(GenderedStrings.loginFirst),
-      body: 'تُحفظ تفضيلات الإشعارات في حسابك وتُطبَّق على كل أجهزتك.',
+      title: context.gNow(GenderedStrings.loginFirst),
+      body: context.strings('loginRequiredForPrefs'),
     );
     if (!authenticated || !mounted) return;
 
@@ -109,18 +111,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: Column(
           children: [
             OtakuScreenHeader.compact(
-              title: 'الإعدادات',
+              title: context.strings('settings'),
               onBack: () => context.router.maybePop(),
             ),
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(18, 8, 18, 26),
                 children: [
-                  const OtakuGroupLabel(label: 'الحساب'),
+                  OtakuGroupLabel(label: context.strings('account')),
                   OtakuSettingRow(
                     icon: Icons.person_outline,
                     iconColor: AppColors.accentCyan,
-                    label: 'تعديل اسم الحساب',
+                    label: context.strings('editDisplayName'),
                     onTap: _editDisplayName,
                   ),
                   const SizedBox(height: 9),
@@ -136,11 +138,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ? Icons.female_rounded
                             : Icons.male_rounded,
                         iconColor: AppColors.secondary,
-                        label: GenderedStrings.genderLabel,
+                        label: context.strings('gender'),
                         value: switch (gender) {
-                          AppGender.male => GenderedStrings.male,
-                          AppGender.female => GenderedStrings.female,
-                          AppGender.unknown => GenderedStrings.genderNotSet,
+                          AppGender.male => context.strings('genderMale'),
+                          AppGender.female => context.strings('genderFemale'),
+                          AppGender.unknown => context.strings('genderNotSet'),
                         },
                         onTap: _editGender,
                       );
@@ -150,7 +152,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   OtakuSettingRow(
                     icon: Icons.lock_outline,
                     iconColor: AppColors.accent,
-                    label: 'إعادة تعيين كلمة المرور',
+                    label: context.strings('resetPassword'),
                     onTap: _changePassword,
                   ),
                   const SizedBox(height: 9),
@@ -160,15 +162,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     builder: (context, state) => OtakuSettingRow(
                       icon: Icons.brightness_6_outlined,
                       iconColor: AppColors.primary,
-                      label: 'اللغة والمظهر',
-                      value: state.isDark ? 'داكن' : 'فاتح',
+                      label: context.strings('languageAndTheme'),
+                      value: state.isDark ? context.strings('themeDark') : context.strings('themeLight'),
                       onTap: () =>
                           context.router.push(const PersonalizeRoute()),
                     ),
                   ),
 
-                  const OtakuGroupLabel(
-                    label: 'إعدادات الإشعارات',
+                  OtakuGroupLabel(
+                    label: context.strings('notificationSettings'),
                     padding: EdgeInsets.fromLTRB(0, 24, 0, 11),
                   ),
                   if (_prefsFailed) ...[
@@ -179,7 +181,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     if (pref != NotificationPref.values.first)
                       const SizedBox(height: 9),
                     OtakuSettingRow(
-                      label: pref.label,
+                      label: context.strings(pref.labelKey),
                       compact: true,
                       showChevron: false,
                       // يُعطَّل أثناء الجلب الأول وأثناء حفظ هذا المفتاح:
@@ -203,53 +205,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   /// تعديل اسم المستخدم — ورقة سفلية بحقل واحد.
+  ///
+  /// الورقة المشتركة تملك متحكّمها وتحرّره بعد زوالها من الشجرة — لا
+  /// `finally` هنا (انظر `OtakuTextPromptSheet`).
   Future<void> _editDisplayName() async {
     final auth = context.read<AuthCubit>();
-    final controller = TextEditingController(text: auth.user?.username ?? '');
+    final newName = await showOtakuTextPrompt(
+      context: context,
+      title: context.strings('editDisplayName'),
+      saveLabel: context.strings('save'),
+      label: context.strings('username'),
+      hint: context.gNow(GenderedStrings.enterNewName),
+      initialValue: auth.user?.username ?? '',
+      prefixIcon: Icons.person_outline,
+    );
 
-    // تُغلق الورقة بحفظ أو بسحب أو بزر الرجوع — و`finally` يغطّي الثلاثة.
+    if (newName == null || newName.trim().isEmpty || !mounted) return;
     try {
-      final newName = await showOtakuSheet<String>(
-        context: context,
-        builder: (sheetContext) => Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
-          ),
-          child: OtakuSheet(
-            title: 'تعديل اسم الحساب',
-            titleSize: 19,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                AnimeTextField(
-                  controller: controller,
-                  label: 'اسم المستخدم',
-                  hint: context.g(GenderedStrings.enterNewName),
-                  prefixIcon: Icons.person_outline,
-                ),
-                const SizedBox(height: 20),
-                AnimePrimaryButton(
-                  label: 'حفظ',
-                  onPressed: () =>
-                      Navigator.of(sheetContext).pop(controller.text),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-
-      if (newName == null || newName.trim().isEmpty) return;
-      try {
-        await auth.updateProfile(username: newName.trim());
-        if (!mounted) return;
-        _showSnack('تم تحديث الاسم', success: true);
-      } catch (e) {
-        if (!mounted) return;
-        _showSnack(_messageOf(e), success: false);
-      }
-    } finally {
-      controller.dispose();
+      await auth.updateProfile(username: newName.trim());
+      if (!mounted) return;
+      _showSnack(context.strings('nameUpdated'), success: true);
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack(_messageOf(e), success: false);
     }
   }
 
@@ -268,14 +246,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final picked = await showOtakuSheet<AppGender>(
       context: context,
       builder: (sheetContext) => OtakuSheet(
-        title: GenderedStrings.genderLabel,
+        title: context.strings('gender'),
         titleSize: 19,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             GenderSelector(
               value: current.isKnown ? current : null,
-              label: 'اختيارك يُستخدم لمخاطبتك بالصيغة الصحيحة.',
+              label: context.strings('genderPickerNote'),
               onChanged: (value) => Navigator.of(sheetContext).pop(value),
             ),
             const SizedBox(height: 12),
@@ -288,7 +266,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       await auth.updateProfile(gender: picked.value);
       if (!mounted) return;
-      _showSnack('تم تحديث الاختيار', success: true);
+      _showSnack(context.strings('choiceUpdated'), success: true);
     } catch (e) {
       if (!mounted) return;
       _showSnack(_messageOf(e), success: false);
@@ -296,100 +274,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   /// تغيير كلمة المرور — ورقة سفلية بنموذج مُتحقَّق منه.
+  ///
+  /// النموذج ([_ChangePasswordForm]) يملك حقوله ويحرّرها بعد زوال الورقة،
+  /// ويعيد الكلمتين فقط. الكلمة الحالية تُتحقَّق على الخادم؛ خطؤها يعود
+  /// رسالةً (400 `INVALID_CURRENT_PASSWORD`) لا خروجاً من التطبيق، والنجاح
+  /// يحفظ التوكن الجديد داخل `AuthCubit.changePassword`.
   Future<void> _changePassword() async {
     final auth = context.read<AuthCubit>();
-    final formKey = GlobalKey<FormState>();
-    final currentCtrl = TextEditingController();
-    final newCtrl = TextEditingController();
-    final confirmCtrl = TextEditingController();
+    final entered = await showOtakuSheet<({String current, String next})>(
+      context: context,
+      builder: (_) => const _ChangePasswordForm(),
+    );
+    if (entered == null || !mounted) return;
 
-    // [CRITICAL] هذه الحقول تحمل كلمات مرور بنصّها الصريح. تركها بلا
-    // تحرير يبقي النصّ حيّاً في الذاكرة طوال عمر العملية بعد إغلاق
-    // الورقة — لا لدقائق بل إلى أن يُقتل التطبيق. التحرير هنا يُنهي
-    // ذلك عند الإغلاق مهما كان سببه.
     try {
-      final confirmed = await showOtakuSheet<bool>(
-        context: context,
-        builder: (sheetContext) => Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
-          ),
-          child: OtakuSheet(
-            title: 'إعادة تعيين كلمة المرور',
-            titleSize: 19,
-            child: SingleChildScrollView(
-              child: Form(
-                key: formKey,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    AnimeTextField(
-                      controller: currentCtrl,
-                      label: 'كلمة المرور الحالية',
-                      obscureText: true,
-                      prefixIcon: Icons.lock_outline,
-                      validator: (v) =>
-                          (v == null || v.isEmpty) ? 'مطلوب' : null,
-                    ),
-                    const SizedBox(height: 12),
-                    AnimeTextField(
-                      controller: newCtrl,
-                      label: 'كلمة المرور الجديدة',
-                      obscureText: true,
-                      prefixIcon: Icons.lock_outline,
-                      validator: (v) => (v == null || v.length < 6)
-                          ? 'كلمة المرور يجب أن تكون 6 أحرف على الأقل'
-                          : null,
-                    ),
-                    const SizedBox(height: 12),
-                    AnimeTextField(
-                      controller: confirmCtrl,
-                      label: 'تأكيد كلمة المرور الجديدة',
-                      obscureText: true,
-                      prefixIcon: Icons.lock_outline,
-                      validator: (v) => v != newCtrl.text
-                          ? 'كلمتا المرور غير متطابقتين'
-                          : null,
-                    ),
-                    const SizedBox(height: 20),
-                    AnimePrimaryButton(
-                      label: 'حفظ',
-                      onPressed: () {
-                        if (formKey.currentState!.validate()) {
-                          Navigator.of(sheetContext).pop(true);
-                        }
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
+      await auth.changePassword(
+        currentPassword: entered.current,
+        newPassword: entered.next,
       );
-
-      if (confirmed != true) return;
-      try {
-        await auth.changePassword(
-          currentPassword: currentCtrl.text,
-          newPassword: newCtrl.text,
-        );
-        if (!mounted) return;
-        _showSnack('تم تغيير كلمة المرور بنجاح', success: true);
-      } catch (e) {
-        if (!mounted) return;
-        _showSnack(_messageOf(e), success: false);
-      }
-    } finally {
-      currentCtrl.dispose();
-      newCtrl.dispose();
-      confirmCtrl.dispose();
+      if (!mounted) return;
+      _showSnack(context.strings('passwordChanged'), success: true);
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack(_messageOf(e), success: false);
     }
   }
 
   String _messageOf(Object e) {
-    if (e is AppException && e.message.trim().isNotEmpty) return e.message;
-    return 'حدث خطأ غير متوقع، يرجى المحاولة مرة أخرى';
+    if (e is AppException) {
+      final text = e.localizedMessage(context);
+      if (text.trim().isNotEmpty) return text;
+    }
+    return context.strings('unexpectedError');
   }
 
   void _showSnack(String message, {required bool success}) {
@@ -437,13 +353,13 @@ class _PrefsUnavailableNote extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'تعذّر تحميل تفضيلاتك، أعد المحاولة.',
+              context.strings('prefsLoadFailed'),
               style: Theme.of(
                 context,
               ).textTheme.bodySmall?.copyWith(fontSize: 12),
             ),
           ),
-          TextButton(onPressed: onRetry, child: const Text('إعادة')),
+          TextButton(onPressed: onRetry, child: Text(context.strings('retryShort'))),
         ],
       ),
     );
@@ -469,6 +385,132 @@ class _PrefSwitch extends StatelessWidget {
       child: Opacity(
         opacity: busy ? 0.5 : 1,
         child: OtakuSwitch(value: value, onChanged: onChanged),
+      ),
+    );
+  }
+}
+
+/// نموذج تغيير كلمة المرور داخل الورقة.
+///
+/// [CRITICAL] المتحكّمات الثلاثة تحمل كلمات مرور بنصّها الصريح، وتُحرَّر في
+/// `dispose` — أي حين تزول الورقة من الشجرة — فلا تبقى حيّة في الذاكرة
+/// بعدها. تحريرها قبل ذلك (كما كان في `finally` عند المستدعي) كان يكسر
+/// الحقول أثناء حركة الخروج (انظر `OtakuTextPromptSheet`).
+///
+/// كل حقل له زرّ عين مستقل: المستخدم يرى **نصّه هو** في الحقلين (الحالية
+/// والجديدة) ليتأكّد مما كتب. الحدّ الأدنى [kPasswordMinLength] كما يفرضه
+/// الخادم؛ كان التطبيق يقبل ٦ فيردّ الخادم برسالةٍ بعد الإرسال.
+class _ChangePasswordForm extends StatefulWidget {
+  const _ChangePasswordForm();
+
+  @override
+  State<_ChangePasswordForm> createState() => _ChangePasswordFormState();
+}
+
+class _ChangePasswordFormState extends State<_ChangePasswordForm> {
+  final _formKey = GlobalKey<FormState>();
+  final _currentCtrl = TextEditingController();
+  final _newCtrl = TextEditingController();
+  final _confirmCtrl = TextEditingController();
+  bool _obscureCurrent = true;
+  bool _obscureNew = true;
+  bool _obscureConfirm = true;
+
+  @override
+  void dispose() {
+    _currentCtrl.dispose();
+    _newCtrl.dispose();
+    _confirmCtrl.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    if (!_formKey.currentState!.validate()) return;
+    Navigator.of(context).pop(
+      (current: _currentCtrl.text, next: _newCtrl.text),
+    );
+  }
+
+  /// زرّ إظهار/إخفاء بوصفٍ للقارئ الصوتي — نفس أيقونتي شاشتي الدخول والتسجيل.
+  Widget _eye(bool obscured, VoidCallback toggle) {
+    return IconButton(
+      tooltip: context.strings(obscured ? 'showPassword' : 'hidePassword'),
+      icon: Icon(
+        obscured ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+        size: AppDimens.iconMd,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
+      onPressed: toggle,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: OtakuSheet(
+        title: context.strings('resetPassword'),
+        titleSize: 19,
+        child: SingleChildScrollView(
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AnimeTextField(
+                  controller: _currentCtrl,
+                  label: context.strings('currentPassword'),
+                  obscureText: _obscureCurrent,
+                  prefixIcon: Icons.lock_outline,
+                  textInputAction: TextInputAction.next,
+                  suffixIcon: _eye(
+                    _obscureCurrent,
+                    () => setState(() => _obscureCurrent = !_obscureCurrent),
+                  ),
+                  validator: (v) => (v == null || v.isEmpty)
+                      ? context.strings('required')
+                      : null,
+                ),
+                const SizedBox(height: 12),
+                AnimeTextField(
+                  controller: _newCtrl,
+                  label: context.strings('newPassword'),
+                  obscureText: _obscureNew,
+                  prefixIcon: Icons.lock_outline,
+                  textInputAction: TextInputAction.next,
+                  suffixIcon: _eye(
+                    _obscureNew,
+                    () => setState(() => _obscureNew = !_obscureNew),
+                  ),
+                  validator: (v) => (v == null || v.length < kPasswordMinLength)
+                      ? context.strings('passwordMinLength')
+                      : null,
+                ),
+                const SizedBox(height: 12),
+                AnimeTextField(
+                  controller: _confirmCtrl,
+                  label: context.strings('confirmNewPassword'),
+                  obscureText: _obscureConfirm,
+                  prefixIcon: Icons.lock_outline,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => _submit(),
+                  suffixIcon: _eye(
+                    _obscureConfirm,
+                    () => setState(() => _obscureConfirm = !_obscureConfirm),
+                  ),
+                  validator: (v) => v != _newCtrl.text
+                      ? context.strings('passwordsDoNotMatch')
+                      : null,
+                ),
+                const SizedBox(height: 20),
+                AnimePrimaryButton(
+                  label: context.strings('save'),
+                  onPressed: _submit,
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

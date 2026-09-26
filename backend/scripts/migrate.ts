@@ -1,5 +1,7 @@
+import { realpathSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { config } from '../src/config/index.js';
 
@@ -107,8 +109,32 @@ async function main() {
   console.log('Done.');
 }
 
-// عند التشغيل مباشرة (npm run db:migrate).
-if (process.argv[1] && import.meta.url.includes('scripts/migrate')) {
+/**
+ * هل هذا الملف هو نقطة دخول العملية (`tsx scripts/migrate.ts`) لا وحدةً مستورَدة؟
+ *
+ * [CRITICAL] الاستيراد ≠ التنفيذ. هذه الوحدة تُستورَد من `scripts/seed.ts`
+ * و`tests/global-setup.ts` من أجل `runMigrations` وحدها، فلا يجوز أن يجرّ
+ * الاستيراد اتصالاً بالقاعدة ولا هجرة. الحارس السابق قارن `import.meta.url`
+ * — عنوان هذه الوحدة نفسها، وفيه `scripts/migrate` دائماً — فكان صادقاً تحت
+ * أي مشغّل، و`npm test` هاجر قاعدة **التطوير** لمجرّد أن global-setup
+ * استورد الملف. الفرق الوحيد بين الاستيراد والتشغيل المباشر هو
+ * `process.argv[1]`، وهو ما يُقارَن هنا بمسار الوحدة على القرص.
+ *
+ * `import.meta.main` يُغني عن هذا في Node ≥ 24.2، لكن CI وصورة الهجرة على
+ * Node 22. وأي شكّ (لا `argv[1]`، أو مسارٌ لا يُحلّ) يُفشل مغلقاً: لا هجرة.
+ */
+function isInvokedDirectly(): boolean {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return realpathSync(path.resolve(entry)) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+// عند التشغيل مباشرة فقط (npm run db:migrate / db:reset / db:migrate:*).
+if (isInvokedDirectly()) {
   main().catch((error) => {
     console.error(error.message);
     process.exit(1);

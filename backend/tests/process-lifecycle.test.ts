@@ -26,8 +26,6 @@ const ENV = {
   APP_ENV: 'dev',
   NODE_ENV: 'development',
   PORT: '0',
-  SMS_PROVIDER: 'noop',
-  DEV_OTP_ENABLED: undefined as unknown as string,
   DOTENV_CONFIG_PATH: path.join(BACKEND_ROOT, 'tests', 'fixtures', 'empty.env'),
 };
 

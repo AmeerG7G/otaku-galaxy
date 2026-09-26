@@ -12,7 +12,7 @@ Backend Node.js + TypeScript + Express 5 + PostgreSQL لهذا المتجر ال
 | Database   | PostgreSQL 16 — SQL خام عبر `pg` |
 | Validation | Zod 4                          |
 | Auth       | JWT (access 7d) + bcryptjs     |
-| OTP        | مزوّد `development` (رمز ثابت `123456`) — قابل للاستبدال بمزود SMS |
+| Accounts   | طلباتٌ تحسمها الإدارة من اللوحة بعد تحقّق واتساب — **لا SMS ولا OTP** |
 | Security   | helmet, cors, express-rate-limit |
 | Tests      | vitest + supertest             |
 
@@ -84,14 +84,27 @@ backend/
 نجاح: `{ success: true, data, message? }`
 خطأ:  `{ success: false, data: null, message, error: { code } }`
 
+أخطاء القاعدة التي هي رفضٌ للمدخلات لا عطلٌ تُترجَم مركزياً في
+`middleware/error-handler.ts` (`pgErrorToAppError`) بدل ٥٠٠: تفرّدٌ مكرّر →
+`409 DUPLICATE_VALUE`، مفتاح أجنبي غائب → `404 RELATED_NOT_FOUND` أو حذفٌ تمنعه
+بيانات مرتبطة → `409 HAS_DEPENDENTS`، قيدُ فحص/معرّف فاسد → `400 INVALID_VALUE`،
+فيض رقمي → `400 VALUE_OUT_OF_RANGE`، نصّ أطول من العمود → `400 VALUE_TOO_LONG`.
+الجمود والانقطاع والصياغة تبقى `500 INTERNAL_ERROR`. المدقّقات والخدمات تبقى
+المصدر الأول للرسائل الدقيقة؛ هذه شبكة أمان.
+
 ## نماذج المسارات الرئيسية
 
 | Method | Path                              | Access |
 | ------ | --------------------------------- | ------ |
-| POST   | `/api/auth/register`              | public |
-| POST   | `/api/auth/verify`                | public |
-| POST   | `/api/auth/login`                 | public |
-| POST   | `/api/auth/reset-password`        | public |
+| POST   | `/api/auth/register`              | public — ينشئ طلب تسجيل (202)، لا جلسة |
+| POST   | `/api/auth/login`                 | public — يرفض غير المفعَّل `ACCOUNT_PENDING_APPROVAL` |
+| POST   | `/api/auth/forgot-password`       | public — ينشئ طلب إعادة تعيين (202)، لا رمز |
+| PATCH  | `/api/auth/me/password`           | customer — تغيير اختياري بكلمة المرور الحالية |
+| GET    | `/api/admin/account-requests`     | admin |
+| POST   | `/api/admin/account-requests/:id/approve` | admin — تسجيل فقط: يفعّل الحساب |
+| POST   | `/api/admin/account-requests/:id/reject`  | admin — يبقى في السجل |
+| GET    | `/api/admin/customers/:id`        | admin — الملفّ الكامل بلا أسرار |
+| PATCH  | `/api/admin/customers/:id/password` | admin — كلمة مرور جديدة **دائمة** |
 | GET    | `/api/catalog/home`               | public |
 | GET    | `/api/catalog/products?page&limit&categoryId&subcategoryId` | public |
 | GET    | `/api/catalog/products/search?q`  | public |
@@ -105,9 +118,10 @@ backend/
 
 ## ملاحظات تصميم مهمة
 
-- **الأوامر تُنشأ في معاملة واحدة** — تحقق مخزون → لقطات أسعار → إنشاء → تنزيل المخزون → تفريغ العربة؛ أي فشل يعيد كل شيء.
+- **الأوامر تُنشأ في معاملة واحدة** — قفل العربة → بوّابة المخزون (هل يجوز طلب هذه الكمية الآن؟) → لقطات أسعار → إنشاء → تفريغ العربة؛ أي فشل يعيد كل شيء. **لا تنزيل مخزون عند الإرسال.**
+- **المخزون يُستهلك عند قبول الإدارة وحده** (قرار عمل 2026-09-14) — معاملة واحدة: قفل صفّ الطلب، قفل صفوف المنتجات بترتيب ثابت، قراءة المخزون الحالي، تنزيلٌ كامل أو `409 INSUFFICIENT_STOCK` والطلب يبقى منتظراً. رفضُ المنتظر لا يمسّ المخزون؛ رفضُ ما قُبل يُرجعه مرةً واحدة. الهجرة `051` تسوّي المنتظر القديم، وسكربت `scripts/oversell-multi-instance.ts` يثبت الحماية عبر عمليتين.
 - **ليست هناك علاقة FK** بين `order_items` والمنتجات: السعر/الاسم يُلقط عند الطلب ويبقى محفوظاً حتى لو حُذف المنتج لاحقاً.
 - **حالات الطلب** منضبطة بآلة حالات: `PENDING_ADMIN_CONFIRMATION → CONFIRMED → PREPARING → OUT_FOR_DELIVERY → COMPLETED` أو `REJECTED` (انظر `src/types/index.ts`).
 - **حذف المنتج حذف ناعم** (`is_active = false`) للحفاظ على التواريخ.
 - **رقم الهاتف** نمط عراقي `^07\d{9}$`… لا بريد إلكتروني في v1.
-- رمز التحقق في وضع التطوير ثابت `123456` (مطابق لنسخة Flutter الحالية)؛ استبدل `VERIFICATION_PROVIDER` عند ربط SMS حقيقي.
+- **لا رمز تحقق**: إنشاء الحساب ونسيان كلمة المرور طلبان (`account_requests`) تحسمهما الإدارة يدوياً بعد تحقّق واتساب. الكلمة التي يضعها المسؤول دائمة — لا مؤقّتة ولا `must_change_password`. الشيفرة القديمة محفوظة في `legacy/otp/` خارج البناء.

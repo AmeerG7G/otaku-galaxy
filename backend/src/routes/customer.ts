@@ -6,6 +6,8 @@ import { mediaController } from '../controllers/mediaController.js';
 import { notificationPrefsController } from '../controllers/notificationPrefsController.js';
 import { orderController } from '../controllers/orderController.js';
 import { restockController } from '../controllers/restockController.js';
+import { config } from '../config/index.js';
+import { uploadRateLimiter } from '../middleware/error-handler.js';
 import { uploadSingleImage } from '../middleware/upload.js';
 import { pushController } from '../controllers/pushController.js';
 
@@ -30,7 +32,9 @@ customerRoutes.get('/orders', orderController.listMine);
 // قبل '/orders/:id' وإلا التقطه كمعرّف ورفضه التحقق كـUUID غير صالح.
 customerRoutes.get('/orders/pending-confirmation', orderController.pendingConfirmation);
 customerRoutes.get('/orders/:id', orderController.getMine);
-customerRoutes.post('/orders/:id/cancel', orderController.cancel);
+// [PRODUCT] لا إلغاء من العميل. القرار أن الإلغاء صلاحيةُ إدارةٍ وحدها،
+// تمرّ عبر `PATCH /api/admin/orders/:id/status` بحالة `REJECTED` وسببٍ
+// إلزامي. لا تُعِد هذا المسار: غيابُه هو الميزة.
 customerRoutes.post('/orders/:id/confirm-receipt', orderController.confirmReceipt);
 
 // ── التقييمات ──
@@ -78,4 +82,9 @@ customerRoutes.get('/birthday', communityController.birthdayStatus);
 customerRoutes.post('/birthday', communityController.setBirthday);
 
 // ── رفع صور التقييمات ──
-customerRoutes.post('/uploads', uploadSingleImage, mediaController.upload);
+customerRoutes.post(
+  '/uploads',
+  uploadRateLimiter({ limit: config.rateLimit.uploadMaxPerCustomer }),
+  uploadSingleImage,
+  mediaController.upload,
+);

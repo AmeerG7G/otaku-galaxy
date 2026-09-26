@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
-  Alert,
   Card,
   Col,
   Modal,
@@ -137,13 +136,6 @@ export default function PointsPage() {
       <PageHeader
         title="نقاط المجرّة"
         description="القواعد والسلّم والدفتر — كلها للقراءة. ما يُدار هنا هو تسليم الهدايا."
-      />
-
-      <Alert
-        type="info"
-        showIcon
-        message="القواعد ثابتة والدفتر للقراءة فقط"
-        description="قيم النقاط وعتبات المستويات ومزاياها قرارٌ تجاري مثبَّت في الخادم — لا تُضبط من هنا ولا من أي واجهة. وكل حركة في دفتر النقاط تقابل حدثاً حقيقياً (استلام طلب أو اعتماد تقييم) ويمنع تكرارها فهرس فريد في القاعدة، فلا منح يدوي. الفعل الوحيد المتاح في هذه الصفحة هو تعليم هدية بأنها سُلّمت."
       />
 
       <GalaxyRulesCard />

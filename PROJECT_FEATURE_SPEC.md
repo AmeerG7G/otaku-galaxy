@@ -254,38 +254,47 @@ such.
 
 ## 2.1 AUTHENTICATION
 
-### Registration + OTP verification — `COMPLETE` *(verification is now a real gate, 2026-08-25)*
-```
-register_screen.dart → AuthCubit.register → RegisterUsecase → AuthRepositoryImpl.register
-  → POST /api/auth/register → authController.register → registerSchema
-  → authService.register → userRepo.create (INSERT users, phone_verified_at = NULL)
-                          + otpService.sendVerificationCode
-  → verificationRepo.create (INSERT verification_codes, bcrypt-hashed code, TTL from config)
-otp_verification_screen.dart → AuthCubit.verifyOtp → VerifyOtpUsecase → verifyOtp
-  → POST /api/auth/verify → authService.verifyRegistration → otpService.verifyCode
-  → UPDATE users SET phone_verified_at = now()   ← the account becomes verified HERE, only here
-  → returns { token, user } → AuthCubit._saveSession → AuthLocalStorage (secure storage)
-```
-Verification **returns a live session** (`authService.verifyRegistration` signs a JWT), so the user
-is authenticated immediately after verifying — no second login step.
+> **2026-09-12 — SMS/OTP removed. Accounts are admin-managed.** Registration and
+> logged-out password recovery are **requests** an administrator resolves from the
+> dashboard after verifying the person over WhatsApp — manually. No SMS code, no
+> email code. The former OTP sections below §19.2/§19.3 are kept as history and are
+> marked SUPERSEDED. Legacy sources live, uncompiled, under `legacy/otp/`.
 
-**Abandoned registrations are resumable.** A row with `phone_verified_at IS NULL` is a *pending*
-registration, not a taken number: re-registering the same phone updates the username/password,
-bumps `token_version`, and issues a fresh code. Only a **verified** phone returns `409 PHONE_TAKEN`.
-Before this, a user whose SMS was delayed or who closed the app mid-signup was locked out of that
-number permanently — the single most common "I cannot create an account" report.
-Tests: `auth.test.ts` «registration → OTP verification → login → me», «registration ends
-authenticated / verify returns a working session», «a wrong code does not produce a session».
+### Registration → admin approval — `COMPLETE` *(admin-managed since 2026-09-12)*
+```
+register_screen.dart (form UNCHANGED: name · phone · password · gender)
+  → AuthCubit.register → RegisterUsecase → AuthRepositoryImpl.register
+  → POST /api/auth/register (202) → authController.register → registerSchema
+  → authService.register → userRepo.create (INSERT users, bcrypt hash, phone_verified_at = NULL)
+                          + accountRequestRepo.upsertPending(kind='registration')   ← no OTP
+  → returns { user, request:{id,status:'pending'} } — NO token, NO session
+account_pending_screen.dart  «سيتم التواصل معك من قبل الإدارة لتأكيد إنشاء الحساب.»
+admin «طلبات الحساب» → admin verifies on WhatsApp (manual)
+  → POST /api/admin/account-requests/:id/approve → UPDATE users SET phone_verified_at = now()
+                                                    ← the account becomes active HERE, only here
+  → customer logs in normally with the password chosen at registration.
+```
+`login` refuses an unverified account with `403 ACCOUNT_PENDING_APPROVAL` (or
+`ACCOUNT_REQUEST_REJECTED` when the latest request was rejected) and **sends nothing**; the
+Flutter login screen pushes `AccountPendingRoute` for the pending case. The pending `users`
+row is the secure pending-account mechanism (hash only; nothing plaintext anywhere); the
+request row carries **no password field at all** (migration `048_account_requests.sql`).
 
-### Login — `COMPLETE` *(verification gate added 2026-08-25)*
+**Abandoned registrations are resumable.** Re-registering an unverified phone updates the
+username/gender/password, bumps `token_version`, and *resumes* the pending request (partial
+unique index: one pending per kind+phone). Only a **verified** phone returns `409 PHONE_TAKEN`.
+Rejected requests stay in `account_requests` as history; a new registration after a rejection
+creates a new pending request next to the old rejected one.
+Tests: `auth.test.ts`, `auth-security.test.ts`, `account-requests.test.ts` (backend);
+`test/admin_managed_account_flows_test.dart` (Flutter); `AccountRequestsPage.test.tsx` (admin).
+
+### Login — `COMPLETE` *(verification gate since 2026-08-25; no code sent since 2026-09-12)*
 `login_screen.dart` → `AuthCubit.login` → `POST /api/auth/login` → `authService.login`
 (`bcrypt.compare` → `is_active` → `phone_verified_at`) → `{token, user}`. Admin dashboard uses the
 same endpoint via `admin/src/api/authApi.ts#login`. Tested.
 
 Order matters: the password is checked **before** the active/verified checks, so neither state
-leaks to someone who does not already know the password. An unverified account is refused with
-`403 PHONE_NOT_VERIFIED` and a fresh code is sent; the Flutter login screen reads that code and
-pushes `OtpVerificationRoute` instead of showing a dead-end error.
+leaks to someone who does not already know the password.
 
 ### Session persistence + restore — `COMPLETE`
 `AuthLocalStorage` (`flutter_secure_storage`) holds `auth_token` + `auth_user`. `AuthCubit.loadSession()`
@@ -298,10 +307,31 @@ cached user (`_restoreCachedUser`). Covered by `test/auth_session_restore_test.d
 `CartCubit`, `FavoritesCubit`, `BirthdayStorage`, `PointsCubit`, `NotificationsCubit`,
 `CollectionsCubit`, `ReviewsCubit`.
 
-### Forgot / reset password — `COMPLETE`
-`forgot_password_screen` → `POST /auth/forgot-password` (purpose `password_reset`) →
-`reset_password_screen` → `POST /auth/reset-password` → `verifyCode` + `bcrypt.hash` +
-`userRepo.update`. Tested («password reset via OTP»).
+### Forgot password → admin sets a permanent password — `COMPLETE` *(admin-managed since 2026-09-12)*
+```
+forgot_password_screen.dart: phone + name + gender + account level (picked from /catalog/loyalty-levels)
+  → POST /api/auth/forgot-password (202) → forgotPasswordSchema → authService.forgotPassword
+  → accountRequestRepo.upsertPending(kind='password_reset', submitted_* stored AS SUBMITTED,
+                                      user_id linked only if the phone exists — response identical either way)
+  → returns { request:{id,status:'pending'} } — nothing changes on the account
+account_pending_screen.dart  «سيتم التواصل معك من قبل الإدارة لإعادة تعيين كلمة المرور.»
+admin «طلبات الحساب»: submitted vs stored profile with match hints (name/gender/level)
+  → admin verifies on WhatsApp (manual)
+  → PATCH /api/admin/customers/:id/password { newPassword, requestId?, note? }
+     → bcrypt.hash → userRepo.update(passwordHash, bumpTokenVersion) → request → approved
+  → admin tells the customer the password on WhatsApp → customer logs in → Home.
+```
+**The four fields are identity information for the administrator, not authentication.** A full
+match never resets anything. `approve` on a `password_reset` request is refused
+(`400 USE_SET_PASSWORD`): the only way a reset request becomes «approved» is by setting a password.
+`requestId` authorizes nothing by itself — the service re-checks it is pending, of kind
+`password_reset`, and linked to *that* account (`REQUEST_ACCOUNT_MISMATCH` otherwise).
+
+**CRITICAL PASSWORD RULE.** The administrator-assigned password is the customer's normal,
+**permanent** password: no temporary password, no `must_change_password`, no forced change, no
+post-login page, no expiry, no special login state. `account-requests.test.ts` proves the new
+password opens a normal session, reaches protected routes immediately, works again on a second
+login, and that neither the `users` row nor the login payload carries any temp/force/expiry field.
 
 ### Change password (settings) — `COMPLETE`
 `settings_screen` → `AuthCubit.changePassword` → `PATCH /auth/me/password` →
@@ -323,11 +353,10 @@ Two layers: Dio `onError` interceptor **and** `_unwrap`/`_request` both call `on
 `AuthCubit.forceLogout()`. Backend `notFoundHandler` + `errorHandler` never leak internals
 (`500 → { code: 'INTERNAL_ERROR' }`).
 
-**OTP delivery — `PROVIDER-READY / NOT YET CONNECTED TO A REAL CARRIER`** (see §19.3).
-`otpService.sendVerificationCode` now generates a cryptographically secure random code and hands it
-to a `SmsProvider` behind `backend/src/services/sms/index.ts`. The `http` provider is implemented
-and verified against a real local HTTP server (headers, body shape, failure surfacing). **No real
-carrier account has been connected or tested** — that requires the credentials listed in §19.3.
+**OTP delivery — `REMOVED (2026-09-12)`.** No SMS provider is configured, built or checked at
+boot. `/auth/verify`, `/auth/resend-code`, `/auth/reset-password`, `otpService`,
+`verificationRepo`, `services/sms/` and the `DEV_OTP_*`/`SMS_*`/`VERIFICATION_*` configuration are
+gone from the build; sources are preserved under `legacy/otp/`. §7.1, §19.2 and §19.3 are history.
 
 ## 2.2 PERSONALIZATION
 
@@ -1096,6 +1125,9 @@ rather than hard redirects on browsable screens. Two minor items:
 # STEP 7 — CURRENT vs INTENDED (incomplete features only)
 
 ### 7.1 OTP delivery
+
+> **SUPERSEDED (2026-09-12).** SMS/OTP was removed; registration and password recovery are admin-managed requests. Kept as history. See §2.1.
+
 - **CURRENT:** `otpService.sendVerificationCode` writes a bcrypt-hashed code to `verification_codes`.
   In `development` (the default and the `.env.example` value) the code is the constant `123456`,
   logged to stdout. No other provider exists.
@@ -1321,14 +1353,21 @@ Response envelope is uniform everywhere: `{ success, data, message }` on success
 
 ## 9.1 Public — `/api/auth` (per-purpose rate limits since 2026-08-25 — see §19.1)
 
+> **2026-09-12:** `/verify`, `/resend-code`, `/reset-password` removed. `register` and
+> `forgot-password` answer **202** with a pending request and no token. Admin resolution:
+> `GET/POST /api/admin/account-requests[/:id/approve|/:id/reject]`,
+> `GET /api/admin/customers/:id`, `PATCH /api/admin/customers/:id/password`. See §2.1.
+
 | Method | Path | Auth | Role | Request | Response | DB effect | Flutter | Admin | Status |
 |---|---|---|---|---|---|---|---|---|---|
-| POST | `/auth/register` | — | — | `{username, phone, password}` | `{user}` | INSERT `users`, INSERT `verification_codes` | ✅ | ❌ | COMPLETE |
-| POST | `/auth/verify` | — | — | `{phone, code}` | `{token, user}` | UPDATE `verification_codes` | ✅ | ❌ | COMPLETE |
-| POST | `/auth/resend-code` | — | — | `{phone}` | `null` | invalidate + INSERT `verification_codes` | ✅ | ❌ | COMPLETE |
-| POST | `/auth/login` | — | — | `{phone, password}` | `{token, user}` | — | ✅ | ✅ | COMPLETE |
-| POST | `/auth/forgot-password` | — | — | `{phone}` | `null` | INSERT `verification_codes` | ✅ | ❌ | COMPLETE |
-| POST | `/auth/reset-password` | — | — | `{phone, code, newPassword}` | `null` | UPDATE `users.password_hash` | ✅ | ❌ | COMPLETE |
+| POST | `/auth/register` | — | — | `{username, phone, password, gender}` | **202** `{user, request}` (no token) | INSERT `users` (unverified, hash), upsert `account_requests` | ✅ | ❌ | COMPLETE |
+| POST | `/auth/login` | — | — | `{phone, password}` | `{token, user}` (403 `ACCOUNT_PENDING_APPROVAL` if unverified) | — | ✅ | ✅ | COMPLETE |
+| POST | `/auth/forgot-password` | — | — | `{phone, username, gender, levelKey}` | **202** `{request}` | upsert `account_requests` (kind `password_reset`) — nothing else | ✅ | ❌ | COMPLETE |
+| GET | `/admin/account-requests` | JWT | admin | `?kind&status&search&page&limit` | `{items, pending, …}` | — | ❌ | ✅ | COMPLETE |
+| POST | `/admin/account-requests/:id/approve` | JWT | admin | `{note?}` | request | UPDATE `users.phone_verified_at` (registration only) | ❌ | ✅ | COMPLETE |
+| POST | `/admin/account-requests/:id/reject` | JWT | admin | `{note?}` | request | UPDATE `account_requests` (kept) | ❌ | ✅ | COMPLETE |
+| GET | `/admin/customers/:id` | JWT | admin | — | profile + points + orders + requests (no secrets) | — | ❌ | ✅ | COMPLETE |
+| PATCH | `/admin/customers/:id/password` | JWT | admin | `{newPassword, requestId?, note?}` | `{customerId, request}` (no password) | UPDATE `users.password_hash` + `token_version`; request → approved | ❌ | ✅ | COMPLETE |
 | GET | `/auth/me` | JWT | any | — | `{user}` | — | ✅ | ✅ | COMPLETE |
 | PATCH | `/auth/me` | JWT | any | `{username?, avatarUrl?}` | `{user}` | UPDATE `users` | ✅ | ❌ | COMPLETE |
 | PATCH | `/auth/me/password` | JWT | any | `{currentPassword, newPassword}` | `null` | UPDATE `users.password_hash` | ✅ | ❌ | COMPLETE |
@@ -3441,6 +3480,9 @@ for post-audit changes.*
 
 ## 19.0 Why new accounts could not register or log in
 
+> **SUPERSEDED (2026-09-12).** The OTP gate described here was replaced by admin approval (`account_requests`). The resumable-registration rule survived. Kept as history. See §2.1.
+
+
 Three independent defects stacked on the same journey. All three were reproduced against the real
 server over HTTP before anything was changed.
 
@@ -3505,6 +3547,9 @@ proxy hops or every client collapses into one bucket again.
 
 ## 19.2 OTP lifecycle
 
+> **SUPERSEDED (2026-09-12).** The verification-code lifecycle no longer exists in the build; `otpService`/`verificationRepo` are in `legacy/otp/`. Kept as history. See §2.1.
+
+
 ```
 send   → assertSendAllowed (per-phone cooldown + window ceiling, from DB)
        → consumeAllActive (only one live code per phone+purpose)
@@ -3541,6 +3586,9 @@ The Flutter "رمز التجربة" hint follows the same rule: shown only in a 
 release build never hints that a fixed code exists.
 
 ## 19.3 SMS provider boundary — **ready, not connected**
+
+> **SUPERSEDED (2026-09-12).** No SMS provider is configured or checked at boot anymore. `services/sms/` is in `legacy/otp/`. Kept as history. See §2.1.
+
 
 `backend/src/services/sms/index.ts` defines `SmsProvider { name, send({to, message}) }`. The
 authentication system knows only this interface; no vendor name appears anywhere else.
@@ -3597,6 +3645,13 @@ password.
 `SEED_ADMIN_PASSWORD` are set; the password must be ≥ 12 characters and **is never printed** (the
 old code logged `Admin user: 07700000000 / admin123` into every deploy log). Seeding a production
 database additionally requires `ALLOW_PRODUCTION_SEED=true`.
+
+**2026-09-12 — E.164 fix.** The admin step moved to `scripts/seedAdmin.ts` and now runs the phone
+through `normalizeIraqiPhone` before inserting. Until then it validated `^07\d{9}$` and inserted the
+local form, which migration 037's `users_phone_check` (E.164) rejected — no admin could be seeded on
+any post-037 database. `SEED_ADMIN_PHONE` accepts any Iraqi mobile form and is stored as `+9647…`;
+the constraint is unchanged. Proved in-process by `tests/seed-admin.test.ts` (insert → login → admin
+route) and by a real `db:seed` run against the dev database.
 
 Test code uses its own local constant in `tests/helpers.ts` — a test fixture, not a product default.
 
@@ -4976,6 +5031,10 @@ fallback would let one forgotten call site render nothing on a customer's phone.
 
 ## 27.3 Rotation is resolved server-side
 
+> **Superseded by STEP 50 (2026-09-20):** rotation, `urls` and `validUntil` no
+> longer exist. A slot holds exactly one fixed image; `GET /catalog/visuals`
+> returns `{ version, slots: [{ slotKey, currentUrl }] }`. Kept as history.
+
 `GET /catalog/visuals` returns the chosen `currentUrl`, the full `urls` list for
 prefetching, and `validUntil`.
 
@@ -5148,6 +5207,30 @@ extracted keys against `visual_slots` in both directions. It also asserts every
 row has a label, a location and a real group, and that no key contains `splash`,
 `offline`, `logo` or `brand`.
 
+**2026-09-12 — sync with the current screens.** The two-way check above has a
+blind spot: a constant that is *declared* but *consumed by no screen* passes on
+both sides. That is how `otp_character` survived the removal of the OTP screen
+(§19) — still seeded, still active, still listed under «المصادقة» in the
+dashboard, while nothing in `lib/` could ever render it. Migration
+`049_drop_otp_slot.sql` retires the row (same decision and same cascade as 031;
+`media_files` rows and files on disk untouched) and rewrites the seeded
+`auth_cta_character` description from "four" to "three" auth screens — only
+where the text is still the seeded one, so an admin-edited description is kept.
+`VisualSlots.otp` is gone from Dart — the catalogue is now **43 slots** on both
+sides; the account-pending screen deliberately
+reuses `register_character` / `forgot_password_character` by request kind, so
+no new key was added. `visual-catalogue.test.ts` now also guards the third leg:
+every `VisualSlots.*` constant must be referenced by a file under `lib/`
+(`legacy/` cannot satisfy it), retired keys stay absent from DB and Dart, every
+`group_key` in the DB is known to the dashboard's `GROUP_ORDER`/`GROUP_LABELS`,
+and the `auth_cta` description tracks the actual `AuthScaffold` consumer count.
+`admin/src/pages/VisualSlotsPage.test.tsx` pins the dashboard side: it renders
+exactly the slots the API returns, grouped in journey order with unknown groups
+last (never hidden), shows «مضمَّن» for a slot with no current image, a disabled
+slot, or a `currentImageId` that matches no image, and never substitutes a
+different image for the server's choice. Dashboard code itself needed no change —
+it was already data-driven.
+
 ## 28.5 Verification
 
 | Command | Result |
@@ -5207,6 +5290,10 @@ BEFORE: f145432b.png
 uploaded replacement: cae7abd9.png
 AFTER : f145432b.png      ← unchanged
 ```
+
+> **Superseded by STEP 50 (2026-09-20):** there is no image list any more —
+> `PUT /admin/visual-slots/:id/image` overwrites the single `image_url`. The
+> defect below cannot recur by construction. Kept as history.
 
 **`fixed` rotation returns the image at `sort_order` 0. Uploading appended at
 `MAX(sort_order) + 1`.** So a "replacement" landed at the end of a list whose
@@ -7722,6 +7809,10 @@ against an available product cannot render a waiting state.
 
 ## 42.6 Concurrency
 
+> **2026-09-26 — STEP 57 (CA-17a):** `subscribe` now reads the stock after `SELECT … FOR SHARE` on the
+> product row, so a subscription racing a restock (admin save or rejection release) waits and is
+> refused with `PRODUCT_IN_STOCK` instead of lingering or being consumed without a notice.
+
 `updateProduct` now takes `SELECT id FROM products WHERE id = $1 FOR UPDATE`
 before reading. Every decision in that transaction is a comparison against the
 previous value — did stock return? did the date change? — and two admins saving
@@ -8269,6 +8360,21 @@ either — including `cupColor` and `steamColor`, left over from a previous
 coffee-cup logo concept. The ninth, `cornerRadius`, did have an effect: it set
 the radius of the `ClipRRect` that has now been removed.
 
+> **Superseded twice — read the code, not this section, for the current rule.**
+> 2026-09-09: the in-app asset became the **square mark with its baked ground**
+> (`assets/branding/otaku-square-mark.png`, Configuration A); the transparent
+> `otaku-mark.png` was deleted and the pixel guard inverted to assert opacity.
+> 2026-09-14: the asset is unchanged, but `OtakuStoreLogo` now applies a
+> **UI-level rounded clip** — `ClipRRect`, `Clip.antiAlias`, radius
+> `AppDimens.logoCornerRatio (0.22) × size` (36→8, 46→10, 124→27 px), with
+> `cornerRadius` un-deprecated as the per-surface override. The artwork sits
+> inside the 19.1% safe area so the clip only ever removes ground; the page
+> background shows through the corners, which is what makes it native on both
+> themes. The tripwire in `test/splash_theme_and_logo_test.dart` now asserts:
+> exact corners transparent, the pixel just past the arc opaque brand ground,
+> no translucency outside the four corner squares, and a bright artwork centre —
+> so `ClipOval`, `BoxFit.cover`, a transparent asset, or a dropped clip all fail.
+
 ## 46.5 What the sweep did and did not touch
 
 | file | change | why |
@@ -8415,3 +8521,1552 @@ declared in the new `android/app/src/main/res/values/colors.xml`.
   did not match at the baseline either (52 by a plain literal count, 50 now), so
   this is pre-existing drift from the STEP 28 scan, not a consequence of this
   step. Re-deriving the 44-slot catalogue is out of scope here.
+
+---
+
+# STEP 46 — DEV: COMING SOON (STOCK 0 + EXPECTED DATE) · STARTUP CONTRACT · A CART STOCK BYPASS
+
+Two unrelated requests, plus a genuine stock-overselling defect that the cart
+security tests for the first one uncovered.
+
+## 46.1 Coming Soon — nothing new was built on the server
+
+`products.restock_at` has existed since migration 034, `restock_subscriptions`
+and the `backInStock` / `restockScheduled` notifications since 034/044, and the
+whole scheduled-restock flow was built in STEP 42. **No column, endpoint,
+notification type or subscription mechanism was added.** The state is *derived*,
+not stored:
+
+| stock | restock_at | State | Cart | Action shown |
+|---:|---|---|---|---|
+| > 0 | anything | متوفر | ✅ | — |
+| 0 | set | **قريباً يتوفر** + date | ❌ | «أخبرني عند توفره» |
+| 0 | null | غير متوفر | ❌ | «أخبرني عند توفره» |
+
+[CRITICAL] **Stock is the source of truth, never the date.** A product whose
+goods arrive on the 12th for a date of the 15th becomes buyable immediately and
+stops showing the date — the admin forgetting to clear it is the normal case, not
+the exception. Equally, a date that passes with no goods leaves the product
+unavailable. `Product.availability` reads `stock` first and only consults
+`restockAt` when stock is zero; `displayRestockAt` returns `null` for anything
+buyable.
+
+The gap was entirely client-side: the Flutter `Product` entity never parsed
+`restockAt`, so `ProductStockPill` only knew `stock` and said «نفد المخزون»
+about a product the store had publicly dated. One derivation now lives in
+`Product.availability` and every surface reads it — card, row, detail, search,
+favourites and categories all render through the same pill.
+
+A contradiction was found and fixed while auditing surfaces: the product card
+drew its "sold out" chip and strip on `!inStock`, so a coming-soon product would
+have shown «قريباً يتوفر» in its pill **and** «نفد المخزون» over its image at the
+same time.
+
+## 46.2 The dashboard could not set a date on a new product
+
+`restockAt` was only editable from `RestockPage`, whose query is
+`JOIN restock_subscriptions … WHERE stock = 0` — so a freshly published
+zero-stock product with no subscribers yet **never appeared there**. Publishing a
+product as "coming soon" was therefore impossible from the dashboard even though
+the API had always accepted the field.
+
+`ProductForm` now carries a «متوقع التوفر» date picker beside the stock field
+(optional, clearable — clearing sends explicit `null`), plus a live panel telling
+the admin exactly what the customer will see for the current stock/date pair,
+including "المخزون يتقدّم على الموعد" when both are set. Same field, same
+`PATCH /admin/products/:id` route — `RestockPage` keeps working unchanged.
+
+## 46.3 Startup: one completion condition instead of two racing timers
+
+The splash ran **two independent clocks**: an `AnimationController` of 2.3 s for
+the bar, and a `Future.delayed(2300ms)` for navigation.
+
+[CRITICAL] The timer starts at `initState`; the animation cannot start until the
+**first frame**. Any first-frame delay — dependency injection, image decoding,
+exactly what a cold start does — makes the animation finish *after* the timer, so
+the app navigates while the bar is visibly short of the end. That is the reported
+symptom, and it was deterministic, not flaky. The mirror case was equally
+possible: a slow session restore left the bar sitting at 100% representing work
+that had not finished.
+
+`StartupProgress` replaces both. A finite list of required steps — `preferences`,
+`session`, `brandMoment` — where `progress = done / total`, `isComplete` is true
+only when every step is done, and **navigation happens on exactly one condition**:
+the bar reached its end *and* `isComplete`. `SplashTiming.load` and `loadCurve`
+were deleted as meaningless, and the smoothing duration (`progressEase`, 320 ms)
+is explicitly not a startup duration.
+
+Non-critical work is *excluded by name*: store settings and managed visuals stay
+fire-and-forget, because a startup that waits on the network is a startup that
+fails with the network. A test asserts they are not in the step list.
+
+A failed required step sets `failure`, which forces `isComplete` to false no
+matter how many steps had completed, freezes the bar at its last true value, and
+shows a retry action — no false 100%, no navigation into a half-initialised app.
+
+## 46.4 The white flash was `NormalTheme`, not the Flutter splash
+
+`LaunchTheme` was fixed in STAGE 12 to use the brand colour. `NormalTheme` was
+not, and it still read `?android:colorBackground` — **white** under
+`Theme.Light.NoTitleBar`, black under `Theme.Black`. That theme is applied to the
+window as soon as the process starts and sits *behind* the Flutter UI, while
+`LaunchTheme`'s drawable is removed the moment the engine draws its first frame.
+The gap between the two is the flash. Both `values/` and `values-night/` now use
+`@color/brand_launch_background`, the same first stop of the splash gradient.
+
+## 46.5 A real overselling defect, found by the cart security tests
+
+Writing §8's "customer cannot exceed available stock" test produced a **200 where
+409 was required**. Investigating it:
+
+`cart_items` had `UNIQUE (cart_id, product_id, option_value)`. In PostgreSQL
+**NULL is not equal to NULL inside a unique index**, so a product without options
+(`option_value IS NULL`) never conflicted with itself: every add inserted a *new
+row* and `ON CONFLICT … DO UPDATE` in `cartRepo.upsertItem` never fired.
+
+The consequences compounded. `cartService.addItem` used `find` to locate one
+matching line, so its guard undercounted; `orderService.create` validated **each
+line separately**, and each line was individually within stock. Measured on the
+dev database: **a product with stock 3 produced a 201 Created order for 5 units**,
+and stock landed on 0 instead of −2. The store sold two items it did not have.
+
+Fixed in three layers:
+
+1. Migration 046 — merges any existing duplicate rows (summing quantities rather
+   than deleting a customer's cart), then rebuilds the constraint as
+   `UNIQUE NULLS NOT DISTINCT` (PostgreSQL 15+; this server is 16).
+2. `cartService.addItem` sums **all** matching lines instead of the first.
+3. `orderService.create` validates the **per-product total across lines**, not
+   the line.
+
+Verified after the fix: the same five single-unit adds now cap the cart at 3, and
+a deliberately split cart written straight into the database — bypassing the API
+entirely — is rejected with 409, leaving stock untouched.
+
+---
+
+# STEP 47 — DEV: STOCK CONSUMED AT ADMIN APPROVAL · REVIEW-PHOTO OWNERSHIP · PRODUCTION-READINESS PASS
+
+Follow-up to the 2026-09-13 audit (§§ above) after an independent pre-commit
+review. Twelve findings (F1–F12) were closed on 2026-09-14; the ones that change
+a contract are recorded here so the code, the tests and this document say the
+same thing.
+
+## 47.1 Stock lifecycle — the business rule (F3)
+
+Until now `orderRepo.create` deducted stock when the **customer submitted** and
+`rejectOrderInTransaction` restored it on rejection. The owner's rule is:
+
+| Event | Stock |
+|---|---|
+| Customer submits (cart → checkout → order) | **unchanged** — nothing deducted, nothing reserved |
+| Admin rejects a pending order (repeatedly) | **unchanged** — there is nothing to restore |
+| Admin approves (`PENDING_ADMIN_CONFIRMATION → OUT_FOR_DELIVERY`) | **consumed atomically, exactly once** |
+| Admin approves again (same status) | no-op — no second deduction |
+| Admin rejects an order that was **already approved** | consumed stock is **released once** (`releaseStockOnRejection`) — the pre-existing rule for accepted orders, kept because the goods are physically back on the shelf; a pending order never held any |
+
+Implementation (`backend/src/services/orderService.ts`):
+
+- `create` keeps a **request gate** — the aggregate per-product quantity across
+  cart lines must fit the current stock (`409 INSUFFICIENT_STOCK`), but no product
+  row is locked or written. Two pending orders may ask for the same units;
+  approval decides.
+- `applyStatusTransition` now runs its whole decision **inside** `withTransaction`:
+  `SELECT … FROM orders WHERE id = $1 FOR UPDATE`, re-read the order, validate the
+  transition against the *fresh* status, then `consumeStockOnApproval` when — and
+  only when — the order leaves `PENDING_ADMIN_CONFIRMATION` for a non-rejected
+  status. Products are locked `ORDER BY id FOR UPDATE` (deterministic order, no
+  deadlocks), stock is re-read, every line is checked before anything is written,
+  and the conditional `UPDATE … WHERE stock >= $2` is kept as a second guard. Any
+  shortfall rolls the transaction back: no partial deduction, order stays pending,
+  the admin sees `مخزون «…» غير كافٍ (المتاح: N)`.
+- Concurrency is PostgreSQL's, not the process's. `tests/order-approval-stock.test.ts`
+  proves stock 5 / two 3-unit approvals → exactly one 200 and one 409; five
+  approvals on stock 1 → one winner; two approvals of the **same** order → one
+  deduction. `scripts/oversell-multi-instance.ts` was rewritten for the new model
+  (customers inserted directly — `/auth/verify` no longer exists — and approvals
+  fired from **two independent server processes**): 10/10 rounds `200/409`,
+  contention 3/6, stock 0, no failures (`docs/staging/multi-instance-oversell.md`).
+- Migration `051_unreserve_pending_orders.sql` returns to stock the quantities of
+  orders that were pending at deploy time — they were deducted under the old model
+  and would otherwise be deducted twice on approval. Apply it **before** starting
+  the new code, as the runbook already orders (`db:migrate` then `start`).
+  `tests/migration-051-unreserve-pending.test.ts` runs the file inside a rolled-back
+  transaction.
+
+Deployment note: the request gate means the customer-visible stock is **not**
+reduced by pending orders; the dashboard's stock column is the consumed stock.
+
+## 47.2 Review photos — ownership and exposure (F4, F5)
+
+- `assertOwnedPhotos` used to check only that a `media_files` row **existed**. A
+  customer could attach another customer's community photo or an admin's product
+  image and earn the photo points. It now requires `uploaded_by = the caller` and
+  `purpose = 'review'`; the same message and code (`INVALID_PHOTO_URL`) are
+  returned for "missing" and "not yours", so the response is not an existence
+  oracle. On resubmission, refs already attached to that review are accepted
+  without re-checking (they were checked when first attached; a media row that
+  later lost its uploader — `ON DELETE SET NULL` — must not make a rejected review
+  uncorrectable). `assertOwnedAvatar` applies the same ownership rule, with the
+  unchanged current avatar passing through. Tests:
+  `tests/review-photo-ownership.test.ts`.
+- `/uploads` stays public **by reference**. Decision recorded after audit: storage
+  keys are `purpose/YYYY/MM/<uuid v4>.<ext>` (unguessable), directories are not
+  listed (`index: false`) and no longer redirect (`redirect: false`, so a folder
+  request is not an existence oracle), and no public API lists a pending or
+  rejected review's photo — community and product reviews are approved-only. A
+  gated route would break the uploader's own preview and the dashboard's
+  moderation view (image loads carry no token) for no real gain. Accepted residual
+  risk: anyone who obtains a pending/rejected URL can open it while the file
+  exists, and browsers cache it for 30 days. Tests: `tests/uploads-exposure.test.ts`.
+
+## 47.3 Canonical photo references in the app (F2)
+
+`Review` now carries `photoRefs` (what the server stores: `/uploads/…` or an
+external absolute URL) next to `photoUrls` (resolved for display against the
+current media origin). The write-review screen edits and **submits refs**; it only
+resolves them for the thumbnails. The server still accepts absolute URLs on its
+own `PUBLIC_BASE_URL` origin (tolerance for older clients) and still rejects every
+other origin — including the emulator's `10.0.2.2`, which is exactly why display
+URLs must never be used as identifiers (`review-lifecycle-contract.test.ts`,
+`test/review_photo_refs_test.dart`).
+
+## 47.4 `reviewableProductCount` across a mixed deployment (F7)
+
+The field was added in step 46-audit; an app from the store may meet a backend
+that does not send it yet. **Absent** now means "unknown → behave as before the
+field existed" (`items.length`, CTA visible; the rate screen shows each product's
+true state and the server rejects duplicates). **Present** — including `0` and
+`null` — is the server's word. Backend-before-client remains the intended order.
+
+## 47.5 Smaller items
+
+- Admin API errors are pinned to Arabic (`pinLocale` on `/api/admin`, mounted
+  before the `/api` layer so unauthenticated 401s are Arabic too); the customer
+  chain (header → column → `ar`) is untouched (F6).
+- Admin product search: the URL is the source of truth; an external `q` change
+  (back/forward, category link, "show all") resets the input, a stale debounce can
+  never overwrite a newer URL (F1).
+- Public search declares `ESCAPE '\'` explicitly (F12). Birthday day/month share
+  the phone field's digit normaliser (`lib/core/utils/digits.dart`) (F8). Address
+  max length: client counts grapheme clusters, server UTF-16 units — documented,
+  not unified (F9). Checkout countdown announces once at open, not every second
+  (F10). `sorani-review-queue.md` is generated from `review-queue.json`
+  (`tool/l10n/render_sorani_review_queue.dart`) and its totals are guarded (F11).
+
+---
+
+# STEP 48 — DEV: CHARACTER VISUAL SLOTS — RESTART FLICKER · SLOT MAP · FIXED SOCIAL ICONS
+
+## 48.1 The restart flicker — root cause
+
+`VisualsRepository` kept the published slot map only in memory, and the splash
+deliberately does not await `GET /visuals`. So every cold start rendered each
+`ManagedArtwork` with its **bundled** character first (the bundled asset was
+briefly authoritative), then — when the config arrived — rebuilt it into a
+`CachedNetworkImage` whose placeholder is the bundled asset again until the file
+decoded from disk. Two visible swaps per slot, landing at different moments on
+screens with several slots. On the home screen a third state exists by design:
+the hero/promo panels prefer the **banner image** when the admin gave the banner
+one, and show the character only otherwise (§48.3). No cross-slot mapping fault
+exists: the server chooses per `slot_key` deterministically and image URLs are
+per-upload UUIDs, so image-cache keys cannot collide.
+
+## 48.2 The fix (no delay, fallback kept, architecture kept)
+
+- The last successful config (`version` + `slotKey → currentUrl`) is persisted in
+  `SharedPreferences` (`visual_slots_snapshot`) and **restored synchronously in
+  the repository constructor**, so `urlFor()` is right from the first frame. The
+  server stays the source of truth: the snapshot is its last word, and the first
+  successful fetch replaces it. An unchanged `version` bumps no `revision` — no
+  rebuild, no swap.
+- `warmRestored()` decodes the restored URLs **from the disk cache only** (no
+  network) into the in-memory image cache, bounded by a 1.2 s budget; it is a
+  declared startup step (`StartupStep.visuals`) because it is real bounded work
+  the first screen depends on, not a timer — zero work with nothing persisted.
+  An image already in memory paints in the same build, so the bundled
+  placeholder never shows for a cached server image.
+- `ManagedArtwork` keys its remote widget per slot (`managed-artwork:<slot>`) so
+  a host that swaps slots in place can never show the previous slot's frame, and
+  uses `useOldImageOnUrlChange` so an admin replacement keeps the current server
+  image until the new one is decoded (no bundled flash in between).
+- Tests: `test/visuals_restart_test.dart` (restore before network, same-version
+  no-op, snapshot rewrite, malformed snapshot ignored, disk-only warm-up within
+  budget, first-frame URL per slot, twelve concurrent slots isolated, in-place
+  slot swap gets a fresh element, URL change, removal → own fallback).
+  `flutter_test` cannot load image bytes, so pixel-level "no flash" is not
+  asserted; the resolution/state layer and widget structure are.
+
+## 48.3 Slot → screen map (from the consumers in `lib/`)
+
+Descriptions live in `visual_slots.label/location` (admin-editable, guarded by
+`tests/visual-catalogue.test.ts`). Migration 053 rewrites only the still-seeded
+text of the slots that are reused or conditional; the dashboard renders a
+`تُستخدم في: … · …` value as one screen per line.
+
+| Slot | Actual Flutter screen(s) | Note |
+|---|---|---|
+| `register_character` | Register (header) · Account-pending after a registration request | reused |
+| `forgot_password_character` | Forgot-password (header) · Account-pending after a reset request | reused |
+| `auth_cta_character` | Login · Register · Forgot-password — bottom panel of `AuthScaffold` | reused |
+| `guest_prompt_character` | Cart tab · Favorites tab — guest login prompt | reused |
+| `home_hero_character` | Home hero panel — **only when the hero banner has no image** | conditional |
+| `home_promo_primary/secondary_character` | Home promo rail card 1 / cards 2+ — only when that banner has no image | conditional |
+| the other 34 | one screen each (`login`, `home_delivery`, `empty_cart`, `cart_checkout`, `empty_favorites`, categories ×4, `product_detail` ×2, `search` ×2, orders ×3, `delivery_confirmation`, `points`, community ×3, `product_reviews`, `write_review`, `rate_order`, `review_submitted`, collections ×2, `account`, `notifications_header`, onboarding ×3, `personalize`) | seeded text accurate |
+
+Everything in `VisualSlots` is consumed; nothing configurable lacks a slot.
+Intentionally fixed (no slot): store logo, splash artwork, offline-gate artwork
+(shown before/without network) — and, since this step, the social icons.
+
+## 48.4 Social icons are fixed assets (decision 2026-09-15)
+
+TikTok/Instagram/WhatsApp icons on the account screen are no longer visual
+slots. Migration `053_retire_social_icon_slots.sql` deletes the three rows
+(images cascade; `media_files` and disk untouched — the dev DB had no configured
+icons), `VisualSlots` lost the three constants, `_SocialRow` draws its `Icon`
+directly, and `ManagedArtwork.orWidget` (whose only use was these icons) was
+removed. Links stay in `store_settings` and the settings page. The dashboard
+shows them in a separate "أصولٌ ثابتة" table with no image control. The fixed
+glyphs are the existing Material icons: no brand logos exist in the bundle and
+adding trademarked artwork is a product/legal decision, not taken here.
+
+---
+
+# STEP 49 — DEV: UI/UX FIXES · CATEGORY CARDS WITHOUT IMAGES · STALE-RESPONSE RACE · FULL-OPACITY CHARACTERS
+
+Owner-reported presentation issues, fixed across the app and the admin dashboard on
+2026-09-15. No API contract changed; no database row was modified or deleted.
+
+## 49.1 Empty states share the Cart composition
+
+`AnimeEmptyState(centered: true)` (image → centered text → centered button) is now
+used by **Search — no results** (`search_screen.dart`, action «تصفّح الأقسام»),
+**Favorites — empty** (already centered) and **My Groups — no collections**
+(`collections_tab.dart`, previously a start-aligned `OtakuEditorialPanel` with no
+action; the new «مجموعة جديدة» button focuses the create-collection field below).
+The explanatory line «مجموعاتك خاصة بك ولا تظهر لأحد.» was removed from the My
+Groups tab (the key stays; the add-to-collection sheet still uses it). Other
+screens keep the side layout the prototype specifies. Tests:
+`test/empty_states_centered_test.dart`, `cart_empty_state_test.dart`,
+`favorites_empty_state_test.dart`.
+
+## 49.2 Iraqi phone field — fixed `07` prefix + nine digits
+
+The server contract is unchanged (`normalizeIraqiPhone`, `^7[5-9]\d{8}$`, stored
+`+9647XXXXXXXX`). The four phone fields (login, register, forgot-password,
+order-data) now show a fixed `07` prefix inside the field (`prefixText`), accept
+only digits (both scripts) and at most **nine** of them, and `IraqiLocalDigitsFormatter`
+maps whatever is typed or pasted (`07701234567`, `+9647701234567`, `٠٧٧٠…`,
+spaces/dashes) to the nine digits after `07`; an accidental tenth digit is dropped
+and never shifts the others. Validation and submission run the existing
+`isValidIraqiPhone` / `normalizeIraqiPhone` on `'07' + digits`. The hint is guidance
+(«أدخل الأرقام التسعة الباقية»), not a mask — the earlier `07** *** ****` was an
+example that had been taken literally. The name hint is «أدخل اسمك».
+Tests: `test/iraqi_phone_test.dart` (group «حقل الهاتف ببادئة 07 ثابتة»), plus the
+auth/checkout flow suites which type full numbers and still submit E.164.
+
+## 49.3 Category switching "flicker" — root cause and fix
+
+There is no product cache and subcategory pills are a local `PageView` filter, so
+the stale list did not come from images or caching. The screens that refetch **in
+place** — `CategoryProductsScreen._load()` (sort / language), `CommunityScreen._load()`
+(category chips) and `SearchScreen._search()` — wrote **whatever response arrived**
+into state. When a user moved from A to B while A's request was still in flight, A's
+response landed after B's and overwrote it: B's chip/header with A's items, then a
+later response "corrected" it. A second defect on the same path: after a refetch
+the screen reset `_selectedPage = 0` while the `PageController` stayed on its page,
+so the highlighted pill and the visible products diverged.
+
+Fix: `lib/core/utils/request_sequence.dart` (`RequestSequence.next()/isCurrent()`);
+each `_load`/`_search` takes a token before its first `await` and bails after every
+`await` when a newer request exists. `CategoryProductsScreen` keeps the current
+subcategory page (clamped) and re-syncs the controller after the grid is rebuilt.
+No delays, no extra requests, no cache changes, no image-cache tampering.
+Tests: `test/category_switch_stale_test.dart` (older response after newer for
+category products, community chips and search; pill/page alignment after a refetch).
+
+## 49.4 Main category cards — text only, centered (app + admin)
+
+`AnimeCategoryCard` (wide) no longer reserves an art area: no admin image, no
+watermark letter, no placeholder; the name and «N قسم فرعي» are centered
+horizontally and vertically on the existing gradient/radius/shadow. The admin
+`CategoriesPage` dropped the «الصورة» column and the optional image upload from the
+editor, and centers «القسم» and «الأقسام الفرعية». `categories.image_url` and the
+`imageUrl` fields of the API remain; the admin simply stops sending the field, so
+stored values are **not** nulled by an edit. Tests: `test/category_and_chips_test.dart`,
+`admin/src/pages/CategoriesPage.test.tsx`.
+
+## 49.5 Character artwork is never faded
+
+The prototype fades only *bundled decorative* art (`opacity: .16/.22/.13`); the same
+fade had been applied to admin-managed slots (`OtakuScreenHeader` artwork,
+community gallery, personalize, product detail, auth CTA), so uploaded characters
+looked broken. `ManagedArtwork` lost its `opacity` parameter and every `Opacity`
+wrapper around slot artwork was removed; halos, glows and shadows are untouched.
+Splash backdrop art (not a slot, pre-network) keeps its decorative fade. Tests:
+`test/artwork_opacity_test.dart` (light + dark; source tripwire),
+`test/managed_artwork_test.dart`.
+
+
+# STEP 50 — DEV: CHARACTER SLOTS — ONE LOCATION = ONE SLOT = ONE FIXED IMAGE
+
+Working tree `dev` @ `39e68bd`, uncommitted, 2026-09-20. Product decision:
+character artwork is a set of **fixed, location-specific images**. Each location
+has exactly one image. Daily/multiple-image rotation is **not supported**.
+Locations that shared a slot are intentionally split into independent slots.
+Instagram/TikTok/WhatsApp remain static assets (STEP 48.4).
+
+> **Superseded in part by STEP 51 (same day):** a location keeps exactly one
+> *permanent* image, but the admin may now place one *temporary* image on top
+> of it until a chosen moment (migration 055). "No temporary image" below
+> describes the state between 054 and 055; everything else in this step holds.
+
+## 50.1 Inventory before the change (audit, read-only)
+
+- DB: `visual_slots` (40 rows, all `rotation_mode = 'fixed'`, all `is_active`) +
+  `visual_slot_images` (14 rows: 10 active — one per configured slot — and 4
+  inactive leftovers of earlier «replace» operations). The only FK to
+  `media_files` was `visual_slot_images.media_id … ON DELETE SET NULL`; nothing
+  references the images table, so dropping it cannot touch a media row or a file.
+- Backend: `chooseIndex(rotationMode, count, storeDay)`, admin API with
+  create/update/delete slot and append/toggle/reorder/delete image.
+- Flutter: 40 `VisualSlots` constants, all consumed; **four served more than
+  one location** — `register_character` (register header + pending screen),
+  `forgot_password_character` (forgot header + pending screen),
+  `auth_cta_character` (`AuthScaffold` corner art on login/register/forgot),
+  `guest_prompt_character` (default value inside `AnimeGuestPrompt`, used by the
+  cart and favorites tabs). `VisualSlot` still parsed `urls/rotationMode/validUntil`.
+- Admin: `VisualSlotsPage` exposed rotation (ثابتة/يومية), «إضافة صورة إلى
+  مجموعة التدوير», reorder arrows, per-image active switches, slot active switch,
+  «فتحة جديدة», «حذف الفتحة»; `SettingsPage` still told the admin that social
+  icons are uploaded from «رسوم الشخصيات» (retired in 053).
+- Three seeded descriptions contradicted the code: `category_products_header_character`
+  (the gradient header has no art — the slot is the whole-category empty state),
+  `collections_tab_character` (now the My-Collections empty state, STEP 49),
+  `product_reviews_character` (the no-reviews panel).
+
+## 50.2 Database — migration `054_fixed_single_image_slots.sql`
+
+Order, with in-file assertions (`RAISE EXCEPTION` rolls the whole file back):
+
+1. `ADD COLUMN image_url TEXT`, `ADD COLUMN media_id UUID REFERENCES media_files ON DELETE SET NULL`.
+2. Copy the **currently served** image into the row (`DISTINCT ON (slot_id) … ORDER BY sort_order, created_at` among active images; a `daily` slot keeps its first image; a hidden slot stays without one). Assert: no active slot with an active image was left without `image_url`.
+3. Split: rename `register_character → register_header_character`,
+   `forgot_password_character → forgot_password_header_character`,
+   `auth_cta_character → login_cta_character`, `guest_prompt_character → cart_guest_prompt_character` (rows keep id and image; label/location rewritten unconditionally because their meaning changed) and insert `register_pending_character`, `forgot_password_pending_character`, `register_cta_character`, `forgot_password_cta_character`, `favorites_guest_prompt_character` copying `image_url, media_id` from their origin. Guest prompts move to group `shopping`; `auth`/`shopping` `sort_order` renumbered. Assert: all nine keys exist, the four old keys are gone, every sibling carries its origin's image, no duplicate keys.
+4. Fix the three wrong descriptions (only when the seeded text is still there).
+5. `DROP COLUMN rotation_mode, is_active`; `DROP TABLE visual_slot_images` (no `CASCADE`).
+6. Assert `COUNT(media_files)` unchanged; notice (not abort) for pre-existing dangling `/uploads/` refs.
+
+Data intentionally lost: the **inactive** image rows (replaced images — never
+shown to anyone; their `media_files` rows and files remain). Verified on dev:
+45 slots / 45 distinct keys / 11 with an image (the 10 served before + the copy
+on `register_pending_character`), `media_files` count unchanged, 22 slot
+uploads intact. `mediaRepo.MEDIA_REFERENCE_COLUMNS` and `findUnreferenced`
+now point at `visual_slots.image_url / media_id` (coverage test still green).
+
+> Repo behaviour worth knowing: `scripts/migrate.ts` **used to** run `main()`
+> whenever it was imported (`import.meta.url.includes('scripts/migrate')` was
+> always true), so `npm test` migrated **`DATABASE_URL` as well as the test DB**.
+> That is how 054 reached the dev DB during the first test run. Fixed since:
+> the runner now compares `process.argv[1]` against its own path and migrates
+> only when invoked directly (`db:migrate` / `db:reset` / compose `migrate`);
+> importing it is inert. `tests/migrate-entry-point.test.ts` guards both sides
+> of that boundary (import → no connection; CLI → migrates, non-zero on failure,
+> connection closed either way).
+
+## 50.3 API contract
+
+Public (unchanged wire names for released clients): `GET /api/catalog/visuals →
+{ version, slots: [{ slotKey, currentUrl }] }`; `urls`, `rotationMode`,
+`validUntil`, `timezone` are gone; `version` is an MD5 over the ordered
+`(slot_key, image_url)` pairs (content hash: same content ⇒ same version).
+
+Admin (all behind `authenticate` + `requireAdmin`): `GET /admin/visual-slots`
+(`{ items: [{ id, slotKey, label, location, groupKey, sortOrder, imageUrl, mediaId, updatedAt }] }`),
+`PUT /admin/visual-slots/:id/image { url }` (replace; `url` must be a
+`/uploads/…` reference that exists in `media_files` with `purpose = 'slot'` —
+external URLs → 400, unknown → `MEDIA_NOT_FOUND`, customer uploads →
+`MEDIA_NOT_SLOT_UPLOAD`), `DELETE /admin/visual-slots/:id/image` (back to the
+bundled asset). Removed (now 404): create/update/delete slot, append/toggle/
+reorder/delete image. Concurrency: a single atomic `UPDATE`; last write wins.
+
+## 50.4 Flutter
+
+- `VisualSlot(slotKey, currentUrl)` only; `VisualSlots` = 45 constants (new:
+  `loginCta`, `registerHeader`, `registerCta`, `registerPending`,
+  `forgotPasswordHeader`, `forgotPasswordCta`, `forgotPasswordPending`,
+  `cartGuestPrompt`, `favoritesGuestPrompt`; removed: `register`,
+  `forgotPassword`, `authCta`, `guestPrompt` — stale references fail to compile).
+- `AuthScaffold` requires `ctaSlot` (each auth screen passes its own);
+  `AnimeGuestPrompt` requires `artworkSlot` (cart/favorites pass theirs);
+  `account_pending_screen` uses the two pending slots. Rule: no `VisualSlots.`
+  reference inside `lib/core/design_system` — a shared component never owns a location.
+- Image loading (STEP 48 kept, re-verified — see 50.6): persisted snapshot,
+  disk-only warm-up, per-slot `ValueKey`, `useOldImageOnUrlChange`. No delays,
+  no global cache clearing.
+- Offline gate (§12 of the brief): card content centred — art `a-i17.png` on
+  top, wifi-off icon, title, body — status row centred; `offlineBody` →
+  «تحقّق من اتصالك وحاول مرة أخرى.» (ckb shortened alike). `OfflineGateScreen`
+  made public for the widget test; detection/retry untouched. Still not a slot.
+- Favorites (§15): «مجموعاتك خاصة بك ولا تظهر لأحد.» removed from the
+  add-to-collection sheet too; key `collectionsArePrivate` deleted from both
+  maps and the review queue (523 keys; MEDIUM 249; MD regenerated).
+
+## 50.5 Admin dashboard
+
+`VisualSlotsPage`: grouped tables with الشخصية ومكان ظهورها (label · location ·
+key) · النوع («شخصية قابلة للتغيير») · الصورة الحالية (thumb or «مضمَّن») ·
+الحالة («صورة ثابتة مرفوعة» / «الرسم المضمَّن») · one action («استبدال الصورة»
+/ «رفع صورة»). Drawer: current image, one dropzone (replace), «إزالة الصورة —
+العودة إلى الرسم المضمَّن». Removed: «فتحة جديدة», «حذف الفتحة», rotation
+segment, «إضافة صورة إلى مجموعة التدوير», reorder arrows, active switches,
+image list. Fixed-assets card kept. `SettingsPage` alert rewritten: icons are
+fixed; only links are managed there. Data-driven from `GET /admin/visual-slots`.
+
+## 50.6 Flicker — root cause re-verified
+
+The STEP 48 analysis holds against the current code: the configuration used to
+live in memory only, so every cold start rendered the bundled asset as truth
+and swapped twice when `GET /visuals` arrived. The fix in the tree is
+deterministic (snapshot restored synchronously → `urlFor` correct in the first
+build; disk warm-up puts the decoded image in `ImageCache` under the **same
+provider key** the widget uses, so `Image` gets its frame synchronously and
+`OctoImage` never shows the placeholder; per-slot keys forbid element reuse
+across slots). New evidence: `test/visuals_restart_test.dart` decodes a real
+PNG from a "disk" cache manager with no network and asserts the first pumped
+frame of `ManagedArtwork` has `RawImage.image != null` and no bundled
+placeholder; a slot whose file is *not* on disk shows **its own** fallback; an
+unreachable server leaves the snapshot untouched. Remaining transition by
+design: admin changed an image while the app was closed and the network is
+slower than the 2.3 s splash → the previous image of that slot until the
+refresh lands (never another slot's, never the bundled asset).
+
+## 50.7 Tests
+
+Backend: `tests/visual-slots.test.ts` (schema, single-image lifecycle, replace,
+content-hash version, purpose/external/traversal rejection, removed routes →
+404, legacy fields ignored, concurrency, authz, clear keeps media),
+`tests/visual-preview-parity.test.ts`, `tests/visual-catalogue.test.ts`
+(Flutter == DB == dashboard, retired += 4 keys, split keys, one consumer file
+per constant, no «تُستخدم في:», description fix), `tests/helpers.ts`
+`registerUploadedSlotImage`. Flutter: `test/visual_slot_contract_test.dart`,
+`test/visuals_restart_test.dart` (+3), `test/visual_slots_screens_isolation_test.dart`,
+`test/offline_gate_test.dart`, `test/managed_artwork_test.dart` (contract).
+Admin: `src/pages/VisualSlotsPage.test.tsx` rewritten (12).
+
+
+# STEP 51 — DEV: TEMPORARY CHARACTER IMAGE, OFFLINE SLOT, EMPTY COLLECTION
+
+Working tree `dev` @ `39e68bd`, uncommitted, 2026-09-20 (after STEP 50).
+Brief: per-location character audit; a dashboard-managed **temporary** image
+that falls back to the permanent one automatically; clear location names;
+static social images; empty-state composition; rapid category switching;
+phone/name fields. Most of it was already in the tree from STEPS 48–50 and was
+re-verified; this step records what was **added**.
+
+## 51.1 Audit result (what already held)
+
+Per-location slots (054, 45 keys, one consumer file each), register header vs
+pending-approval split, static Instagram/TikTok/WhatsApp (053 + `FIXED_ASSETS`
+card, no rows), centred Search/My-Collections empty states, category cards
+text-only in app and admin, `RequestSequence` for in-place refetch, no opacity
+on slot art, snapshot + disk warm-up for the restart flicker, `07` prefix +
+nine digits with server-mirrored validation, «أدخل اسمك» hint. Baselines were
+green before any edit (Flutter 95, admin 15, backend 52/53 — the one failure is
+`media.test.ts › يميّز الملف المربوط` which assumes a product row seeded by
+another suite and passes in the full run).
+
+Gaps found: (a) no temporary image; (b) `collection_detail_screen` empty state
+still side-aligned with no action; (c) offline gate not configurable (the brief
+lists it as a required location); (d) no rapid A→B→C→A test.
+
+## 51.2 Migration `055_temporary_slot_image.sql`
+
+- `visual_slots` + `temporary_image_url TEXT`, `temporary_media_id UUID → media_files ON DELETE SET NULL`,
+  `temporary_until TIMESTAMPTZ`; `CHECK ((temporary_image_url IS NULL) = (temporary_until IS NULL))`.
+- Insert `offline_gate_character` (group `connectivity`, «شخصية عدم الاتصال بالإنترنت»).
+- Tighten three seeded labels to «شخصية <الشاشة> <الحالة>» (search/orders/categories
+  empty) — only when the seeded text is untouched (053/054 pattern).
+- Assertions: the offline row exists, no temporary image appeared from nowhere,
+  no duplicate keys. Nothing is dropped; no data is moved.
+- `mediaRepo.MEDIA_REFERENCE_COLUMNS` += `visual_slots.temporary_image_url`
+  (the coverage test in `media.test.ts` would fail otherwise).
+
+## 51.3 Resolution rule — written once, in SQL
+
+`visualsRepo.ts`: `ACTIVE_URL = COALESCE(CASE WHEN temporary_until > now() THEN temporary_image_url END, image_url)`.
+Used by `listAll` (dashboard) and by `published` (app), one statement that
+returns the published slots, the content hash over `(slot_key, active)`,
+`now()` and `MIN(temporary_until) WHERE temporary_until > now()` from a single
+snapshot (§51.9, F4 — it replaced the separate `listPublished` /
+`publishedVersion` / `publishedClock` reads). An expired
+override is reported as `null` everywhere and the permanent image returns
+without any write, job or timer on the server. Neither client re-implements
+the rule.
+
+## 51.4 API
+
+Public: `GET /catalog/visuals → { version, now, nextChangeAt, slots:[{slotKey, currentUrl}] }`
+(`currentUrl` = active image; wire name unchanged for released clients).
+
+Admin (behind `authenticate` + `requireAdmin`), `VisualSlotDto` gains
+`temporaryImageUrl / temporaryMediaId / temporaryUntil / activeImageUrl / activeMode`:
+- `PUT /admin/visual-slots/:id/image { url }` / `DELETE …/image` — permanent (unchanged, never touches the override).
+- `PUT /admin/visual-slots/:id/temporary-image { url, until }` — `until` ISO-8601 with offset
+  (`z.string().datetime({ offset: true })`, same as `restockAt`). Service rejects
+  `until ≤ now` (`TEMPORARY_UNTIL_PAST`) and `until > now + 366 d`
+  (`TEMPORARY_UNTIL_TOO_FAR`) by the **database** clock, inside the writing
+  `UPDATE` (§51.10, F6 — was Node's `Date.now()`); the media check
+  (`/uploads/` + `media_files.purpose = 'slot'`, no external URLs, no customer
+  uploads) is the same function as for the permanent route.
+- `DELETE /admin/visual-slots/:id/temporary-image` — ends the override now.
+- Concurrency: each route is one atomic `UPDATE` on its own columns; a permanent
+  and a temporary write arriving together both persist (tested).
+
+## 51.5 Flutter
+
+- `VisualsRepository.refresh()` reads `now`/`nextChangeAt` and arms **one**
+  `Timer(min(nextChangeAt − now, 1 day))` → `refresh()`; every response cancels
+  and re-arms; `dispose()` cancels. Delay computed from server values only, so
+  device clock skew is irrelevant; if the timer still fires early the response
+  re-arms with the right value. The one-day cap (§51.8, F3) means an expiry
+  farther away is reached through intermediate refreshes that re-read the
+  server clock, while an expiry closer than a day is scheduled for its exact
+  moment. No delay is ever added to rendering.
+- `VisualSlots.offlineGate = 'offline_gate_character'`; `_OfflineCard` renders
+  `ManagedArtwork(slot: offlineGate, fallbackAsset: 'assets/art/opt/a-i17.png')`.
+  Safe without network because `prefetch()`/`warmRestored()` keep the image on
+  disk and every failure path renders the bundled art.
+- `collection_detail_screen`: empty state now `centered: true` with
+  «تصفّح الأقسام» (same navigation as the search empty state).
+
+## 51.6 Admin dashboard
+
+`VisualSlotsPage`: «الصورة الحالية» shows `activeImageUrl`; «الحالة» shows
+«صورة دائمة» / «مؤقّتة حتى <date>» + «ثم تعود الصورة الدائمة/الرسم المضمَّن
+تلقائياً» / «الرسم المضمَّن»; header counts «… منها N بصورة مؤقّتة». Drawer:
+«ما يظهر للزبون الآن» (active + mode), a `Radio` «صورة دائمة | صورة مؤقّتة حتى
+يوم» (temporary shows a `DatePicker`, today…+366 d; dropzone disabled until a
+day is picked; sends the end of that day in the **store timezone** announced
+by the server (`timezone` in the admin list — §51.10, F5; was the browser's
+zone); the server compares the absolute instant), the live
+temporary card with «إنهاء الصورة المؤقّتة الآن», and the permanent card
+(with its thumbnail when hidden by an override) with «إزالة الصورة الدائمة».
+`GROUP_LABELS/ORDER` += `connectivity` («انقطاع الاتصال»); `FIXED_ASSETS` no
+longer lists the offline gate. Social icons remain in the fixed-assets card
+only.
+
+## 51.7 Tests
+
+Backend: `tests/visual-temporary-image.test.ts` (19: schema + pair constraint,
+override hides but never overwrites, single active image on the wire, `now`/
+`nextChangeAt`, content-hash version follows the active image, expiry returns
+the permanent image with no write, permanent edits during an override, end
+early, clear permanent during override, one override at a time, past/too-far/
+malformed `until`, external/unknown/customer media rejected, 403/401/404/400,
+concurrent permanent+temporary writes, media delete → `SET NULL`);
+`visual-preview-parity.test.ts` now compares `activeImageUrl` with
+`currentUrl` (+ temporary case); `visual-catalogue.test.ts` forbids
+`splash/logo/brand/force_update` (offline allowed) and asserts the offline row;
+`visual-slots.test.ts` authz extended to the new routes;
+`media.test.ts › صورة الفتحة — الدائمة والمؤقّتة — ليست يتيمة` (§51.8, F2:
+permanent and temporary slot images are both referenced in `findUnreferenced`,
+an expired `temporary_until` alone changes nothing, an explicit end makes the
+file unreferenced — the real query against the real routes).
+Flutter: `test/visual_temporary_override_test.dart` (10: exact-moment refresh,
+no timer without an override, past `nextChangeAt`, re-arm cancels, dispose
+cancels, server-clock proof with a 2031 server clock, `ManagedArtwork` swaps
+temporary → permanent in place with `useOldImageOnUrlChange`; §51.8, F3:
+40-day and 366-day expiries produce one intermediate refresh per day and never
+a timer of the full length, an expiry closer than a day still fires at its
+moment); `splash_screen_test.dart › عطب ← «إعادة المحاولة» ← إقلاعٌ تامّ ← انتقال`
+(§51.8, F1: after a failed session restore, retry completes all four steps and
+leaves `SplashRoute`);
+`offline_gate_test.dart` (slot + keyed remote + bundled placeholder);
+`visual_slot_contract_test.dart` (offline slot allowed, splash/update still
+forbidden); `empty_states_centered_test.dart` (+ collection detail);
+`category_switch_stale_test.dart` (+ rapid A→B→C→A with replies in reverse order).
+Admin: `VisualSlotsPage.test.tsx` (17: temporary row/drawer, day picker → end
+of day ISO, end early, permanent upload during an override, offline row in its
+group and absent from fixed assets).
+
+## 51.8 Three defects fixed after the STEP 51 review (F1 · F2 · F3)
+
+Same working tree (`dev` @ `39e68bd`, uncommitted, 2026-09-20). Each was
+reproduced by a failing test first; the tests are listed in §51.7. Items F4–F10
+of that review are **not** addressed here.
+
+**F1 — splash retry could never finish.** `StartupProgress.reset()` clears all
+four required steps, but `StartupStep.visuals` (§48.2) was completed once from
+`initState` and nobody completed it again — after «إعادة المحاولة» the bar sat
+at 75 % forever. Retry now re-runs every required step: preferences, session,
+the brand moment **and** the disk-only visuals warm-up (`warmRestored()`), so
+`isComplete` can become true and the screen leaves `SplashRoute`. The one-shot
+network work (`refresh()` + `prefetch()`) is not repeated — it never was a
+required step and still runs in the background from the first attempt.
+
+**F2 — a live temporary slot image looked orphaned.** §51.2 added
+`visual_slots.temporary_image_url` to `MEDIA_REFERENCE_COLUMNS`, but
+`mediaRepo.findUnreferenced` only checked `image_url` / `media_id`, so the
+temporary image and its `temporary_media_id` were reported as unreferenced
+while the customer was looking at them. The query now treats the four slot
+columns alike. Contract: a stored temporary reference is a live reference
+**regardless of `temporary_until`** — expiry alone changes nothing; the file
+becomes unreferenced only when the override is ended or replaced. Detection
+stays read-only; nothing deletes.
+
+**F3 — Flutter Web timer overflow.** The single `Timer(nextChangeAt − now)`
+was armed for the whole override period; a browser `setTimeout` past
+2³¹−1 ms (~24.8 days) fires immediately, and the immediate `refresh()` re-armed
+the same delay — a request loop against the server for any override longer
+than ~25 days (the API allows 366). One timer is now never longer than **one
+day**; a farther expiry is reached through intermediate refreshes, each
+re-reading `now` / `nextChangeAt` from the server and re-arming for at most
+another day. Shorter periods still fire at their exact moment, every response
+cancels the previous timer, and `dispose()` cancels the pending one. The
+server remains the only clock.
+
+**Documentation clarified alongside (no behaviour change):** offline /
+reconnect — the restored snapshot is used immediately, the snapshot or bundled
+art stays in use while offline, and a fresh fetch happens at the next launch,
+on resume (2-minute throttle) or when the scheduled timer fires; a
+connectivity change by itself triggers no fetch. Temporary-image day picker —
+at that point the dashboard sent the end of the chosen day in the admin
+browser's local zone; superseded by F5 (§51.10): it is now the store timezone.
+
+## 51.9 F4 — the public visuals payload is one database snapshot
+
+`visualsService.published()` read the slots, the content-hash `version` and
+the clock (`now`, `nextChangeAt`) with **three independent statements** joined
+by `Promise.all` — three snapshots. A write committed between them (an admin
+ending an override, or an override expiring by the database clock) produced a
+payload that never existed: slots still carrying the temporary image, a
+`version` hashed over the permanent state, and `nextChangeAt = null` — so the
+app would not schedule the swap-back and kept an expired image until the next
+resume or launch.
+
+Fix: `visualsRepo.published(db)` — **one** `WITH published AS (…) SELECT …`
+statement that returns all four values. PostgreSQL evaluates a single statement
+against one snapshot (taken when the statement starts, `READ COMMITTED`), and
+`now()` is one value throughout it — the same instant that decided which
+overrides are live is the instant sent to the app. `ACTIVE_URL` is still the
+only place the rule is written; the version and next-change expressions are
+now written once as well. No transaction, no lock, one round trip instead of
+three. Wire shape, admin API, Flutter contract and the F2 media-reference
+behaviour are unchanged; the old and new `version` hashes are byte-identical
+for the same state (verified on a mixed permanent / live / expired / empty set).
+
+Guard: `tests/visual-published-snapshot.test.ts` — a deterministic seam on
+`pg.Client#query` lets the first `visual_slots` read execute, commits a real
+`clearTemporaryImage` the moment it completes, and holds every later
+`visual_slots` read at dispatch until that commit (promise ordering, no sleep).
+The test asserts the payload's `version` equals the hash of its own `slots`
+and that `nextChangeAt` matches the image it shows. Verified RED on the old
+three-statement shape and on three sequential statements in a `READ COMMITTED`
+transaction; GREEN on the single statement and on a `REPEATABLE READ`
+transaction — it asserts the property, not the implementation.
+
+## 51.10 F5–F10 — timezone, one clock, picker bound, retention, search failure, dashboard freshness
+
+**F5 — the override day is a store-calendar day.** The dashboard converted the
+chosen day with `dayjs(day).endOf('day')` in the admin browser's zone. The
+repository's convention for calendar questions is `config.storeTimezone`
+(§26.5: "today is the customer's calendar, not the server's clock"; the old
+visuals rotation used Baghdad midnight, §27). `GET /admin/visual-slots` now
+returns `timezone` (additive, like the birthdays endpoint), and
+`admin/src/utils/storeDay.ts` (dayjs `utc`/`timezone` plugins, no new
+dependency) resolves the end of the chosen day in that zone; the helper text
+names the zone. Guards: `storeDay.test.ts` (Baghdad, +14, −11, New York
+across DST, month/year ends) and the page test pinned to `Pacific/Kiritimati`.
+
+**F6 — one clock.** `setTemporaryImage` validated `until` with Node's
+`Date.now()` while liveness is `temporary_until > now()` in SQL. Verified by
+skewing Node's `Date` alone: a moment already past by the database was
+accepted (and never shown), a live one was rejected. The verdict is now
+computed inside the `UPDATE` that writes the override (`past` / `too_far` /
+`ok`, `now()` evaluated once in that statement), so acceptance and liveness
+share one clock; error codes and the 366-day limit are unchanged.
+`tests/visual-temporary-clock.test.ts`.
+
+**F7 — the picker cannot offer a day the server rejects.** The last enabled
+day was `today + 366` calendar days, whose end-of-day exceeds 366 × 24 h, so
+the upload succeeded and the `PUT` failed, leaving an unreferenced upload. A
+day is selectable iff its store-zone end-of-day instant is `> now` and
+`≤ now + 366 × 24 h`; the same predicate is re-checked immediately before
+uploading. The server's validation is untouched and re-asserted with a direct
+request at the old worst case.
+
+**F8 — INTENTIONAL RETENTION / NO CODE CHANGE.** Expired override columns
+remain stored. Migration 055 chose read-time expiry precisely so that "no
+timer and no cleanup task can be late"; README §13.4b says "Nothing runs";
+`findUnreferenced` is read-only with no callers; the only scheduler is the
+order-state reminder job; and F2's contract (§51.8) makes a stored temporary
+reference live until replaced or ended — a job that nulls expired columns
+would flip media to "unreferenced" by the passage of time, which F2's test
+forbids. Nothing wrong is served: `ACTIVE_URL`, `version`, `nextChangeAt` and
+the admin DTO all filter on `> now()`. Documented in README §13.4b *Expiry*.
+Observation only: the dashboard shows no control for an already-expired
+override (the DTO hides it); `DELETE …/temporary-image` clears it via the API.
+
+**F9 — search failure exits loading.** `_search` awaited the request with no
+failure path, so a thrown error left `_loading = true` — an endless spinner.
+Failure now clears loading and renders `AnimeErrorState` with retry (same
+pattern as the categories screen); success is unchanged; a stale failure is
+ignored by the existing `RequestSequence`. `test/search_failure_state_test.dart`
+(failure → error + retry; retry → results; old failure after newer success;
+empty query; empty results).
+
+**F10 — the dashboard reflects expiry without «تحديث».** With
+`refetchOnWindowFocus: false` and no expiry-time refetch, the table kept
+saying «مؤقّتة حتى …» after the customer already saw the permanent image.
+`VisualSlotsPage` now schedules **one** query invalidation at the earliest
+`temporaryUntil` (+1 s), capped at one day and re-armed on every response
+(`dataUpdatedAt`), cleared on unmount — no polling; the refetch shows the
+server's own verdict. Guards (fake timers): normal expiry, manual end,
+replacement, unmount, remount, two slots, a 3-day expiry reached by daily
+re-arms.
+
+---
+
+# STEP 52 — DEV: API CONTRACT & DATA INTEGRITY AUDIT (AUDIT #3, 2026-09-21)
+
+Read-only audit of the request → validator → service → repository → PostgreSQL
+→ response chain, then RED → minimal fix → GREEN → mutation for each confirmed
+defect. Guard suite: `backend/tests/api-contract-audit.test.ts` (51 tests) plus
+`admin/src/pages/ProductEditPage.test.tsx` and two assertions in
+`ReminderControls.test.tsx`. Nothing here touches F1–F10 (§51).
+
+## 52.1 CD-1 — expected database rejections were `500 INTERNAL_ERROR`
+
+Eleven reachable paths surfaced a *domain* failure as a server fault: a
+duplicate category / subcategory / governorate / zone / franchise name on
+create **or rename**, renaming a collection to a sibling's name, a manual
+notification to a non-existent user, and `GET /admin/products/:id/franchises`
+with a non-UUID id. Each masked the PostgreSQL detail (no leak) but logged a
+stack trace and told the dashboard «حدث خطأ غير متوقع» for a name typed twice.
+
+Fix — two layers. Trust-boundary handling where a precise message exists:
+`collectionsService` maps `23505` on create/rename to the existing
+`409 COLLECTION_NAME_TAKEN`; `notificationsService.createForUser` checks the
+target (`404`); the franchises route parses its param. Then a **central
+translation** in `error-handler.ts` (`pgErrorToAppError`) for the integrity
+classes only — `23505 → 409 DUPLICATE_VALUE`, `23503 → 404 RELATED_NOT_FOUND`
+(«is not present») or `409 HAS_DEPENDENTS` («still referenced»),
+`23514`/`22P02 → 400 INVALID_VALUE`, `22003 → 400 VALUE_OUT_OF_RANGE`,
+`22001 → 400 VALUE_TOO_LONG`. Deadlock, serialization, connection and syntax
+codes stay `500` (unit-pinned). A translated rejection logs one
+`[db-reject]` line (method, path, SQLSTATE) so a missing validator is findable.
+Messages are registered in `domain/errorMessages.ts` (Sorani drafts, same
+review status as the rest).
+
+## 52.2 CD-2 — a product could carry a subcategory of another category
+
+No constraint links `products.subcategory_id` to `products.category_id`
+(independent FKs), and neither create nor update checked it; a product with
+`categoryId = A` and a subcategory of `B` was persisted. `adminService` now
+asserts the **effective** pair (create; update with either field changed):
+`400 SUBCATEGORY_MISMATCH`. Moving a product to another category therefore
+requires sending its new subcategory or `subcategoryId: null` in the same
+request — the dashboard form always sends both. Omitting `subcategoryId` still
+means "unchanged". A composite FK
+(`(category_id, subcategory_id) → subcategories(category_id, id)`) would make
+PostgreSQL enforce this too; left as a follow-up decision (schema change).
+
+## 52.3 CD-3 — `z.coerce` on JSON bodies turned `null`/`""`/`[]` into `0` and `true` into `1`
+
+`PATCH /admin/zones/:id {deliveryFee: null}` made delivery **free** instead
+of being rejected; `rating: true` was a one-star review; `day: true` was
+1 January (a birthday is set once, forever); `remindAt: null` was the Unix
+epoch (reminder due immediately). Body fields no longer coerce (query strings
+still do — they are strings by nature): zone `deliveryFee` (bounded like the
+governorate fee, `≤ 10 000 000`) and `sortOrder`, franchise `sortOrder`
+(`≤ 1000`, the admin convention; an int4 overflow was a `500`), review
+`rating`, birthday `day`/`month`, reminder `delayHours` and `remindAt`
+(ISO 8601 with offset, like `restockAt` and `until`). All clients already send
+numbers / ISO strings.
+
+## 52.4 CD-4 — the customer's «birthday today» used the process clock
+
+`birthdayRepo.status` compared `new Date().getDate()` (Node's zone) and
+`consume` used `EXTRACT(YEAR FROM now())` (the session zone), while every
+admin birthday query uses `config.storeTimezone` (§26.5) and the container
+runs UTC. Between 00:00 and 03:00 Baghdad the customer was told it was not
+their birthday (no discount), and got it during the same three hours the day
+after; the admin list disagreed. Both functions now take the store timezone and
+compute day/month/year in SQL with `now() AT TIME ZONE $tz`. Tests use two
+zones 25 hours apart (`Pacific/Kiritimati`, `Pacific/Pago_Pago`) so the
+assertion never depends on the machine clock; the two existing birthday tests
+now ask `storeToday()` (helpers) instead of `new Date()`.
+Contract ambiguity kept as-is: the customer check is an exact day/month match,
+so a 29-February customer never sees «today» in a non-leap year, while the
+admin list (`next_birthday()`, §26.5) celebrates on the 28th.
+
+## 52.5 CD-5 / CD-6 / CD-7 — dashboard contract drift
+
+- **CD-5** `ProductEditPage` sent `options: []` for an inactive product (whose
+  options the dashboard cannot load) behind a confirm dialog that blamed a
+  server default that no longer exists — wiping the product's options on
+  reactivation. `PATCH` semantics are "omitted = unchanged", so the field is
+  now omitted; the dialog is gone and the form alert says the options are kept.
+- **CD-6** The dashboard read `ratingAvailableAt` / `ratingAvailable`, fields
+  the server stopped sending when reviews started opening on receipt (§47);
+  the reminder controls showed «—» for a scheduled time that was on the wire
+  as `ratingReminderAt`. `AdminOrder` now mirrors the server (`ratingReminderAt`,
+  `canReview`, `reviewableProductCount`); the order page shows «التقييم للعميل»
+  from `canReview` and the reminder time from `ratingReminderAt`.
+- **CD-7** `notifications.type` has ten values in the DB and in
+  `NOTIFICATION_TYPES`; the admin list and the admin query validator had eight,
+  so filtering by `rewardClaimed` / `restockScheduled` was a `400`. The
+  validator uses the canonical constant; the dashboard list and labels carry
+  all ten (guarded by a backend test that reads the admin file).
+
+## 52.6 CD-8 — product name limit
+
+The validator accepted 150 characters while `products_name_check` allows 120,
+so a 121–150-character name failed with the generic «قيمة غير صالحة لأحد حقول
+المنتج». Both product schemas now cap at 120 with a field-specific message.
+
+## 52.7 Verified and left unchanged
+
+Server-owned fields (order totals/status/owner, `role`, `isPhoneVerified`,
+device `userId`, product `rating`/`reviewCount`) are stripped by the schemas —
+pinned by mutation. PATCH null-vs-omitted semantics for products, banners and
+the profile (`avatarUrl: null` clears, `""` is rejected — the app sends
+`null`). Money: decimal prices round once in `NUMERIC(12,2)` and the delivery
+promo split satisfies the order CHECKs. DB CHECK enums equal the TypeScript
+constants literally (orders, reviews, notifications, media, gender, banners).
+Sensitive columns never serialize. Pagination bounds are enforced at the edge.
+
+---
+
+# STEP 53 — DEV: FAILURE / RETRY / IDEMPOTENCY AUDIT (AUDIT #4, 2026-09-21)
+
+Failure-semantics audit of every mutation across the backend, PostgreSQL, the
+dashboard, the app and the external boundaries (push, disk). The question
+asked at every point: if the request is interrupted, retried, duplicated,
+delayed, partially succeeds, or fails immediately before/after `COMMIT`, can a
+business effect duplicate, an intended effect be lost, state become
+inconsistent, or a safe retry become impossible? Method: deterministic fault
+injection at the real transaction (`vi.spyOn` on the repository call that sits
+at the chosen point; a pool client that throws on `COMMIT` only; a response
+prototype that throws or drops the socket once — the client-timeout-after-commit
+case) plus `pg_locks` barriers for concurrency (row locks and uncommitted
+inserts on a unique key, observed via `pg_stat_activity`). No sleeps, no
+probabilistic races. Guard suites: `backend/tests/failure-retry-audit.test.ts`
+(60 tests) and `test/api_client_retry_semantics_test.dart` (10 tests). Nothing
+here touches F1–F10 (§51).
+
+## 53.1 RF-2 — a reward claim could lose its notification for ever
+
+`loyaltyRewardsService.claim` wrote the redemption row and the «سُجّلت
+مطالبتك» notification as two autocommitted statements. A failure between them
+(injected at the notification insert) left the row without a notification, and
+every retry found the row (`created = false`) and — correctly — did not notify
+again: the effect was lost with no path to recover it. Both writes now run in
+one `withTransaction`; the `UNIQUE (user_id, level_key)` guard is unchanged, so
+sequential and concurrent duplicate claims still yield one row and one
+notification, and a retry after any failure is safe.
+
+## 53.2 RF-3 — two concurrent approvals of one review notified the customer twice
+
+`reviewsService.moderate` read the review, then locked the order row, then
+computed «same decision → no side effects» from the **pre-lock** read. Two
+admins approving at once both read `pending`; the second, after waiting for the
+lock, saw its decision as a change and inserted a second `reviewApproved`
+notification (points were already protected by `uq_points_review`). The status
+is now re-read under the lock; the second approval is a no-op, as the code's
+own comment promised. Sequential repeats were already safe.
+
+## 53.3 RF-4 — a resubmit racing an approval flipped an awarded review back to `pending`
+
+`reviewRepo.resubmit` was `UPDATE … WHERE id = $1`; the «only a rejected
+review can be edited» rule lived only in the service's unlocked pre-check. A
+customer resubmitting while the admin's approval was committing passed the
+check on the committed `rejected`, blocked on the row lock, then overwrote the
+freshly approved row to `pending` — with the `review_approved` points still in
+the ledger. The condition is now part of the statement
+(`AND status = 'rejected'`); zero rows → `404` if the review is gone, otherwise
+the existing `400 REVIEW_NOT_REJECTED`. The customer's edit is refused and the
+approval stands; nothing else changed.
+
+## 53.4 Retry / idempotency contract (verified, unchanged)
+
+| Operation | Mechanism | Retry after timeout-after-commit |
+|---|---|---|
+| `POST /orders` | one transaction; the **cart row lock** + `EMPTY_CART` gate make the cart the idempotency token | `400 EMPTY_CART`, one order, the order is in `GET /orders` |
+| `PATCH /admin/orders/:id/status` | status re-read under the order lock; same status = no-op (`dispatched_at`, stock, notification once; history row appended — CA-4 of Audit #2) | `200`, nothing repeated |
+| rejection | pending → no stock change; post-approval → restored once, guarded by the locked status | `200`, no second restoration |
+| `POST /orders/:id/confirm-receipt` | pre-check `409 ALREADY_CONFIRMED`; under the lock the same status is a no-op; `uq_points_order_received` | `409`, points once |
+| reward claim | `UNIQUE (user_id, level_key)` + `ON CONFLICT DO NOTHING`, now with the notification in the same transaction (§53.1) | `200` same row, no second notification |
+| reward consumption / birthday consumption | inside the order transaction; `consumed_at IS NULL` / `UNIQUE (user_id, used_year)` re-checked in the write | rolled back with the order; a retry consumes exactly once |
+| review submit | `uq_reviews_user_product`; the race is caught and mapped to `409 REVIEW_EXISTS` | `409`, one review, photos attached once |
+| `POST /devices` | `ON CONFLICT (token) DO UPDATE` (ownership moves) | same row, `created = false` |
+| product update | row lock; restock notifications only on an actual change | no-op |
+| visual-slot image set/clear | single idempotent `UPDATE` | no-op |
+| `POST /api/uploads` | none — each call stores a new blob + row; orphans (blob without row, or row nobody references) are **retained by design** (§8.5, §S-6); both count against the daily quota | a second blob + row |
+| `POST /admin/notifications`, `…/broadcast` | none — **at-least-once**; the multi-user insert is one `UNNEST` statement (all or nothing); push is best-effort after the commit and never fails the request | a second record (and push) per recipient — CA-7 |
+
+Notifications created by order transitions, receipt, review moderation, gift
+fulfilment and restock are **transactional** (inside the same `withTransaction`
+as the state change): a notification insert failure rolls the whole operation
+back, and a retry redoes it once. Push delivery is not attempted for these
+(only for admin manual/broadcast notifications).
+
+Clients: the app's `ApiClient` (Dio) and the dashboard's axios client have
+**no retry interceptor**; every mutation is sent exactly once and a timeout,
+connection reset, `5xx` or unparsable body surfaces as an error to the screen
+(pinned by `test/api_client_retry_semantics_test.dart`). Retrying is a user
+action. The app's cart cubit re-syncs from the server after a failed add, so a
+second tap after a timeout is informed, not blind.
+
+## 53.5 Contract ambiguities recorded (no code change)
+
+> **2026-09-26 — STEP 57:** CA-6 and CA-9 were closed as defects (fixed); CA-7 is documented
+> at-least-once with an FCM tripwire. CA-8/CA-10/CA-11 were out of that step's scope.
+
+- **CA-6** A `POST /cart` **increment of a line already in the cart** that
+  commits while the same user's checkout is in flight is lost: `ON CONFLICT …
+  DO UPDATE` inserts nothing, so it takes no FK `KEY SHARE` on the locked cart
+  row and commits at once; the checkout's final `DELETE FROM cart_items`
+  (fresh snapshot) removes the line with its new quantity. A **new** line waits
+  for the checkout (its insert needs `KEY SHARE`) and survives. Same user, two
+  devices, sub-second window; pinned as a documented observation.
+- **CA-7** Admin notifications have no idempotency key; the dashboard's
+  timeout message («انتهت مهلة الاتصال — أعد المحاولة») invites a retry that
+  duplicates the broadcast. Latent today (push is instant with the current
+  provider); relevant once FCM is wired (sequential per-token sends inside the
+  request). Options: an idempotency key on `…/broadcast`, or responding after
+  the insert and pushing asynchronously.
+- **CA-8** In the app, a checkout retry after a timeout-after-commit shows the
+  server's «العربة فارغة» while the local cart still lists the items; the state
+  reconciles on the next cart load / orders refresh. Whether `EMPTY_CART` after
+  an uncertain submit should be treated as «probably placed — open my orders»
+  is a product decision.
+- **CA-9** `POST /auth/register` writes the pending user and the account
+  request as two autocommitted statements; a failure between them leaves an
+  unverified user the dashboard cannot see until the customer registers again
+  (the documented resume path repairs it). Recoverable, but only by the
+  customer's retry.
+- **CA-10** `POST /cart` is an increment by design (`quantity + N`), not an
+  absolute set; a blind retry adds again. `PATCH /cart/:id` is absolute and
+  idempotent, and the app uses it for ±1.
+- **CA-11** Two **concurrent** receipt confirmations both return `200` (the
+  second becomes a same-status no-op under the lock) while a **sequential**
+  repeat returns `409 ALREADY_CONFIRMED`; effects are identical (completion,
+  points and notification once).
+
+---
+
+# STEP 54 — DEV: HEALTH AUDIT #5 (2026-09-26)
+
+## 54.1 Personalize white screen
+The description line under the Personalize title sat in a `FractionallySizedBox`
+(`widthFactor: 0.84`) that had been moved into a `Row` (text · accent line ·
+`personalize_character`). A `Row` gives non-flex children unbounded width → `0.84 × ∞`
+→ layout assertion → the whole screen unpainted. Now `Flexible(flex: 5)`; the
+composition is unchanged. Onboarding `_finish()` routes first-run users through
+Personalize, so this is on the critical path. Tests: `test/personalize_screen_test.dart`
+(the real screen, 5 sizes × light/dark — the older cases built a copy of the body only)
+and `test/first_run_flow_test.dart` (Onboarding → Personalize → Main via a real router).
+
+## 54.2 Migration 061 / perf fixtures — test identity, never a phone prefix
+`061_purge_perf_reviews.sql` deleted by `phone LIKE '+96479%'` alone — real Zain
+numbers (the dev DB had three real matches, two with orders). Never deployed (applied
+only to the disposable test DB; the runner has no checksum), so the file itself was
+corrected. A perf user is now **all three**: `username ~ '^perf-user-[0-9]+$'`,
+`phone ~ '^\+96479[0-9]{8}$'`, `password_hash = 'x'` (unreachable for a real account —
+every path stores bcrypt). Orders/products are scoped to those users / `perf-cat`;
+rows still referenced by real data are skipped, not failed. No embedded
+`BEGIN/COMMIT` (the runner owns the transaction). `tests/fixtures/perf-dataset-purge.sql`
+carries the identical body; `perf-dataset.sql` links its rows to perf users by
+username + hash, not by phone. Dev dry run (rolled back): 0 users / 0 orders /
+0 notifications affected. Test: `backend/tests/migration-061-perf-purge.test.ts`.
+
+## 54.3 Migration 047 restored
+29 statements of `047_kurdish_catalog_backfill.sql` had been edited after it was
+applied (`IS NULL.` instead of `IS NULL;`), so every **fresh** database stopped at 047.
+Restored byte-for-byte to the generator's output (terminators only; 0 other
+differences). Test: `backend/tests/migration-fresh-chain.test.ts` applies the whole
+chain into an empty schema with the real runner.
+
+## 54.4 Phone field back to §49.2
+The four phone fields had been switched to an undocumented 11-digit formatter that
+truncated before dropping the country code (`+9647701234567` → `96477012345`). No later
+decision superseded §49.2, so the fields again use the fixed `07` prefix,
+`IraqiLocalDigitsFormatter`, nine digits, and submit `normalizeIraqiPhone('07' + digits)`;
+the full-number formatter was removed. `phoneHintExample` is again
+«أدخل الأرقام التسعة الباقية» / «نۆ ژمارەی ماوە بنووسە» (the reviewed text).
+Test: `test/admin_managed_account_flows_test.dart` (paste formats → field and payload).
+
+## 54.5 Other corrections
+- Account tab: the extracted screen had been overwritten by an older copy (26 hardcoded
+  Arabic strings); restored to its `AppStrings` keys. Avatar «+» badge moved inside the
+  hit-testable box (taps no longer fall through to Galaxy Points) and labelled.
+- Checkout zone range uses `priceIqd` for both bounds.
+- Dashboard: the fixed-assets card (§48.4) was restored; theme tokens antd ignores were
+  removed (no visual change); `testTimeout: 20_000` (jsdom + antd under parallel workers).
+- PERF-4: a bulk seed leaves the trigram GIN index's pending list unmerged (316 pages)
+  and `ANALYZE` does not merge it, so the planner rightly scanned. The perf fixture now
+  runs `VACUUM ANALYZE` (the steady state autovacuum keeps in production); no plan is
+  forced and the assertion is unchanged.
+
+# STEP 55 — DEV: PERFORMANCE / RESOURCE / SCALABILITY AUDIT (2026-09-26)
+
+Measured on the test DB seeded with a year-of-trading dataset
+(`backend/tests/fixtures/perf-dataset.sql`: 10k products, 30k images, 10k orders,
+10k notifications, 10k reviews, 3k customers; purged afterwards with the §54.2 identity).
+Suite: `backend/tests/performance-audit.test.ts` (20 tests). Every verdict is a statement
+count, an `EXPLAIN (ANALYZE, FORMAT JSON)` of the statement the repository actually sent,
+or pool state — never "looks faster".
+
+## 55.1 Confirmed and fixed
+| ID | Path | Before | After |
+|---|---|---|---|
+| PERF-1 | `POST /orders` (under the cart lock) | one product read **per cart line** (12 lines → 12) | `productRepo.findByIds` — one `= ANY` read |
+| PERF-2 | every `/api/admin/*` request | `authenticate` ran twice (`/api` layer + `/api/admin` layer) → 2 `findAuthState` reads | the second pass returns early when `req.auth` is set (only `authenticate`/`optionalAuthenticate` set it, after the same checks) |
+| PERF-3 | `GET /admin/account-requests`, customer detail | 2 reads **per row** (user + balance), all racing the pool via `Promise.all` | `userRepo.findByIds` + `pointsRepo.balances` — 2 reads per page |
+| PERF-4 | `GET /catalog/products/search` (page + count) | `name ILIKE … OR EXISTS(correlated)` blocked the trigram index → full catalogue scan, and the inflated cost (>100 000) triggered **JIT on every search** (~80 ms extra per statement; 65–190 ms vs 5–25 ms) | `OR p.id = ANY(ARRAY(<matching franchise products>))` → `BitmapOr` of `idx_products_name_trgm` + pkey; result sets identical (checked on 4 queries) |
+| PERF-6 | `withTransaction` (every transactional endpoint) | pg-pool drops its `error` listener at checkout; a DB-side connection drop during a transaction (restart, failover, `pg_terminate_backend`, network reset) was an **unhandled `error` event → uncaught exception → `server.ts` fatal exit**, killing every in-flight request. The `pool.ts` listener only covered idle clients | a per-transaction `error` listener; the client is released with the error and destroyed. The transaction rejects with the original error; the process lives |
+| PERF-5 | admin orders list, admin notifications list, review-points cap read / revoke under the order lock | full scan + sort of every row for page 1 (~70–100 ms at 10k orders, linear); ledger seq scans inside a locking transaction | migration **056**: `idx_orders_created_at`, `idx_notifications_created_at`, partial `idx_points_ledger_order`, `idx_points_ledger_review` (page 1 ≈ 1 ms) |
+
+PERF-4 needs **both** this rewrite and the §54.5 `VACUUM ANALYZE` in the fixture: the
+correlated-EXISTS mutant fails even on a vacuumed dataset.
+
+## 55.2 Verified invariants (guards, no defect)
+- Pool: 15× each failure path (throw before/after a query, SQL error, nested repo throw,
+  `COMMIT` failure) → every client idle again, 0 `idle in transaction`, `max`
+  concurrent transactions still served. PERF-6 is proven in a child process
+  (`tests/fixtures/tx-connection-killed.ts`): the backend is terminated during
+  `pg_sleep`, the process exits 0, the pool keeps serving.
+- Every paginated endpoint rejects `limit=10000` (400); the customer notification feed is
+  capped at 100 server-side.
+- Rating-reminder scheduler: one tick at start, one per interval, no overlap while a
+  tick is pending, a failed tick is logged and the next runs, `stop()` leaves 0 timers.
+- No network, bcrypt or file I/O inside any transaction (bcrypt runs before
+  `setCustomerPassword`'s transaction; uploads write the file before the row, outside
+  any transaction; broadcast push runs after the commit).
+- Admin `VisualSlotsPage` (F10) and Flutter `VisualsRepository` keep exactly one expiry
+  timer, re-armed per response and cancelled on unmount/dispose; the search screen's
+  `RequestSequence` drops stale results/failures. Existing tests; mutants killed.
+
+## 55.3 Intentional non-optimizations (observations)
+- Offset pagination evaluates the image/franchise sub-selects for skipped rows
+  (page 500 of 12 ≈ 290 ms); at realistic depth (≤ page 50) it is < 30 ms. Linear by
+  nature; not changed.
+- `GET /admin/stats`: 22 sub-selects, ~145 ms at 10k orders — one admin screen load.
+- Customers sorted by `points_desc` aggregate the ledger for every customer (~65 ms at
+  3k); balances stay derived from the ledger by design (§ points).
+- `mediaRepo.findUnreferenced` is O(media × reviews) (6 s at 1.9k media / 10k reviews);
+  diagnostic only — no route or job calls it.
+- `GET /catalog/products/:id/reviews` returns every approved review of a product, no
+  limit; bounded by that product's reviews. Paging it would change the app contract.
+
+## 55.4 Contract ambiguities — unchanged, decisions still required
+
+> **2026-09-26 — STEP 57:** superseded — see §57.1 for the final classification of CA-6, CA-7, CA-9.
+- **CA-6** (cart increment during checkout): the code and §53.5 describe *what*
+  happens; nothing states whether checkout consumes "the cart at commit" (Model A) or
+  "the cart as locked" (Model B). No code changed.
+- **CA-7** (admin notifications): documented **at-least-once** (§53.4). The in-app row
+  is the authoritative record; push is best-effort. The performance finding makes it
+  sharper: the FCM provider sends **sequentially per token inside the request**
+  (timeout 10 s each), so once FCM is wired a large broadcast outlives the dashboard's
+  timeout, the admin sees «أعد المحاولة», and a retry duplicates every row and push.
+  Options: (a) idempotency key covering the insert (push then naturally once);
+  (b) commit, respond, push asynchronously; (c) both. No code changed.
+- **CA-9** (register = two autocommits): the documented resume path (§ auth register)
+  repairs the gap; no document requires atomic user + request. No code changed.
+
+---
+
+# STEP 56 — DEV: BUSINESS STATE MACHINE / DOMAIN INTEGRITY AUDIT (AUDIT #6, 2026-09-26)
+
+Question asked of every operation: does it move the system from one valid state to
+another — also across subsystems (order × stock × «أعلمني عند توفره», order × points ×
+rewards, account × dashboard), under retries, stale dashboards and unusual event
+order? Audits #1–#5 and F1–F10 were not re-run as audits; their suites were re-run as
+regression. Suite: `backend/tests/domain-integrity-audit.test.ts` (64 tests) plus
+`admin/src/pages/CustomersPage.test.tsx` (2 new) and `admin/src/api/customersApi.test.ts`
+(2). Deterministic only: every verdict is database state read right after the event.
+
+## 56.1 State machines verified
+
+| Domain | States | Guard | Evidence |
+|---|---|---|---|
+| Order | PENDING → OUT_FOR_DELIVERY/REJECTED; legacy CONFIRMED → PREPARING/REJECTED; PREPARING → OUT_FOR_DELIVERY/REJECTED; OUT_FOR_DELIVERY → COMPLETED/REJECTED; COMPLETED, REJECTED terminal | status re-read under the order row lock; same status = no-op | all **36** (from, to) pairs: refused pairs change nothing (status, stock, ledger, notifications, history); allowed pairs have exactly the documented stock (−1 approval, +1 post-approval rejection), points (+1 row on completion) and notification (+1, none for CONFIRMED → PREPARING) effects. `ORDER_STATUS_TRANSITIONS` is compared with the contract table by the test; the dashboard's `STATUS_ACTIONS` matches it (inspected) |
+| Review | pending → approved/rejected; approved ↔ rejected (moderation); rejected → pending (resubmit only) | RF-3 re-read under lock; RF-4 conditional resubmit; `uq_points_review` | Audit #4 suite (unchanged) |
+| Account request | pending → approved/rejected (terminal) | `WHERE status = 'pending'` in the resolving statement; one pending per (kind, phone) | `account-requests.test.ts` |
+| Reward redemption | claimed → consumed (discount) / fulfilled (gift) | `UNIQUE (user_id, level_key)`; `consumed_at IS NULL` / `fulfilled_at IS NULL` in the write | `loyalty-rewards.test.ts`, Audit #4 |
+| Customer account | active ↔ suspended; unverified → verified (admin approval only) | see D1 | new D1 tests |
+| Restock subscription | waiting → consumed on stock 0 → n | see D2 | new D2 tests |
+
+No OTP/SMS path survives (`auth.test.ts` «old OTP endpoints are gone» still green).
+
+## 56.2 D1 (Medium) — «حظر» could unblock a customer
+
+`PATCH /admin/users/:id/active` carried no intent: the server flipped whatever was
+stored. Two admins who both saw «نشط» and pressed «حظر», or one admin re-pressing after a
+timeout, ended with the customer **active**; a repeated «تفعيل» suspended them and killed
+the session they had just opened. The dialog promised the opposite of the result.
+
+Fix: the body carries the admin's decision, `{ isActive: boolean }` (`z.boolean()`, no
+coercion — `"false"`, `0`, `null` → 400). Setting the current state is a no-op: no write,
+no second `token_version` bump, the fresh session survives. The dashboard sends
+`!customer.isActive` from the row the admin confirmed (`setUserActive`). A request
+**without** a body still flips (an older dashboard build during a mixed deployment).
+
+## 56.3 D2 (Low) — stock returned by a rejection bypassed «أعلمني عند توفره»
+
+§42.5 defines the contract on the stock transition 0 → n: `backInStock` to every
+subscriber, subscriptions consumed, `restock_at` cleared. Only the admin save honoured it.
+Rejecting an approved order (`releaseStockOnRejection`, e.g. the customer refused the
+parcel) put the unit back silently: nobody was told, the subscription lingered on an
+in-stock product (invisible in «طلبات التوفر», which lists stock = 0 only), and the
+expected date stayed — then resurfaced as «متوقَّع توفره» the moment the unit sold out
+again. Both paths now call one definition, `restockService.stockReturned(tx, …)`, inside
+their own transaction; the rejection path calls it only when the pre-release stock was 0.
+A retried rejection is a same-status no-op, so the notice is sent once.
+
+The same class of gap was found in data: on the dev database two in-stock products still
+had waiting subscribers (one with a stale date); their `updated_at` equals the
+`applied_at` of migration 051, the one-time stock return of 2026-09-14. See CA-17.
+
+## 56.4 Cross-subsystem and temporal interactions verified (no defect)
+
+- Catalog + delivery + order + points: price, name and promo edits and a governorate fee
+  or name change **after** checkout leave the order's items, totals, delivery fee and
+  discount unchanged, and purchase points are computed from the snapshot (30, not 50).
+- Receipt confirmation after the admin rejected the dispatched order → 409, no points,
+  stock restored once.
+- Customer suspended while the order is out for delivery: the customer's confirmation is
+  refused (403); the admin completes it; points once; after reactivation the order is
+  reviewable.
+- An order approved after its product was deactivated consumes stock (Audit #2 OBS).
+- Terminal orders stay terminal through every admin target and the customer's
+  confirm-receipt.
+- Media: no code path deletes an upload, so no still-referenced file can be removed;
+  F2/F8 retention stands. Notifications from order/review/receipt/restock/reward flows are
+  written in the business transaction; push stays best-effort after commit (CA-7).
+- Delivery: fee, zone name and province are snapshotted; governorates with orders cannot
+  be deleted (`RESTRICT`); a deleted zone leaves `zone_name`.
+
+## 56.5 Invariant sweep
+
+Thirty SQL invariants (`total` identity, Σ line totals, COMPLETED ⇔ `delivered_at`,
+last history row = status, ledger rows ⇔ their event, review ⇒ own completed order
+containing the product, redemption/birthday usage ⇒ own order, `loyalty_discount` ⇔ a
+consumed redemption, subcategory ⊂ category, in-stock ⇒ no restock date and no waiting
+subscriber, account-request pairs, temporary-slot pair …) in
+`backend/scripts/domain-invariants.sql` (read-only). The suite runs ten of them over
+every row it creates. Run read-only against the **dev** database: 27 hold; I22/I23
+(migration 051 residue, above) and I26 — five unverified customers with no registration
+request, all created 2026-08-25 under the retired OTP flow (they had verification codes),
+before migration 048. Not CA-9. No data was changed.
+
+## 56.6 Contract ambiguities (no code change — decisions required)
+
+> **2026-09-26 — STEP 57:** every CA below is classified in §57.1. Fixed: CA-16 (and CA-17a, found
+> while answering CA-17). Documented contract: CA-13. Decisions still required: CA-12, CA-14,
+> CA-15, CA-17 (dev residue), CA-18.
+
+Revisited: **CA-6** (cart increment during checkout), **CA-7** (admin notifications
+at-least-once), **CA-9** (register = two writes) — none violates a documented invariant;
+unchanged. New:
+
+- **CA-12** A rejected order keeps its one-time level discount and the year's birthday
+  discount consumed. §40.8 promises a discount is not burned when "stock ran out"; since
+  2026-09-14 stock runs out at approval, and the only exit from `INSUFFICIENT_STOCK` is
+  rejection. Options: keep; return both on rejection from PENDING; return on any
+  rejection (birthday only within the same store year). Pinned by `[CA-12 observation]`.
+- **CA-13** A reward claimed on review points stays reserved after those points are
+  revoked (balance below the threshold). Consistent with "threshold, not currency";
+  unstated. Pinned.
+- **CA-14** Checkout uses the cart as the server sees it at commit: a line deactivated
+  after the customer reviewed the cart is dropped without an error (it is hidden from
+  `GET /cart`, so the customer could not remove it) and deleted with the cart; the success
+  screen shows no items. Same family as CA-6. Pinned.
+- **CA-15** Stale dashboard on *legal* transitions is last-write-wins: a stale «رفض» rejects
+  an order another admin already dispatched; a stale «اعتماد» approves a resubmitted review
+  the admin never saw. Same family as CA-5. Option: an expected-state token → 409.
+- **CA-16** The rating reminder is sent even when every product of the order is already
+  reviewed (its text promises points); the code comment says "for whoever has not
+  reviewed". Option: skip when `reviewable_product_count = 0`.
+- **CA-17** Migration 051 residue (56.3): whether to notify those subscribers now or
+  silently clear the subscriptions/date is a product decision; staging/prod may carry the
+  same residue if 051 ran there while products had subscribers.
+- **CA-18** Deactivating a category or subcategory does not hide or block its products
+  (listing, search, cart and checkout check `products.is_active` only). No document states
+  the intended meaning.
+- Informational: `PATCH /admin/users/:id/active` accepts any role, so an admin can suspend
+  another admin (or themselves); `setCustomerPassword` is customer-only.
+
+## 56.7 Mutation evidence
+
+| # | Mutant | Result |
+|---|---|---|
+| M1 | rejection release skips `stockReturned` | killed (3 D2 tests + I22/I23) |
+| M2 | decide on post-release stock (`RETURNING stock`) | killed (5) |
+| M3 | `stockReturned` keeps `restock_at` | killed (3 D2) and, via the shared definition, 2 in `restock-schedule.test.ts` |
+| M4 | admin save no longer calls `stockReturned` | killed (4 in `restock*.test.ts`) |
+| M5 | COMPLETED → REJECTED allowed | killed (map-vs-contract + matrix + terminal test) |
+| M6 | transition guard removed | killed (every refused pair) |
+| M7 | rejection restores even when already REJECTED | killed (REJECTED → REJECTED) |
+| M8 | purchase points on same-status COMPLETED | survives — equivalent: `uq_points_order_received` is the guard |
+| M8b | M8 + index dropped | killed (second `order_received` row); index restored identically |
+| M9 | server ignores the target (toggle) | killed (3 D1) |
+| M10 | no same-state short-circuit | killed (second token bump) |
+| M11 | `z.coerce.boolean()` | killed (`"false"` read as true) |
+| M12 | dashboard sends the current state | killed (2) |
+| M13 | dashboard API drops the body | killed (2) |
+
+Every mutant restored byte-exact (`cmp`).
+
+## 56.8 Files
+
+Production: `backend/src/services/orderService.ts` (`releaseStockOnRejection`),
+`restockService.ts` (`stockReturned`), `adminService.ts` (`setUserActive`, save path uses
+`stockReturned`), `controllers/adminController.ts`, `routes/admin.ts`,
+`validators/admin.ts` (`adminUserActiveSchema`); `admin/src/api/customersApi.ts`,
+`admin/src/pages/CustomersPage.tsx`. Tests: `backend/tests/domain-integrity-audit.test.ts`,
+`admin/src/api/customersApi.test.ts`, `admin/src/pages/CustomersPage.test.tsx`.
+Tooling: `backend/scripts/domain-invariants.sql` (read-only sweep).
+No migration, no Flutter change, no data change.
+
+---
+
+# STEP 57 — DEV: CONTRACT AMBIGUITIES CLOSURE BEFORE STAGING (2026-09-26)
+
+Scope: the ten contract ambiguities left open by Audits #4–#6 (CA-6, CA-7, CA-9, CA-12 … CA-18).
+Audits #1–#6 were not re-run as audits; their suites ran as regression. Prime integration is out
+of scope. Rule applied to every CA: a behaviour that contradicts the spec, an explicit domain
+invariant or a clearly implied safety/idempotency requirement is a **defect** (proved RED, fixed
+GREEN, mutation-tested); a behaviour with two or more legitimate product readings is a **decision**
+(current behaviour documented and pinned by a test, nothing chosen on the owner's behalf).
+Suite: `backend/tests/contract-closure.test.ts` (20 tests) plus four CA-6 tests in
+`backend/tests/failure-retry-audit.test.ts` (Audit #4's barrier harness). This is contract cleanup
+before Staging, **not** a production-readiness statement.
+
+Classes: **A** existing documented contract · **B** safety/idempotency defect · **C** genuine
+business decision · **D** historical data.
+
+## 57.1 Decision matrix
+
+| CA | Class | Current behaviour (after this step) | Contract source | Decision | Implementation status | Blocks Staging? |
+|---|---|---|---|---|---|---|
+| CA-6 | **B** | A cart increment committed during an in-flight checkout now waits for it and lands in the next cart. PATCH/DELETE of a locked line: state = checkout-then-edit | Cart-row lock (`listItemsForCheckout`, §session contracts); serializability of acknowledged writes | None needed — both "cart at commit" and "cart as locked" readings coincide once every cart write takes the cart lock | **FIXED** (`cartRepo.upsertItem`) | DOES NOT BLOCK STAGING |
+| CA-7 | **A** | Admin manual/broadcast notifications are at-least-once; the in-app row is authoritative; push is best-effort after commit. FCM cannot deliver yet (`obtainAccessToken` throws) | §53.4 (at-least-once, documented) | None for the current build. Before FCM delivery is implemented: idempotency key on `…/broadcast`, or respond-then-push | Documented; tripwire test added | DOES NOT BLOCK STAGING — must be resolved **before real FCM delivery is enabled** |
+| CA-9 | **B** | Registration writes the pending user and its request in one transaction | Invariant I26 (`domain-invariants.sql`); login promises «سنتواصل معك» only for a request an admin can see | None | **FIXED** (`authService.register`) | DOES NOT BLOCK STAGING |
+| CA-12 | **C** | A rejected order keeps the one-time level discount and the year's birthday discount consumed — including a stock-out at approval and a post-approval rejection | §40.8 promises no burn only for an order "that was not created"; silent on rejected orders | **DECISION REQUIRED** | Pinned (3 tests) | DOES NOT BLOCK STAGING · **MUST RESOLVE BEFORE PRODUCTION** (decides real customers' discounts; "keep" is a valid answer but must be made) |
+| CA-13 | **A** | A claim survives the revocation of the points that unlocked it; a claimed gift is still fulfilled | §40.7 (threshold, not currency; claimed → consumed/fulfilled), §40.9 (no claim lapses) | Follows the documented state machine | Pinned as contract (2 tests) | DOES NOT BLOCK STAGING |
+| CA-14 | **C** | The order is the server cart at commit: a line deactivated after the customer's review is dropped silently; a price change is applied | §2.9 (server-authoritative, app sends no lines/totals); §2.8 step 4 "reject if inactive" is honoured in the sense that no inactive product is ever sold | **DECISION REQUIRED** (keep, or a confirmed-cart fingerprint → 409) | Pinned (2 tests) | DOES NOT BLOCK STAGING · MUST RESOLVE BEFORE PRODUCTION (customer can pay a price different from the one reviewed) |
+| CA-15 | **C** | A stale dashboard action on a *legal* transition is last-write-wins (stale «رفض» of a dispatched order; stale «اعتماد» of resubmitted review content) | No expected-state contract anywhere; requests carry the target only (same family as CA-5) | **DECISION REQUIRED** (expected-state token → 409) | Pinned (2 tests) | DOES NOT BLOCK STAGING · MUST RESOLVE BEFORE PRODUCTION if more than one admin operates concurrently |
+| CA-16 | **A** | The rating reminder is sent only while the order still has a reviewable product; otherwise withdrawn at its due time; «أرسل الآن» answers `409 NOTHING_TO_REVIEW` | `config.orders.reviewReminderDelayHours` («لمن استلم ولم يقيّم بعد»), §40.5, §47.4 / `hasReviewableProducts` | None | **FIXED** (`ratingReminderJob`, `orderService.sendReminderNow`) | DOES NOT BLOCK STAGING |
+| CA-17 | **D** (+ **B** found: CA-17a) | Dev carries two 051-residue products (waiting subscribers on in-stock products, one stale date). Current code can no longer create a waiting subscriber on an in-stock product | §42.5; invariant I23 | **DECISION REQUIRED** for the dev residue (notify now vs clear silently). CA-17a fixed | Diagnostic added; CA-17a **FIXED** (`restockService.subscribe`); no data changed | DOES NOT BLOCK STAGING (a fresh staging/prod database cannot carry 051 residue) |
+| CA-18 | **C** | Deactivating a category/subcategory hides it from the category list only; its products stay listed, searchable, cartable and orderable | None (§21.5 "nothing cascades" concerns deletion) | **DECISION REQUIRED** | Pinned (2 tests) | DOES NOT BLOCK STAGING · MUST RESOLVE BEFORE PRODUCTION (an admin who "hides" a section still sells it) |
+
+## 57.2 CA-6 — cart increment during checkout (B, fixed)
+
+**Evidence.** Checkout locks the `carts` row `FOR UPDATE`. A *new* line waits for it (its INSERT
+takes the FK `KEY SHARE`) and survives; an *increment* of an existing line is
+`INSERT … ON CONFLICT … DO UPDATE`, which inserts nothing, takes no FK lock, commits at once with
+`200`, and is then deleted by the checkout's `DELETE FROM cart_items`. The outcome (order with the
+old quantity, empty cart, `200` to the customer) matches **no serial order**: checkout-then-add
+leaves the added unit in the cart; add-then-checkout orders it. That is a lost acknowledged write,
+not a product choice — the Model A / Model B question of §55.4 dissolves once every cart write
+takes the cart lock, because nothing can then commit between the checkout's read and its clear.
+
+**Fix.** `cartRepo.upsertItem` takes the lock its new-line sibling already takes implicitly:
+`WITH locked AS (SELECT id FROM carts WHERE id = $1 FOR KEY SHARE) INSERT … SELECT … FROM locked`.
+`KEY SHARE` conflicts only with the checkout's `FOR UPDATE`; concurrent cart writes still run in
+parallel. The INSERT must read from `locked` — an unreferenced non-modifying CTE is never evaluated.
+
+**Pinned, unchanged:** a `PATCH`/`DELETE` of a locked line during checkout commits at once; the
+final state equals checkout-then-edit (the order keeps the locked quantity / still contains the
+line; the cart is empty). Only the edit's `200` body describes the pre-checkout cart.
+
+## 57.3 CA-7 — admin notifications (A, documented)
+
+§53.4 already documents manual/broadcast admin notifications as **at-least-once**, the in-app row
+as the record, and push as best-effort after the commit; the multi-user insert is one statement.
+Nothing requires exactly-once, idempotency keys or asynchronous delivery today, and nothing was
+redesigned. What makes CA-7 latent is that FCM cannot deliver: `FcmPushProvider.obtainAccessToken`
+throws immediately, so no broadcast outlives the dashboard's timeout. A **tripwire test**
+(`[CA-7 tripwire]`) fails the day FCM delivery is completed; before editing it, resolve CA-7 —
+(a) an idempotency key covering the insert, (b) commit → respond → push asynchronously, or both —
+because the FCM provider sends **sequentially per token inside the request** (10 s timeout each).
+The at-least-once behaviour itself stays pinned by Audit #4 (`failure-retry-audit.test.ts`).
+
+## 57.4 CA-9 — registration atomicity (B, fixed)
+
+The pending `users` row and its `account_requests(kind = registration)` row were two autocommits.
+A failure between them left an unverified user with no request: the dashboard could not see it,
+and login answered «حسابك بانتظار موافقة الإدارة — سنتواصل معك عبر واتساب» about a request no
+admin could ever resolve (invariant I26). On the resume path the new name and password were
+written without a request carrying them. Both writes now run in one `withTransaction`; bcrypt
+still runs before the transaction (§55.2: no CPU-heavy work under a lock).
+
+RED → GREEN: failure at the request write → no user, no request, login `401`, the retry creates
+both; failure at `COMMIT` → nothing written; failure on the resume path → name, password hash and
+`token_version` unchanged, the first password still answers `ACCOUNT_PENDING_APPROVAL`.
+
+Not changed (CA-1 family, product decision pending): `findByPhone` runs before the transaction, so
+a resume racing the admin's approval is still decided on the pre-approval read.
+Historical data (D): the five unverified customers from 2026-08-25 behind I26 on dev predate
+migration 048 (OTP era) — not CA-9; what to do with them is an owner decision; nothing was changed.
+
+## 57.5 CA-12 — discounts on rejected orders (C, decision required)
+
+**Current behaviour, pinned:** the level discount (`loyalty_reward_redemptions.consumed_at`) and
+the yearly birthday discount (`birthday_discount_usage`) are consumed when the order is **created**
+and are never returned — on a pending rejection, on a rejection after the approval failed with
+`INSUFFICIENT_STOCK` (the §40.8 "stock ran out" scenario since 2026-09-14), and on a rejection
+after approval (parcel refused; stock alone returns, §47.1).
+
+**Why it is not derivable:** §40.8's promise — "a discount is never burned on an order that was
+not created" — was written when stock ran out at creation. Its literal condition (order not
+created) still holds; its motivating example now produces a created-then-rejected order. Whether
+to return the discount, on which rejections, and how the birthday discount behaves across the
+store-year boundary are commercial choices.
+
+**Decision needed:** (1) keep; (2) return both on rejection from `PENDING_ADMIN_CONFIRMATION`
+only; (3) return on any rejection (birthday only if the rejection falls in the same store year,
+`UNIQUE (user_id, used_year)`). Affected code if (2)/(3): `applyStatusTransition` rejection branch,
+`loyaltyRewardsService` (clear `consumed_at` / `consumed_order_id`), `birthdayRepo` (delete the
+usage row), ledger-free — no points move. Implementation is **not** required for Staging.
+
+## 57.6 CA-13 — claimed reward after points revocation (A, documented)
+
+§40.7: claiming does not spend points, the balance is a threshold not a currency, and a claim is
+**reserved** (claimed → consumed for a discount, claimed → fulfilled for a gift). §40.9: "no claim
+expires — an unfulfilled claim is a debt the store owes". The state machine has no transition
+out of *claimed* other than consumption/fulfilment, so a review revocation that drops the balance
+below the threshold leaves the claim reserved. Pinned for both reward kinds: the discount is still
+applied to the next order (Audit #6) and a claimed gift is still fulfilled by the admin (new).
+A withdrawal-on-revocation rule would be a new policy; none is implied.
+
+## 57.7 CA-14 — the order is the server cart at commit (C, decision required)
+
+§2.9: the app sends only `{governorateId, fullAddress, phone, zoneId?}`; lines, prices and totals
+are the server's, read at commit. Consequences, pinned: a line whose product was deactivated after
+the customer reviewed the cart is dropped silently (hidden from `GET /cart`, so the customer
+could not remove it) and deleted with the cart; a price change between review and submit is
+applied. The success screen shows no items or total, so the customer sees the difference only in
+«طلباتي». §2.8 step 4 ("reject if inactive") is satisfied in the sense that matters for integrity
+— no inactive product is ever ordered; a `409` for an invisible line would be a dead end
+(the customer cannot remove what they cannot see).
+
+**Decision needed:** keep server-authoritative-at-commit, or send a confirmed-cart fingerprint
+(line ids + quantities + unit prices) and answer `409` with the fresh cart on mismatch — which is
+cart versioning and a new app ↔ server contract. Not required for Staging.
+
+## 57.8 CA-15 — stale dashboard on legal transitions (C, decision required)
+
+Order status and review moderation requests carry the **target** only; the target is validated
+against the fresh state under the row lock, so illegal transitions are refused, but a *legal* one
+issued from a stale view wins. Pinned: a «رفض» sent from a view that still showed "pending"
+rejects an order another admin already dispatched (stock returns, the customer receives
+`orderAccepted` then `orderRejected`); an «اعتماد» sent from a view of the rejected review approves
+the content the customer resubmitted since. D1 (§56.2) was different: that request carried no
+intent at all. **Decision needed:** an expected-state token (`expectedStatus` / review
+`updatedAt`) answered with `409` — a new API contract on two admin endpoints plus the dashboard.
+
+## 57.9 CA-16 — rating reminder eligibility (A, fixed)
+
+The reminder («شلونها المنتجات؟ … شاركنا رأيك واكسب نقاط المجرّة») is documented as the notice
+"for whoever received and has not rated yet" (`config.orders.reviewReminderDelayHours`). An order
+whose every product already has a pending/approved review offers nothing to rate and no points to
+earn (§40.5), and the app hides every rating invite for it (`hasReviewableProducts`, §47.4).
+
+**Fix.** `REVIEWABLE_ITEMS_OF_ORDER` (`orderRepo.ts`) is now the **one** definition of "reviewable"
+— the order DTO's `reviewableProductCount`, the scheduler and «أرسل الآن» all read it.
+- Scheduler: the due batch is locked once (`FOR UPDATE SKIP LOCKED`, unchanged); in the same
+  statement a reviewable order is marked sent and notified, a fully reviewed one is **withdrawn**
+  (`rating_reminder_at = NULL`, `rating_reminder_sent_at` stays `NULL`). Withdrawn means: no
+  notification, the dashboard does not claim «أُرسل التذكير», no permanently-due row rescanned
+  every tick, and no reminder revived days later if a review is rejected afterwards (the customer
+  gets `reviewRejected` for that). A rejected review still counts as reviewable.
+- «أرسل الآن»: the eligibility is in the statement; a refusal on an order with nothing left to
+  review is `409 NOTHING_TO_REVIEW` («قيّم العميل كل منتجات الطلب — لا تذكير يُرسل»);
+  `REMINDER_ALREADY_SENT` keeps precedence once a reminder went out. The dashboard shows the
+  server message; no dashboard change.
+
+## 57.10 CA-17 — migration 051 residue (D) and CA-17a (B, fixed)
+
+**Read-only evidence (dev database, `BEGIN READ ONLY` + `default_transaction_read_only=on`):**
+`domain-invariants.sql` — 27 of 30 hold; I22 = 1, I23 = 2, I26 = 5 (as in §56.5). The new
+`backend/scripts/restock-residue-diagnostic.sql` lists the two in-stock products with waiting
+subscribers: both have `updated_at` = 051's `applied_at` (2026-09-14 20:22:05.76), subscriptions
+from 2026-09-01, one with a stale date (18 Sep). Provenance is migration 051 (a one-time stock
+return that predates §42.5 on that path).
+
+**Can current code still produce it?**
+- Stock 0 → n: admin save and rejection release both call `restockService.stockReturned` (D2).
+  No other path raises stock. 051 is a one-time delta and never re-runs.
+- **CA-17a (found here, fixed):** `restockService.subscribe` read "in stock?" without a lock. A
+  subscription that read `0` just before a restock committed was inserted after it — lingering
+  on an in-stock product (admin save path), or silently deleted by `clearForProduct` with no
+  notice (rejection path: the release is an `UPDATE`, whose `NO KEY UPDATE` lock does not block
+  the subscription's FK check). The check now runs after `SELECT … FOR SHARE` on the product row,
+  which conflicts with both; the late subscriber waits and gets `409 PRODUCT_IN_STOCK`.
+- I22 alone (in-stock product with a date) is **not** an invariant: the dashboard lets the admin
+  pre-set a date on an in-stock product («المخزون يتقدّم على الموعد: لن يُعرض التاريخ ما دام المنتج
+  متوفراً»). The sweep now labels I22 `INFO`; I23 remains a hard invariant.
+
+**Reach:** staging and production databases do not exist yet; a database migrated from empty has
+no pending orders when 051 runs, so it cannot carry this residue. It exists on dev only, and in any
+environment later populated from dev data — run the diagnostic first there.
+
+**Remediation (designed, not applied — decision required):**
+- *Notify now* — for each `residue` row, inside one transaction per product, call
+  `restockService.stockReturned(tx, id, name)`: localized `backInStock` to each waiting subscriber,
+  subscriptions consumed, date cleared — exactly what §42.5 would have done on 2026-09-14.
+- *Clear silently* — `DELETE FROM restock_subscriptions WHERE product_id = ANY($residue)` and
+  `UPDATE products SET restock_at = NULL WHERE id = ANY($residue) AND stock > 0`, in one
+  transaction.
+Either is a one-off operator action on a named environment after a read-only diagnostic run —
+**never a migration**, which `db:migrate` would apply everywhere automatically.
+
+## 57.11 CA-18 — category/subcategory deactivation (C, decision required)
+
+No document gives deactivation a meaning beyond the section itself: the subcategory switch reads
+«ظاهر للعملاء», the category page says «إن كان القسم مستعملاً فعطّله بدل حذفه», and §21.5 "nothing
+cascades" concerns deletion. Current behaviour, pinned: an inactive category disappears from
+`GET /catalog/categories`; its products — and an inactive subcategory's products — stay in
+listings (including `?categoryId=` / `?subcategoryId=` filters), product detail, search, cart and
+checkout (`products.is_active` is the only gate). **Decision needed:** keep, or cascade the gate to
+catalogue reads only (hide), or to cart/checkout as well (stop selling).
+
+## 57.12 Mutation evidence
+
+| # | Mutant | Result |
+|---|---|---|
+| M1 | CA-6: upsert without the cart lock | killed (`[CA-6]`) |
+| M2 | CA-6: lock CTE kept but not referenced (never evaluated) | killed |
+| M3 | CA-6: CTE without `FOR KEY SHARE` | killed |
+| M4 | CA-9: no transaction (both writes on the pool) | killed (3) |
+| M5 | CA-9: request written outside the transaction | killed (3) |
+| M6 | CA-16: scheduler ignores eligibility | killed (2) |
+| M7 | CA-16: ineligible reminder marked sent instead of withdrawn | killed (2) |
+| M8 | CA-16: ineligible reminder left due (re-evaluated every tick) | killed (2) |
+| M9 | CA-16: «send now» statement ignores eligibility | killed |
+| M10 | CA-16: refusal always reported as `REMINDER_ALREADY_SENT` | killed |
+| M11 | CA-16: a rejected review counts as reviewed | killed |
+| M12 | CA-17a: no lock before the stock check | killed (2) |
+| M13 | CA-17a: `FOR KEY SHARE` instead of `FOR SHARE` | killed (rejection path only — `KEY SHARE` does not conflict with the release's `NO KEY UPDATE`) |
+| M14 | CA-17a: lock taken after the stock read | killed (2) |
+
+Every mutant was restored and verified byte-exact (`filecmp`). No equivalent mutant survived.
+
+## 57.13 Files
+
+Production: `backend/src/repositories/cartRepo.ts` (`upsertItem`),
+`backend/src/services/authService.ts` (`register`), `backend/src/repositories/orderRepo.ts`
+(`REVIEWABLE_ITEMS_OF_ORDER`), `backend/src/jobs/ratingReminderJob.ts`,
+`backend/src/services/orderService.ts` (`sendReminderNow`), `backend/src/services/restockService.ts`
+(`subscribe`), `backend/src/domain/errorMessages.ts` (one glossary entry — draft Sorani, same status
+as its neighbours). Tests: `backend/tests/contract-closure.test.ts` (new, 20),
+`backend/tests/failure-retry-audit.test.ts` (CA-6 observation replaced by the contract test; two
+pins added). Tooling: `backend/scripts/restock-residue-diagnostic.sql` (new, read-only),
+`backend/scripts/domain-invariants.sql` (I22 → INFO). No migration, no admin or Flutter change,
+no data change (dev database read only).

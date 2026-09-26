@@ -25,6 +25,7 @@ export const mediaController = {
       mimeType: file.mimetype,
       purpose,
       uploadedBy: req.auth?.id ?? null,
+      isAdmin,
     });
 
     return created(res, { id: media.id, url: media.url }, 'تم رفع الصورة');

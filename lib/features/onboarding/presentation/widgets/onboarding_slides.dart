@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../core/l10n/app_strings.dart';
 
 import '../../../../core/design_system/design_system.dart';
 import '../../../visuals/domain/visual_slot.dart';
@@ -246,7 +247,7 @@ class OnboardingSlideOne extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'منتجات حصرية',
+                        context.strings('onbExclusiveProducts'),
                         style: theme.textTheme.labelLarge?.copyWith(
                           fontSize: 15,
                           height: 1.35,
@@ -256,7 +257,7 @@ class OnboardingSlideOne extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'حقائب، اكسسوارات، ملابس، وأكثر.',
+                        context.strings('onbExclusiveProductsSub'),
                         style: theme.textTheme.bodyMedium?.copyWith(
                           fontSize: 15,
                           height: 1.35,
@@ -290,11 +291,9 @@ class OnboardingSlideOne extends StatelessWidget {
                     end: Alignment.bottomCenter,
                   ),
                 ),
-                child: const OnboardingSlideText(
-                  title: 'أهلاً بك في مجرة الأوتاكو',
-                  body:
-                      'متجر عراقي متكامل لعشّاق الأنمي: ملابس، إكسسوارات، حقائب '
-                      'وقرطاسية بتصاميم الانمي.',
+                child: OnboardingSlideText(
+                  title: context.strings('onbWelcomeTitle'),
+                  body: context.strings('onbWelcomeBody'),
                   titleSize: 30,
                   titleWidthFactor: 0.88,
                   bodyWidthFactor: 0.9,
@@ -355,14 +354,14 @@ class OnboardingSlideTwo extends StatelessWidget {
             ),
 
             // النصّ أعلى الشريحة.
-            const PositionedDirectional(
+            PositionedDirectional(
               top: 30,
               start: 24,
               end: 24,
               child: OnboardingSlideText(
-                title: 'كل ما يخص عالمك، بمكان واحد',
+                title: context.strings('onbWorldTitle'),
                 body:
-                    'منتجات حصرية ومبتكرة تلبي تطلعاتكم ',
+                    context.strings('onbWorldBody'),
               ),
             ),
 
@@ -441,9 +440,22 @@ class OnboardingSlideTwo extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 9),
-                    _Bar(widthFactor: 0.8, color: theme.colorScheme.outlineVariant),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: List.generate(
+                        5,
+                        (i) => const Padding(
+                          padding: EdgeInsets.only(right: 2),
+                          child: Icon(
+                            Icons.star_rounded,
+                            size: 14,
+                            color: AppColors.accent,
+                          ),
+                        ),
+                      ),
+                    ),
                     const SizedBox(height: 6),
-                    const _Bar(widthFactor: 0.44, color: AppColors.secondary),
+                    const _Bar(widthFactor: 0.52, color: AppColors.secondary),
                   ],
                 ),
               ),
@@ -473,7 +485,7 @@ class OnboardingSlideTwo extends StatelessWidget {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      'منتجات بجودة عالية',
+                      context.strings('onbHighQuality'),
                       style: theme.textTheme.labelSmall?.copyWith(
                         fontSize: 11.5,
                         fontWeight: AppDimens.weightSemiBold,
@@ -578,23 +590,21 @@ class OnboardingSlideThree extends StatelessWidget {
             ),
             PositionedDirectional(
               bottom: -10,
-              end: -30,
+              end: 50,
               child: _Art(
                 slot: VisualSlots.onboardingSlideThree,
                 asset: 'assets/art/opt/a-i0.png',
-                height: constraints.maxHeight * 0.70,
+                height: constraints.maxHeight * 0.945,
               ),
             ),
 
-            const PositionedDirectional(
+            PositionedDirectional(
               top: 28,
               start: 24,
               end: 24,
               child: OnboardingSlideText(
-                title: 'اطلب اليوم، وادفع عند الاستلام',
-                body:
-                    'توصيل لكل المحافظات، والدفع نقداً عند وصول الطلب '
-                    'لباب البيت.',
+                title: context.strings('onbCodTitle'),
+                body: context.strings('onbCodBody'),
                 titleWidthFactor: 0.84,
                 bodyWidthFactor: 0.76,
               ),
@@ -635,7 +645,7 @@ class OnboardingSlideThree extends StatelessWidget {
                         const SizedBox(width: 9),
                         Expanded(
                           child: Text(
-                            'توصيل لكل المحافظات',
+                            context.strings('deliveryAllGovernorates'),
                             style: theme.textTheme.labelMedium?.copyWith(
                               fontSize: 12,
                               height: 1.35,
@@ -653,7 +663,7 @@ class OnboardingSlideThree extends StatelessWidget {
                     ),
                     const SizedBox(height: 11),
                     Text(
-                      'توصيل سريع وآمن.',
+                      context.strings('onbFastSafeDelivery'),
                       style: theme.textTheme.labelSmall?.copyWith(
                         fontSize: 11.5,
                         height: 1.6,

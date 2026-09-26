@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { APP_LOCALES } from '../utils/locale.js';
 import { GENDERS } from '../types/index.js';
 import { normalizeIraqiPhone } from '../utils/phone.js';
 
@@ -66,11 +67,6 @@ const username = z
   .regex(NO_CONTROL_CHARS, 'الاسم يحتوي محارف غير مسموحة');
 
 /** رمز التحقق: ستة أرقام، بلا فراغات داخلية. */
-const otpCode = z
-  .string()
-  .trim()
-  .regex(/^\d{6}$/, 'رمز التحقق يجب أن يكون 6 أرقام');
-
 /**
  * الجنس — تعدادٌ مغلق لا نصّ حر.
  *
@@ -96,20 +92,31 @@ export const registerSchema = z.object({
   gender,
 });
 
-export const verifySchema = z.object({ phone, code: otpCode });
-
 export const loginSchema = z.object({ phone, password: loginPassword });
 
-export const forgotPasswordSchema = z.object({ phone });
-
-export const resetPasswordSchema = z.object({
+/**
+ * نسيت كلمة المرور — معلومات تعريفٍ للمسؤول، لا رمز.
+ *
+ * الأربعة تُحفظ كما أُرسلت لتقارنها الإدارة بالمخزَّن قبل التحقّق عبر
+ * واتساب. تطابقُها لا يصادق أحداً — انظر `authService.forgotPassword`.
+ * `levelKey` يُتحقَّق منه في الخدمة مقابل السلّم لا هنا (المصدر واحد).
+ */
+export const forgotPasswordSchema = z.object({
   phone,
-  code: otpCode,
-  newPassword,
+  username,
+  gender,
+  levelKey: z.string().trim().min(1, 'مستوى غير معروف').max(32),
 });
 
 export const updateProfileSchema = z.object({
   username: username.optional(),
+  /**
+   * لغة المخاطبة المختارة في التطبيق.
+   *
+   * تُرسَل مع بقية الملف الشخصي لا في نقطةٍ خاصة: هي تفضيلُ مستخدمٍ كالجنس
+   * والاسم، ونقطةٌ ثانية كانت ستعني مسارين يكتبان الجدول نفسه.
+   */
+  preferredLanguage: z.enum(APP_LOCALES).optional(),
   /**
    * مرجع الصورة كما يعيده مسار الرفع — نسبي (`/uploads/...`) وفق تمثيل
    * الوسائط الموحّد.
@@ -139,8 +146,7 @@ export const changePasswordSchema = z.object({
 });
 
 export type RegisterInput = z.infer<typeof registerSchema>;
-export type VerifyInput = z.infer<typeof verifySchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
-export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;

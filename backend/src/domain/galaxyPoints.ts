@@ -158,6 +158,15 @@ export interface GalaxyLevel {
   nameMale: string;
   nameFemale: string;
   /**
+   * الاسم بالكردية (سوراني) — **صيغة واحدة**.
+   *
+   * [CRITICAL] السوراني لا يصرّف الاسم بجنس صاحبه كما تفعل العربية
+   * («بطل/بطلة»)، فصيغةٌ واحدة تخاطب الجميع — بنفس قرار `Gendered.ckb` في
+   * التطبيق. كانت الأسماء عربيةً وحدها فظهر «مستكشف المجرة» في واجهةٍ
+   * كردية. ⚠ مسوّدة تنتظر مراجعة ناطق.
+   */
+  nameCkb: string;
+  /**
    * صيغة محايدة لمن لم يحدّد جنسه بعد.
    *
    * ليست الصيغةَ المذكّرة مكرَّرة: استعمالُ المذكّر لمن نجهل جنسه يخاطب
@@ -168,6 +177,8 @@ export interface GalaxyLevel {
   reward: LevelReward;
   /** وصف المزيّة للعرض — مشتقّ، لا مصدر حقيقة. */
   rewardLabel: string;
+  /** وصف المزيّة بالكردية — يُختار بلغة صاحب الحساب في الإشعارات والشاشة. */
+  rewardLabelCkb: string;
 }
 
 /**
@@ -184,8 +195,10 @@ export const GALAXY_LEVELS: readonly GalaxyLevel[] = [
     nameMale: 'مبتدئ المجرة',
     nameFemale: 'مبتدئة المجرة',
     nameNeutral: 'المستوى المبتدئ',
+    nameCkb: 'سەرەتایی گەلاکسی',
     reward: { kind: 'none' },
     rewardLabel: 'بداية الرحلة',
+    rewardLabelCkb: 'دەستپێکی گەشت',
   },
   {
     key: 'explorer',
@@ -194,8 +207,10 @@ export const GALAXY_LEVELS: readonly GalaxyLevel[] = [
     nameMale: 'مستكشف المجرة',
     nameFemale: 'مستكشفة المجرة',
     nameNeutral: 'مستوى الاستكشاف',
+    nameCkb: 'گەڕیدەی گەلاکسی',
     reward: { kind: 'discount', percent: 3, capAmount: 5_000 },
-    rewardLabel: 'خصم ٣٪ حتى ٥٬٠٠٠ دينار — مرة واحدة',
+    rewardLabel: 'خصم ٣٪ — مرة واحدة',
+    rewardLabelCkb: 'داشکاندنی 3٪ — یەک جار',
   },
   {
     key: 'voyager',
@@ -204,8 +219,10 @@ export const GALAXY_LEVELS: readonly GalaxyLevel[] = [
     nameMale: 'رحّالة المجرة',
     nameFemale: 'رحّالة المجرة',
     nameNeutral: 'مستوى الترحال',
+    nameCkb: 'گەشتیاری گەلاکسی',
     reward: { kind: 'gift', giftAmount: 5_000 },
     rewardLabel: 'هدية من المتجر بقيمة ٥٬٠٠٠ دينار — مرة واحدة',
+    rewardLabelCkb: 'دیاری لە فرۆشگاوە بە بڕی 5,000 دینار — یەک جار',
   },
   {
     key: 'warrior',
@@ -214,8 +231,10 @@ export const GALAXY_LEVELS: readonly GalaxyLevel[] = [
     nameMale: 'محارب المجرة',
     nameFemale: 'محاربة المجرة',
     nameNeutral: 'مستوى القتال',
+    nameCkb: 'جەنگاوەری گەلاکسی',
     reward: { kind: 'discount', percent: 5, capAmount: 10_000 },
-    rewardLabel: 'خصم ٥٪ حتى ١٠٬٠٠٠ دينار — مرة واحدة',
+    rewardLabel: 'خصم ٥٪ — مرة واحدة',
+    rewardLabelCkb: 'داشکاندنی 5٪ — یەک جار',
   },
   {
     key: 'champion',
@@ -224,8 +243,10 @@ export const GALAXY_LEVELS: readonly GalaxyLevel[] = [
     nameMale: 'بطل المجرة',
     nameFemale: 'بطلة المجرة',
     nameNeutral: 'مستوى البطولة',
+    nameCkb: 'پاڵەوانی گەلاکسی',
     reward: { kind: 'gift', giftAmount: 10_000 },
     rewardLabel: 'هدية من المتجر بقيمة ١٠٬٠٠٠ دينار — مرة واحدة',
+    rewardLabelCkb: 'دیاری لە فرۆشگاوە بە بڕی 10,000 دینار — یەک جار',
   },
   {
     key: 'star',
@@ -234,8 +255,10 @@ export const GALAXY_LEVELS: readonly GalaxyLevel[] = [
     nameMale: 'نجم المجرة',
     nameFemale: 'نجمة المجرة',
     nameNeutral: 'مستوى النجومية',
+    nameCkb: 'ئەستێرەی گەلاکسی',
     reward: { kind: 'discount', percent: 10, capAmount: 20_000 },
-    rewardLabel: 'خصم ١٠٪ حتى ٢٠٬٠٠٠ دينار — مرة واحدة',
+    rewardLabel: 'خصم ١٠٪ — مرة واحدة',
+    rewardLabelCkb: 'داشکاندنی 10٪ — یەک جار',
   },
   {
     key: 'legend',
@@ -244,10 +267,17 @@ export const GALAXY_LEVELS: readonly GalaxyLevel[] = [
     nameMale: 'أسطورة المجرة',
     nameFemale: 'أسطورة المجرة',
     nameNeutral: 'مستوى الأسطورة',
+    nameCkb: 'ئەفسانەی گەلاکسی',
     reward: { kind: 'gift', giftAmount: 25_000 },
     rewardLabel: 'هدية من المتجر بقيمة ٢٥٬٠٠٠ دينار — مرة واحدة',
+    rewardLabelCkb: 'دیاری لە فرۆشگاوە بە بڕی 25,000 دینار — یەک جار',
   },
 ] as const;
+
+/** وصف المزيّة بلغة صاحب الحساب — الكردية إن وُجدت وإلّا العربية. */
+export function rewardLabelFor(level: GalaxyLevel, locale: 'ar' | 'ckb'): string {
+  return locale === 'ckb' && level.rewardLabelCkb.trim() ? level.rewardLabelCkb : level.rewardLabel;
+}
 
 const LEVEL_BY_KEY = new Map<GalaxyLevelKey, GalaxyLevel>(
   GALAXY_LEVELS.map((level) => [level.key, level]),

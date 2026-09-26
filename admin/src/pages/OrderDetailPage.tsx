@@ -284,12 +284,12 @@ export default function OrderDetailPage() {
             <Descriptions.Item label="وقت الاستلام">
               {order.deliveredAt ? formatDateTime(order.deliveredAt) : '—'}
             </Descriptions.Item>
-            <Descriptions.Item label="يُفتح التقييم للعميل">
-              {order.ratingAvailableAt
-                ? `${formatDateTime(order.ratingAvailableAt)} ${
-                    order.ratingAvailable ? '(مفتوح الآن)' : '(لم يحن بعد)'
-                  }`
-                : '—'}
+            <Descriptions.Item label="التقييم للعميل">
+              {/* يقرّره الخادم من الاستلام — لا موعد يُنتظر بعده. */}
+              {order.canReview ? 'مفتوح منذ تأكيد الاستلام' : 'يُفتح بتأكيد الاستلام'}
+            </Descriptions.Item>
+            <Descriptions.Item label="موعد تذكير التقييم">
+              {order.ratingReminderAt ? formatDateTime(order.ratingReminderAt) : '—'}
             </Descriptions.Item>
           </Descriptions>
         )}

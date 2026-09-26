@@ -37,7 +37,7 @@ final _ladder = [
     nameMale: 'مستكشف المجرة',
     nameFemale: 'مستكشفة المجرة',
     nameNeutral: 'مستوى الاستكشاف',
-    reward: 'خصم ٣٪ حتى ٥٬٠٠٠ دينار — مرة واحدة',
+    reward: 'خصم ٣٪ — مرة واحدة',
     rewardKind: 'discount',
     threshold: 100,
   ),
@@ -70,6 +70,9 @@ LevelReward _reward(
 );
 
 class _StubPoints implements PointsRepository {
+  @override
+  Future<List<OtakuLevel>> fetchLevels() async => summary.levels;
+
   _StubPoints(this.summary);
 
   PointsSummary summary;
@@ -200,6 +203,45 @@ void main() {
       );
       // [CRITICAL] لا أثر للنصّ القديم الذي يصف آلية إدارية لا تعني الزبون.
       expect(find.textContaining('لوحة الإدارة'), findsNothing);
+    });
+  });
+
+  group('المبلغ في وصف المزيّة — خصمٌ بلا سقف وهديةٌ بقيمتها', () {
+    /// المطلوب تمييزٌ لا حذفٌ شامل: سقف الخصم يختفي، وقيمة الهدية تبقى.
+    ///
+    /// [CRITICAL] هذا الاختبار يحرس **الجيران والتمييز على الشاشة**، لا الحذف
+    /// نفسه: النصّ يأتي من الخادم (`rewardLabel`)، وحارسُ الحذف اختبارُ
+    /// `galaxy-levels.test.ts` في الخلفية حيث يُشتقّ الرقم من البيانات.
+    /// ما يُقاس هنا أن التمييز يصل إلى البطاقة، وأن إزالة السقف لم تأخذ معها
+    /// اسمَ المستوى ولا عتبة النقاط ولا النصّ التفسيري المالي المشروع.
+    testWidgets('سقف الخصم يغيب وقيمة الهدية تظهر — والجيران باقون', (
+      tester,
+    ) async {
+      await _pumpScreen(tester, _summary(), size: const Size(390, 2600));
+
+      // خصم: النسبة بلا سقف.
+      expect(find.text('خصم ٣٪ — مرة واحدة'), findsOneWidget);
+      expect(find.textContaining('حتى ٥٬٠٠٠ دينار'), findsNothing);
+
+      // هدية: القيمة مذكورة — هي المزيّة نفسها.
+      expect(
+        find.text('هدية من المتجر بقيمة ١٠٬٠٠٠ دينار — مرة واحدة'),
+        findsOneWidget,
+      );
+
+      // مستوى بلا مزيّة — نصّه كما هو.
+      expect(find.text('بداية الرحلة'), findsOneWidget);
+
+      // الجيران في البطاقة نفسها: الاسم وعتبة النقاط.
+      // بلا جنس محدَّد تُعرض الصيغة المحايدة — كما يحرسه اختبار التصريف.
+      expect(find.textContaining('مستوى الاستكشاف'), findsOneWidget);
+      expect(find.textContaining('مستوى البطولة'), findsOneWidget);
+      expect(find.text('0+'), findsOneWidget);
+      expect(find.text('100+'), findsOneWidget);
+      expect(find.text('600+'), findsOneWidget);
+
+      // نصٌّ ماليّ مشروع — معدّل الكسب لا سقف مزيّة. يبقى.
+      expect(find.text('عن كل ١٠٬٠٠٠ دينار من مشترياتك'), findsOneWidget);
     });
   });
 

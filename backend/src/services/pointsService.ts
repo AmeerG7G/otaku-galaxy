@@ -23,8 +23,12 @@ export interface LevelDto {
   nameMale: string;
   nameFemale: string;
   nameNeutral: string;
+  /** الاسم الكردي الواحد — يختاره التطبيق حين تكون واجهته كردية. */
+  nameCkb: string;
   rewardKind: 'none' | 'discount' | 'gift';
   reward: string;
+  /** وصف المزيّة بالكردية — نظير `reward`. */
+  rewardCkb: string;
   percent?: number;
   capAmount?: number;
   giftAmount?: number;
@@ -38,8 +42,10 @@ function shapeLevel(level: GalaxyLevel): LevelDto {
     nameMale: level.nameMale,
     nameFemale: level.nameFemale,
     nameNeutral: level.nameNeutral,
+    nameCkb: level.nameCkb,
     rewardKind: level.reward.kind,
     reward: level.rewardLabel,
+    rewardCkb: level.rewardLabelCkb,
     ...(level.reward.kind === 'discount'
       ? { percent: level.reward.percent, capAmount: level.reward.capAmount }
       : {}),

@@ -2,6 +2,7 @@ import { config } from '../config/index.js';
 import { db } from '../database/pool.js';
 import { audienceRepo, type Audience } from '../repositories/audienceRepo.js';
 import { notificationRepo } from '../repositories/notificationsRepo.js';
+import { userRepo } from '../repositories/userRepo.js';
 import { Errors } from '../utils/errors.js';
 import { pushService } from './pushService.js';
 import { pushProvider } from './push/index.js';
@@ -53,6 +54,11 @@ export const notificationsService = {
     body: string;
   }) {
     if (!input.title.trim()) throw Errors.badRequest('العنوان مطلوب');
+    // المستهدَف يُتحقَّق منه قبل الكتابة: معرّفٌ لا يقابله صفّ كان يصطدم
+    // بالمفتاح الأجنبي فيخرج ٥٠٠ بدل «غير موجود».
+    if (!(await userRepo.findById(db, input.userId))) {
+      throw Errors.notFound('الحساب غير موجود');
+    }
     const created = await notificationRepo.create(db, {
       userId: input.userId,
       type: 'promotion',

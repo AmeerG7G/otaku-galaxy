@@ -1,4 +1,7 @@
 import 'package:auto_route/auto_route.dart';
+import '../../../../core/l10n/app_strings.dart';
+import '../../../../core/l10n/locale_refetch.dart';
+import '../../../../core/utils/request_sequence.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -30,7 +33,8 @@ class CategoryProductsScreen extends StatefulWidget {
   State<CategoryProductsScreen> createState() => _CategoryProductsScreenState();
 }
 
-class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
+class _CategoryProductsScreenState extends State<CategoryProductsScreen>
+    with LocaleRefetch {
   List<Product> _products = [];
   List<String> _subcategories = const [];
   // معرّفات الأقسام الفرعية (اسم → معرّف) لفلترة المنتجات عبر subcategoryId.
@@ -50,12 +54,19 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
   late final PageController _pageController;
   final _pillsScrollController = ScrollController();
 
+  /// أحدث طلب جلب — الردّ الذي تجاوزه طلبٌ أحدث يُهمَل (انظر [RequestSequence]).
+  final _requests = RequestSequence();
+
   @override
   void initState() {
     super.initState();
-    _pageController = PageController();
+    _pageController = PageController(initialPage: _selectedPage);
     _load();
   }
+
+  /// المحتوى الخادمي يُصرَّف لحظة الجلب — يُعاد جلبه بلغة الواجهة الجديدة.
+  @override
+  void onLanguageChanged() => _load();
 
   @override
   void dispose() {
@@ -65,6 +76,11 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
   }
 
   Future<void> _load() async {
+    // [CRITICAL] رقم هذا الطلب يُلتقط قبل أي `await`. كان أيّ ردٍّ يصل يُكتب
+    // في الحالة، فردُّ جلبٍ سابق (تبديل لغة أثناء التحميل مثلاً) كان يصل
+    // بعد الأحدث ويطمسه — تظهر قائمةٌ لا تطابق ما اختاره المستخدم ثم
+    // «تتصحّح» مع ردٍّ لاحق. الردّ المتجاوَز يُهمَل هنا بلا تأخيرٍ ولا طلبٍ زائد.
+    final token = _requests.next();
     setState(() {
       _loading = true;
       _error = null;
@@ -77,8 +93,10 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
         widget.categoryId,
         sort: _sort,
       );
+      if (!mounted || !_requests.isCurrent(token)) return;
       List<String> subcategories = const [];
       Map<String, String> subcategoryIds = const {};
+      Category? category;
       try {
         final categories = await fetchCategories();
         final index = categories.indexWhere(
@@ -87,21 +105,34 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
         if (index != -1) {
           subcategories = categories[index].subcategories;
           subcategoryIds = categories[index].subcategoryIds;
-          _category = categories[index];
+          category = categories[index];
         }
       } catch (_) {
         // الأقسام الفرعية اختيارية — لا نُفشل الشاشة عند عدم توفرها.
       }
-      if (!mounted) return;
+      if (!mounted || !_requests.isCurrent(token)) return;
+      // [CRITICAL] الصفحة المختارة تبقى ما بقيت صالحة. كانت تُعاد إلى الأولى
+      // بينما `PageController` باقٍ على صفحته، فتُضاء رقاقةُ قسمٍ وتُعرض
+      // منتجاتُ غيره بعد كل إعادة جلب (تغيير الترتيب، تبديل اللغة).
+      final page = subcategories.isEmpty
+          ? 0
+          : _selectedPage.clamp(0, subcategories.length - 1);
       setState(() {
         _products = products;
         _subcategories = subcategories;
         _subcategoryIds = subcategoryIds;
-        _selectedPage = 0;
+        if (category != null) _category = category;
+        _selectedPage = page;
         _loading = false;
       });
+      // المتحكّم يُطابَق بالصفحة بعد أن يُبنى `PageView` من جديد (كان مخفياً
+      // خلف هيكل التحميل، فلا عميل له أثناءه).
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_pageController.hasClients) return;
+        if (_pageController.page?.round() != page) _pageController.jumpToPage(page);
+      });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_requests.isCurrent(token)) return;
       setState(() {
         _error = e.toString();
         _loading = false;
@@ -148,8 +179,8 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
             OtakuScreenHeader.gradient(
               title: widget.categoryName,
               subtitle: _loading
-                  ? 'جاري التحميل…'
-                  : '${_products.length} منتج في هذا القسم',
+                  ? context.strings('loading')
+                  : context.strings.p('productsInCategoryCount', {'count': '${_products.length}'}),
               gradient: LinearGradient(
                 colors: AnimeCategoryCard.gradientForCategory(
                   _category ??
@@ -166,7 +197,7 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                 OtakuHeaderButton(
                   icon: AppIcons.search,
                   onGradient: true,
-                  tooltip: 'بحث',
+                  tooltip: context.strings('search'),
                   onTap: () => context.router.push(SearchRoute()),
                 ),
               ],
@@ -185,11 +216,11 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
     }
     if (_products.isEmpty) {
       return AnimeEmptyState(
-        title: 'لا توجد منتجات في هذا القسم',
-        subtitle: 'القسم فارغ حالياً — تصفّح قسماً آخر أو عد لاحقاً.',
+        title: context.strings('noProductsInCategoryTitle'),
+        subtitle: context.strings('noProductsInCategoryBody'),
         artwork: 'assets/art/a-l-detective.png',
         artworkSlot: VisualSlots.categoryProductsHeader,
-        actionLabel: 'رجوع للأقسام',
+        actionLabel: context.strings('backToCategories'),
         onAction: () => context.router.maybePop(),
       );
     }
@@ -265,7 +296,7 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
   Widget _buildSortBar() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 10, 18, 6),
-      child: OtakuSortBar(label: _sort.label, onTap: _openSortSheet),
+      child: OtakuSortBar(label: context.strings(_sort.labelKey), onTap: _openSortSheet),
     );
   }
 
@@ -276,11 +307,14 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
   Future<void> _openSortSheet() async {
     final picked = await showOtakuPicker<ProductSort>(
       context: context,
-      title: 'ترتيب حسب',
+      title: context.strings('sortBy'),
       selected: _sort,
       options: [
         for (final sort in ProductSort.values)
-          OtakuPickerOption(value: sort, label: sort.label),
+          OtakuPickerOption(
+            value: sort,
+            label: context.strings(sort.labelKey),
+          ),
       ],
     );
     if (picked == null || picked == _sort || !mounted) return;
@@ -298,9 +332,9 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
             physics: const AlwaysScrollableScrollPhysics(),
             child: SizedBox(
               height: constraints.maxHeight,
-              child: const AnimeEmptyState(
-                title: 'لا توجد منتجات هنا',
-                subtitle: 'جرّب قسماً فرعياً آخر — ستجد ما يناسبك.',
+              child: AnimeEmptyState(
+                title: context.strings('noProductsHereTitle'),
+                subtitle: context.strings('noProductsHereBody'),
                 artwork: 'assets/art/a-l-detective.png',
                 artworkSlot: VisualSlots.emptyCategoryProducts,
               ),

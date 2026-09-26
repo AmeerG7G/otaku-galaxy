@@ -1,4 +1,5 @@
 import 'package:auto_route/auto_route.dart';
+import '../../../../core/l10n/app_strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -37,20 +38,21 @@ class CartScreen extends StatelessWidget {
           return Column(
             children: [
               OtakuScreenHeader.tab(
-                title: 'السلة',
+                title: context.strings('navCart'),
                 subtitle: !isLoggedIn
                     ? context.g(GenderedStrings.loginToStartCart)
                     : count == 0
-                    ? '0 منتجات في السلة'
-                    : '$count منتجات في السلة',
+                    ? context.strings('cartEmptyCount')
+                    : context.strings.p('cartItemsCount', {'count': '$count'}),
               ),
               Expanded(
                 child: !isLoggedIn
                     ? AnimeGuestPrompt(
-                        title: 'أنت تتصفح كزائر',
+                        title: context.strings('browsingAsGuest'),
                         body:
                             context.g(GenderedStrings.loginToAddToCart),
                         icon: Icons.shopping_cart_outlined,
+                        artworkSlot: VisualSlots.cartGuestPrompt,
                         onLogin: () => context.router.push(const LoginRoute()),
                       )
                     : state.items.isEmpty
@@ -66,11 +68,11 @@ class CartScreen extends StatelessWidget {
 
   Widget _buildEmpty(BuildContext context) {
     return AnimeEmptyState(
-      title: 'السلة فارغة',
+      title: context.strings('cartEmptyTitle'),
       subtitle: context.g(GenderedStrings.browseAndPick),
       artwork: 'assets/art/opt/a-luffy-kid.png',
       artworkSlot: VisualSlots.emptyCart,
-      actionLabel: 'اكتشف المنتجات',
+      actionLabel: context.strings('discover'),
       onAction: () => mainNavIndex.value = MainTab.home,
       // السلة والمفضلة موسّطتان: الرسم فوق ثم الزرّ تحته، كلاهما في المنتصف.
       // بقية الشاشات تبقى على التخطيط الجانبي الذي يصفه مرجع التصميم.
@@ -109,15 +111,15 @@ class CartScreen extends StatelessWidget {
       child: Column(
         children: [
           _SummaryRow(
-            label: 'المجموع الفرعي',
-            value: '${cart.total.toStringAsFixed(0)} د.ع',
+            label: context.strings('subtotal'),
+            value: context.strings.p('priceIqd', {'amount': cart.total.toStringAsFixed(0)}),
           ),
           const SizedBox(height: 10),
           _SummaryRow(
-            label: 'رسوم التوصيل',
+            label: context.strings('deliveryFee'),
             // التوصيل يُحتسب في الخطوة التالية حسب المحافظة والمنطقة.
             valueWidget: Text(
-              'يُحتسب عند إدخال العنوان',
+              context.strings('deliveryFeeAtAddress'),
               style: theme.textTheme.bodySmall?.copyWith(
                 fontSize: 12,
                 color: theme.colorScheme.onSurfaceVariant,
@@ -133,7 +135,7 @@ class CartScreen extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  'الإجمالي',
+                  context.strings('grandTotal'),
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontFamily: 'Tajawal',
                     fontWeight: AppDimens.weightExtraBold,
@@ -142,7 +144,7 @@ class CartScreen extends StatelessWidget {
                 ),
               ),
               Text(
-                '${cart.total.toStringAsFixed(0)} د.ع',
+                context.strings.p('priceIqd', {'amount': cart.total.toStringAsFixed(0)}),
                 textDirection: TextDirection.ltr,
                 style: theme.textTheme.titleLarge?.copyWith(
                   fontFamily: 'Tajawal',
@@ -178,7 +180,7 @@ class CartScreen extends StatelessWidget {
             ),
           ),
           AnimePrimaryButton(
-            label: 'إتمام الطلب',
+            label: context.strings('checkout'),
             onPressed: () => context.router.push(const OrderDataRoute()),
             height: AppDimens.buttonHeightXl,
           ),
@@ -320,7 +322,7 @@ class _CartItemCard extends StatelessWidget {
                   children: [
                     Expanded(
                       child: Text(
-                        '${lineTotal.toStringAsFixed(0)} د.ع',
+                        context.strings.p('priceIqd', {'amount': lineTotal.toStringAsFixed(0)}),
                         textDirection: TextDirection.ltr,
                         style: theme.textTheme.titleSmall?.copyWith(
                           fontFamily: 'Tajawal',
@@ -356,10 +358,10 @@ class _CartItemCard extends StatelessWidget {
     final cart = context.read<CartCubit>();
     final confirmed = await showOtakuConfirm(
       context: context,
-      title: 'إزالة المنتج',
-      message: 'سيُزال «${item.product.name}» من سلتك. هل تريد المتابعة؟',
-      confirmLabel: 'إزالة',
-      cancelLabel: 'إلغاء',
+      title: context.strings('removeProduct'),
+      message: context.strings.p('removeProductConfirm', {'name': item.product.name}),
+      confirmLabel: context.strings('remove'),
+      cancelLabel: context.strings('cancel'),
       destructive: true,
     );
     if (confirmed != true) return;

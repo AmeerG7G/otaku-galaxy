@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/l10n/app_strings.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/auth/require_auth.dart';
@@ -94,8 +95,8 @@ class _RestockNotifyButtonState extends State<RestockNotifyButton> {
   Future<void> _subscribe() async {
     final authenticated = await requireAuthentication(
       context,
-      title: 'سجّل دخولك أولاً',
-      body: 'لنعلمك عند توفر المنتج نحتاج حسابك في مجرة الأوتاكو.',
+      title: context.gNow(GenderedStrings.loginFirst),
+      body: context.strings('loginRequiredForRestock'),
     );
     if (!authenticated || !mounted) return;
 
@@ -110,8 +111,8 @@ class _RestockNotifyButtonState extends State<RestockNotifyButton> {
       widget.onChanged?.call();
       _snack(
         result.alreadySubscribed
-            ? 'أنت على قائمة الانتظار مسبقاً'
-            : 'سنُعلمك فور توفّره 🔔',
+            ? context.strings('alreadyOnWaitlist')
+            : context.strings('willNotifyWhenAvailable'),
         success: true,
       );
     } catch (error) {
@@ -134,7 +135,7 @@ class _RestockNotifyButtonState extends State<RestockNotifyButton> {
         _restockAt = null;
       });
       widget.onChanged?.call();
-      _snack('أُلغي التنبيه', success: true);
+      _snack(context.strings('alertCancelled'), success: true);
     } catch (error) {
       if (!mounted) return;
       _snack(_messageOf(error), success: false);
@@ -144,9 +145,9 @@ class _RestockNotifyButtonState extends State<RestockNotifyButton> {
   }
 
   String _messageOf(Object e) =>
-      e is AppException && e.message.trim().isNotEmpty
-      ? e.message
-      : 'تعذّر إتمام العملية، حاول مرة أخرى';
+      e is AppException && e.localizedMessage(context).trim().isNotEmpty
+      ? e.localizedMessage(context)
+      : context.strings('operationFailed');
 
   /// نفس شريط «تمت إضافة المنتج إلى السلة» بالضبط — لا نسخةَ ثانية منه.
   ///
@@ -183,7 +184,7 @@ class _RestockNotifyButtonState extends State<RestockNotifyButton> {
       label: _busy
           ? '...'
           : _subscribed
-          ? 'بانتظار التوفر — إلغاء التنبيه'
+          ? context.strings('waitingCancelAlert')
           : context.g(GenderedStrings.notifyWhenAvailable),
       onPressed: _busy ? null : (_subscribed ? _unsubscribe : _subscribe),
       height: AppDimens.buttonHeightXl,
@@ -208,7 +209,7 @@ class _ScheduledRestockState extends StatelessWidget {
 
     return Semantics(
       readOnly: true,
-      label: 'بانتظار توفيره بتاريخ ${formatShortArabicDate(date)}',
+      label: context.strings.p('waitingRestockOn', {'date': formatShortArabicDate(context, date)}),
       child: Container(
         height: AppDimens.buttonHeightXl,
         alignment: Alignment.center,
@@ -225,7 +226,7 @@ class _ScheduledRestockState extends StatelessWidget {
             const SizedBox(width: 8),
             Flexible(
               child: Text(
-                'بانتظار توفيره بتاريخ ${formatShortArabicDate(date)}',
+                context.strings.p('waitingRestockOn', {'date': formatShortArabicDate(context, date)}),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.titleSmall?.copyWith(

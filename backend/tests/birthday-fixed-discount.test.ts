@@ -4,7 +4,7 @@ import {
   BIRTHDAY_DISCOUNT_PERCENT,
   birthdayDiscountAmount,
 } from '../src/domain/birthday.js';
-import { api, createAdminUser, registerAndLogin, seedTestCatalog } from './helpers.js';
+import { api, createAdminUser, registerAndLogin, seedTestCatalog, storeToday } from './helpers.js';
 
 /**
  * خصم عيد الميلاد بعد تثبيت نسبته.
@@ -56,11 +56,11 @@ async function eligibleCustomer(seedProductId: string) {
       .expect(200);
   }
 
-  const today = new Date();
+  const today = await storeToday();
   await api
     .post('/api/birthday')
     .set('Authorization', `Bearer ${user.token}`)
-    .send({ day: today.getDate(), month: today.getMonth() + 1 })
+    .send({ day: today.day, month: today.month })
     .expect(200);
   return user;
 }

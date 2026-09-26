@@ -1,15 +1,11 @@
 import type { RequestHandler } from 'express';
 import { visualsService } from '../services/visualsService.js';
-import { created, noContent, ok } from '../utils/response.js';
+import { ok } from '../utils/response.js';
 import { parse } from '../utils/zod.js';
 import {
-  addSlotImageSchema,
-  createSlotSchema,
-  reorderSlotImagesSchema,
+  setSlotImageSchema,
+  setSlotTemporaryImageSchema,
   slotIdParamSchema,
-  slotImageParamSchema,
-  updateSlotImageSchema,
-  updateSlotSchema,
 } from '../validators/visuals.js';
 
 /**
@@ -18,14 +14,13 @@ import {
  * الفصل بين المتحكّمين ليس تنظيماً: مسار العميل يقرأ فقط، ولا يوجد فيه أي
  * دالة كتابة يمكن الوصول إليها بتخمين مسار. الكتابة كلها خلف `adminRoutes`
  * التي تفرض المصادقة ودور المسؤول قبل أن يصل الطلب إلى هنا.
+ *
+ * [PRODUCT] الفتحات تُعرَّف بالهجرات لا من اللوحة: موضعٌ في التطبيق يقابله
+ * صفٌّ مزروع، والمسؤول يبدّل صورته الدائمة أو يزيلها، ويضع فوقها صورةً
+ * مؤقّتة إلى لحظةٍ أو ينهيها — لا أكثر (الهجرتان ٠٥٤ و٠٥٥).
  */
 export const publicVisualsController = {
-  /**
-   * الإعداد المنشور — نداء واحد يعيد كل الفتحات.
-   *
-   * الخادم يختار الصورة ويعيدها جاهزة: التطبيق يحمل رابطاً واحداً لا خوارزمية
-   * اختيار، فلا يمكن أن تتبدّل الشخصية مع إعادة بناء عنصر واجهة.
-   */
+  /** الإعداد المنشور — نداء واحد يعيد كل الفتحات ذات الصورة. */
   list: (async (_req, res) => {
     return ok(res, await visualsService.published());
   }) as RequestHandler,
@@ -36,47 +31,37 @@ export const adminVisualsController = {
     return ok(res, await visualsService.listForAdmin());
   }) as RequestHandler,
 
-  createSlot: (async (req, res) => {
-    const body = parse(createSlotSchema, req.body);
-    return created(res, await visualsService.createSlot(body), 'أُضيفت الفتحة');
+  setImage: (async (req, res) => {
+    const { id } = parse(slotIdParamSchema, req.params);
+    const body = parse(setSlotImageSchema, req.body);
+    return ok(res, await visualsService.setImage(id, body.url), 'استُبدلت الصورة');
   }) as RequestHandler,
 
-  updateSlot: (async (req, res) => {
+  clearImage: (async (req, res) => {
     const { id } = parse(slotIdParamSchema, req.params);
-    const body = parse(updateSlotSchema, req.body);
-    return ok(res, await visualsService.updateSlot(id, body), 'تم التحديث');
-  }) as RequestHandler,
-
-  deleteSlot: (async (req, res) => {
-    const { id } = parse(slotIdParamSchema, req.params);
-    await visualsService.deleteSlot(id);
-    return noContent(res);
-  }) as RequestHandler,
-
-  addImage: (async (req, res) => {
-    const { id } = parse(slotIdParamSchema, req.params);
-    const body = parse(addSlotImageSchema, req.body);
-    return created(
+    return ok(
       res,
-      await visualsService.addImage(id, body.url, body.mode),
-      body.mode === 'replace' ? 'استُبدلت الصورة' : 'أُضيفت الصورة',
+      await visualsService.clearImage(id),
+      'أُزيلت الصورة — التطبيق يعرض الرسم المضمَّن',
     );
   }) as RequestHandler,
 
-  updateImage: (async (req, res) => {
-    const { id, imageId } = parse(slotImageParamSchema, req.params);
-    const body = parse(updateSlotImageSchema, req.body);
-    return ok(res, await visualsService.updateImage(id, imageId, body), 'تم التحديث');
-  }) as RequestHandler,
-
-  deleteImage: (async (req, res) => {
-    const { id, imageId } = parse(slotImageParamSchema, req.params);
-    return ok(res, await visualsService.removeImage(id, imageId), 'حُذفت الصورة');
-  }) as RequestHandler,
-
-  reorderImages: (async (req, res) => {
+  setTemporaryImage: (async (req, res) => {
     const { id } = parse(slotIdParamSchema, req.params);
-    const body = parse(reorderSlotImagesSchema, req.body);
-    return ok(res, await visualsService.reorderImages(id, body.imageIds), 'حُفظ الترتيب');
+    const body = parse(setSlotTemporaryImageSchema, req.body);
+    return ok(
+      res,
+      await visualsService.setTemporaryImage(id, body.url, body.until),
+      'وُضعت الصورة المؤقّتة — تعود الدائمة تلقائياً عند انتهائها',
+    );
+  }) as RequestHandler,
+
+  clearTemporaryImage: (async (req, res) => {
+    const { id } = parse(slotIdParamSchema, req.params);
+    return ok(
+      res,
+      await visualsService.clearTemporaryImage(id),
+      'أُنهيت الصورة المؤقّتة — التطبيق يعرض الدائمة',
+    );
   }) as RequestHandler,
 };

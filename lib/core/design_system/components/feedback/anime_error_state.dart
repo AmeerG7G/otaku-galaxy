@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../l10n/app_strings.dart';
 
 import '../../tokens/app_colors.dart';
 import '../../tokens/app_theme_colors.dart';
@@ -10,16 +11,18 @@ class AnimeErrorState extends StatelessWidget {
   const AnimeErrorState({
     super.key,
     required this.message,
-    this.title = 'حدث خطأ',
+    this.title,
     this.icon,
-    this.actionLabel = 'إعادة المحاولة',
+    this.actionLabel,
     this.onAction,
   });
 
   final String message;
-  final String title;
+  /// افتراضيّها يُصرَّف عند البناء لا في المُنشئ: الوسيط الافتراضي
+  /// يجب أن يكون ثابتاً، والنصّ المصرَّف ليس ثابتاً.
+  final String? title;
   final IconData? icon;
-  final String actionLabel;
+  final String? actionLabel;
   final VoidCallback? onAction;
 
   @override
@@ -56,7 +59,7 @@ class AnimeErrorState extends StatelessWidget {
             ),
             SizedBox(height: AppDimens.space6),
             Text(
-              title,
+              title ?? context.strings('genericError'),
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
                 fontWeight: AppDimens.weightBold,
@@ -75,7 +78,7 @@ class AnimeErrorState extends StatelessWidget {
             if (onAction != null) ...[
               SizedBox(height: AppDimens.space6),
               AnimePrimaryButton(
-                label: actionLabel,
+                label: actionLabel ?? context.strings('retry'),
                 onPressed: onAction,
                 expanded: false,
                 icon: Icons.refresh,

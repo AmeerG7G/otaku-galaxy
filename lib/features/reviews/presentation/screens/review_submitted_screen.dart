@@ -1,4 +1,5 @@
 import 'package:auto_route/auto_route.dart';
+import '../../../../core/l10n/app_strings.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/design_system/design_system.dart';
@@ -74,7 +75,7 @@ class ReviewSubmittedScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 8),
                         OtakuStatusPill(
-                          label: 'بانتظار المراجعة',
+                          label: context.strings('awaitingReview'),
                           color: colors.warning,
                           fontSize: 12.5,
                         ),
@@ -82,7 +83,7 @@ class ReviewSubmittedScreen extends StatelessWidget {
                         ConstrainedBox(
                           constraints: const BoxConstraints(maxWidth: 270),
                           child: Text(
-                            'سيتم مراجعة تقييمك قبل نشره.',
+                            context.strings('reviewWillBeChecked'),
                             textAlign: TextAlign.center,
                             style: theme.textTheme.bodyMedium?.copyWith(
                               fontSize: 14,
@@ -108,14 +109,14 @@ class ReviewSubmittedScreen extends StatelessWidget {
                   child: Column(
                     children: [
                       AnimePrimaryButton(
-                        label: 'متابعة تقييم المنتجات',
+                        label: context.strings('continueRatingProducts'),
                         height: AppDimens.buttonHeightXl,
                         // `true` تُعيد تحميل قائمة التقييم التي دفعتنا هنا.
                         onPressed: () => context.router.maybePop(true),
                       ),
                       const SizedBox(height: 10),
                       AnimeTextButton(
-                        label: 'طلباتي',
+                        label: context.strings('myOrders'),
                         // `navigate` تعيد استخدام «طلباتي» إن كانت في المكدّس
                         // بدل تكديس نسخة ثانية منها.
                         onPressed: () =>

@@ -10,6 +10,13 @@ export interface Product {
   description: string
   price: number
   stock: number
+  /**
+   * موعد التوفر المتوقَّع — ISO-8601 أو `null` («بلا موعد»).
+   *
+   * حقل `products.restock_at` القائم نفسه؛ الحالة المعروضة للزبون
+   * مشتقّة منه ومن `stock` ولا تُخزَّن.
+   */
+  restockAt?: string | null
   categoryId: string
   subcategoryId: string | null
   images: string[]
@@ -41,6 +48,8 @@ export interface ProductListResponse {
 export interface ListProductsParams {
   page?: number
   limit?: number
+  /** بحث بجزء من الاسم — على الخادم (`ILIKE` مهرَّب)، يشمل المعطّل. */
+  q?: string
   /** ترشيح بالقسم — يجري على الخادم لا في المتصفح. */
   categoryId?: string
   subcategoryId?: string
@@ -66,6 +75,13 @@ export interface ProductCreatePayload {
   categoryId: string
   subcategoryId?: string | null
   stock: number
+  /**
+   * موعد التوفر المتوقَّع — ISO-8601 أو `null` («بلا موعد»).
+   *
+   * حقل `products.restock_at` القائم نفسه؛ الحالة المعروضة للزبون
+   * مشتقّة منه ومن `stock` ولا تُخزَّن.
+   */
+  restockAt?: string | null
   images?: string[]
   options?: ProductOptionInput[]
   isOffer?: boolean
@@ -83,13 +99,19 @@ export interface ProductUpdatePayload {
   categoryId?: string
   subcategoryId?: string | null
   stock?: number
+  /**
+   * موعد التوفر المتوقَّع — ISO-8601 أو `null` («بلا موعد»).
+   *
+   * حقل `products.restock_at` القائم نفسه؛ الحالة المعروضة للزبون
+   * مشتقّة منه ومن `stock` ولا تُخزَّن.
+   */
+  restockAt?: string | null
   images?: string[]
   options?: ProductOptionInput[]
   isOffer?: boolean
   isSelected?: boolean
   isActive?: boolean
-  rating?: number | null
-  reviewCount?: number
+  // لا `rating`/`reviewCount`: مشتقّان من التقييمات المنشورة، والخادم يُسقطهما.
   previousPrice?: number | null
   hasDeliveryPromo?: boolean
   deliveryPromoAmount?: number
@@ -102,6 +124,13 @@ export interface PublicProduct {
   description: string
   price: number
   stock: number
+  /**
+   * موعد التوفر المتوقَّع — ISO-8601 أو `null` («بلا موعد»).
+   *
+   * حقل `products.restock_at` القائم نفسه؛ الحالة المعروضة للزبون
+   * مشتقّة منه ومن `stock` ولا تُخزَّن.
+   */
+  restockAt?: string | null
   images: string[]
   options: ProductOption[]
   categoryId: string
@@ -122,6 +151,13 @@ export interface ProductFormDraft {
   description: string
   price: number
   stock: number
+  /**
+   * موعد التوفر المتوقَّع — ISO-8601 أو `null` («بلا موعد»).
+   *
+   * حقل `products.restock_at` القائم نفسه؛ الحالة المعروضة للزبون
+   * مشتقّة منه ومن `stock` ولا تُخزَّن.
+   */
+  restockAt?: string | null
   categoryId: string
   subcategoryId: string | null
   images: string[]

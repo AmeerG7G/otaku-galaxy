@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../src/database/pool.js';
-import { api, DEV_CODE, createAdminUser, registerAndLogin, purgeTestUsers } from './helpers.js';
+import { api, approveAsAdmin, createAdminUser, registerAndLogin, purgeTestUsers } from './helpers.js';
 
 /**
  * إدارة الزبائن: الجنس والهاتف الكامل.
@@ -26,11 +26,11 @@ function freshPhone() {
 
 async function signUp(gender: 'male' | 'female') {
   const phone = freshPhone();
-  await api
+  const registered = await api
     .post('/api/auth/register')
     .send({ username: 'زبون إدارة', phone, password: 'secret123', gender })
-    .expect(200);
-  await api.post('/api/auth/verify').send({ phone, code: DEV_CODE }).expect(200);
+    .expect(202);
+  await approveAsAdmin(registered.body.data.request.id as string);
   const login = await api
     .post('/api/auth/login')
     .send({ phone, password: 'secret123' })

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Alert, Card, Descriptions, Space, Table, Tag, Typography } from 'antd'
+import { Card, Descriptions, Space, Table, Tag, Typography } from 'antd'
 import { getGalaxyPointsRules } from '../api/pointsApi'
 import { formatCurrency } from '../utils/format'
 import type { GalaxyLevelRule } from '../types/points'
@@ -87,13 +87,6 @@ export default function GalaxyRulesCard() {
   return (
     <Card title="قواعد نقاط المجرّة" variant="outlined" loading={query.isPending}>
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-        <Alert
-          type="info"
-          showIcon
-          message="قواعد ثابتة — غير قابلة للتعديل"
-          description="قيم النقاط وعتبات المستويات ومزاياها قرارٌ تجاري مثبَّت في الخادم، ولا تُضبط من لوحة التحكم. تُعرض هنا لتكون مرجعاً واحداً حين يسأل الزبون. أي تغيير فيها يحتاج تعديل الخادم ونشره."
-        />
-
         {rules && (
           <Descriptions size="small" column={{ xs: 1, sm: 2, md: 4 }} bordered>
             <Descriptions.Item label="نقاط الشراء">

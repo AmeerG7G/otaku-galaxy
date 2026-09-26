@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../core/l10n/app_strings.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/design_system/design_system.dart';
@@ -27,9 +28,9 @@ class ForceUpdateScreen extends StatelessWidget {
   /// يُحقن في الاختبارات؛ الافتراضي يفتح رابط المتجر خارج التطبيق.
   final Future<void> Function(String url)? onOpenStore;
 
-  static const defaultMessage =
-      'صدرت نسخة جديدة من مجرة الأوتاكو، ولم تعد هذه النسخة مدعومة. '
-      'حدّث التطبيق لمواصلة التسوّق.';
+  /// مفتاحٌ لا نصّ: العضو ثابتٌ على مستوى الصنف فلا سياق له، ويُصرَّف
+  /// عند البناء حيث السياق متاح.
+  static const defaultMessageKey = 'updateRequiredMessage';
 
   Future<void> _openStore(BuildContext context) async {
     final url = config.storeUrlFor();
@@ -37,7 +38,7 @@ class ForceUpdateScreen extends StatelessWidget {
       // رابط غير مضبوط: نقول ذلك بدل أن نصمت على زرّ لا يفعل شيئاً.
       _notify(
         context,
-        'رابط التحديث غير متوفر حالياً — حدّث التطبيق من المتجر.',
+        context.strings('updateLinkUnavailable'),
       );
       return;
     }
@@ -49,7 +50,7 @@ class ForceUpdateScreen extends StatelessWidget {
     if (uri == null) return;
     final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!opened && context.mounted) {
-      _notify(context, 'تعذّر فتح المتجر — افتحه يدوياً وحدّث التطبيق.');
+      _notify(context, context.strings('storeOpenFailed'));
     }
   }
 
@@ -64,7 +65,7 @@ class ForceUpdateScreen extends StatelessWidget {
     final colors = context.themeColors;
     final message = config.updateMessage.isNotEmpty
         ? config.updateMessage
-        : defaultMessage;
+        : context.strings(defaultMessageKey);
 
     return PopScope(
       // [CRITICAL] زرّ الرجوع لا يُخرج من الحاجز. بدونه يخرج المستخدم بضغطة
@@ -108,7 +109,7 @@ class ForceUpdateScreen extends StatelessWidget {
                         const OtakuStoreLogoSimple(size: 38),
                         const SizedBox(width: 11),
                         Text(
-                          'مجرة الأوتاكو',
+                          context.strings('brandName'),
                           style: theme.textTheme.titleMedium?.copyWith(
                             fontFamily: 'Tajawal',
                             fontSize: 15.5,
@@ -143,7 +144,7 @@ class ForceUpdateScreen extends StatelessWidget {
                             const SizedBox(height: 22),
                             AnimePrimaryButton(
                               key: const Key('force_update_button'),
-                              label: 'تحديث التطبيق',
+                              label: context.strings('updateApp'),
                               onPressed: () => _openStore(context),
                               height: AppDimens.buttonHeightXl,
                             ),
@@ -205,7 +206,7 @@ class _UpdateCard extends StatelessWidget {
                 FractionallySizedBox(
                   widthFactor: 0.78,
                   child: Text(
-                    'يلزم تحديث التطبيق',
+                    context.strings('updateRequiredTitle'),
                     style: theme.textTheme.headlineSmall?.copyWith(
                       fontFamily: 'Tajawal',
                       fontSize: 23,
@@ -252,8 +253,8 @@ class _VersionLine extends StatelessWidget {
     }
     final theme = Theme.of(context);
     final parts = <String>[
-      if (installedVersion.isNotEmpty) 'نسختك $installedVersion',
-      if (requiredVersion.isNotEmpty) 'المطلوبة $requiredVersion',
+      if (installedVersion.isNotEmpty) context.strings.p('yourVersion', {'version': installedVersion}),
+      if (requiredVersion.isNotEmpty) context.strings.p('requiredVersion', {'version': requiredVersion}),
     ];
     return Text(
       parts.join('  ·  '),

@@ -1,6 +1,7 @@
 import {
   Alert,
   Button,
+  DatePicker,
   Card,
   Divider,
   Form,
@@ -11,6 +12,7 @@ import {
   Switch,
   Typography,
 } from 'antd'
+import dayjs, { type Dayjs } from 'dayjs'
 import { useQuery } from '@tanstack/react-query'
 import { listAdminCategories } from '../api/categoriesApi'
 import { listFranchises } from '../api/communityApi'
@@ -36,6 +38,15 @@ export interface ProductFormValues {
   hasDeliveryPromo?: boolean
   deliveryPromoAmount?: number
   franchiseIds?: string[]
+  /**
+   * موعد التوفر المتوقَّع — ISO-8601 أو `null` («بلا موعد»).
+   *
+   * [CRITICAL] نفس حقل `products.restock_at` القائم منذ الهجرة ٠٣٤ ونفس
+   * مسار التعديل — لا حقل «قريباً» جديد. الحالة مشتقّة لا مخزَّنة:
+   * مخزون ٠ + موعد ⇒ «قريباً يتوفر»، ومخزون ٠ بلا موعد ⇒ «غير متوفر»،
+   * وأي مخزون موجب ⇒ «متوفر» مهما بقي من مواعيد.
+   */
+  restockAt?: string | null
 }
 
 interface ProductFormProps {
@@ -103,7 +114,7 @@ export default function ProductForm({
           type="warning"
           showIcon
           message="خيارات هذا المنتج غير متاحة للمنتجات غير النشطة في الخادم."
-          description="حفظ التعديلات سيُمسح الخيارات المحفوظة نهائياً — سيُطلب منك تأكيد صريح قبل الحفظ. أعد إدخال الخيارات يدوياً إذا أردت الاحتفاظ بها، أو فعّل المنتج أولاً بطريقة أخرى."
+          description="الخيارات المحفوظة تبقى كما هي عند الحفظ ولا تُرسَل مع هذا النموذج. لتعديلها فعّل المنتج أولاً ثم افتحه من جديد."
           style={{ marginBottom: 16 }}
         />
       )}
@@ -147,7 +158,57 @@ export default function ProductForm({
           >
             <InputNumber min={0} max={100000} style={{ width: 200 }} precision={0} />
           </Form.Item>
+          <Form.Item
+            name="restockAt"
+            label="متوقع التوفر"
+            tooltip="اختياري. يظهر للزبون «قريباً يتوفر» مع هذا التاريخ ما دام المخزون صفراً."
+            getValueProps={(value?: string | null) => ({
+              value: value ? dayjs(value) : null,
+            })}
+            // القيمة تُحفظ ISO-8601 كما يقبلها مسار التعديل؛ المسح يرسل
+            // `null` صراحةً لا حقلاً غائباً — الغائب يعني «لا تغيّر».
+            normalize={(value: Dayjs | null) => value?.toISOString() ?? null}
+          >
+            <DatePicker
+              style={{ width: 200 }}
+              placeholder="بلا موعد"
+              format="YYYY/MM/DD"
+              allowClear
+            />
+          </Form.Item>
         </Space>
+        <Form.Item
+          noStyle
+          shouldUpdate={(prev, next) =>
+            prev.stock !== next.stock || prev.restockAt !== next.restockAt
+          }
+        >
+          {({ getFieldValue }) => {
+            // ما سيراه الزبون فعلاً — مشتقٌّ بنفس قاعدة التطبيق، فلا يخمّن
+            // المسؤول أثر ما أدخله.
+            const stock = Number(getFieldValue('stock') ?? 0)
+            const at = getFieldValue('restockAt') as string | null | undefined
+            const [text, type] =
+              stock > 0
+                ? ['متوفر — يمكن للزبون الشراء الآن', 'success' as const]
+                : at
+                  ? ['قريباً يتوفر — مع عرض التاريخ للزبون', 'warning' as const]
+                  : ['غير متوفر — مع زر «أخبرني عند توفره»', 'info' as const]
+            return (
+              <Alert
+                type={type}
+                showIcon
+                style={{ marginTop: 12 }}
+                message={`حالة الزبون: ${text}`}
+                description={
+                  stock > 0 && at
+                    ? 'المخزون يتقدّم على الموعد: لن يُعرض التاريخ ما دام المنتج متوفراً.'
+                    : undefined
+                }
+              />
+            )
+          }}
+        </Form.Item>
       </Card>
 
       <Card title="التصنيف" variant="outlined" style={{ marginTop: 16 }}>

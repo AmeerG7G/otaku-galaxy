@@ -65,6 +65,9 @@ class AppColors {
   static const Color successText = Color(0xFF0F7A55);
   static const Color errorText = Color(0xFFC42544);
   static const Color infoText = Color(0xFF1C63A3);
+  // البرتقالي المؤشِّر (#C77A12) نصّاً على تظليله ١٤٪ يقيس 2.90:1؛ هذا يقيس
+  // 4.59:1 هناك و5.58:1 على الأبيض. الداكن لا يحتاج تغميقاً (7.60:1).
+  static const Color warningText = Color(0xFF965A0C);
 
   // ═══ الأسطح الفاتحة — لم تُمسّ ═══
   //
@@ -157,13 +160,6 @@ class AppColors {
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
   );
-
-  static const Map<String, Color> categoryColors = {
-    'ملابس': primary,
-    'قرطاسية': accentCyan,
-    'حقائب': accent,
-    'إكسسوارات': secondary,
-  };
 
   /// تدرّجات بطاقات الأقسام.
   ///

@@ -50,8 +50,8 @@ exist, nothing is deployed.
 | Purpose | day-to-day development | full-system testing before release | live customers |
 | Data | throwaway | realistic, disposable | **real** |
 | Secrets | fallbacks allowed | **required** | **required** |
-| Fixed OTP `123456` | allowed | **refused at boot** | **refused at boot** |
-| SMS provider | `console` | real (`http`) | real (`http`) |
+| Account activation | admin approval (dashboard) | admin approval (dashboard) | admin approval (dashboard) |
+| SMS / OTP | **none** — removed | **none** — removed | **none** — removed |
 | Seeding | allowed | blocked unless forced | blocked unless forced |
 
 **`staging` is hardened exactly like `prod`.** It is not "dev with a different
@@ -321,6 +321,10 @@ Verified behaviour (each point is covered by a test in
 - ✅ Duplicate protection: manual "send now" and the scheduler write
   `rating_reminder_sent_at` in the same atomic statement, so only one reminder
   is ever sent.
+- ✅ Eligibility (STEP 57, CA-16): the reminder goes only to an order that still
+  has a reviewable product (`REVIEWABLE_ITEMS_OF_ORDER`, the same definition as
+  `reviewableProductCount`). A fully reviewed order's reminder is withdrawn at its
+  due time; "send now" answers `409 NOTHING_TO_REVIEW`.
 
 ### Database resilience ✅ IMPLEMENTED
 
@@ -409,8 +413,7 @@ Two defects that made CI fail were fixed in this audit (see §10).
 - Android product flavors `dev` / `staging` / `prod`; production
   `applicationId` unchanged. Gradle generates every variant task.
 - Backend `APP_ENV` selection with `.env.<env>` loading; staging hardened
-  exactly like production (verified live: it refuses to boot without secrets
-  and refuses the fixed dev OTP).
+  exactly like production (verified live: it refuses to boot without secrets).
 - Admin Vite modes with per-mode API hosts and a DEV/STAGING header badge.
 - Order → delivery → rating lifecycle (§8) and the connection-pool guard.
 - Full Flutter data layer restored to version control — a bare `data/` rule in
@@ -426,8 +429,7 @@ Two defects that made CI fail were fixed in this audit (see §10).
 | Staging database | 🔧 | not provisioned; only a config template exists |
 | Staging backend host | 🔧 | not deployed |
 | Real API hostnames | 🔧 | `*.otaku-galaxy.example` does not resolve |
-| Staging secrets | 🔧 | `JWT_SECRET`, SMS credentials must be generated |
-| SMS provider account | 🔧 | no provider connected; `http` provider is implemented but never tested against a carrier |
+| Staging secrets | 🔧 | `JWT_SECRET` must be generated (no SMS credentials — accounts are admin-managed) |
 | Android build verification | ❌ | no JDK in the current environment — `flutter build` unverified |
 | iOS flavors | ❌ | schemes and xcconfigs not configured |
 | Green CI run | ⚠️ | fixes are in `dev`; the next push is the first real test |
@@ -650,7 +652,9 @@ no calendar scheduler; greetings are sent by an admin click.
 ### 11.7 Customer search and filters ✅ IMPLEMENTED
 
 `GET /admin/users` now takes `search`, `isActive`, `hasBirthday`, `hasOrders`,
-`minPoints`, `maxPoints`, `gender`, `sort`, `page`, `limit`.
+`minPoints`, `maxPoints`, `gender`, `levelKey`, `sort`, `page`, `limit`.
+`search` matches username, phone (digits only) **and the account id prefix**;
+`levelKey` is turned into a points range from the fixed galaxy ladder in SQL.
 
 **All filtering happens in SQL.** Filtering a paginated list in the browser
 shows only the current page's matches — it looks right on twenty customers and
@@ -667,6 +671,53 @@ on screen. `NULL` is shown as «غير محدد» and is never counted as male; 
 screens and on the restock-demand screen — both sit behind `requireAdmin`, and
 store staff need the number to reach the customer (a «واتساب» action opens the
 chat; it never sends anything). No customer-facing or public route returns it.
+
+### 11.7a Admin-managed accounts — no SMS / no OTP ✅ IMPLEMENTED
+
+**The decision.** The app does not use SMS OTP or email OTP for account
+creation or logged-out password recovery. Both are **requests** an
+administrator resolves from the dashboard after verifying the person over
+WhatsApp — manually; nothing pretends the WhatsApp step is automated.
+
+```
+Registration     form (unchanged) → POST /auth/register → users row (unverified,
+                 bcrypt hash) + account_requests(kind=registration, pending)
+                 → dashboard «طلبات الحساب» → admin verifies on WhatsApp
+                 → POST /admin/account-requests/:id/approve  (sets phone_verified_at)
+                 → customer logs in normally with the password they chose.
+
+Forgot password  phone + name + gender + account level → POST /auth/forgot-password
+                 → account_requests(kind=password_reset, pending; the four fields
+                 stored *as submitted* next to the stored profile)
+                 → dashboard shows submitted vs stored with match hints
+                 → admin verifies on WhatsApp
+                 → PATCH /admin/customers/:id/password {newPassword, requestId}
+                 → admin tells the customer the password → customer logs in → Home.
+
+Logged in        Settings → Change Password (current + new) → PATCH /auth/me/password.
+```
+
+**Critical password rule.** The administrator-assigned password is the
+account's normal, **permanent** password. There is no temporary password, no
+`must_change_password`, no forced change, no post-login page, no expiry, no
+special login state. The customer changes it later from Settings only if they
+want to. The four identity fields are information for the administrator — a
+full match **never** authenticates and **never** resets anything.
+
+**Security.** `/api/admin/*` sits behind `authenticate` + `requireAdmin`;
+customers get 403 on every request endpoint including their own. A request id
+authorizes nothing by itself: `setCustomerPassword` re-checks the request is
+pending, of kind `password_reset`, and linked to *that* account. Passwords are
+bcrypt-hashed server-side, never returned, never logged; the old password is
+unrecoverable. Rejected requests stay in `account_requests` as history; one
+pending request per (kind, phone) is enforced by a partial unique index.
+`login` refuses unverified accounts with `ACCOUNT_PENDING_APPROVAL` /
+`ACCOUNT_REQUEST_REJECTED` — it never sends anything.
+
+**Removed.** `/auth/verify`, `/auth/resend-code`, `/auth/reset-password`, the
+`verification_codes` service, the SMS provider and its boot check, the
+`DEV_OTP_*`/`SMS_*`/`VERIFICATION_*` configuration, and the Flutter OTP/reset
+screens. The sources are preserved, uncompiled, under `legacy/otp/`.
 
 ### 11.8 Banners — traced end to end ✅ VERIFIED
 
@@ -748,81 +799,113 @@ migration drops or rewrites customer data.
 
 ## 13. Dynamic character artwork ✅ IMPLEMENTED (dev)
 
-Decorative character illustrations are now managed from the Admin Dashboard.
+Decorative character illustrations are managed from the Admin Dashboard.
 Changing a character no longer requires a Flutter release on both stores and a
 wait for every customer to update.
 
+**ONE LOCATION = ONE SLOT = ONE ACTIVE IMAGE** (product decision 2026-09-20,
+migrations 054 + 055). A slot is a *location* in the app (screen + spot). It
+holds zero or one **permanent** image, and the admin may put one **temporary**
+image on top of it until a chosen moment; the customer always sees exactly one
+image — the temporary one while it is live, otherwise the permanent one,
+otherwise the bundled asset. Slots are independent of each other even when two
+locations happen to show the same character. There is no daily rotation, no
+image list and no hide/show toggle: the temporary image is an *override with an
+expiry*, not a carousel, and it never overwrites the permanent image.
+
 ```
 Admin Dashboard  →  POST /admin/uploads (purpose=slot)
-                 →  POST /admin/visual-slots/:id/images
+                 →  PUT  /admin/visual-slots/:id/image             { url }          permanent
+                    DELETE /admin/visual-slots/:id/image                            → bundled
+                    PUT  /admin/visual-slots/:id/temporary-image   { url, until }   override
+                    DELETE /admin/visual-slots/:id/temporary-image                  → ends it now
                         ↓
-                 visual_slots · visual_slot_images
+                 visual_slots.image_url  +  temporary_image_url / temporary_until   (one row)
+                        ↓  active = COALESCE(temporary while temporary_until > now(), image_url)
+                 GET /catalog/visuals   ← { version, now, nextChangeAt, slots:[{slotKey, currentUrl}] }
                         ↓
-                 GET /catalog/visuals   ← server resolves rotation
+                 VisualsRepository      ← snapshot restored before first frame, disk warm-up,
+                                          refreshed on splash/resume and at nextChangeAt
+                                          (one timer ≤ 1 day, re-armed from the server clock)
                         ↓
-                 VisualsRepository      ← refreshed once on splash
+                 ManagedArtwork(slot:, fallbackAsset:)   key = 'managed-artwork:<slot>'
                         ↓
-                 ManagedArtwork(slot:, fallbackAsset:)
-                        ↓
-                 remote image  →  or bundled fallback
+                 that slot's active image  →  or that slot's bundled fallback
 ```
 
 ### 13.1 The rule everything else follows
 
-**A slot with no active image is not sent to the app at all.** Its absence is
-the signal to render the bundled asset. This is why deleting an image from the
+**A slot with no image is not sent to the app at all.** Its absence is the
+signal to render the bundled asset. This is why removing an image from the
 dashboard is safe: the screen returns to the artwork it shipped with instead of
-going blank. It is also why upgrading the server changes nothing — no slots are
-seeded, so every screen renders exactly what it rendered before.
+going blank. Upgrading the server changes nothing either — seeded rows carry no
+image until the admin uploads one.
 
-`ManagedArtwork` takes `fallbackAsset` as a **required** argument. Every failure
-path ends there: slot unset, malformed URL, network down, request timed out,
-image deleted server-side, file corrupt, cache unavailable. No call site writes
-its own `errorBuilder` — the one that existed (the delivery sheet) was removed
-because the widget already covers it.
+`ManagedArtwork` takes `fallbackAsset` as a **required** argument and every
+failure path ends there: slot unset, malformed URL, network down, request timed
+out, image deleted server-side, file corrupt, cache unavailable. No call site
+writes its own `errorBuilder`.
 
-### 13.2 Slot catalogue — 44 slots
+Per-slot state machine (deterministic in every frame):
 
-Derived from an exhaustive scan of the Flutter source: **47** asset literals, of
-which 5 are permanently local (below) and **41 are managed**, plus 3 social-icon
-slots — 44 in total. There are no
-`AssetImage`, `ExactAssetImage` or `DecorationImage` references anywhere in
-`lib/`, so `Image.asset` plus the named artwork parameters are the complete set.
-
-**One slot per placement.** «شخصية تسجيل الدخول» and «شخصية إنشاء الحساب» are
-different screens to a shop owner even when the drawing is similar, so they get
-separate slots. Only two slots cover more than one screen, and both are a single
-literal in the code rather than a design choice:
-
-| Shared slot | Covers | Why one slot |
+| Configuration known? | Slot has an active image? | Rendered |
 |---|---|---|
-| `auth_cta_character` | All four auth screens | One panel inside `AuthScaffold`; changing it is one decision, not four |
-| `guest_prompt_character` | Cart + favorites login gates | One default value in `AnimeGuestPrompt` |
+| no (very first launch, corrupt snapshot) | — | bundled fallback of **this** slot |
+| yes (restored snapshot, then server) | no | bundled fallback of **this** slot |
+| yes | yes | **this** slot's active image (its own `ValueKey`) — never another slot's |
 
-Slots are **seeded** by migration 029 so the dashboard is browsable without
-knowing any Flutter filename. Seeding changes nothing in the app: a slot with no
-active image is never sent.
+"Active" is decided **once, in SQL** (`visualsRepo.ts`, `ACTIVE_URL`): the
+temporary image while `temporary_until > now()`, else the permanent image. The
+app and the dashboard both consume that result; neither re-implements the rule
+or compares clocks. Expiry therefore needs no job and no write — the next read
+simply returns the permanent image.
+
+### 13.2 Slot catalogue — 46 slots, one per location
+
+Seeded by migrations 029 (catalogue), 054 (split of the four shared slots) and
+055 (`offline_gate_character`);
+`home_categories_backdrop` (031), `otp_character` (049), the three `social_*`
+icons (053) and the four shared keys `register_character`,
+`forgot_password_character`, `auth_cta_character`, `guest_prompt_character`
+(054) are **retired** and must never come back.
 
 | Group | Slots | Keys |
 |---|---|---|
-| المصادقة | 6 | `login_character` · `register_character` · `otp_character` · `forgot_password_character` · `auth_cta_character` · `guest_prompt_character` |
+| المصادقة | 8 | `login_character` · `login_cta_character` · `register_header_character` · `register_cta_character` · `register_pending_character` · `forgot_password_header_character` · `forgot_password_cta_character` · `forgot_password_pending_character` |
 | الترحيب والتخصيص | 4 | `onboarding_slide_one_character` · `onboarding_slide_two_character` · `onboarding_slide_three_character` · `personalize_character` |
 | الرئيسية | 4 | `home_hero_character` · `home_promo_primary_character` · `home_promo_secondary_character` · `home_delivery_character` |
-| التسوّق | 9 | `empty_cart_character` · `cart_checkout_character` · `empty_favorites_character` · `categories_header_character` · `empty_categories_character` · `category_products_header_character` · `empty_category_products_character` · `product_detail_character` · `product_detail_reviews_character` |
+| التسوّق | 10 | `empty_cart_character` · `cart_guest_prompt_character` · `cart_checkout_character` · `empty_favorites_character` · `favorites_guest_prompt_character` · `categories_header_character` · `category_products_header_character` (whole category empty) · `empty_category_products_character` (subcategory empty) · `product_detail_character` · `product_detail_reviews_character` |
 | البحث | 2 | `search_header_character` · `empty_search_character` |
 | الطلبات | 4 | `orders_header_character` · `empty_orders_character` · `order_success_character` · `delivery_confirmation_character` |
 | المكافآت | 1 | `points_character` |
 | المجتمع والتقييمات | 7 | `community_header_character` · `community_empty_character` · `community_gallery_character` · `product_reviews_character` · `write_review_character` · `rate_order_character` · `review_submitted_character` |
-| المجموعات | 2 | `collections_tab_character` · `empty_collection_character` |
-| الحساب والإشعارات | 5 | `account_character` · `notifications_header_character` · `social_tiktok` · `social_instagram` · `social_whatsapp` |
+| المجموعات | 1 | `collections_tab_character` (My-Collections empty state) |
+| الحساب والإشعارات | 2 | `account_character` · `notifications_header_character` |
+| انقطاع الاتصال | 1 | `offline_gate_character` (055 — served from the disk cache, bundled fallback) |
 
-Every placement keeps **its own** bundled fallback, so nothing changes until the
-admin uploads to that specific slot.
+Split performed by 054 (each new sibling copied its origin's image, so nothing
+changed on screen until the admin decides):
 
-A test (`backend/tests/visual-catalogue.test.ts`) parses the Dart constants file
-and compares it against the database in both directions. A typo in a slot key is
-otherwise a **silent** failure — the dashboard looks configured, the admin
-uploads an image, and nothing ever changes in the app.
+| Was (shared) | Now (one per location) |
+|---|---|
+| `register_character` — register header **and** pending-approval screen | `register_header_character` · `register_pending_character` |
+| `forgot_password_character` — forgot header **and** pending-approval screen | `forgot_password_header_character` · `forgot_password_pending_character` |
+| `auth_cta_character` — form-card corner art on login, register, forgot | `login_cta_character` · `register_cta_character` · `forgot_password_cta_character` |
+| `guest_prompt_character` — guest login card on cart and favorites tabs | `cart_guest_prompt_character` · `favorites_guest_prompt_character` |
+
+Naming: `<screen>_<spot>_character`; the Arabic `label`/`location` in the DB
+name the screen and the exact spot and are what the dashboard shows. Two
+code sites may build one location (`home_hero_character`: banner-error
+fallback and no-banner; the promo cards: managed banner or default card) —
+that is one location, not sharing. Promo cards 2..n share
+`home_promo_secondary_character` on purpose: the card count is admin-defined
+and a per-card picture is the banner's own image, not a slot.
+
+Guards: `test/visual_slot_contract_test.dart` (each constant consumed by
+exactly one `lib/` file, no default slot in `core/design_system`, no literal
+keys, retired keys absent) and `backend/tests/visual-catalogue.test.ts`
+(Flutter constants == DB rows == dashboard items, retired keys absent, split
+keys present, descriptions name one screen).
 
 ### 13.2b Not artwork — no slots exist
 
@@ -831,87 +914,101 @@ uploads an image, and nothing ever changes in the app.
 | Bottom navigation | Material `Icon`s, no images |
 | Error states (`AnimeErrorState`) | Material `Icon`s, no artwork parameter |
 | Birthday feature | No illustration of any kind in the source |
+| Instagram / TikTok / WhatsApp | Fixed Material glyphs; only the links are settings (`store_settings.social_*`) |
 
 ### 13.2c Already remote — not duplicated
 
 Eight `Image.network` sites already load server-driven content and are outside
-this system: banners, category cards, product photos, customer review photos,
-community gallery, order item images, and the account avatar.
+this system: banners, product photos, customer review photos, community
+gallery, order item images, the account avatar, franchise and category images
+(category cards no longer render one — STEP 49).
 
 ### 13.3 Permanently local — no slots exist for these
 
 | Surface | Why |
 |---|---|
 | Splash | Renders before any network call exists |
-| Offline gate | Shown precisely when the network is gone |
+| Force-update screen | Shown before the app is allowed to talk to the API |
 | Store logo | Brand identity, and appears inside the offline gate |
 
 Their bundled assets must not be removed. Onboarding and personalize **are**
-managed, but render their bundled asset as the first frame and only swap after
-the configuration arrives — they run before the first successful API call.
+managed; they render their bundled asset as the first frame on the very first
+launch and the restored snapshot afterwards.
 
-### 13.3b Replacing an image
+The **offline gate** used to be in this table. Since 055 it is a managed slot
+(`offline_gate_character`) because the architecture makes that safe: `prefetch()`
+puts every slot image on disk during the splash, `warmRestored()` decodes it
+into `ImageCache` on the next launch, and `ManagedArtwork` renders the bundled
+`a-i17.png` on every failure path — so with no network the screen shows the
+cached image or the bundled art, never a blank. Guarded by `offline_gate_test.dart`.
 
-Uploading into a slot that already has an active image **replaces** it: every
-existing image is deactivated and the new one is inserted first, so it is what
-the app shows immediately. "إضافة صورة إلى مجموعة التدوير" is the separate,
-explicit action for building a rotation set.
+### 13.4 Replacing / removing the permanent image
 
-This distinction is the whole feature. Before it existed, an upload appended to
-the end of the list while `fixed` rotation read the head — the dashboard showed
-the new image and the app kept the old one, with no error anywhere.
+The dashboard row shows the location, the image the customer sees **now**
+(`activeImageUrl`, or «مضمَّن»), the status («صورة دائمة» / «مؤقّتة حتى …» /
+«الرسم المضمَّن») and one action. In the drawer, the mode «صورة دائمة» (default)
+uploads to `PUT …/image`; when a permanent image exists, one button
+(**إزالة الصورة الدائمة — العودة إلى الرسم المضمَّن**) calls `DELETE …/image`.
+The server accepts only an admin upload with `purpose = 'slot'` that exists in
+`media_files`; external URLs and customer uploads (review photos, avatars) are
+rejected — the same check guards the temporary route. Slots cannot be created
+or deleted from the dashboard — they are defined by migrations so the catalogue
+always matches the app.
 
-Replaced images are **deactivated, not deleted**: the file stays on disk and
-undo is one toggle.
+`version` in `GET /catalog/visuals` is an MD5 of the ordered
+`(slot_key, active_url)` pairs — a content hash. The app rebuilds artwork only
+when what the customer sees actually changed, which includes the moment a
+temporary image expires.
 
-The app re-reads the configuration on resume (throttled to two minutes) and
-only rebuilds when the returned `version` hash actually changed.
+### 13.4b Temporary image (override with an expiry) — migration 055
 
-### 13.4 Rotation
-
-| Mode | Behaviour |
+| | |
 |---|---|
-| `fixed` | Always the first image in the admin's order. |
-| `daily` | Changes once per day, deterministically. |
+| Columns | `temporary_image_url`, `temporary_media_id` (→ `media_files`, `ON DELETE SET NULL`), `temporary_until TIMESTAMPTZ`; CHECK: url and until are both set or both null |
+| Set | `PUT /admin/visual-slots/:id/temporary-image { url, until }` — `until` is an ISO-8601 instant with offset (zod `datetime({offset:true})`, like `restockAt`); the past (`TEMPORARY_UNTIL_PAST`) and more than 366 × 24 h away (`TEMPORARY_UNTIL_TOO_FAR`) are rejected **inside the `UPDATE` that writes the override, by PostgreSQL's `now()`** — the same clock that decides liveness on every read; Node's clock is not consulted (F6) |
+| End early | `DELETE /admin/visual-slots/:id/temporary-image` — the permanent image (or bundled) shows immediately |
+| Expiry | Nothing runs. Every read resolves `temporary_until > now()` in SQL, so the permanent image returns by itself; the admin list reports an expired override as `null`. The three columns stay stored after expiry **by design** (no cleanup job — read-time evaluation was chosen so that nothing can be late), and the media stays referenced until the override is replaced or ended (see *Media references*) |
+| Isolation | The two routes write disjoint columns in one atomic `UPDATE` each, so a permanent upload and a temporary upload arriving together both persist (tested) |
+| Dashboard | Mode toggle «صورة دائمة / صورة مؤقّتة حتى يوم»; the admin picks a **day** and the page sends the end of that day in the **store timezone** (`timezone` in the admin list = `STORE_TIMEZONE`, the same calendar the birthday feature uses — not the admin browser's zone), as an absolute instant the server compares with its clock. The picker offers only days the server will accept: the day must not have ended in the store zone, and its end-of-day instant must be within 366 × 24 h (the day 366 calendar days out is *not* offered — its end would be rejected after the upload); the same check runs again just before uploading so an expired choice never leaves an unreferenced upload. The page also schedules **one** refetch at the earliest `temporaryUntil` (capped at one day, re-armed on every response), so an expired override disappears from the table without «تحديث». The row and the drawer say until when and what returns afterwards; the hidden permanent image is shown in its own card so it never looks lost |
+| App | Reads one `currentUrl` per slot and never knows which kind it is. The payload also carries `now` and `nextChangeAt` (server clock): `VisualsRepository` schedules **one** `refresh()` for `nextChangeAt - now` **capped at one day**, cancelled and re-armed on every response. An expiry within a day fires at its exact moment, so a foregrounded app swaps back on time; an expiry farther away is reached through intermediate refreshes — each one re-reads `now`/`nextChangeAt` from the server and re-arms for at most another day — because a browser `setTimeout` beyond ~24.8 days fires immediately on Flutter Web. A device clock that is minutes off changes nothing because both values come from the server; `dispose()` cancels whichever timer is pending |
+| Media references | While a temporary image is stored, `temporary_image_url` / `temporary_media_id` count as live references in `mediaRepo.findUnreferenced`, exactly like `image_url` / `media_id`. A `temporary_until` in the past does **not** make the file unreferenced; only ending the override or replacing it removes the reference. Detection is read-only — nothing deletes |
+| Offline past expiry | The restored snapshot is shown immediately, and while there is no network the snapshot (or the bundled art) stays in use — the app does not have the permanent URL by design. A fresh fetch happens at the next launch (the startup `refresh()`), on resume (2-minute throttle) or when the scheduled timer fires; a connectivity change by itself triggers no fetch. The first successful fetch corrects the image |
 
-**The server resolves the rotation and returns one URL.** The app holds a URL,
-not an algorithm — so a character cannot change when a widget rebuilds, and two
-phones never disagree. The daily index is `(days since epoch in store timezone)
-% imageCount`, computed in SQL. A device clock cannot shift it, and no
-per-device state is stored. The response carries `validUntil` (next store
-midnight) so a client can know when the answer expires.
+### 13.5 Cache and the restart flicker
 
-`sequential` and `random` are **deliberately deferred**. Both need a per-device
-counter — state that must be stored, synchronised and eventually corrupted — for
-a benefit nobody has asked for yet.
+`cached_network_image`; images are served with
+`Cache-Control: public, max-age=2592000, immutable`, which is correct because
+filenames are UUIDs — a replaced image is a new upload with a new UUID.
 
-### 13.5 Cache
-
-`cached_network_image` (added; 14 transitive packages including `sqflite`).
-Images are served with `Cache-Control: public, max-age=2592000, immutable`,
-which is correct because filenames are UUIDs and content never changes under a
-name. A replaced image is a new upload with a new UUID, so the header keeps
-telling the truth.
-
-Splash calls `refresh()` then `prefetch()`. Prefetch downloads **only the
-currently selected image per slot**, not every image in every slot: a slot with
-four characters shows one today, and fetching the other three spends the
-customer's mobile data on images nobody will see before tomorrow.
-
-Neither call blocks startup — `unawaited(...)`, exactly as
-`StoreSettingsRepository.refresh()` already is.
+Root cause of the old restart flicker: the configuration lived in memory only,
+so every cold start rendered every bundled asset as if authoritative, then
+swapped twice when `GET /visuals` arrived. Fix (STEP 48, kept): the last
+successful configuration is persisted (`SharedPreferences`,
+`visual_slots_snapshot`) and restored synchronously before the first frame;
+`warmRestored()` decodes the images already on disk into the in-memory
+`ImageCache` (disk only, bounded budget, no network) so the first content frame
+paints the server image; each `ManagedArtwork` is keyed by its slot so an
+element can never carry another slot's frame; a URL change keeps the current
+image until the new one is decoded. `refresh()` and `prefetch()` run during the
+splash without blocking it. The only visible transition left is by design:
+when the admin changed an image while the app was closed and the network is
+slower than the splash, the previous image **of that slot** shows until the
+refresh lands — never another slot's image and never the bundled asset.
 
 ### 13.6 Admin usage
 
 1. Open **التسويق → رسوم الشخصيات**.
-2. Expand the group you want (المصادقة, التسوّق, …) and find the slot by its
-   location description — no Flutter filenames needed. **فتحة جديدة** exists for
-   adding a slot that a future app version introduces.
-3. Open the slot with **إدارة الصور**.
-4. **رفع صورة جديدة** — uploads and attaches in one step.
-5. Toggle each image active/inactive; reorder with the arrows.
-6. Choose **ثابتة** or **يومية**. Changes save immediately.
-7. The app picks it up on its next launch.
+2. Expand the group (المصادقة, التسوّق, …) and find the location by its
+   description — no Flutter filenames needed. Every label reads
+   «شخصية <الشاشة> <الحالة>» (e.g. «شخصية نتائج البحث الفارغة»).
+3. **استبدال الصورة** / **رفع صورة** opens the drawer. With **صورة دائمة**
+   selected, drop a PNG/JPG/WebP — it uploads and replaces in one step and the
+   app shows it on its next refresh (launch or resume).
+4. For an occasion, pick **صورة مؤقّتة حتى يوم**, choose the last day it should
+   show, then drop the image. The row turns «مؤقّتة حتى …» and says what
+   returns afterwards; nothing else to do when the day ends.
+5. **إنهاء الصورة المؤقّتة الآن** ends an override early; **إزالة الصورة
+   الدائمة** returns the location to the bundled artwork.
 
 ## 14. Home banners ✅ IMPLEMENTED (dev)
 

@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { GENDERS } from '../types/index.js';
+import { GALAXY_LEVEL_KEYS } from '../domain/galaxyPoints.js';
 import { BIRTHDAY_FILTERS, CUSTOMER_SORTS } from '../repositories/userRepo.js';
-import { BANNER_DESTINATIONS, BANNER_PLACEMENTS } from '../types/index.js';
+import { BANNER_DESTINATIONS, BANNER_PLACEMENTS, NOTIFICATION_TYPES } from '../types/index.js';
 
 /**
  * رابط صورة: إمّا رابط مطلق، أو مسار نسبي تحت /uploads يخدمه الخادم نفسه.
@@ -23,6 +24,17 @@ export const adminCategoryIdSchema = idSchema;
 export const adminBannerIdSchema = idSchema;
 export const adminGovernorateIdSchema = idSchema;
 export const adminUserIdSchema = idSchema;
+
+/**
+ * الحالة التي يقصدها المسؤول — «حظر» أو «تفعيل».
+ *
+ * [CRITICAL] الطلب يحمل **النتيجة المقصودة** لا أمراً بالقلب. طلبٌ بلا نتيجة
+ * كان يقلب الحالة الراهنة أياً كانت، فمسؤولان يريان «نشط» ويضغطان «حظر» (أو
+ * إعادةُ الضغط بعد مهلة) يُنهيان بحسابٍ **مفعَّل**. الحقل اختياري لنسخة لوحة
+ * أقدم لا ترسله (قلبٌ كما كان)، و`z.boolean()` لا `coerce`: `"false"` و`0` و
+ * `null` تُرفض ولا تُقرأ نتيجةً.
+ */
+export const adminUserActiveSchema = z.object({ isActive: z.boolean().optional() });
 
 const price = z.number().positive('السعر يجب أن يكون موجباً').max(1_000_000_000);
 
@@ -79,8 +91,16 @@ const restockAt = z
   .nullable()
   .optional();
 
+/**
+ * اسم المنتج: ٢..١٢٠ حرفاً — **سقف القاعدة نفسه** (`products_name_check`).
+ *
+ * كان المدقّق يقبل ١٥٠ فيمرّ اسمٌ من ١٣٠ حرفاً ثم يرفضه القيد برسالةٍ عامّة
+ * «قيمة غير صالحة لأحد حقول المنتج» لا تقول أيَّ حقل. الحدّ عند الحدّ.
+ */
+const productName = z.string().trim().min(2).max(120, 'اسم المنتج طويل جداً (١٢٠ حرفاً كحد أقصى)');
+
 export const adminProductCreateSchema = z.object({
-  name: z.string().trim().min(2).max(150),
+  name: productName,
   description: z.string().trim().max(3000).default(''),
   price,
   categoryId: z.string().uuid('معرّف قسم غير صالح'),
@@ -115,7 +135,7 @@ export const adminProductCreateSchema = z.object({
  * كان يُعيد ملء الافتراضات ([]) عند غياب الحقل فيمسح البيانات — خلل موثّق.
  */
 export const adminProductUpdateSchema = z.object({
-  name: z.string().trim().min(2).max(150).optional(),
+  name: productName.optional(),
   description: z.string().trim().max(3000).optional(),
   price: z.number().positive('السعر يجب أن يكون موجباً').max(1_000_000_000).optional(),
   categoryId: z.string().uuid('معرّف قسم غير صالح').optional(),
@@ -134,8 +154,10 @@ export const adminProductUpdateSchema = z.object({
   isOffer: z.boolean().optional(),
   isSelected: z.boolean().optional(),
   isActive: z.boolean().optional(),
-  rating: z.number().min(0).max(5).nullable().optional(),
-  reviewCount: z.number().int().min(0).max(1_000_000).optional(),
+  // [CRITICAL] لا `rating` ولا `reviewCount` هنا: قيمتان مشتقّتان من التقييمات
+  // المنشورة (زناد `refresh_product_rating` في هجرة 009). كانتا مقبولتين،
+  // وصفحة التعديل تعيد إرسال ما عرضته، فأي تقييم يُنشر بين فتح الصفحة
+  // وحفظها كان يُمحى بقيمةٍ قديمة. `zod` يُسقط المفتاحين إن أُرسلا.
   previousPrice: z.number().positive().max(1_000_000_000).nullable().optional(),
   hasDeliveryPromo: z.boolean().optional(),
   deliveryPromoAmount: deliveryPromoAmount.optional(),
@@ -208,12 +230,9 @@ export const adminSubcategoryIdSchema = idSchema;
 export const adminNotificationQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
-  type: z
-    .enum([
-      'orderAccepted', 'orderRejected', 'deliveryUpdate', 'receiptReminder',
-      'reviewApproved', 'reviewRejected', 'backInStock', 'promotion',
-    ])
-    .optional(),
+  // القائمة المعتمدة نفسها (`NOTIFICATION_TYPES`) لا نسخةٌ مكتوبة هنا: نسخةٌ
+  // من ثمانية أنواع كانت تجعل ترشيح «مزيّة» و«موعد توفر» يُرفض بـ٤٠٠.
+  type: z.enum(NOTIFICATION_TYPES).optional(),
   userId: z.string().uuid('معرّف مستخدم غير صالح').optional(),
   // نصّ لأن الاستعلام يصل كسلسلة: 'true' / 'false' / غياب = الكل.
   read: z
@@ -258,7 +277,41 @@ export const adminCustomersQuerySchema = z.object({
    * أن يرى الرفض لا قائمةً كاملة يظنّها مرشَّحة.
    */
   gender: z.enum([...GENDERS, 'unknown']).optional(),
+  /** ترشيح بمستوى المجرّة — يُحوَّل إلى مدى نقاط في القاعدة. */
+  levelKey: z.enum(GALAXY_LEVEL_KEYS).optional(),
   sort: z.enum(CUSTOMER_SORTS).optional(),
+});
+
+// ═══ طلبات الحساب ═══
+
+export const adminAccountRequestIdSchema = idSchema;
+
+export const adminAccountRequestsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  kind: z.enum(['registration', 'password_reset']).optional(),
+  status: z.enum(['pending', 'approved', 'rejected']).optional(),
+  search: z.string().trim().min(1).max(80).optional(),
+});
+
+/** ملاحظة المسؤول عند الحسم — اختيارية، تبقى في السجل. */
+export const adminResolveRequestSchema = z.object({
+  note: z.string().trim().max(500).optional(),
+});
+
+/**
+ * كلمة المرور الجديدة التي يضعها المسؤول — نفس قواعد التسجيل (٨ أحرف فأكثر).
+ *
+ * [CRITICAL] لا حقل «مؤقّتة» ولا «يجب تغييرها»: هذه كلمة المرور الدائمة.
+ * `requestId` اختياري ويُربط بالحساب في الخدمة — لا يُخوِّل وحده شيئاً.
+ */
+export const adminSetCustomerPasswordSchema = z.object({
+  newPassword: z
+    .string()
+    .min(8, 'كلمة المرور يجب أن تكون 8 أحرف على الأقل')
+    .max(200, 'كلمة المرور طويلة جداً'),
+  requestId: z.string().uuid('معرّف غير صالح').optional(),
+  note: z.string().trim().max(500).optional(),
 });
 
 export const adminBirthdayQuerySchema = z.object({
@@ -297,6 +350,13 @@ export const giftClaimsQuerySchema = z.object({
 export const adminProductsQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(50).default(12),
+  /**
+   * بحث بالاسم — جزءٌ من الاسم يكفي، على الخادم لا على صفحة اللوحة.
+   *
+   * كانت القائمة بلا أي معامل بحث، فيقلّب المسؤول الصفحات ليجد منتجاً.
+   * البحث العام `/catalog/products/search` لا يصلح بديلاً: يستثني غير النشط.
+   */
+  q: z.string().trim().min(1).max(120).optional(),
   categoryId: z.string().uuid('معرّف قسم غير صالح').optional(),
   subcategoryId: z.string().uuid('معرّف قسم فرعي غير صالح').optional(),
   /**

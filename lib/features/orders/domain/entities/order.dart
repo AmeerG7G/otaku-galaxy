@@ -51,6 +51,7 @@ class Order {
     this.deliveryNote,
     this.deliveredAt,
     this.canReview = false,
+    this.reviewableProductCount = 0,
     this.statusHistory = const [],
   });
 
@@ -104,10 +105,29 @@ class Order {
   /// يُفتح بالاستلام نفسه، فلا موعد يُنتظر ولا وقت متبقٍّ يُعرض.
   final bool canReview;
 
+  /// منتجات الطلب التي لم يقيّمها صاحبه بعد — من الخادم.
+  ///
+  /// [CRITICAL] `canReview` بوّابة الاستلام وتبقى صحيحة إلى الأبد؛ هذا العدد
+  /// هو ما يُخفي زرّ «قيّم طلبك» بعد أن قُيّم كل منتج.
+  ///
+  /// التوافق: خادمٌ **أقدم** لا يرسل الحقل أصلاً — تطبيقٌ من المتجر قد يسبق
+  /// نشر الخادم بساعات. غيابُ الحقل يعني «لا نعرف»، فيُفترض أن كل المنتجات
+  /// قابلة للتقييم (سلوك ما قبل الحقل: الزرّ ظاهر، وشاشة التقييم تعرض حالة
+  /// كل منتج من `ReviewsCubit`، والخادم يرفض التكرار بـ`REVIEW_EXISTS`).
+  /// إخفاءُ الزرّ عند الغياب كان يعطّل التقييم كلّه حتى يُنشر الخادم. أما
+  /// الحقل الحاضر — ولو صفراً أو `null` — فهو كلمة الخادم وتُحترم.
+  final int reviewableProductCount;
+
+  /// هل بقي في الطلب ما يُقيَّم؟ — الشرط الكامل لعرض أي دعوة تقييم.
+  bool get hasReviewableProducts => canReview && reviewableProductCount > 0;
+
   /// مسار الطلب بأوقاته كما سجّله الخادم (بلا هوية من غيّر الحالة).
   final List<OrderStatusEvent> statusHistory;
 
   factory Order.fromJson(Map<String, dynamic> json) {
+    final items = (json['items'] as List? ?? const [])
+        .map((e) => _mapItem(e as Map<String, dynamic>))
+        .toList();
     return Order(
       id: json['id']?.toString() ?? '',
       number: json['number']?.toString() ?? '',
@@ -120,15 +140,17 @@ class Order {
       discount: (json['discount'] as num?)?.toDouble() ?? 0,
       deliveryDiscount: (json['deliveryDiscount'] as num?)?.toDouble() ?? 0,
       status: OrderStatus.fromString(json['status'] as String? ?? ''),
-      items: (json['items'] as List? ?? const [])
-          .map((e) => _mapItem(e as Map<String, dynamic>))
-          .toList(),
+      items: items,
       createdAt: DateTime.tryParse(json['createdAt'] as String? ?? ''),
       rejectionReason: json['rejectionReason'] as String?,
       zoneName: json['zoneName'] as String?,
       deliveryNote: json['deliveryNote'] as String?,
       deliveredAt: DateTime.tryParse(json['deliveredAt'] as String? ?? ''),
       canReview: json['canReview'] as bool? ?? false,
+      reviewableProductCount: json.containsKey('reviewableProductCount')
+          ? (json['reviewableProductCount'] as num?)?.toInt() ?? 0
+          // خادمٌ أقدم: افتراض ما قبل الحقل — انظر تعليق الحقل.
+          : items.length,
       statusHistory: (json['statusHistory'] as List? ?? const [])
           .map((e) => OrderStatusEvent.fromJson(e as Map<String, dynamic>))
           .toList(),

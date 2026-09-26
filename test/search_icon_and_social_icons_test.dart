@@ -1,7 +1,8 @@
-// أيقونة البحث الموحّدة، وأيقونات التواصل التي يضبطها المسؤول.
+// أيقونة البحث الموحّدة، وأيقونات التواصل الثابتة.
 //
 // موضوعان يجمعهما شيء واحد: كلاهما «أيقونة يجب أن تأتي من مصدرٍ واحد» —
-// الأولى من ثابتٍ في نظام التصميم، والثانية من لوحة التحكم لا من الحزمة.
+// الأولى من ثابتٍ في نظام التصميم، والثانية أصلٌ ثابت في التطبيق لا فتحةٌ
+// تُدار من اللوحة (قرار 2026-09-15).
 
 import 'dart:io';
 
@@ -9,7 +10,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otaku_galaxy/core/design_system/design_system.dart';
 import 'package:otaku_galaxy/features/visuals/domain/visual_slot.dart';
-import 'package:otaku_galaxy/features/visuals/presentation/managed_artwork.dart';
 
 void main() {
   group('أيقونة البحث الكلاسيكية', () {
@@ -62,41 +62,39 @@ void main() {
     });
   });
 
-  group('أيقونات التواصل المُدارة', () {
-    test('[CRITICAL] للمنصات الثلاث فتحاتٌ يعرفها التطبيق', () {
-      // بلا مفتاحٍ في `VisualSlots` لا سبيل للوحة أن تصل إلى الأيقونة.
-      expect(VisualSlots.socialTiktok, 'social_tiktok');
-      expect(VisualSlots.socialInstagram, 'social_instagram');
-      expect(VisualSlots.socialWhatsapp, 'social_whatsapp');
-      expect(
-        VisualSlots.all,
-        containsAll(<String>[
-          VisualSlots.socialTiktok,
-          VisualSlots.socialInstagram,
-          VisualSlots.socialWhatsapp,
-        ]),
-      );
+  group('أيقونات التواصل — أصولٌ ثابتة لا فتحات', () {
+    // [PRODUCT] قرار 2026-09-15: تيك توك وإنستغرام وواتساب ليست شخصياتٍ
+    // تُبدَّل من اللوحة. كانت فتحاتٍ (الهجرة ٠٣٢) وأُسقطت (الهجرة ٠٥٣)؛ الرابط
+    // وحده يُدار من إعدادات المتجر. `visual-catalogue.test.ts` في الخادم
+    // يحرس غيابها من القاعدة، وهذا يحرس غيابها من التطبيق.
+    test('[CRITICAL] لا مفتاح فتحة لأي منصّة تواصل', () {
+      expect(VisualSlots.all.where((k) => k.startsWith('social_')), isEmpty);
+      expect(VisualSlots.all, isNot(contains('social_tiktok')));
+      expect(VisualSlots.all, isNot(contains('social_instagram')));
+      expect(VisualSlots.all, isNot(contains('social_whatsapp')));
     });
 
-    testWidgets('[CRITICAL] بلا أيقونة مضبوطة تظهر البديلة لا فراغ', (
-      tester,
-    ) async {
-      // حاوية الاعتماديات غير مهيّأة هنا، وهو بالضبط أسوأ حالة: يجب أن
-      // يبقى الصفّ مرئياً لا مربّعاً مكسوراً.
-      await tester.pumpWidget(
-        const MaterialApp(
-          home: Scaffold(
-            body: ManagedArtwork.orWidget(
-              slot: VisualSlots.socialTiktok,
-              fallback: Icon(Icons.music_note_rounded, size: 17),
-            ),
-          ),
-        ),
+    test('[CRITICAL] شاشة الحساب ترسم أيقونات التواصل ثابتةً لا عبر رسمٍ مُدار', () {
+      final source = File('lib/features/account/presentation/screens/account_screen.dart')
+          .readAsStringSync();
+      final socials = source.substring(
+        source.indexOf('Widget _buildSocials'),
+        source.indexOf('Future<void> _addBirthday'),
       );
-      await tester.pump();
+      expect(socials, contains('Icons.music_note_rounded'));
+      expect(socials, contains('Icons.camera_alt_outlined'));
+      expect(socials, contains('Icons.chat_bubble_outline'));
+      // لا `ManagedArtwork` ولا `VisualSlots` في صفوف التواصل.
+      final rows = source.substring(source.indexOf('class _SocialRow'));
+      expect(rows, isNot(contains('ManagedArtwork')));
+      expect(rows, isNot(contains('VisualSlots')));
+      expect(socials, isNot(contains('VisualSlots')));
+    });
 
-      expect(find.byIcon(Icons.music_note_rounded), findsOneWidget);
-      expect(tester.takeException(), isNull);
+    test('ولا تُتاح نسخة `ManagedArtwork` ببديلٍ من الودجات — كل موضعٍ مُدار له أصل مضمَّن', () {
+      final source = File('lib/features/visuals/presentation/managed_artwork.dart').readAsStringSync();
+      expect(source, isNot(contains('ManagedArtwork.orWidget(')));
+      expect(source, isNot(contains('fallbackWidget')));
     });
 
     test('لا رابط صورة أيقونة مخبوز في الشيفرة', () {

@@ -71,7 +71,8 @@ final List<String> _mainKeys = [
 
 /// رتبة القسم في الترتيب المعتمد، أو `kMainCategoryOrder.length` لغيره.
 int mainCategoryRank(Category category) {
-  final index = _mainKeys.indexOf(canonicalCategoryKey(category.name));
+  // `stableKey` لا `name`: الاسم المعروض قد يكون كردياً، والهوية عربية دائماً.
+  final index = _mainKeys.indexOf(canonicalCategoryKey(category.stableKey));
   return index == -1 ? kMainCategoryOrder.length : index;
 }
 

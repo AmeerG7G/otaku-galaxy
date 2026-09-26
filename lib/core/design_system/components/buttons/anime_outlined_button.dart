@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../tokens/app_colors.dart';
 import '../../tokens/app_dimens.dart';
 import 'button_enums.dart';
 
@@ -29,8 +28,10 @@ class AnimeOutlinedButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final effectiveHeight = height ?? AppDimens.buttonHeightMd;
-    final effectiveBorderColor =
-        borderColor ?? Theme.of(context).colorScheme.primary;
+    final scheme = Theme.of(context).colorScheme;
+    final effectiveBorderColor = borderColor ?? scheme.primary;
+    // المعطَّل بلون المظهر (حبر `onSurface` ٣٨٪) لا بثابتٍ واحد للمظهرين.
+    final disabledInk = scheme.onSurface.withValues(alpha: 0.38);
 
     return SizedBox(
       width: expanded ? double.infinity : null,
@@ -38,13 +39,9 @@ class AnimeOutlinedButton extends StatelessWidget {
       child: OutlinedButton(
         onPressed: loading ? null : onPressed,
         style: OutlinedButton.styleFrom(
-          foregroundColor: onPressed != null
-              ? effectiveBorderColor
-              : AppColors.onSurfaceDisabled,
+          foregroundColor: onPressed != null ? effectiveBorderColor : disabledInk,
           side: BorderSide(
-            color: onPressed != null
-                ? effectiveBorderColor
-                : AppColors.onSurfaceDisabled,
+            color: onPressed != null ? effectiveBorderColor : disabledInk,
             width: 2,
           ),
           padding: EdgeInsets.symmetric(horizontal: AppDimens.space6),

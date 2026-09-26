@@ -55,6 +55,62 @@ void main() {
       expect(canonicalCategoryKey('قرطاسية'), canonicalCategoryKey('القرطاسية'));
     });
 
+    test('[CRITICAL] كل حرف تطبيع محروسٌ بمفرده', () {
+      // [CRITICAL] الاختبار السابق يقارن مفتاحاً بمفتاح، فيمرّ الطرفان
+      // بالدالة نفسها: حذفُ قاعدة تطبيع يغيّر الطرفين معاً ويبقى التساوي
+      // قائماً. جُرِّب ذلك فعلاً — حُذفت قاعدة «ئ ← ي» فلم يسقط اختبارٌ
+      // واحد، بينما هي بالضبط القاعدة التي يحكي `category_order.dart` أن
+      // فقدانَها أسقط «الحقائب» من الترتيب واللون معاً.
+      //
+      // الحارس الصحيح يثبّت **الناتج**: كتابتان مختلفتان لاسمٍ واحد كما
+      // قد يكتبهما مسؤولٌ في اللوحة، ولكلٍّ منهما حرفٌ يخصّ قاعدة بعينها.
+      const variants = <String, List<String>>{
+        // ئ ← ي  (القاعدة التي سقطت تاريخياً)
+        'حقائب': ['حقايب'],
+        // أ/إ/آ/ٱ ← ا
+        'إكسسوارات': ['اكسسوارات', 'أكسسوارات', 'آكسسوارات'],
+        // ة ← ه
+        'قرطاسية': ['قرطاسيه'],
+        // ى ← ي
+        'أنمي': ['انمى'],
+        // ؤ ← و
+        'مؤجل': ['موجل'],
+        // التشكيل والتطويل يسقطان
+        'ملابس': ['مَلابِس', 'مـلابـس'],
+        // «ال» التعريف تسقط
+        'مجسمات': ['المجسمات'],
+      };
+
+      variants.forEach((canonical, spellings) {
+        for (final spelling in spellings) {
+          expect(
+            canonicalCategoryKey(spelling),
+            canonicalCategoryKey(canonical),
+            reason: '«$spelling» لم يعد يطابق «$canonical» — سقطت قاعدة تطبيع',
+          );
+        }
+      });
+    });
+
+    test('[CRITICAL] الترتيب يصمد أمام كتابات الخادم البديلة', () {
+      // نفس الأقسام الستة بكتاباتٍ إملائية أخرى — الترتيب لا يتغيّر.
+      // هذا ما يربط التطبيع بالنتيجة المرئية للزبون.
+      final misspelled = [
+        Category(id: 'a1', name: 'قرطاسيه'),
+        Category(id: 'a2', name: 'الحقايب'),
+        Category(id: 'a3', name: 'اكسسوارات'),
+        Category(id: 'a4', name: 'الملابس'),
+        Category(id: 'a5', name: 'مجسمات وهدايا'),
+        Category(id: 'a6', name: 'منتجات انمى متنوعه'),
+      ];
+      final sorted = sortByCanonicalOrder(misspelled);
+      expect(
+        sorted.map((c) => canonicalCategoryKey(c.name)).toList(),
+        kMainCategoryOrder.map(canonicalCategoryKey).toList(),
+        reason: 'كتابةٌ بديلة أسقطت قسماً من الترتيب المعتمد',
+      );
+    });
+
     test('أقسام مختلفة تبقى مفاتيح مختلفة', () {
       final keys = _devCategories.map((c) => canonicalCategoryKey(c.name));
       expect(keys.toSet(), hasLength(6));

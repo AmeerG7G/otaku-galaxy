@@ -27,6 +27,9 @@ Map<String, dynamic> orderJson({
   required bool canReview,
   String status = 'COMPLETED',
   String? deliveredAt = '2026-08-26T00:00:00.000Z',
+
+  /// ما بقي للتقييم — من الخادم. الافتراضي «كل شيء» لطلبٍ مؤهَّل.
+  int? reviewableProductCount,
 }) => {
   'id': 'o1',
   'number': '1001',
@@ -39,10 +42,14 @@ Map<String, dynamic> orderJson({
   'discount': 0,
   'deliveryDiscount': 0,
   'status': status,
-  'items': <dynamic>[],
+  // سطرٌ واحد كما يرسله الخادم — غيابُ `reviewableProductCount` يُقاس به.
+  'items': <dynamic>[
+    {'productId': 'p1', 'productName': 'مجسّم', 'price': 15000, 'quantity': 1},
+  ],
   'createdAt': '2026-08-25T00:00:00.000Z',
   'deliveredAt': deliveredAt,
   'canReview': canReview,
+  'reviewableProductCount': reviewableProductCount ?? (canReview ? 1 : 0),
   'statusHistory': <dynamic>[],
 };
 
@@ -125,6 +132,44 @@ void main() {
     testWidgets('[CRITICAL] الطلب غير المؤهَّل لا يعرض الزرّ', (tester) async {
       await pumpCard(tester, Order.fromJson(orderJson(canReview: false)));
       expect(find.text('قيّم طلبك'), findsNothing);
+    });
+
+    testWidgets('[CRITICAL] المستلَم الذي قُيّمت منتجاته كلها لا يعرض الزرّ',
+        (tester) async {
+      // `canReview` تبقى صحيحة إلى الأبد بعد الاستلام؛ ما يُخفي الزرّ هو
+      // عدّ الخادم لما بقي. كان الزرّ يظلّ ظاهراً بعد تقييم كل شيء.
+      await pumpCard(
+        tester,
+        Order.fromJson(orderJson(canReview: true, reviewableProductCount: 0)),
+      );
+      expect(find.text('قيّم طلبك'), findsNothing);
+    });
+
+    test('غياب الحقل (خادمٌ أقدم) = سلوك ما قبل الحقل: كل المنتجات قابلة للتقييم', () {
+      // [CONTRACT] كان الغياب يعني صفراً «لا زرّ بتخمين». لكن تطبيقاً من
+      // المتجر قد يقابل خادماً لم يُنشر بعد، فكان الزرّ يختفي من كل طلبٍ
+      // مستلَم حتى يُنشر الخادم — تعطيلٌ كامل للتقييم مقابل حمايةٍ من زرٍّ
+      // يقود إلى شاشةٍ تعرض الحالة الحقيقية أصلاً. الغياب الآن يساوي عدد
+      // المنتجات؛ الحقل الحاضر وحده كلمةُ الخادم.
+      final json = orderJson(canReview: true)..remove('reviewableProductCount');
+      final order = Order.fromJson(json);
+      expect(order.reviewableProductCount, order.items.length);
+      expect(order.items, isNotEmpty);
+      expect(order.hasReviewableProducts, isTrue);
+
+      // بلا استلام لا تقييم مهما كان العدد.
+      final unreceived = orderJson(canReview: false)..remove('reviewableProductCount');
+      expect(Order.fromJson(unreceived).hasReviewableProducts, isFalse);
+    });
+
+    test('الحقل الحاضر يُحترم: صفرٌ يخفي، وnull يُعدّ صفراً', () {
+      expect(
+        Order.fromJson(orderJson(canReview: true, reviewableProductCount: 0)).hasReviewableProducts,
+        isFalse,
+      );
+      final nullish = orderJson(canReview: true)..['reviewableProductCount'] = null;
+      expect(Order.fromJson(nullish).reviewableProductCount, 0);
+      expect(Order.fromJson(nullish).hasReviewableProducts, isFalse);
     });
 
     testWidgets('بلا معالج تقييم لا يظهر الزرّ ولو كان مؤهَّلاً', (tester) async {

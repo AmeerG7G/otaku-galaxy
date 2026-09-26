@@ -1,4 +1,3 @@
-import { isValidImageRef } from '../utils/media'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -38,8 +37,6 @@ import {
 import { ApiError } from '../api/client'
 import type { AdminCategory, AdminSubcategory } from '../types/categories'
 import EmptyState from '../components/EmptyState'
-import ImageUploadField from '../components/ImageUploadField'
-import { MediaThumb } from '../components/ui/MediaThumb'
 
 type EditorMode = 'create' | 'edit' | 'subcategory' | null
 
@@ -53,9 +50,16 @@ interface SubcategoryEditor {
   subcategory: AdminSubcategory
 }
 
+/**
+ * قيم نموذج القسم الرئيسي — بلا صورة.
+ *
+ * [PRODUCT] قرار 2026-09-15: بطاقة القسم في التطبيق نصّيةٌ موسَّطة بلا
+ * صورة، فاللوحة لا تعرض صورةً ولا تطلبها — تمثيلٌ واحد للقسم في الطرفين.
+ * الحقل `imageUrl` باقٍ في عقد الـAPI والقاعدة (اختياري) ولا يُرسَل من هنا،
+ * فما خُزّن سابقاً يبقى كما هو ولا يُمسح بتعديلٍ عرضي.
+ */
 interface CategoryFormValues {
   name: string
-  imageUrl?: string
   sortOrder?: number
 }
 
@@ -103,7 +107,6 @@ export default function CategoriesPage() {
     mutationFn: (input: { id: string; values: CategoryFormValues }) =>
       updateCategory(input.id, {
         name: input.values.name,
-        imageUrl: input.values.imageUrl || null,
         sortOrder: input.values.sortOrder,
       }),
     onSuccess: (result) => {
@@ -170,19 +173,13 @@ export default function CategoriesPage() {
     onError: (error: Error) => message.error(error.message),
   })
 
+  // الأعمدة تطابق بطاقة القسم في التطبيق: اسمٌ وعددٌ موسَّطان، بلا صورة.
   const columns = [
-    {
-      title: 'الصورة',
-      key: 'image',
-      width: 80,
-      render: (_: unknown, category: AdminCategory) => (
-        <MediaThumb reference={category.imageUrl} size={48} radius={8} />
-      ),
-    },
     {
       title: 'القسم',
       dataIndex: 'name',
       key: 'name',
+      align: 'center' as const,
       render: (value: string) => <Typography.Text strong>{value}</Typography.Text>,
     },
     {
@@ -215,6 +212,7 @@ export default function CategoriesPage() {
       title: 'الأقسام الفرعية',
       key: 'subcategories',
       width: 160,
+      align: 'center' as const,
       render: (_: unknown, category: AdminCategory) =>
         `${category.subcategories.length} أقسام فرعية`,
     },
@@ -487,7 +485,6 @@ export default function CategoriesPage() {
           <CategoryEditorForm
             initialValues={{
               name: editor.category.name,
-              imageUrl: editor.category.imageUrl ?? undefined,
               sortOrder: editor.category.sortOrder,
             }}
             submitting={updateMutation.isPending}
@@ -576,20 +573,6 @@ function CategoryEditorForm({
         ]}
       >
         <Input />
-      </Form.Item>
-      <Form.Item
-        name="imageUrl"
-        label="صورة القسم (اختيارية)"
-        rules={[
-          {
-            validator: (_rule, value: string) =>
-              !value || isValidImageRef(value)
-                ? Promise.resolve()
-                : Promise.reject(new Error('رابط الصورة غير صالح')),
-          },
-        ]}
-      >
-        <ImageUploadField purpose="category" allowClear />
       </Form.Item>
       <Form.Item name="sortOrder" label="الترتيب">
         <InputNumber min={0} max={1000} style={{ width: '100%' }} precision={0} />

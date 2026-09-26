@@ -1,12 +1,11 @@
 import { useState } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
-import { Alert, Button, Card, Form, Input, Typography } from 'antd'
+import { Alert, Button, Card, Form, Image, Input, Typography } from 'antd'
 import { LockOutlined, PhoneOutlined } from '@ant-design/icons'
 import { login } from '../../api/authApi'
 import { ApiError } from '../../api/client'
 import { useAuthStore } from '../../stores/authStore'
 import { brand } from '../../theme'
-import { BrandMark } from '../../layouts/AppLayout'
 
 interface LoginFormValues {
   phone: string
@@ -105,10 +104,19 @@ export default function LoginPage() {
           }}
         >
           <div style={{ marginBottom: 6 }}>
-            <BrandMark />
+            <Image
+              src="/otaku-square-mark.png"
+              alt="مجرة الأوتاكو"
+              width={64}
+              height={64}
+              style={{
+                borderRadius: 14,
+                boxShadow: '0 6px 18px rgba(124, 92, 255, 0.4)',
+              }}
+            />
           </div>
           <Typography.Title level={3} style={{ margin: 0, fontWeight: 800 }}>
-            مجرات الاوتاكو
+            مجرة الأوتاكو
           </Typography.Title>
           <Typography.Text style={{ color: brand.textSecondary }}>
             لوحة تحكم الإدارة — سجّل الدخول بحساب المشرف

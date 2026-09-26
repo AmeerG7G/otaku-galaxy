@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from 'vitest';
-import { api, DEV_CODE, purgeTestUsers } from './helpers.js';
+import { api, approveAsAdmin, purgeTestUsers } from './helpers.js';
 import { db } from '../src/database/pool.js';
 import {
   isValidIraqiPhone,
@@ -141,13 +141,13 @@ describe('التطبيع عبر مسارات المصادقة', () => {
     const local = freshLocal();
     const canonical = `+964${local.slice(1)}`;
 
-    await api
+    const registered = await api
       .post('/api/auth/register')
       .send({ username: 'مختبر التطبيع', phone: local, password: 'secret123',
         gender: 'male',
       })
-      .expect(200);
-    await api.post('/api/auth/verify').send({ phone: local, code: DEV_CODE }).expect(200);
+      .expect(202);
+    await approveAsAdmin(registered.body.data.request.id as string);
 
     // الدخول بالصيغة الدولية لحسابٍ سُجّل بالمحلية: لولا التطبيع لكان
     // «رقماً آخر» ولفشل الدخول.
@@ -169,7 +169,7 @@ describe('التطبيع عبر مسارات المصادقة', () => {
     );
     expect(rows).toHaveLength(1);
 
-    await db.query('DELETE FROM verification_codes WHERE phone = $1', [canonical]);
+    await db.query('DELETE FROM account_requests WHERE submitted_phone = $1', [canonical]);
     await db.query('DELETE FROM users WHERE phone = $1', [canonical]);
   });
 
@@ -177,13 +177,13 @@ describe('التطبيع عبر مسارات المصادقة', () => {
     const local = freshLocal();
     const canonical = `+964${local.slice(1)}`;
 
-    await api
+    const first = await api
       .post('/api/auth/register')
       .send({ username: 'الأول', phone: local, password: 'secret123',
         gender: 'male',
       })
-      .expect(200);
-    await api.post('/api/auth/verify').send({ phone: local, code: DEV_CODE }).expect(200);
+      .expect(202);
+    await approveAsAdmin(first.body.data.request.id as string);
 
     // التسجيل ثانيةً بالصيغة الدولية يجب أن يصطدم بالحساب نفسه لا أن يُنشئ ثانياً.
     const again = await api
@@ -200,7 +200,7 @@ describe('التطبيع عبر مسارات المصادقة', () => {
     );
     expect(rows[0]!.total).toBe('1');
 
-    await db.query('DELETE FROM verification_codes WHERE phone = $1', [canonical]);
+    await db.query('DELETE FROM account_requests WHERE submitted_phone = $1', [canonical]);
     await db.query('DELETE FROM users WHERE phone = $1', [canonical]);
   });
 

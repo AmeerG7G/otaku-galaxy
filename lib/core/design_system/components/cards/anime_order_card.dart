@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../l10n/app_strings.dart';
 
 import '../../../../features/orders/domain/entities/order.dart';
 import '../../../../features/orders/presentation/widgets/order_status_utils.dart';
@@ -6,7 +7,7 @@ import '../../../l10n/gender.dart';
 import '../../tokens/app_colors.dart';
 import '../../tokens/app_theme_colors.dart';
 import '../../tokens/app_dimens.dart';
-import '../buttons/anime_outlined_button.dart';
+import '../buttons/anime_primary_button.dart';
 import '../buttons/button_enums.dart';
 import '../feedback/product_photo_slot.dart';
 import '../layout/otaku_surfaces.dart';
@@ -61,7 +62,7 @@ class AnimeOrderCard extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               OtakuStatusPill(
-                label: orderStatusLabel(order.status),
+                label: orderStatusLabel(context, order.status),
                 color: statusColor,
               ),
             ],
@@ -157,7 +158,7 @@ class AnimeOrderCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    '$itemCount منتج',
+                    context.strings.p('productsCount', {'count': '$itemCount'}),
                     style: theme.textTheme.labelSmall?.copyWith(
                       fontSize: 11,
                       color: theme.colorScheme.onSurfaceVariant,
@@ -165,7 +166,7 @@ class AnimeOrderCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    '${order.total.toStringAsFixed(0)} د.ع',
+                    context.strings.p('priceIqd', {'amount': order.total.toStringAsFixed(0)}),
                     textDirection: TextDirection.ltr,
                     style: theme.textTheme.titleSmall?.copyWith(
                       fontFamily: 'Tajawal',
@@ -178,16 +179,21 @@ class AnimeOrderCard extends StatelessWidget {
               ),
             ],
           ),
-          if (onReview != null && order.canReview) ...[
+          // [CRITICAL] `hasReviewableProducts` لا `canReview` وحده: الثانية تعني
+          // «استُلم» وتبقى صحيحة إلى الأبد، فكان الزرّ يظلّ ظاهراً بعد أن
+          // قُيّم كل منتج. العدّ من الخادم (`reviewableProductCount`).
+          //
+          // الزرّ الأساسي (تدرّج النظام) لا المُحدَّد: هو نداء التقييم نفسه
+          // الذي يرسمه المرجع البصري وتستعمله بقية شاشات التقييم.
+          if (onReview != null && order.hasReviewableProducts) ...[
             const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: AnimeOutlinedButton(
-                label: context.g(GenderedStrings.rateYourOrder),
-                onPressed: onReview,
-                icon: Icons.star_rounded,
-                iconPosition: IconPosition.start,
-              ),
+            AnimePrimaryButton(
+              label: context.g(GenderedStrings.rateYourOrder),
+              onPressed: onReview,
+              icon: Icons.star_rounded,
+              iconPosition: IconPosition.start,
+              height: AppDimens.buttonHeightMd,
+              borderRadius: AppDimens.radiusMd,
             ),
           ],
         ],

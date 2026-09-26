@@ -64,7 +64,38 @@ export const cartRepo = {
     return rows.map(mapLine);
   },
 
-  /** إضافة/دمج منتج في العربة؛ إن وُجد سطر مطابق تُدمج الكمية. */
+  /**
+   * يقفل صفّ العربة داخل معاملة ثم يقرأ عناصرها — لإنشاء الطلب وحده.
+   *
+   * [CRITICAL] بلا هذا القفل كان إرسالان متزامنان (نقرتان سريعتان، أو إعادة
+   * إرسال شبكية) يقرآن العربة نفسها معاً، ولا يفصل بينهما إلا قفل صفوف
+   * المنتجات — فإن كفى المخزون خرج طلبان بالمبلغ نفسه. مقيسٌ قبل الإصلاح:
+   * ثلاثة إرسالات متزامنة ⇒ ثلاثة طلبات. `FOR UPDATE` على صفّ `carts` يجعل
+   * الثاني ينتظر الأول حتى يُفرغ العربة داخل معاملته، فيقرأ عربةً فارغة
+   * ويُرفض بـ«العربة فارغة» كما لو أرسل متأخّراً.
+   */
+  async listItemsForCheckout(tx: pg.PoolClient, userId: string): Promise<CartLine[]> {
+    const cartId = await ensureCart(tx, userId);
+    await tx.query('SELECT id FROM carts WHERE id = $1 FOR UPDATE', [cartId]);
+    const { rows } = await tx.query<Record<string, unknown>>(`${LINE_SELECT}
+      ORDER BY ci.created_at DESC`, [cartId]);
+    return rows.map(mapLine);
+  },
+
+  /**
+   * إضافة/دمج منتج في العربة؛ إن وُجد سطر مطابق تُدمج الكمية.
+   *
+   * [CRITICAL] القفل `KEY SHARE` على صفّ العربة **في الجملة نفسها**. السطر
+   * الجديد يأخذه ضمناً (فحص المفتاح الأجنبي) فينتظر طلباً قيد الإنشاء يمسك
+   * العربة `FOR UPDATE` (`listItemsForCheckout`)؛ أمّا الدمج في سطرٍ قائم
+   * (`ON CONFLICT … DO UPDATE`) فلا يُدرج صفّاً ولا يفحص مفتاحاً، فكان يلتزم
+   * فوراً ثم يمحوه تفريغ العربة: الزيادة لا في الطلب ولا في العربة، بردّ
+   * ٢٠٠ (CA-6). بالقفل الصريح ينتظر الدمجُ كالسطر الجديد، ثم يقع على عربة
+   * ما بعد الطلب — ترتيبٌ تسلسلي: الطلب ثم الإضافة.
+   *
+   * الإدراج **يقرأ** من `locked` عمداً: تعبير `WITH` غير المعدِّل لا يُنفَّذ
+   * إن لم يُشر إليه، فالقفل بلا إشارة لا يُؤخذ أصلاً.
+   */
   async upsertItem(
     db: pg.Pool | pg.PoolClient,
     userId: string,
@@ -72,8 +103,9 @@ export const cartRepo = {
   ): Promise<CartLine> {
     const cartId = await ensureCart(db, userId);
     const { rows } = await db.query(
-      `INSERT INTO cart_items (cart_id, product_id, option_value, quantity)
-       VALUES ($1, $2, $3, $4)
+      `WITH locked AS (SELECT id FROM carts WHERE id = $1 FOR KEY SHARE)
+       INSERT INTO cart_items (cart_id, product_id, option_value, quantity)
+       SELECT locked.id, $2::uuid, $3::text, $4::int FROM locked
        ON CONFLICT (cart_id, product_id, option_value)
        DO UPDATE SET quantity = cart_items.quantity + EXCLUDED.quantity
        RETURNING *`,

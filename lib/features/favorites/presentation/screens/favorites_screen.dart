@@ -1,4 +1,5 @@
 import 'package:auto_route/auto_route.dart';
+import '../../../../core/l10n/app_strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -47,27 +48,31 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
               return Column(
                 children: [
                   OtakuScreenHeader(
-                    title: 'المفضلة',
+                    title: context.strings('favorites'),
                     onBack: () => context.router.maybePop(),
                     subtitle: !isLoggedIn
                         ? context.g(GenderedStrings.loginToSaveFavorites)
                         : state.products.isEmpty
-                        ? 'لم تحفظ أي منتج بعد'
-                        : '${state.products.length} منتج محفوظ',
+                        ? context.strings('noFavoritesYet')
+                        : context.strings.p('savedProductsCount', {'count': '${state.products.length}'}),
                   ),
                   if (!isLoggedIn)
                     Expanded(
                       child: AnimeGuestPrompt(
-                        title: 'أنت تتصفح كزائر',
+                        title: context.strings('browsingAsGuest'),
                         body:
                             context.g(GenderedStrings.loginToFollow),
                         icon: Icons.favorite_outline,
+                        artworkSlot: VisualSlots.favoritesGuestPrompt,
                         onLogin: () => context.router.push(const LoginRoute()),
                       ),
                     )
                   else ...[
                     OtakuSegmentedControl(
-                      labels: const ['المفضلة', 'مجموعاتي'],
+                      labels: [
+                        context.strings('favorites'),
+                        context.strings('myCollections'),
+                      ],
                       selectedIndex: _tab,
                       onSelected: (index) => setState(() => _tab = index),
                     ),
@@ -89,11 +94,11 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
   Widget _buildFavorites(FavoritesState state) {
     if (state.products.isEmpty) {
       return AnimeEmptyState(
-        title: 'مفضلتك فارغة',
+        title: context.strings('favoritesEmptyTitle'),
         subtitle: context.g(GenderedStrings.tapHeartToSave),
         artwork: 'assets/art/opt/a-i2.png',
         artworkSlot: VisualSlots.emptyFavorites,
-        actionLabel: 'اكتشف المنتجات',
+        actionLabel: context.strings('discover'),
         onAction: () {
           context.router.maybePop();
           mainNavIndex.value = MainTab.home;
@@ -102,6 +107,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
         // اللوحة. الخيار صريح لا افتراضي — بقية الشاشات تبقى على التخطيط
         // الجانبي الذي يصفه مرجع التصميم.
         centered: true,
+        artworkHeight: 187.5,
       );
     }
 

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../l10n/app_strings.dart';
 
 import '../../../../features/products/domain/entities/product.dart';
 import '../../tokens/app_colors.dart';
@@ -64,14 +65,14 @@ class AnimeProductRow extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 6),
-                ProductStockPill(stock: product.stock),
+                ProductStockPill.forProduct(product),
               ],
             ),
           ),
           const SizedBox(width: 10),
           trailing ??
               Text(
-                '${product.price.toStringAsFixed(0)} د.ع',
+                context.strings.p('priceIqd', {'amount': product.price.toStringAsFixed(0)}),
                 textDirection: TextDirection.ltr,
                 style: theme.textTheme.titleSmall?.copyWith(
                   fontFamily: 'Tajawal',

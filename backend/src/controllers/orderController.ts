@@ -34,12 +34,6 @@ export const orderController = {
     return ok(res, order);
   }) as RequestHandler,
 
-  cancel: (async (req, res) => {
-    const { id } = parse(orderIdParamSchema, req.params);
-    const order = await orderService.cancelOrder(req.auth!.id, id);
-    return ok(res, order, 'أُلغي الطلب');
-  }) as RequestHandler,
-
   /** تأكيد العميل استلام طلبه — ينقله إلى COMPLETED عبر مسار الحالة الموحّد. */
   confirmReceipt: (async (req, res) => {
     const { id } = parse(orderIdParamSchema, req.params);

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../tokens/app_colors.dart';
 import '../../tokens/app_dimens.dart';
 import '../../tokens/app_theme_colors.dart';
 import 'button_enums.dart';
@@ -41,13 +40,20 @@ class AnimePrimaryButton extends StatelessWidget {
     final effectiveHeight = height ?? AppDimens.buttonHeightLg;
     final radius = borderRadius ?? AppDimens.radiusLg;
 
+    // المعطَّل بألوان المظهر (Material 3: حاوية `onSurface` ١٢٪ وحبر ٣٨٪) لا
+    // بلونٍ ثابت واحد للمظهرين — كان `AppColors.onSurfaceDisabled` بنفسجياً
+    // رمادياً في الداكن والفاتح معاً فلا ينتمي لأيّهما.
+    final scheme = Theme.of(context).colorScheme;
+    final disabledFill = scheme.onSurface.withValues(alpha: 0.12);
+    final disabledInk = scheme.onSurface.withValues(alpha: 0.38);
+
     return SizedBox(
       width: expanded ? double.infinity : null,
       height: effectiveHeight,
       child: DecoratedBox(
         decoration: BoxDecoration(
           gradient: onPressed != null ? effectiveGradient : null,
-          color: onPressed == null ? AppColors.onSurfaceDisabled : null,
+          color: onPressed == null ? disabledFill : null,
           borderRadius: BorderRadius.circular(radius),
           boxShadow: glowEnabled && onPressed != null
               ? [
@@ -64,7 +70,9 @@ class AnimePrimaryButton extends StatelessWidget {
           onPressed: loading ? null : onPressed,
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.transparent,
+            disabledBackgroundColor: Colors.transparent,
             foregroundColor: Colors.white,
+            disabledForegroundColor: disabledInk,
             shadowColor: Colors.transparent,
             elevation: 0,
             padding: EdgeInsets.symmetric(horizontal: AppDimens.space7),

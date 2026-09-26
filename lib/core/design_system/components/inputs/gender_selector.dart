@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../l10n/app_strings.dart';
 import '../../../l10n/gender.dart';
 import '../../tokens/app_dimens.dart';
 import '../../tokens/app_theme_colors.dart';
@@ -29,7 +30,7 @@ class GenderSelector extends StatelessWidget {
     super.key,
     required this.value,
     required this.onChanged,
-    this.label = GenderedStrings.genderLabel,
+    this.label,
     this.errorText,
   });
 
@@ -41,7 +42,9 @@ class GenderSelector extends StatelessWidget {
   final AppGender? value;
 
   final ValueChanged<AppGender> onChanged;
-  final String label;
+
+  /// عنوان الحقل — `null` يعني «الجنس» بلغة الواجهة.
+  final String? label;
 
   /// رسالة التحقق — تظهر تحت البطاقتين عند الإرسال بلا اختيار.
   final String? errorText;
@@ -55,7 +58,7 @@ class GenderSelector extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          label,
+          label ?? context.strings('gender'),
           style: theme.textTheme.labelMedium?.copyWith(
             fontWeight: AppDimens.weightBold,
           ),
@@ -65,7 +68,7 @@ class GenderSelector extends StatelessWidget {
           children: [
             Expanded(
               child: _GenderCard(
-                label: GenderedStrings.male,
+                label: context.strings('genderMale'),
                 icon: Icons.male_rounded,
                 // الأزرق الدلالي (`info`) لا لونٌ مكتوب هنا.
                 accent: colors.info,
@@ -76,7 +79,7 @@ class GenderSelector extends StatelessWidget {
             SizedBox(width: AppDimens.space3),
             Expanded(
               child: _GenderCard(
-                label: GenderedStrings.female,
+                label: context.strings('genderFemale'),
                 icon: Icons.female_rounded,
                 // الأحمر الدلالي (`error`) — يُستعمل هنا كهوية لونية لا
                 // كإشارة خطأ؛ وهو اللون الأحمر الوحيد في النظام.

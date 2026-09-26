@@ -15,6 +15,8 @@ const CategoriesPage = lazy(() => import('./pages/CategoriesPage'))
 const BannersPage = lazy(() => import('./pages/BannersPage'))
 const DeliveryPage = lazy(() => import('./pages/DeliveryPage'))
 const CustomersPage = lazy(() => import('./pages/CustomersPage'))
+const CustomerDetailPage = lazy(() => import('./pages/CustomerDetailPage'))
+const AccountRequestsPage = lazy(() => import('./pages/AccountRequestsPage'))
 const BirthdaysPage = lazy(() => import('./pages/BirthdaysPage'))
 const PointsPage = lazy(() => import('./pages/PointsPage'))
 const NotificationsPage = lazy(() => import('./pages/NotificationsPage'))
@@ -47,6 +49,8 @@ function App() {
               <Route path="/governorates" element={<Navigate to="/delivery" replace />} />
               <Route path="/zones" element={<Navigate to="/delivery" replace />} />
               <Route path="/customers" element={<CustomersPage />} />
+              <Route path="/customers/:id" element={<CustomerDetailPage />} />
+              <Route path="/account-requests" element={<AccountRequestsPage />} />
               <Route path="/birthdays" element={<BirthdaysPage />} />
               <Route path="/points" element={<PointsPage />} />
               <Route path="/notifications" element={<NotificationsPage />} />

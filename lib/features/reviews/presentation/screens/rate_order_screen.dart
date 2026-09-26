@@ -1,4 +1,5 @@
 import 'package:auto_route/auto_route.dart';
+import '../../../../core/l10n/app_strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -26,7 +27,6 @@ class RateOrderScreen extends StatefulWidget {
 }
 
 class _RateOrderScreenState extends State<RateOrderScreen> {
-  Map<String, Review> _byProduct = {};
   bool _loading = true;
 
   @override
@@ -35,21 +35,24 @@ class _RateOrderScreenState extends State<RateOrderScreen> {
     _load();
   }
 
+  /// حالة كل منتج تُقرأ من `ReviewsCubit` — مصدرٌ واحد يحدّثه الإرسال نفسه.
+  ///
+  /// [CRITICAL] كانت الشاشة تجلب تقييم كل منتج على حدة في `initState` ثم
+  /// تنتظر نتيجة `push<bool>(WriteReviewRoute)` لتعيد الجلب. لكن شاشة الكتابة
+  /// تستبدل نفسها بشاشة التأكيد (`replace`)، و`auto_route` لا يُكمل وعد
+  /// الدفع إلا بإغلاقٍ حقيقي — فلم تكن النتيجة تصل قط، وبقي المنتج المقيَّم
+  /// يبدو قابلاً للتقييم حتى تُعاد الشاشة من جديد. المكعّب يُحمَّل بعد كل
+  /// إرسال، و`BlocBuilder` يرسم ما فيه.
   Future<void> _load() async {
-    final cubit = context.read<ReviewsCubit>();
-    final map = <String, Review>{};
-    for (final item in widget.order.items) {
-      final review = await cubit.reviewFor(
-        orderId: widget.order.id,
-        productId: item.product.id,
-      );
-      if (review != null) map[item.product.id] = review;
+    await context.read<ReviewsCubit>().load();
+    if (mounted) setState(() => _loading = false);
+  }
+
+  Review? _reviewOf(ReviewsState state, String productId) {
+    for (final review in state.reviews) {
+      if (review.productId == productId) return review;
     }
-    if (!mounted) return;
-    setState(() {
-      _byProduct = map;
-      _loading = false;
-    });
+    return null;
   }
 
   @override
@@ -65,7 +68,7 @@ class _RateOrderScreenState extends State<RateOrderScreen> {
           children: [
             OtakuScreenHeader(
               title: '⭐ ${context.g(GenderedStrings.rateOrderProducts)}',
-              subtitle: 'رأيك يساعد بقية العملاء يختارون بثقة',
+              subtitle: context.strings('rateOrderSubtitle'),
               artwork: 'assets/art/opt/a-i6.png',
               artworkSlot: VisualSlots.rateOrder,
               onBack: () => context.router.maybePop(),
@@ -73,37 +76,36 @@ class _RateOrderScreenState extends State<RateOrderScreen> {
             Expanded(
               child: _loading
                   ? const OtakuListSkeleton(count: 3, height: 140)
-                  : ListView(
-                      padding: const EdgeInsets.fromLTRB(18, 12, 18, 26),
-                      children: [
-                        for (final item in widget.order.items) ...[
-                          _ProductReviewCard(
-                            product: item.product,
-                            review: _byProduct[item.product.id],
-                            onTap: () async {
-                              final done = await context.router.push<bool>(
+                  : BlocBuilder<ReviewsCubit, ReviewsState>(
+                      builder: (context, state) => ListView(
+                        padding: const EdgeInsets.fromLTRB(18, 12, 18, 26),
+                        children: [
+                          for (final item in widget.order.items) ...[
+                            _ProductReviewCard(
+                              product: item.product,
+                              review: _reviewOf(state, item.product.id),
+                              onTap: () => context.router.push(
                                 WriteReviewRoute(
                                   orderId: widget.order.id,
                                   productId: item.product.id,
                                   productName: item.product.name,
                                 ),
-                              );
-                              if (done == true) _load();
-                            },
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                          ],
+                          const SizedBox(height: 4),
+                          Text(
+                            context.strings('oneReviewPerProductReviewed'),
+                            textAlign: TextAlign.center,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              fontSize: 11.5,
+                              height: 1.7,
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
                           ),
-                          const SizedBox(height: 12),
                         ],
-                        const SizedBox(height: 4),
-                        Text(
-                          'لكل منتج تقييم واحد، ويُراجَع قبل نشره.',
-                          textAlign: TextAlign.center,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            fontSize: 11.5,
-                            height: 1.7,
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
             ),
           ],
@@ -173,7 +175,7 @@ class _ProductReviewCard extends StatelessWidget {
                     const SizedBox(height: 7),
                     if (review == null)
                       OtakuStatusPill(
-                        label: 'لم يُقيَّم بعد',
+                        label: context.strings('notRatedYet'),
                         color: theme.colorScheme.onSurface,
                         showDot: false,
                       )
@@ -206,7 +208,7 @@ class _ProductReviewCard extends StatelessWidget {
             AnimePrimaryButton(
               label: review == null
                   ? context.g(GenderedStrings.rateProduct)
-                  : 'عدّل وأعد الإرسال',
+                  : context.strings('editAndResend'),
               onPressed: onTap,
               height: AppDimens.buttonHeightMd,
             )
@@ -222,8 +224,8 @@ class _ProductReviewCard extends StatelessWidget {
               ),
               child: Text(
                 review!.status == ReviewStatus.approved
-                    ? 'تقييمك منشور — شكراً 💜'
-                    : 'تقييمك قيد المراجعة',
+                    ? context.strings('reviewPublishedThanks')
+                    : context.strings('reviewUnderReview'),
                 style: theme.textTheme.labelLarge?.copyWith(
                   fontSize: 13,
                   fontWeight: AppDimens.weightBold,

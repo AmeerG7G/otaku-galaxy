@@ -1,4 +1,8 @@
 import 'package:auto_route/auto_route.dart';
+import '../../../../core/constants/validation_rules.dart';
+import '../../../../core/l10n/app_strings.dart';
+import '../../../../core/utils/iraqi_phone.dart';
+import '../../../../core/l10n/locale_refetch.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -21,7 +25,7 @@ class OrderDataScreen extends StatefulWidget {
   State<OrderDataScreen> createState() => _OrderDataScreenState();
 }
 
-class _OrderDataScreenState extends State<OrderDataScreen> {
+class _OrderDataScreenState extends State<OrderDataScreen> with LocaleRefetch {
   final _addressController = TextEditingController();
   final _phoneController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
@@ -68,6 +72,9 @@ class _OrderDataScreenState extends State<OrderDataScreen> {
   bool _loadingGovernorates = false;
   String? _governoratesError;
 
+  /// نطاق أسعار المناطق لكل محافظة (min, max) — يُملأ عند تحميل المحافظات.
+  final Map<String, (double, double)> _governorateZonePriceRange = {};
+
   @override
   void initState() {
     super.initState();
@@ -77,6 +84,10 @@ class _OrderDataScreenState extends State<OrderDataScreen> {
       if (mounted) setState(() {});
     });
   }
+
+  /// أسماء المحافظات والمناطق تأتي مصرَّفة من الخادم — تُعاد بلغة الواجهة.
+  @override
+  void onLanguageChanged() => _loadGovernorates();
 
   @override
   void dispose() {
@@ -93,7 +104,29 @@ class _OrderDataScreenState extends State<OrderDataScreen> {
     try {
       final items = await context.read<FetchGovernoratesUsecase>().call();
       if (!mounted) return;
-      setState(() => _governorates = items);
+
+      // جلب مناطق كل محافظة لحساب نطاق السعر — تُنفَّذ بالتوازي.
+      final usecase = context.read<FetchGovernoratesUsecase>();
+      final zoneFutures = items.map((g) => usecase.zones(g.id));
+      final zonesLists = await Future.wait(zoneFutures);
+
+      final priceRanges = <String, (double, double)>{};
+      for (var i = 0; i < items.length; i++) {
+        final zones = zonesLists[i];
+        if (zones.isNotEmpty) {
+          final fees = zones.map((z) => z.deliveryFee).toList();
+          priceRanges[items[i].id] = (
+            fees.reduce((a, b) => a < b ? a : b),
+            fees.reduce((a, b) => a > b ? a : b),
+          );
+        }
+      }
+
+      setState(() {
+        _governorates = items;
+        _governorateZonePriceRange.clear();
+        _governorateZonePriceRange.addAll(priceRanges);
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() => _governoratesError = e.toString());
@@ -150,7 +183,12 @@ class _OrderDataScreenState extends State<OrderDataScreen> {
       province: _province ?? '',
       deliveryCost: effectiveDelivery,
       fullAddress: _addressController.text.trim(),
-      phone: _phoneController.text,
+      // E.164 مطبَّعاً (يشمل الأرقام الشرقية) — ما يخزّنه الخادم ويعرضه.
+      phone:
+          normalizeIraqiPhone(
+            iraqiPhoneFromLocalDigits(_phoneController.text.trim()),
+          ) ??
+          iraqiPhoneFromLocalDigits(_phoneController.text.trim()),
       items: items,
       discount: _discountFor(
         items.fold<double>(0, (sum, item) => sum + item.lineTotal),
@@ -177,8 +215,8 @@ class _OrderDataScreenState extends State<OrderDataScreen> {
           child: Column(
             children: [
               OtakuScreenHeader(
-                title: 'بيانات الطلب',
-                subtitle: 'الخطوة ١ من ٢',
+                title: context.strings('orderData'),
+                subtitle: context.strings('stepOneOfTwo'),
                 onBack: () => context.router.maybePop(),
               ),
               Expanded(
@@ -356,20 +394,29 @@ class _OrderDataScreenState extends State<OrderDataScreen> {
       children: [
         // ── معلومات المستلم ──
         _v2Card(
-          title: 'معلومات المستلم',
+          title: context.strings('recipientInfo'),
           children: [
             AnimeTextField(
               controller: _phoneController,
-              label: 'رقم الهاتف',
-              hint: 'مثال: 07xxxxxxxx',
+              label: context.strings('phoneNumber'),
+              hint: context.strings('phoneHintExample'),
               prefixIcon: Icons.phone_outlined,
               keyboardType: TextInputType.phone,
+              // §49.2: البادئة `07` ثابتة في الحقل والمستخدم يكتب التسعة التي تليها؛
+              // المُنسّق يُسقط `+964`/`00964`/`07` مما يُلصق بدل أن يقصّه.
+              prefixText: kIraqiLocalPrefix,
+              inputFormatters: const [IraqiLocalDigitsFormatter()],
+              textDirection: TextDirection.ltr,
+              textInputAction: TextInputAction.next,
+              maxLength: kIraqiLocalDigits,
               validator: (value) {
                 if (value == null || value.trim().isEmpty) {
-                  return 'يرجى إدخال رقم الهاتف';
+                  return context.strings('phoneRequired');
                 }
-                if (value.trim().length < 10) {
-                  return 'رقم الهاتف غير صحيح';
+                if (!isValidIraqiPhone(
+                  iraqiPhoneFromLocalDigits(value.trim()),
+                )) {
+                  return context.strings('phoneInvalid');
                 }
                 return null;
               },
@@ -381,17 +428,17 @@ class _OrderDataScreenState extends State<OrderDataScreen> {
 
         // ── عنوان التوصيل ──
         _v2Card(
-          title: 'عنوان التوصيل',
+          title: context.strings('deliveryAddress'),
           children: [
             _pickerRow(
-              label: 'المحافظة',
+              label: context.strings('province'),
               value: _province,
-              placeholder: 'اختر المحافظة',
+              placeholder: context.strings('chooseProvince'),
               trailingNote: !_hasZones && _deliveryCost != null
                   ? formatPrice(_deliveryCost!)
                   : null,
               errorText: _submitted && _governorateMissing
-                  ? 'يرجى اختيار المحافظة'
+                  ? context.strings('provinceRequired')
                   : null,
               onTap: _showProvincePicker,
             ),
@@ -411,14 +458,16 @@ class _OrderDataScreenState extends State<OrderDataScreen> {
             if (_hasZones || _loadingZones) ...[
               const SizedBox(height: 16),
               _pickerRow(
-                label: 'منطقة التوصيل',
+                label: context.strings('deliveryZone'),
                 value: _selectedZone?.name,
-                placeholder: _loadingZones ? 'جاري التحميل…' : 'اختر المنطقة',
+                placeholder: _loadingZones
+                    ? context.strings('loading')
+                    : context.strings('chooseZone'),
                 trailingNote: _selectedZone != null
                     ? formatPrice(_selectedZone!.deliveryFee)
                     : null,
                 errorText: _submitted && _zoneMissing
-                    ? 'يرجى تحديد موقع التوصيل داخل أو خارج قضاء النجف'
+                    ? context.strings('zoneRequired')
                     : null,
                 onTap: () {
                   if (!_loadingZones) _showZonePicker();
@@ -430,16 +479,19 @@ class _OrderDataScreenState extends State<OrderDataScreen> {
 
             AnimeTextField(
               controller: _addressController,
-              label: 'العنوان الكامل',
-              hint: 'المنطقة، الشارع، أقرب نقطة دالة',
+              label: context.strings('fullAddress'),
+              hint: context.strings('fullAddressHint'),
               prefixIcon: Icons.home_outlined,
               maxLines: 3,
+              // حدود الخادم نفسها (`fullAddress`: 5–300) — كان ١٠ هنا فيُرفض
+              // عنوانٌ قصير يقبله الخادم، ولا حدَّ أعلى فيُرسل ما سيُرفض.
+              maxLength: kAddressMaxLength,
               validator: (value) {
                 if (value == null || value.trim().isEmpty) {
-                  return 'يرجى إدخال العنوان الكامل';
+                  return context.strings('fullAddressRequired');
                 }
-                if (value.trim().length < 10) {
-                  return 'العنوان قصير جداً';
+                if (value.trim().length < kAddressMinLength) {
+                  return context.strings('addressTooShort');
                 }
                 return null;
               },
@@ -464,8 +516,12 @@ class _OrderDataScreenState extends State<OrderDataScreen> {
                     Expanded(
                       child: Text(
                         _selectedZone != null
-                            ? 'التوصيل إلى ${_selectedZone!.name}'
-                            : 'التوصيل إلى $_province',
+                            ? context.strings.p('deliveringTo', {
+                                'place': _selectedZone!.name,
+                              })
+                            : context.strings.p('deliveringTo', {
+                                'place': '$_province',
+                              }),
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           fontSize: 12.5,
                           fontWeight: AppDimens.weightSemiBold,
@@ -506,7 +562,7 @@ class _OrderDataScreenState extends State<OrderDataScreen> {
         Padding(
           padding: const EdgeInsetsDirectional.only(start: 6, bottom: 10),
           child: Text(
-            'ملخص الطلب',
+            context.strings('orderSummary'),
             style: Theme.of(context).textTheme.labelMedium?.copyWith(
               fontSize: 12,
               letterSpacing: 0.4,
@@ -563,7 +619,9 @@ class _OrderDataScreenState extends State<OrderDataScreen> {
                                   ),
                             ),
                             Text(
-                              'الكمية: ${item.quantity}',
+                              context.strings.p('quantityCount', {
+                                'count': '${item.quantity}',
+                              }),
                               style: Theme.of(context).textTheme.labelSmall
                                   ?.copyWith(
                                     color: Theme.of(
@@ -585,43 +643,46 @@ class _OrderDataScreenState extends State<OrderDataScreen> {
                   ),
                 ),
               Divider(color: Theme.of(context).colorScheme.outlineVariant),
-              _buildPriceRow('سعر المنتجات', formatPrice(subtotal)),
               _buildPriceRow(
-                'التوصيل',
+                context.strings('productsPrice'),
+                formatPrice(subtotal),
+              ),
+              _buildPriceRow(
+                context.strings('delivery'),
                 _effectiveDeliveryCost == null
                     ? (_hasZones
-                          ? 'يُحدد بعد اختيار المنطقة'
-                          : 'يُحدد بعد اختيار المحافظة')
+                          ? context.strings('deliverySetAfterZone')
+                          : context.strings('deliverySetAfterProvince'))
                     : formatPrice(deliveryCost),
               ),
               if (deliveryDiscount > 0)
                 _buildPriceRow(
-                  'خصم التوصيل',
+                  context.strings('deliveryDiscount'),
                   '-${formatPrice(deliveryDiscount)}',
                   valueColor: colors.success,
                 ),
               if (deliveryCost > 0 && deliveryDiscount >= deliveryCost)
                 _buildPriceRow(
                   '',
-                  'توصيل مجاني 🎉',
+                  context.strings('freeDelivery'),
                   valueColor: colors.success,
                 ),
               if (_discountFor(subtotal) > 0)
                 _buildPriceRow(
-                  'خصم عيد الميلاد',
+                  context.strings('birthdayDiscount'),
                   '-${formatPrice(_discountFor(subtotal))}',
                   valueColor: colors.success,
                 ),
               Divider(color: Theme.of(context).colorScheme.outlineVariant),
               _buildPriceRow(
-                'المجموع النهائي',
+                context.strings('finalTotal'),
                 formatPrice(total),
                 isTotal: true,
                 valueColor: AppColors.secondary,
               ),
               const SizedBox(height: 10),
               Text(
-                'الدفع عند الاستلام — لا يتطلب دفعاً إلكترونياً.',
+                context.strings('codNoOnlinePayment'),
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
                   height: 1.6,
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -693,7 +754,7 @@ class _OrderDataScreenState extends State<OrderDataScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'المجموع',
+                    context.strings('totalShort'),
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
@@ -713,7 +774,7 @@ class _OrderDataScreenState extends State<OrderDataScreen> {
               const SizedBox(width: AppDimens.space5),
               Expanded(
                 child: AnimePrimaryButton(
-                  label: 'مراجعة الطلب',
+                  label: context.strings('reviewOrder'),
                   onPressed: _continue,
                   height: AppDimens.buttonHeightXl,
                 ),
@@ -846,7 +907,7 @@ class _OrderDataScreenState extends State<OrderDataScreen> {
   /// اختيار المحافظة — كل محافظة تعرض سعر توصيلها بوضوح.
   void _showProvincePicker() {
     _showV2Sheet(
-      title: 'اختر المحافظة',
+      title: context.strings('chooseProvince'),
       child: _loadingGovernorates
           ? const Padding(
               padding: EdgeInsets.all(40),
@@ -854,16 +915,16 @@ class _OrderDataScreenState extends State<OrderDataScreen> {
             )
           : _governoratesError != null
           ? AnimeErrorState(
-              message: 'تعذّر تحميل المحافظات — أعد المحاولة',
+              message: context.strings('provincesLoadFailed'),
               onAction: () {
                 Navigator.of(context).pop();
                 _loadGovernorates();
               },
             )
           : (_governorates == null || _governorates!.isEmpty)
-          ? const AnimeEmptyState(
-              title: 'لا توجد محافظات',
-              subtitle: 'المحافظات غير متاحة حالياً',
+          ? AnimeEmptyState(
+              title: context.strings('noProvincesTitle'),
+              subtitle: context.strings('noProvincesBody'),
               icon: Icons.location_off_outlined,
             )
           : ListView.builder(
@@ -872,9 +933,19 @@ class _OrderDataScreenState extends State<OrderDataScreen> {
               itemCount: _governorates!.length,
               itemBuilder: (context, index) {
                 final governorate = _governorates![index];
+                final zoneRange = _governorateZonePriceRange[governorate.id];
+                String trailing;
+                if (zoneRange != null) {
+                  // صيغة السعر الموحّدة (`priceIqd`) لطرفي المدى — لا نصّ
+                  // عربي مضمَّن ولا وحدة قبل المبلغ.
+                  trailing =
+                      '${formatPrice(zoneRange.$1)} - ${formatPrice(zoneRange.$2)}';
+                } else {
+                  trailing = formatPrice(governorate.deliveryFee);
+                }
                 return _sheetOption(
                   label: governorate.name,
-                  trailing: formatPrice(governorate.deliveryFee),
+                  trailing: trailing,
                   selected: _governorateId == governorate.id,
                   onTap: () {
                     setState(() {
@@ -896,7 +967,7 @@ class _OrderDataScreenState extends State<OrderDataScreen> {
   /// كل منطقة تعرض رسمها الحقيقي القادم من الخادم.
   void _showZonePicker() {
     _showV2Sheet(
-      title: 'منطقة التوصيل',
+      title: context.strings('deliveryZone'),
       child: ListView(
         shrinkWrap: true,
         padding: const EdgeInsets.only(bottom: 8),
@@ -920,7 +991,7 @@ class _OrderDataScreenState extends State<OrderDataScreen> {
   }
 
   String formatPrice(double price) {
-    return '${price.toStringAsFixed(0)} د.ع';
+    return context.strings.p('priceIqd', {'amount': price.toStringAsFixed(0)});
   }
 }
 
@@ -948,7 +1019,7 @@ class _ZonesRetryNotice extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'تعذّر تحميل مناطق التوصيل لهذه المحافظة.',
+              context.strings('zonesLoadFailed'),
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
                 fontSize: 12,
                 height: 1.6,
@@ -956,7 +1027,7 @@ class _ZonesRetryNotice extends StatelessWidget {
               ),
             ),
           ),
-          AnimeTextButton(label: 'إعادة المحاولة', onPressed: onRetry),
+          AnimeTextButton(label: context.strings('retry'), onPressed: onRetry),
         ],
       ),
     );

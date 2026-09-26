@@ -79,4 +79,8 @@ abstract class PointsRepository {
   Future<PointsSummary> fetchSummary();
 
   Future<LevelReward> claimReward(String levelKey);
+
+  /// السلّم وحده — عامّ بلا جلسة. تستعمله استمارة نسيان كلمة المرور
+  /// ليختار الزبون مستواه من قائمةٍ لا يكتبه.
+  Future<List<OtakuLevel>> fetchLevels();
 }

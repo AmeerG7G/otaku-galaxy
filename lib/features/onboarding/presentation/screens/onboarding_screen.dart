@@ -1,13 +1,16 @@
 import 'package:auto_route/auto_route.dart';
+import '../../../../core/l10n/app_strings.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/design_system/design_system.dart';
 import '../../../../core/di/injection_container.dart';
 import '../../../../core/router/app_router.dart';
+import '../../../settings/data/personalize_storage.dart';
 import '../../data/onboarding_storage.dart';
 import '../widgets/onboarding_slides.dart';
 
-const _ctas = ['لنبدأ', 'متابعة', 'ابدأ التسوق'];
+/// مفاتيحُ لا نصوص: القائمة ثابتة على مستوى الملف فلا سياق لها.
+const _ctaKeys = ['ctaLetsStart', 'ctaContinue', 'startShopping'];
 
 /// غسلة لونية خلف كل شريحة — مركزها ولونها من `ob.wash` في مصدر التصميم.
 const _washes = [
@@ -56,13 +59,22 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     super.dispose();
   }
 
-  /// إنهاء التعريف ودخول المتجر مباشرة (سلة المسار: «ابدأ التسوق»).
+  /// إنهاء التعريف — ثم اختيار اللغة والمظهر مرة واحدة قبل المتجر.
+  ///
+  /// [CRITICAL] الزائر يرى شاشة التخصيص (العربية / كوردي) هنا لا في شاشة
+  /// الدخول وحدها: كانت هذه الدالة تدخل المتجر مباشرةً، فلا يقع اختيار
+  /// اللغة إلا على من فتح «تسجيل الدخول» ثم «تصفّح كزائر». نفس القاعدة التي
+  /// تطبّقها شاشة الدخول: مرة واحدة (`PersonalizeStorage`)، ثم الإعدادات.
   Future<void> _finish() async {
     if (_finishing) return;
     _finishing = true;
     await sl<OnboardingStorage>().markSeen();
     if (!mounted) return;
-    await context.router.replace(const MainNavigationRoute());
+    await context.router.replace(
+      sl<PersonalizeStorage>().isDone
+          ? const MainNavigationRoute()
+          : const PersonalizeRoute(),
+    );
   }
 
   void _next() {
@@ -142,7 +154,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           const SizedBox(width: 10),
           Flexible(
             child: Text(
-              'مجرة الأوتاكو',
+              context.strings('brandName'),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.titleSmall?.copyWith(
@@ -187,7 +199,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           ),
           const SizedBox(height: 16),
           AnimePrimaryButton(
-            label: _ctas[_index],
+            label: context.strings(_ctaKeys[_index]),
             onPressed: _next,
             height: AppDimens.buttonHeightXl,
             borderRadius: AppDimens.radiusMd,

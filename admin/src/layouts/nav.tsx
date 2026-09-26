@@ -9,6 +9,7 @@ import {
   GiftOutlined,
   HomeOutlined,
   PictureOutlined,
+  SafetyCertificateOutlined,
   SettingOutlined,
   ShoppingCartOutlined,
   SmileOutlined,
@@ -53,6 +54,7 @@ export const NAV_ITEMS: MenuProps['items'] = [
     label: 'الزبائن',
     children: [
       { key: '/customers', icon: <TeamOutlined />, label: 'الزبائن' },
+      { key: '/account-requests', icon: <SafetyCertificateOutlined />, label: 'طلبات الحساب' },
       { key: '/points', icon: <StarOutlined />, label: 'نقاط المجرّة' },
       { key: '/birthdays', icon: <GiftOutlined />, label: 'أعياد الميلاد' },
       { key: '/reviews', icon: <CommentOutlined />, label: 'التقييمات' },

@@ -1,5 +1,28 @@
 import '../../../../core/network/media_url.dart';
 
+/// حالة توفّر المنتج كما يراها الزبون.
+///
+/// [CRITICAL] المخزون هو مصدر الحقيقة، لا التاريخ. `restockAt` **موعد
+/// متوقَّع** لا وعدٌ ولا مؤقّت: إن وصلت بضاعة قبله صار المنتج متوفراً فوراً
+/// وسقط الموعد من العرض، وإن مضى الموعد ولم تصل بضاعة بقي المنتج غير متوفر.
+/// لذلك يُقرأ `stock` أولاً دائماً، ولا يُستشار التاريخ إلا حين يكون
+/// المخزون صفراً.
+enum ProductAvailability {
+  /// مخزون موجب — يُضاف إلى السلة.
+  available,
+
+  /// مخزون صفر **مع** موعد متوقَّع — «قريباً يتوفر».
+  comingSoon,
+
+  /// مخزون صفر بلا موعد — «غير متوفر».
+  unavailable;
+
+  bool get canAddToCart => this == ProductAvailability.available;
+
+  /// هل يُعرض إجراء «أخبرني عند توفره»؟ في الحالتين غير المتوفرتين.
+  bool get showsRestockAction => this != ProductAvailability.available;
+}
+
 class Product {
   const Product({
     required this.id,
@@ -23,6 +46,7 @@ class Product {
     this.hasDeliveryPromo = false,
     this.deliveryPromoAmount = 0,
     this.franchiseIds = const [],
+    this.restockAt,
   });
 
   final String id;
@@ -67,6 +91,12 @@ class Product {
   /// الأنمي/الامتيازات المرتبطة بالمنتج.
   final List<String> franchiseIds;
 
+  /// الموعد المتوقَّع لعودة التوفر — يضبطه المسؤول، و`null` يعني «بلا موعد».
+  ///
+  /// إرشاديٌّ محض: لا يُغيّر المخزون ولا يفتح الشراء ولا يُشغّل إشعاراً.
+  /// الإشعار يقع حين يصير المخزون موجباً فعلاً (`restockService`).
+  final DateTime? restockAt;
+
   /// هل يملك المنتج خصماً حقيقياً مدعوماً ببيانات الخادم؟
   bool get hasDiscount =>
       previousPrice != null &&
@@ -79,6 +109,27 @@ class Product {
 
   /// الكمية المخفية عن الزبون؛ لا تظهر إلا عند انخفاض المخزون إلى 3 قطع أو أقل.
   bool get lowStock => inStock && stock <= 3;
+
+  /// [CRITICAL] الحساب **الوحيد** لحالة التوفر في التطبيق.
+  ///
+  /// كل شاشة تقرأ هذا ولا تعيد اشتقاقه من `stock` و`restockAt` بنفسها:
+  /// شرطان متطابقان مكتوبان في عشر شاشات يتباعدان أول مرة يُعدَّل أحدها،
+  /// فتقول البطاقة «قريباً» وتقول التفاصيل «غير متوفر» عن المنتج نفسه.
+  ProductAvailability get availability {
+    if (inStock) return ProductAvailability.available;
+    return restockAt == null
+        ? ProductAvailability.unavailable
+        : ProductAvailability.comingSoon;
+  }
+
+  /// الموعد المعروض للزبون — `null` ما دام المنتج متوفراً.
+  ///
+  /// [CRITICAL] المتوفر لا يحمل موعداً حتى لو بقيت القيمة في القاعدة: عرضُ
+  /// «متوقع التوفر ١٥/١٠» على منتجٍ يمكن شراؤه الآن تناقضٌ صريح. المسؤول قد
+  /// يستلم البضاعة قبل موعده ولا يمسح التاريخ، وهذه الحالة هي القاعدة لا
+  /// الاستثناء.
+  DateTime? get displayRestockAt =>
+      availability == ProductAvailability.comingSoon ? restockAt : null;
 
   factory Product.fromJson(Map<String, dynamic> json) {
     return Product(
@@ -108,6 +159,9 @@ class Product {
       franchiseIds:
           (json['franchiseIds'] as List?)?.map((e) => e.toString()).toList() ??
           const [],
+      // الخادم يرسله ISO-8601 أو `null`. نصٌّ معطوب يُقرأ `null` لا يرمي:
+      // موعدٌ إرشادي لا يستحق إسقاط صفحة المنتج.
+      restockAt: DateTime.tryParse(json['restockAt']?.toString() ?? '')?.toLocal(),
     );
   }
 
@@ -133,6 +187,7 @@ class Product {
       discountPercent: discountPercent,
       hasDeliveryPromo: hasDeliveryPromo,
       deliveryPromoAmount: deliveryPromoAmount,
+      restockAt: restockAt,
       franchiseIds: franchiseIds,
     );
   }

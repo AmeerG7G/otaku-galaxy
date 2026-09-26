@@ -1,5 +1,9 @@
 import 'package:auto_route/auto_route.dart';
+import '../../../../core/l10n/app_strings.dart';
+import '../../../../core/l10n/locale_refetch.dart';
 import 'package:flutter/material.dart';
+
+import '../../../../core/utils/request_sequence.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/design_system/design_system.dart';
@@ -27,7 +31,7 @@ class SearchScreen extends StatefulWidget {
   State<SearchScreen> createState() => _SearchScreenState();
 }
 
-class _SearchScreenState extends State<SearchScreen> {
+class _SearchScreenState extends State<SearchScreen> with LocaleRefetch {
   final _controller = TextEditingController();
 
   /// آخر عمليات البحث — تُحمَّل من التخزين المحلي وتبقى بعد إغلاق التطبيق.
@@ -36,14 +40,21 @@ class _SearchScreenState extends State<SearchScreen> {
   bool _searched = false;
   bool _loading = false;
 
+  /// فشل آخر طلب — يُعرض بدل النتائج مع إعادة محاولة؛ `null` ما دام سليماً.
+  String? _error;
+
   /// اقتراحات ثابتة تساعد الزائر على البدء — ليست بيانات وهمية لمنتجات.
-  static const _suggestions = [
-    'تيشيرت',
-    'هودي',
-    'مجسمات',
-    'حقيبة',
-    'ملصقات',
-    'إكسسوارات',
+  ///
+  /// مفاتيحُ لا نصوص: الرقاقة تعرض النصّ **وترسله استعلاماً** في آنٍ واحد،
+  /// فلو بقي النصّ محفوراً هنا لبقي عربياً في واجهةٍ كردية. المفتاح يُصرَّف
+  /// عند العرض، والقيمة العربية اليوم هي القيمة نفسها حرفاً بحرف.
+  static const _suggestionKeys = [
+    'searchSuggestionTshirt',
+    'searchSuggestionHoodie',
+    'searchSuggestionFigures',
+    'searchSuggestionBag',
+    'searchSuggestionStickers',
+    'searchSuggestionAccessories',
   ];
 
   @override
@@ -57,18 +68,33 @@ class _SearchScreenState extends State<SearchScreen> {
     }
   }
 
+  /// نتائج البحث مصرَّفة خادمياً — تُعاد للاستعلام الحالي بلغة الواجهة.
+  @override
+  void onLanguageChanged() {
+    final query = _controller.text.trim();
+    if (query.isNotEmpty) _search(query);
+  }
+
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
   }
 
+  /// أحدث استعلام — نتائج استعلامٍ سابق تصل متأخّرةً تُهمَل (انظر [RequestSequence]).
+  final _requests = RequestSequence();
+
   Future<void> _search(String query) async {
+    // [CRITICAL] الرقم يُلتقط قبل أي `await`: المستخدم يكتب «ناروتو» ثم
+    // «لوفي» قبل وصول الأولى؛ بلا هذا كان ردّ «ناروتو» يصل متأخّراً ويطمس
+    // نتائج «لوفي» — قائمةٌ لا تطابق ما في حقل البحث.
+    final token = _requests.next();
     final trimmed = query.trim();
     if (trimmed.isEmpty) {
       setState(() {
         _results = [];
         _searched = false;
+        _error = null;
       });
       return;
     }
@@ -79,17 +105,30 @@ class _SearchScreenState extends State<SearchScreen> {
     setState(() {
       _searched = true;
       _loading = true;
+      _error = null;
     });
     // يُحفظ على الجهاز فوراً ليبقى بعد إغلاق الشاشة أو التطبيق.
     final recent = await sl<SearchHistoryStorage>().add(trimmed);
     if (mounted) setState(() => _recent = recent);
 
-    final results = await searchProducts(trimmed);
-    if (!mounted) return;
-    setState(() {
-      _results = results.items;
-      _loading = false;
-    });
+    // [CRITICAL] كل مسارٍ يُخرج من التحميل. كان الفشل بلا مسار: استثناءٌ من
+    // الشبكة يترك `_loading = true` فيدور المؤشّر إلى الأبد بلا رسالة ولا
+    // إعادة محاولة. والفشل، كالنجاح، يُهمَل إن تجاوزه طلبٌ أحدث: لا يطمس
+    // نتائج «لوفي» فشلُ «ناروتو» المتأخّر.
+    try {
+      final results = await searchProducts(trimmed);
+      if (!mounted || !_requests.isCurrent(token)) return;
+      setState(() {
+        _results = results.items;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted || !_requests.isCurrent(token)) return;
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
   }
 
   void _pick(String term) {
@@ -137,7 +176,7 @@ class _SearchScreenState extends State<SearchScreen> {
               style: theme.textTheme.bodyMedium?.copyWith(fontSize: 14),
               decoration: InputDecoration(
                 isDense: true,
-                hintText: 'ابحث عن منتج…',
+                hintText: context.strings('searchHint'),
                 hintStyle: theme.textTheme.bodyMedium?.copyWith(
                   fontSize: 14,
                   color: theme.colorScheme.onSurfaceVariant,
@@ -194,6 +233,9 @@ class _SearchScreenState extends State<SearchScreen> {
   Widget _buildBody() {
     if (!_searched) return _buildIdleState();
     if (_loading) return _buildSearchingState();
+    if (_error != null) {
+      return AnimeErrorState(message: _error!, onAction: () => _search(_controller.text));
+    }
     if (_results.isEmpty) return _buildNoResults();
     return _buildResults();
   }
@@ -208,12 +250,12 @@ class _SearchScreenState extends State<SearchScreen> {
             children: [
               Expanded(
                 child: OtakuGroupLabel(
-                  label: 'عمليات البحث الأخيرة',
+                  label: context.strings('recentSearches'),
                   padding: const EdgeInsets.symmetric(vertical: 8),
                 ),
               ),
               AnimeTextButton(
-                label: 'مسح الكل',
+                label: context.strings('clearAll'),
                 onPressed: () async {
                   await sl<SearchHistoryStorage>().clear();
                   if (mounted) setState(() => _recent = const []);
@@ -236,15 +278,15 @@ class _SearchScreenState extends State<SearchScreen> {
           ),
           const SizedBox(height: 22),
         ],
-        const OtakuGroupLabel(
-          label: 'مقترحة لك',
+        OtakuGroupLabel(
+          label: context.strings('suggestedForYou'),
           padding: EdgeInsets.only(bottom: 11),
         ),
         Wrap(
           spacing: 9,
           runSpacing: 9,
           children: [
-            for (final term in _suggestions)
+            for (final term in _suggestionKeys.map(context.strings.call))
               AnimeChoiceChip(
                 label: term,
                 selected: false,
@@ -254,7 +296,7 @@ class _SearchScreenState extends State<SearchScreen> {
         ),
         // لم تعد `const`: النصّ يُصرَّف بجنس صاحب الحساب فيُقرأ من السياق.
         OtakuEditorialPanel(
-          title: 'ابحث عمّا يخطر ببالك',
+          title: context.strings('searchIdleTitle'),
           body: context.g(GenderedStrings.searchHintBody),
           artwork: 'assets/art/a-l-detective.png',
           artworkSlot: VisualSlots.searchHeader,
@@ -282,7 +324,7 @@ class _SearchScreenState extends State<SearchScreen> {
         ),
         const SizedBox(height: 12),
         Text(
-          'نبحث في المجرّة…',
+          context.strings('searchingInGalaxy'),
           style: theme.textTheme.bodyMedium?.copyWith(
             fontSize: 13,
             color: theme.colorScheme.onSurfaceVariant,
@@ -303,7 +345,7 @@ class _SearchScreenState extends State<SearchScreen> {
           return Padding(
             padding: const EdgeInsets.only(bottom: 7),
             child: Text(
-              '${_results.length} نتيجة',
+              context.strings.p('resultsCount', {'count': '${_results.length}'}),
               style: theme.textTheme.bodySmall?.copyWith(
                 fontSize: 12.5,
                 color: theme.colorScheme.onSurfaceVariant,
@@ -323,15 +365,18 @@ class _SearchScreenState extends State<SearchScreen> {
 
   Widget _buildNoResults() {
     return AnimeEmptyState(
-      title: 'لا توجد نتائج',
-      subtitle: 'جرّب كلمة أقصر أو تصفّح الأقسام.',
+      title: context.strings('noResultsTitle'),
+      subtitle: context.strings('noResultsBody'),
       artwork: 'assets/art/opt/a-i1.png',
       artworkSlot: VisualSlots.emptySearch,
-      actionLabel: 'تصفّح الأقسام',
+      actionLabel: context.strings('browseCategories'),
       onAction: () {
         mainNavIndex.value = MainTab.categories;
         context.router.popUntilRoot();
       },
+      // نمط السلة الفارغة: الرسم فوق، ثم النصّ، ثم زرّ «تصفّح الأقسام» —
+      // كلٌّ في وسط اللوحة لا في جهة البداية.
+      centered: true,
     );
   }
 }

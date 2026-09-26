@@ -147,13 +147,21 @@ void main() {
     test('[CRITICAL] لكل مفتاح عربي ترجمةٌ كردية — لا مفتاح ناقص', () {
       // المفتاح الناقص يسقط بهدوء إلى العربية، فتظهر الشاشة نصفَ مترجمة
       // بلا أي خطأ يُنبّه.
+      // [CRITICAL] المقيس ما تُرجم فعلاً (`translatedKeys`) لا كل المفاتيح.
+      // بعد استخراج النصوص من الودجات صارت مفاتيحُ كثيرة موجودةً وتنتظر
+      // ترجمة؛ عدُّها «ناقصة» هنا يخلط عملين: الاستخراج والترجمة. اكتمالُ
+      // الترجمة يُتابَع في `localization_corpus_test.dart` برقمٍ صريح.
       final arabic = AppStrings.arabic;
       final kurdish = AppStrings.kurdish;
-      for (final key in AppStrings.keys) {
+      for (final key in AppStrings.translatedKeys) {
+        // المفاتيح المعلَنة بأنها لا تتغيّر بتغيّر اللغة (وحدة العملة،
+        // الرموز، الفاصلة، تركيبُ متغيّرين) تطابقُها مقصود — انظر
+        // `AppStrings.localeInvariantKeys`.
+        if (AppStrings.localeInvariantKeys.contains(key)) continue;
         expect(
           kurdish(key),
           isNot(arabic(key)),
-          reason: 'المفتاح «$key» بلا ترجمة كردية — يعود إلى العربية',
+          reason: 'المفتاح «$key» مُدرَج مترجَماً لكنه نسخةٌ من العربية',
         );
       }
     });

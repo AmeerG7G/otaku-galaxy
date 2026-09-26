@@ -4,12 +4,15 @@ import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../../core/design_system/design_system.dart';
 import '../../../../core/di/injection_container.dart';
+import '../../../../core/l10n/app_strings.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../auth/presentation/cubit/auth_cubit.dart';
 import '../../../onboarding/data/onboarding_storage.dart';
 import '../../../settings/data/store_settings_repository.dart';
 import '../../../visuals/data/visuals_repository.dart';
+import '../../domain/startup_progress.dart';
 import '../widgets/splash_animations.dart';
 import '../widgets/splash_backdrop.dart';
 import '../widgets/splash_brand.dart';
@@ -44,14 +47,25 @@ class _SplashScreenState extends State<SplashScreen>
     /// ١·٥ ث = نصف الدورة).
     late final AnimationController _pulseController;
 
-  /// تقدّم شريط التحميل: `og-load 2.1s ease` من ٦٪ إلى ١٠٠٪.
+  /// تقدّم شريط التحميل — **يتبع** [_startup] ولا يمثّل زمناً.
+  ///
+  /// [CRITICAL] كان هذا مؤقّتاً مدته ٢٫٣ث يعمل مستقلاً عن الإقلاع، والانتقال
+  /// مؤقّتاً ثانياً. المؤقّت الثاني يبدأ عند `initState` بينما هذا لا يبدأ
+  /// إلا مع أول إطار، فأيّ تأخّرٍ في أول إطار يجعل الانتقال يسبق امتلاء
+  /// الشريط — وهو العطب المُبلَّغ عنه بالضبط. الآن مدته مدة **تنعيم** بين
+  /// قيمتين حقيقيتين لا مدة الإقلاع.
   late final AnimationController _loadController;
+
+  /// المصدر الوحيد للتقدّم وقرار الانتقال.
+  final StartupProgress _startup = StartupProgress();
+
+  /// يمنع تنفيذ الانتقال مرتين إن بلغت الحركة نهايتها أكثر من مرة.
+  bool _navigated = false;
 
   late final Animation<double> _popOpacity;
   late final Animation<double> _popScale;
   late final Animation<double> _pulseOpacity;
   late final Animation<double> _pulseScale;
-  late final Animation<double> _loadCurved;
 
   @override
   void initState() {
@@ -68,9 +82,14 @@ class _SplashScreenState extends State<SplashScreen>
       vsync: this,
     )..repeat(reverse: true);
     _loadController = AnimationController(
-      duration: SplashTiming.load,
+      // مدة الانتقال بين قيمتَي تقدّم متجاورتين — لا مدة الإقلاع.
+      duration: SplashTiming.progressEase,
       vsync: this,
     );
+    // [CRITICAL] شرط الانتقال الوحيد: الشريط بلغ نهايته **و** كل الخطوات
+    // المطلوبة تمّت. لا مؤقّت ثانٍ يقرّر شيئاً.
+    _loadController.addStatusListener(_onLoadStatus);
+    _startup.addListener(_onStartupChanged);
 
     // `og-pop .6s ease` — نفس منحنى `ease` في CSS.
     final pop = CurvedAnimation(
@@ -88,14 +107,8 @@ class _SplashScreenState extends State<SplashScreen>
     _pulseOpacity = Tween<double>(begin: 0.35, end: 0.9).animate(pulse);
     _pulseScale = Tween<double>(begin: 0.94, end: 1.04).animate(pulse);
 
-    // `og-load 2.1s ease forwards` — منحنى `ease` نفسه.
-    _loadCurved = CurvedAnimation(
-      parent: _loadController,
-      curve: SplashTiming.loadCurve,
-    );
 
     _popController.forward();
-    _loadController.forward();
 
     // إعدادات المتجر عامة — تُحمَّل للزائر والمسجّل على حدٍّ سواء.
     sl<StoreSettingsRepository>().refresh();
@@ -105,31 +118,92 @@ class _SplashScreenState extends State<SplashScreen>
     // يتوقف على نداء شبكة هو إقلاعٌ يفشل مع الشبكة.
     unawaited(_loadManagedVisuals());
 
-    // يُضيء عدّاد مدة العرض (مطابقاً لـ `armSplash` في المرجع) ومسار
-    // المصادقة معاً؛ التنقل يتم حين تتحقق متطلبات الإقلاع.
-    unawaited(_checkAuthAndNavigate());
+    unawaited(_runStartup());
   }
 
-  /// يجلب الإعداد ثم ينزّل الصور المعروضة إلى ذاكرة القرص المؤقتة.
+  /// يشغّل خطوات الإقلاع المطلوبة، كلٌّ تُعلن تمامها بنفسها.
+  Future<void> _runStartup() async {
+    // ١) التفضيلات: `SharedPreferences` حُمِّلت في حقن الاعتماديات قبل
+    //    `runApp`، وقراءتها متزامنة. الخطوة معلَنة لأن قرار التوجيه يعتمد
+    //    عليها، فيبقى الشرط ظاهراً في النموذج لا مضمراً في ترتيب الأسطر.
+    _startup.complete(StartupStep.preferences);
+
+    // ٢) لحظة الهوية: مدة العرض الدنيا من مرجع التصميم.
+    unawaited(
+      Future<void>.delayed(SplashTiming.referenceTransitionDelay).then((_) {
+        if (mounted) _startup.complete(StartupStep.brandMoment);
+      }),
+    );
+
+    // ٣) استعادة الجلسة — العمل الوحيد المجهول المدة.
+    try {
+      await context.read<AuthCubit>().loadSession();
+      if (!mounted) return;
+      _startup.complete(StartupStep.session);
+    } catch (error) {
+      // [CRITICAL] لا انتقال إلى تطبيقٍ نصفِ مُهيَّأ، ولا ١٠٠٪ كاذبة.
+      if (mounted) _startup.fail(error);
+    }
+  }
+
+  void _onStartupChanged() {
+    if (!mounted) return;
+    if (_startup.hasFailed) {
+      setState(() {});
+      return;
+    }
+    // الشريط يلاحق القيمة الحقيقية؛ الهدف لا يُخترع أبداً.
+    _loadController.animateTo(_startup.progress);
+  }
+
+  void _onLoadStatus(AnimationStatus status) {
+    if (status != AnimationStatus.completed) return;
+    if (!_startup.isComplete) return;
+    _navigate();
+  }
+
+  /// إعادة المحاولة تُعيد **كل** الخطوات المطلوبة، لا استعادة الجلسة وحدها.
   ///
-  /// التنزيل بعد الجلب لا معه: الجلب وحده يكفي لعرض الصور، والتنزيل المسبق
-  /// تحسينٌ للإقلاع التالي فلا يجوز أن يؤخّر هذا الإقلاع.
+  /// [CRITICAL] `reset()` يمسح الخطوات الأربع، وخطوة الرسوم كانت تُسجَّل مرةً
+  /// واحدة من `initState` فلا يعيدها أحد: يبقى الإقلاع عند ٧٥٪ إلى الأبد.
+  /// تُعاد هنا الخطوةُ نفسها (قراءة القرص، بلا شبكة) لا الجلب والتنزيل
+  /// المسبق — هذان يعملان في الخلفية أصلاً ولا يُكرَّران.
+  Future<void> _retry() async {
+    _startup.reset();
+    _loadController.value = 0;
+    setState(() {});
+    unawaited(_warmManagedVisuals());
+    await _runStartup();
+  }
+
+  /// يدفّئ رسوم الإعداد المحفوظ من القرص (خطوة إقلاع)، ثم يجلب الإعداد
+  /// الحالي وينزّل صوره إلى ذاكرة القرص المؤقتة (بلا انتظار).
+  ///
+  /// [CRITICAL] الترتيب مقصود: التدفئة أولاً لأنها ما يجعل أول إطارٍ بعد
+  /// الانتقال يحمل الشخصية الصحيحة؛ وهي مقيَّدة بميزانية ولا تلمس الشبكة،
+  /// فتتمّ الخطوة دائماً — وجودُ إعدادٍ محفوظ أو لا. الجلب والتنزيل المسبق
+  /// بعدها بلا انتظار كما كانا: إقلاعٌ يتوقف على نداء شبكة يفشل مع الشبكة.
   Future<void> _loadManagedVisuals() async {
+    await _warmManagedVisuals();
     final visuals = sl<VisualsRepository>();
     await visuals.refresh();
     await visuals.prefetch();
   }
 
-  Future<void> _checkAuthAndNavigate() async {
-    final auth = context.read<AuthCubit>();
-    // ننتظر بالتوازي: مدة العرض الدنيا المطابقة للمرجع (٢٫٣ ث) واستعادة
-    // الجلسة — التنقل حين يحصل أبطأهما، فلا نقصّر الشاشة ولا نتفوّت
-    // استعادة الجلسة.
-    await Future.wait([
-      Future.delayed(SplashTiming.referenceTransitionDelay),
-      auth.loadSession(),
-    ]);
-    if (!mounted) return;
+  /// خطوة الرسوم وحدها — تُعاد مع كل محاولة إقلاع.
+  Future<void> _warmManagedVisuals() async {
+    try {
+      await sl<VisualsRepository>().warmRestored();
+    } finally {
+      if (mounted) _startup.complete(StartupStep.visuals);
+    }
+  }
+
+  /// الانتقال — لا يقع إلا من [_onLoadStatus]، أي بعد بلوغ الشريط نهايته
+  /// **و** تمام كل الخطوات المطلوبة معاً. شرطٌ واحد لا شرطان متسابقان.
+  void _navigate() {
+    if (_navigated || !mounted) return;
+    _navigated = true;
     // التصفح كزائر مسموح دائماً — الدخول للتطبيق الرئيسي بلا فرض تسجيل
     // دخول؛ الشاشات التي تحتاج حساباً تعرض دعوة تسجيل الدخول عند الحاجة.
     // شاشات التعريف تُعرض مرة واحدة فقط عند أول تشغيل للتطبيق.
@@ -142,6 +216,9 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   void dispose() {
+    _startup.removeListener(_onStartupChanged);
+    _startup.dispose();
+    _loadController.removeStatusListener(_onLoadStatus);
     _popController.dispose();
     _pulseController.dispose();
     _loadController.dispose();
@@ -164,9 +241,57 @@ class _SplashScreenState extends State<SplashScreen>
               pulseScale: _pulseScale,
             ),
           ),
-          // شريط التحميل مثبّت أسفل الشاشة كما في مصدر التصميم.
-          SplashLoader(loadFill: _loadCurved),
+          // شريط التحميل مثبّت أسفل الشاشة كما في مصدر التصميم — أو حالة
+          // العطب مكانه.
+          //
+          // [CRITICAL] العطب لا يُخفى ولا يُكمَل عليه: الشريط يبقى عند آخر
+          // قيمة حقيقية بلغها، ولا انتقال إلى تطبيقٍ نصفِ مُهيَّأ.
+          if (_startup.hasFailed)
+            _SplashFailure(onRetry: _retry)
+          else
+            SplashLoader(loadFill: _loadController),
         ],
+      ),
+    );
+  }
+}
+
+
+/// حالة تعذّر الإقلاع — رسالة وزرّ إعادة محاولة مكان شريط التحميل.
+class _SplashFailure extends StatelessWidget {
+  const _SplashFailure({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return PositionedDirectional(
+      start: 24,
+      end: 24,
+      bottom: 64,
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              context.strings('startupFailed'),
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                fontSize: 13,
+                height: 1.6,
+                fontWeight: AppDimens.weightBold,
+                color: context.themeColors.errorText,
+              ),
+            ),
+            const SizedBox(height: 12),
+            AnimeOutlinedButton(
+              label: context.strings('retry'),
+              onPressed: onRetry,
+              expanded: false,
+            ),
+          ],
+        ),
       ),
     );
   }

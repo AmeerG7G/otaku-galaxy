@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../../l10n/app_strings.dart';
+import '../../../../features/products/domain/entities/product.dart';
 
 import '../../tokens/app_colors.dart';
 import '../../tokens/app_dimens.dart';
@@ -35,6 +37,11 @@ class AnimeProductCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.themeColors;
     final inStock = product.inStock as bool;
+    // [CRITICAL] الحالة لا الثنائية: «قريباً يتوفر» و«نفد المخزون» كلاهما
+    // غير متوفر، لكن قولَ «نفد» فوق صورةِ منتجٍ تعلن شارتُه «قريباً يتوفر»
+    // تناقضٌ يقرؤه الزبون في بطاقةٍ واحدة.
+    final availability = (product as Product).availability;
+    final comingSoon = availability == ProductAvailability.comingSoon;
 
     final card = Container(
       decoration: BoxDecoration(
@@ -60,19 +67,21 @@ class AnimeProductCard extends StatelessWidget {
                   children: [
                     ProductPhotoSlot(imageUrl: _firstImage),
                     // نفاد المخزون يُقال بشارة فوق الصورة لا بتغيير الصورة.
-                    if (!inStock)
+                    // المنتظَر بموعد لا شارة نفاد له — شارة الحالة تحته
+                    // تقول «قريباً يتوفر» وحدها.
+                    if (!inStock && !comingSoon)
                       PositionedDirectional(
                         bottom: 9,
                         end: 9,
                         child: _OutOfStockChip(),
                       ),
                     // شارة العرض/المختار — أعلى جهة البداية.
-                    if (_badgeLabel != null)
+                    if (_badgeLabel(context) != null)
                       PositionedDirectional(
                         top: 9,
                         start: 9,
                         child: _Badge(
-                          label: _badgeLabel!,
+                          label: _badgeLabel(context)!,
                           highlighted:
                               (product.isOffer as bool) ||
                               (product.discountPercent as int? ?? 0) > 0,
@@ -88,13 +97,15 @@ class AnimeProductCard extends StatelessWidget {
                           onTap: onFavoriteToggle!,
                         ),
                       ),
-                    // شريط «نفد المخزون» أسفل الصورة.
+                    // شريط «نفد المخزون» أسفل الصورة — أو شريط الانتظار.
                     if (!inStock)
-                      const PositionedDirectional(
+                      PositionedDirectional(
                         start: 0,
                         end: 0,
                         bottom: 0,
-                        child: _SoldOutStrip(),
+                        child: comingSoon
+                            ? const _ComingSoonStrip()
+                            : const _SoldOutStrip(),
                       ),
                   ],
                 ),
@@ -125,7 +136,7 @@ class AnimeProductCard extends StatelessWidget {
                       children: [
                         Flexible(
                           child: Text(
-                            '${(product.price as double).toStringAsFixed(0)} د.ع',
+                            context.strings.p('priceIqd', {'amount': (product.price as double).toStringAsFixed(0)}),
                             textDirection: TextDirection.ltr,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -167,8 +178,11 @@ class AnimeProductCard extends StatelessWidget {
                       Row(
                         children: [
                           Expanded(
-                            child: ProductStockPill(
-                              stock: product.stock as int,
+                            // `product` هنا `dynamic` (البطاقة تخدم أكثر من
+                            // نوع)، والمصنع يقرأ الحالة من المنتج نفسه فلا
+                            // يُعاد اشتقاقها هنا.
+                            child: ProductStockPill.forProduct(
+                              product as Product,
                             ),
                           ),
                           if (product.rating != null) ...[
@@ -193,7 +207,7 @@ class AnimeProductCard extends StatelessWidget {
                         ],
                       ),
                     ],
-                    if (!compact && _deliveryPromoLabel != null) ...[
+                    if (!compact && _deliveryPromoLabel(context) != null) ...[
                       const SizedBox(height: 6),
                       Row(
                         children: [
@@ -201,7 +215,7 @@ class AnimeProductCard extends StatelessWidget {
                           const SizedBox(width: 4),
                           Flexible(
                             child: Text(
-                              _deliveryPromoLabel!,
+                              _deliveryPromoLabel(context)!,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: Theme.of(context).textTheme.labelSmall
@@ -240,20 +254,24 @@ class AnimeProductCard extends StatelessWidget {
   ///
   /// لا يُعرض ما لم يوجد مبلغ فعلي — الشارة يجب أن تُترجم دائماً إلى خصم
   /// حقيقي يطبّقه الخادم عند إنشاء الطلب.
-  String? get _deliveryPromoLabel {
+  String? _deliveryPromoLabel(BuildContext context) {
     if (product.hasDeliveryPromo as bool != true) return null;
     final amount = (product.deliveryPromoAmount as num?)?.toDouble() ?? 0;
     if (amount <= 0) return null;
-    return 'خصم ${amount.toStringAsFixed(0)} د.ع من التوصيل لكل قطعة';
+    return context.strings.p('deliveryDiscountPerItem', {
+      'amount': amount.toStringAsFixed(0),
+    });
   }
 
   /// شارة البطاقة: نسبة الخصم الحقيقية أولاً (لا تظهر إلا بوجود سعر سابق
   /// أعلى من الحالي)، ثم «عرض»، ثم «مختار». لا نخترع قيمة عند غياب البيانات.
-  String? get _badgeLabel {
+  String? _badgeLabel(BuildContext context) {
     final percent = product.discountPercent as int?;
-    if (percent != null && percent > 0) return '−$percent٪';
-    if (product.isOffer as bool) return 'عرض';
-    if (product.isSelected as bool) return 'مختار';
+    if (percent != null && percent > 0) {
+      return context.strings.p('discountPercentBadge', {'percent': '$percent'});
+    }
+    if (product.isOffer as bool) return context.strings('promoBadge');
+    if (product.isSelected as bool) return context.strings('selectedBadge');
     return null;
   }
 }
@@ -330,6 +348,31 @@ class _FavoriteButton extends StatelessWidget {
   }
 }
 
+/// شريط انتظار التوفر — بديل شريط النفاد للمنتج الذي له موعد معلن.
+///
+/// نفس الشكل والموضع؛ يختلف النصّ واللون فقط، فلا تتناقض البطاقة مع شارة
+/// الحالة أسفلها.
+class _ComingSoonStrip extends StatelessWidget {
+  const _ComingSoonStrip();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      color: const Color(0xBD1C63A3),
+      child: Text(
+        context.strings('comingSoon'),
+        textAlign: TextAlign.center,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          fontSize: 10,
+          fontWeight: AppDimens.weightExtraBold,
+          color: Colors.white,
+        ),
+      ),
+    );
+  }
+}
+
 class _SoldOutStrip extends StatelessWidget {
   const _SoldOutStrip();
 
@@ -339,7 +382,7 @@ class _SoldOutStrip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 6),
       color: const Color(0xBD180F30),
       child: Text(
-        'نفد المخزون',
+        context.strings('outOfStock'),
         textAlign: TextAlign.center,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
           fontSize: 10,
@@ -369,7 +412,7 @@ class _OutOfStockChip extends StatelessWidget {
         boxShadow: colors.shadowXSoft,
       ),
       child: Text(
-        'نفدت',
+        context.strings('soldOutShort'),
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
           fontSize: 9.5,
           height: 1.3,

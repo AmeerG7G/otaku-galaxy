@@ -5,49 +5,22 @@ import {
   Button,
   Drawer,
   Grid,
+  Image,
   Layout,
   Menu,
+  Modal,
   Space,
   Tag,
   Tooltip,
   Typography,
 } from 'antd'
-import { LogoutOutlined, MenuOutlined, RocketFilled } from '@ant-design/icons'
+import { LogoutOutlined, MenuOutlined, SunOutlined, MoonOutlined } from '@ant-design/icons'
 import { NAV_ITEMS, activeMenuKey, navTitleFor } from './nav'
 import { useAuthStore } from '../stores/authStore'
 import { ENV_BADGE } from '../config/env'
-import { brand } from '../theme'
+import { useTheme } from '../theme/ThemeProvider'
 
 const { Sider, Header, Content } = Layout
-
-const SIDEBAR_COLORS = {
-  text: brand.sidebarText,
-  muted: brand.sidebarTextMuted,
-  divider: 'rgba(233, 228, 248, 0.12)',
-}
-
-export function BrandMark() {
-  return (
-    <div
-      aria-hidden
-      style={{
-        width: 40,
-        height: 40,
-        borderRadius: 14,
-        background: brand.gradient,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: '#fff',
-        fontSize: 20,
-        boxShadow: '0 6px 18px rgba(124, 92, 255, 0.4)',
-        flexShrink: 0,
-      }}
-    >
-      <RocketFilled />
-    </div>
-  )
-}
 
 function SidebarBrand() {
   return (
@@ -60,20 +33,30 @@ function SidebarBrand() {
         flexShrink: 0,
       }}
     >
-      <BrandMark />
+      <Image
+        src="/otaku-square-mark.png"
+        alt="مجرة الأوتاكو"
+        width={40}
+        height={40}
+        style={{
+          borderRadius: 14,
+          boxShadow: '0 6px 18px rgba(124, 92, 255, 0.4)',
+          flexShrink: 0,
+        }}
+      />
       <div style={{ minWidth: 0 }}>
         <div
           style={{
-            color: SIDEBAR_COLORS.text,
+            color: 'var(--og-sidebar-text)',
             fontWeight: 800,
             fontSize: 16,
             lineHeight: 1.2,
             whiteSpace: 'nowrap',
           }}
         >
-          مجرات الاوتاكو
+          مجرة الأوتاكو
         </div>
-        <div style={{ color: SIDEBAR_COLORS.muted, fontSize: 12, marginTop: 2 }}>
+        <div style={{ color: 'var(--og-sidebar-text-muted)', fontSize: 12, marginTop: 2 }}>
           لوحة التحكم
         </div>
       </div>
@@ -87,6 +70,7 @@ export default function AppLayout() {
   const screens = Grid.useBreakpoint()
   const username = useAuthStore((state) => state.user?.username)
   const clear = useAuthStore((state) => state.clear)
+  const { theme, toggleTheme } = useTheme()
   const [drawerOpen, setDrawerOpen] = useState(false)
 
   const isDesktop = Boolean(screens.lg)
@@ -99,8 +83,19 @@ export default function AppLayout() {
   }
 
   function handleLogout() {
-    clear()
-    navigate('/login', { replace: true })
+    Modal.confirm({
+      title: 'تأكيد تسجيل الخروج',
+      content: 'هل أنت متأكد أنك تريد تسجيل الخروج؟',
+      okText: 'تسجيل الخروج',
+      okType: 'danger',
+      cancelText: 'إلغاء',
+      centered: true,
+      direction: 'rtl',
+      onOk() {
+        clear()
+        navigate('/login', { replace: true })
+      },
+    })
   }
 
   const sidebarMenu = (
@@ -121,24 +116,24 @@ export default function AppLayout() {
         alignItems: 'center',
         gap: 10,
         padding: '14px 16px',
-        borderTop: `1px solid ${SIDEBAR_COLORS.divider}`,
+        borderTop: '1px solid var(--og-sidebar-divider)',
         flexShrink: 0,
       }}
     >
       <Avatar
         size={36}
-        style={{ background: brand.gradient, fontWeight: 700, fontSize: 15 }}
+        style={{ background: 'var(--og-gradient)', fontWeight: 700, fontSize: 15 }}
       >
         {username?.charAt(0) ?? 'م'}
       </Avatar>
       <div style={{ minWidth: 0, flex: 1, overflow: 'hidden' }}>
         <Typography.Text
-          style={{ color: SIDEBAR_COLORS.text, display: 'block', fontSize: 14, fontWeight: 600 }}
+          style={{ color: 'var(--og-sidebar-text)', display: 'block', fontSize: 14, fontWeight: 600 }}
           ellipsis
         >
           {username ?? '…'}
         </Typography.Text>
-        <Typography.Text style={{ color: SIDEBAR_COLORS.muted, fontSize: 12 }}>
+        <Typography.Text style={{ color: 'var(--og-sidebar-text-muted)', fontSize: 12 }}>
           مدير المتجر
         </Typography.Text>
       </div>
@@ -149,7 +144,7 @@ export default function AppLayout() {
           icon={<LogoutOutlined />}
           aria-label="تسجيل الخروج"
           onClick={handleLogout}
-          style={{ color: SIDEBAR_COLORS.text }}
+          style={{ color: 'var(--og-sidebar-text)' }}
         />
       </Tooltip>
     </div>
@@ -172,8 +167,8 @@ export default function AppLayout() {
               display: 'flex',
               flexDirection: 'column',
               minHeight: 0,
-              background: `linear-gradient(180deg, ${brand.aubergine} 0%, ${brand.aubergineSoft} 100%)`,
-              borderInlineEnd: `1px solid ${SIDEBAR_COLORS.divider}`,
+              background: 'var(--og-sidebar-gradient)',
+              borderInlineEnd: '1px solid var(--og-sidebar-divider)',
             },
           }}
         >
@@ -192,12 +187,12 @@ export default function AppLayout() {
           styles={{
             body: {
               padding: 0,
-              background: `linear-gradient(180deg, ${brand.aubergine} 0%, ${brand.aubergineSoft} 100%)`,
+              background: 'var(--og-sidebar-gradient)',
               display: 'flex',
               flexDirection: 'column',
               overflow: 'hidden',
             },
-            header: { borderBottom: `1px solid ${SIDEBAR_COLORS.divider}` },
+            header: { borderBottom: '1px solid var(--og-sidebar-divider)' },
           }}
           title={<SidebarBrand />}
           closable
@@ -212,14 +207,14 @@ export default function AppLayout() {
       <Layout style={{ minWidth: 0 }}>
         <Header
           style={{
-            background: brand.surface,
+            background: 'var(--og-surface)',
             paddingInline: isDesktop ? 24 : 12,
             height: 64,
             lineHeight: '64px',
             display: 'flex',
             alignItems: 'center',
             gap: 12,
-            borderBottom: `1px solid ${brand.border}`,
+            borderBottom: '1px solid var(--og-border)',
             position: 'sticky',
             top: 0,
             zIndex: 10,
@@ -248,6 +243,15 @@ export default function AppLayout() {
             </Tag>
           )}
           <div style={{ flex: 1 }} />
+          <Tooltip title={theme === 'light' ? 'الوضع الداكن' : 'الوضع الفاتح'}>
+            <Button
+              type="text"
+              icon={theme === 'light' ? <MoonOutlined /> : <SunOutlined />}
+              aria-label={theme === 'light' ? 'تبديل إلى الوضع الداكن' : 'تبديل إلى الوضع الفاتح'}
+              onClick={toggleTheme}
+              style={{ color: 'var(--og-text)' }}
+            />
+          </Tooltip>
           {isDesktop ? (
             <Space size={6}>
               <Typography.Text type="secondary" style={{ fontSize: 14 }}>

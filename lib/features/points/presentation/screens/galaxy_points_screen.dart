@@ -1,4 +1,5 @@
 import 'package:auto_route/auto_route.dart';
+import '../../../../core/l10n/app_strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -40,7 +41,7 @@ class _GalaxyPointsScreenState extends State<GalaxyPointsScreen> {
     try {
       await cubit.claimReward(levelKey);
       if (!mounted) return;
-      _snack('سُجّلت مزيّتك 🎉', success: true);
+      _snack(context.strings('rewardClaimed'), success: true);
     } catch (error) {
       if (!mounted) return;
       _snack(_claimErrorOf(error), success: false);
@@ -52,7 +53,7 @@ class _GalaxyPointsScreenState extends State<GalaxyPointsScreen> {
     if (error is AppException && error.message.trim().isNotEmpty) {
       return error.message;
     }
-    return 'تعذّرت المطالبة بالمزيّة، حاول مرة أخرى';
+    return context.strings('rewardClaimFailed');
   }
 
   void _snack(String message, {required bool success}) {
@@ -80,8 +81,8 @@ class _GalaxyPointsScreenState extends State<GalaxyPointsScreen> {
         child: Column(
           children: [
             OtakuScreenHeader(
-              title: '🌌 نقاط المجرّة',
-              subtitle: 'كل نقطة تقربك لمستوى أعلى',
+              title: context.strings('galaxyPointsTitle'),
+              subtitle: context.strings('galaxyPointsSubtitle'),
               onBack: () => context.router.maybePop(),
             ),
             Expanded(
@@ -105,7 +106,7 @@ class _GalaxyPointsScreenState extends State<GalaxyPointsScreen> {
                     padding: const EdgeInsets.fromLTRB(18, 8, 18, 26),
                     children: [
                       // ١) المستويات أولاً.
-                      const _BlockTitle('مستوياتك في المجرّة', top: 8),
+                      _BlockTitle(context.strings('yourLevels'), top: 8),
                       _LevelLadder(
                         levels: state.levels,
                         current: state.level,
@@ -116,16 +117,16 @@ class _GalaxyPointsScreenState extends State<GalaxyPointsScreen> {
                       ),
 
                       // ٢) الشرح ثانياً — تحت المستويات مباشرةً.
-                      const _BlockTitle('كيف تعمل النقاط؟'),
+                      _BlockTitle(context.strings('howPointsWork')),
                       const _PointsExplainer(),
 
                       // ٣) السجل أخيراً.
-                      const _BlockTitle('سجل النقاط'),
+                      _BlockTitle(context.strings('pointsLog')),
                       if (state.activity.isEmpty)
-                        const OtakuEditorialPanel(
-                          title: 'لا توجد حركات بعد',
+                        OtakuEditorialPanel(
+                          title: context.strings('noActivityTitle'),
                           body:
-                              'ستظهر هنا نقاطك فور استلام أول طلب أو نشر أول تقييم.',
+                              context.strings('noActivityBody'),
                           artwork: 'assets/art/opt/a-i5.png',
                           artworkSlot: VisualSlots.points,
                           margin: EdgeInsets.zero,
@@ -197,7 +198,7 @@ class _LevelLadder extends StatelessWidget {
     if (levels.isEmpty) {
       // لا سلّم بديل: عرض عتبات محفوظة في التطبيق أسوأ من الصمت.
       return Text(
-        'تعذّر تحميل المستويات — حاول مرة أخرى.',
+        context.strings('levelsLoadFailed'),
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
           color: Theme.of(context).colorScheme.onSurfaceVariant,
         ),
@@ -206,6 +207,7 @@ class _LevelLadder extends StatelessWidget {
 
     // الاسم يُصرَّف مرة واحدة هنا بجنس صاحب الحساب، لا في كل ودجة.
     final gender = context.gender;
+    final language = context.language;
 
     return Column(
       children: [
@@ -274,7 +276,7 @@ class _LevelLadder extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'مستوى ${level.number} — ${level.nameFor(gender)}',
+                              context.strings.p('levelNumberAndName', {'number': '${level.number}', 'name': level.nameFor(gender, language)}),
                               style: Theme.of(context).textTheme.bodyMedium
                                   ?.copyWith(
                                     fontSize: 13.5,
@@ -283,7 +285,7 @@ class _LevelLadder extends StatelessWidget {
                             ),
                             const SizedBox(height: 3),
                             Text(
-                              level.reward,
+                              level.rewardFor(language),
                               style: Theme.of(context).textTheme.labelSmall
                                   ?.copyWith(
                                     fontSize: 11.5,
@@ -346,7 +348,7 @@ class _RewardRow extends StatelessWidget {
         context,
         icon: Icons.check_circle_outline,
         color: colors.successText,
-        label: reward.isGift ? 'سُلّمت الهدية' : 'طُبّق الخصم على طلبك',
+        label: reward.isGift ? context.strings('giftDelivered') : context.strings('discountApplied'),
       );
     }
 
@@ -356,8 +358,8 @@ class _RewardRow extends StatelessWidget {
         icon: Icons.schedule_outlined,
         color: colors.infoText,
         label: reward.isGift
-            ? 'سُجّلت هديتك — سنتواصل معك لتسليمها'
-            : 'جاهزة — ستُطبَّق تلقائياً على طلبك القادم',
+            ? context.strings('giftRecorded')
+            : context.strings('discountReadyAuto'),
       );
     }
 
@@ -368,7 +370,7 @@ class _RewardRow extends StatelessWidget {
       child: SizedBox(
         width: double.infinity,
         child: AnimeOutlinedButton(
-          label: claiming ? 'جاري التسجيل…' : 'المطالبة بالمزيّة',
+          label: claiming ? context.strings('claiming') : context.strings('claimReward'),
           onPressed: claiming ? null : onClaim,
           icon: Icons.redeem_outlined,
           iconPosition: IconPosition.start,
@@ -459,7 +461,7 @@ class _PointsExplainer extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'تجمع النقاط من مشترياتك ومن تقييماتك، وكلما زادت ارتفع مستواك.',
+                  context.strings('pointsExplainerIntro'),
                   style: theme.textTheme.bodySmall?.copyWith(
                     fontSize: 12,
                     height: 1.75,
@@ -467,16 +469,27 @@ class _PointsExplainer extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
-                const _Rule(points: '٥', label: 'عن كل ١٠٬٠٠٠ دينار من مشترياتك'),
-                const _Rule(points: '١', label: 'عند نشر تقييم مكتوب لمنتج'),
-                const _Rule(
-                  points: '٥',
-                  label: 'عند إرفاق صور بالتقييم (من صورة إلى خمس)',
+                _Rule(points: context.strings('pointsNumeral5'), label: context.strings('rulePerPurchase')),
+                _Rule(points: context.strings('pointsNumeral1'), label: context.strings('rulePerWrittenReview')),
+                _Rule(
+                  points: context.strings('pointsNumeral5'),
+                  label: context.strings('rulePerPhotoReview'),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'لكل منتج تقييم واحد، ويُنشر بعد مراجعته. '
-                  'وللتقييمات في الطلب الواحد حدٌّ أعلى من النقاط.',
+                  context.strings('pointsReviewCaveat'),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontSize: 11.5,
+                    height: 1.75,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                // القاعدة الموثّقة (§40.2): النقاط على قيمة المنتجات بعد الخصم،
+                // لا على أجور التوصيل. تُقال للزبون حتى لا يقرأ ٣٢٬٠٠٠ إجمالياً
+                // ويتوقّع ١٥ نقطة بينما مشترياته ٢٨٬٠٠٠.
+                Text(
+                  context.strings('pointsDeliveryExcluded'),
                   style: theme.textTheme.bodySmall?.copyWith(
                     fontSize: 11.5,
                     height: 1.75,

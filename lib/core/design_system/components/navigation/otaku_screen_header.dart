@@ -22,25 +22,27 @@ enum OtakuHeaderVariant {
 }
 
 /// ترويسة الشاشات في Otaku Galaxy v2 — تحلّ محل `AppBar` تماماً.
-///
-/// لا يوجد في التصميم أي شريط تطبيق مادي: الشاشات تبدأ بترويسة
-/// مؤلَّفة من زر رجوع مربّع مستدير، عنوان بخط Tajawal ثقيل، وسطر
-/// وصفي، مع هالة لونية أو رسم شخصية تزييني خلف المحتوى.
-class OtakuScreenHeader extends StatelessWidget {
-  const OtakuScreenHeader({
-    super.key,
-    required this.title,
-    this.subtitle,
-    this.onBack,
-    this.actions = const [],
-    this.trailing,
-    this.artwork,
-    this.artworkSlot,
-    this.gradient,
-    this.variant = OtakuHeaderVariant.plain,
-    this.leading,
-    this.bottom,
-  });
+  ///
+  /// لا يوجد في التصميم أي شريط تطبيق مادي: الشاشات تبدأ بترويسة
+  /// مؤلَّفة من زر رجوع مربّع مستدير، عنوان بخط Tajawal ثقيل، وسطر
+  /// وصفي، مع هالة لونية أو رسم شخصية تزييني خلف المحتوى.
+  class OtakuScreenHeader extends StatelessWidget {
+    const OtakuScreenHeader({
+      super.key,
+      required this.title,
+      this.subtitle,
+      this.onBack,
+      this.actions = const [],
+      this.trailing,
+      this.artwork,
+      this.artworkSlot,
+      this.artworkWidth,
+      this.artworkEnd,
+      this.gradient,
+      this.variant = OtakuHeaderVariant.plain,
+      this.leading,
+      this.bottom,
+    });
 
   /// ترويسة متدرّجة اللون — تُستخدم لشاشات الأقسام وصفحات البطل.
   const OtakuScreenHeader.gradient({
@@ -53,6 +55,8 @@ class OtakuScreenHeader extends StatelessWidget {
     this.trailing,
     this.artwork,
     this.artworkSlot,
+    this.artworkWidth,
+    this.artworkEnd,
     this.leading,
     this.bottom,
   }) : variant = OtakuHeaderVariant.gradient;
@@ -66,6 +70,8 @@ class OtakuScreenHeader extends StatelessWidget {
     this.trailing,
     this.artwork,
     this.artworkSlot,
+    this.artworkWidth,
+    this.artworkEnd,
     this.bottom,
   }) : variant = OtakuHeaderVariant.tab,
        onBack = null,
@@ -81,6 +87,8 @@ class OtakuScreenHeader extends StatelessWidget {
     this.trailing,
     this.artwork,
     this.artworkSlot,
+    this.artworkWidth,
+    this.artworkEnd,
     this.leading,
     this.bottom,
   }) : variant = OtakuHeaderVariant.compact,
@@ -105,6 +113,12 @@ class OtakuScreenHeader extends StatelessWidget {
   /// حين يُمرَّر، يصير [artwork] هو الأصل الاحتياطي: يُعرض كما هو ما دامت
   /// الفتحة غير مضبوطة أو تعذّر تحميل صورتها. المقاس والموضع لا يتغيّران.
   final String? artworkSlot;
+
+  /// عرض الرسم التزييني (الشخصية). الافتراضي 126.
+  final double? artworkWidth;
+
+  /// إزاحة الرسم من جهة النهاية (RTL: اليسار). الافتراضي -40.
+  final double? artworkEnd;
 
   final Gradient? gradient;
   final OtakuHeaderVariant variant;
@@ -172,22 +186,21 @@ class OtakuScreenHeader extends StatelessWidget {
                 ),
               ),
             ),
-          // رسم تزييني باهت خلف الترويسة العادية.
+          // رسم الشخصية خلف الترويسة — بلا شفافية (قرار 2026-09-15): كان
+          // يُرسم بـ١٦٪ كما في المرجع لرسمٍ مضمَّن، فبدت الشخصيةُ التي يرفعها
+          // المسؤول باهتةً كأنها معطوبة. تُعرض الآن كصورتها الأصلية.
           if (artwork != null)
             PositionedDirectional(
               top: -14,
-              end: -40,
+              end: artworkEnd ?? -40,
               child: IgnorePointer(
-                child: Opacity(
-                  opacity: 0.16,
-                  child: artworkSlot == null
-                      ? Image.asset(artwork!, width: 126)
-                      : ManagedArtwork(
-                          slot: artworkSlot!,
-                          fallbackAsset: artwork!,
-                          width: 126,
-                        ),
-                ),
+                child: artworkSlot == null
+                    ? Image.asset(artwork!, width: artworkWidth ?? 126)
+                    : ManagedArtwork(
+                        slot: artworkSlot!,
+                        fallbackAsset: artwork!,
+                        width: artworkWidth ?? 126,
+                      ),
               ),
             ),
           Padding(

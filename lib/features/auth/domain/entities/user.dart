@@ -8,6 +8,7 @@ class User {
     this.avatarRef,
     this.role,
     this.gender,
+    this.preferredLanguage,
     this.isPhoneVerified = true,
     this.createdAt,
   });
@@ -45,6 +46,14 @@ class User {
   /// طبقة العرض (`core/l10n/gender.dart`) حيث يُستعمل فعلاً.
   final String? gender;
 
+  /// لغة المخاطبة المحفوظة في الخادم (`ar` / `ckb`)، أو `null` لردٍّ قديم.
+  ///
+  /// الخادم يحسم لغة كل ردٍّ مصادَق **بهذا العمود قبل ترويسة**
+  /// `Accept-Language`. فإن اختار الزبون الكردية في الجهاز ولم تصل الخادم،
+  /// بقيت أقسامه ومنتجاته وأخطاؤه عربيةً وهو مسجَّل. `AuthCubit` يقارنها
+  /// بلغة الواجهة عند كل جلسة ويدفع الفرق.
+  final String? preferredLanguage;
+
   /// هل أثبت المستخدم ملكية رقمه؟
   ///
   /// الافتراضي `true` لأن الجلسات المحفوظة قبل إضافة الحقل لا تحمله، ووجود
@@ -62,6 +71,7 @@ class User {
       avatarRef: json['avatarUrl'] as String?,
       role: json['role'] as String?,
       gender: json['gender'] as String?,
+      preferredLanguage: json['preferredLanguage'] as String?,
       isPhoneVerified: json['isPhoneVerified'] as bool? ?? true,
       createdAt: DateTime.tryParse(json['createdAt'] as String? ?? ''),
     );
@@ -76,13 +86,50 @@ class User {
       'avatarUrl': avatarRef,
       'role': role,
       'gender': gender,
+      'preferredLanguage': preferredLanguage,
       'isPhoneVerified': isPhoneVerified,
       'createdAt': createdAt?.toIso8601String(),
     };
   }
 
   /// [avatarRef] هو المرجع كما يعيده الخادم — لا رابط معروض.
-  User copyWith({String? username, String? avatarRef, String? gender}) {
+  /// مساواةٌ بالقيمة: `AuthAuthenticated.props` تحمل المستخدم، فبدونها كان كل
+  /// `emit` بعد تحديث الملف حالةً «جديدة» تُعيد تشغيل كتلة الدخول كاملةً في
+  /// `app.dart` (إعادة تسجيل الجهاز، إعادة تحميل السلة والمفضلة…) لمجرّد
+  /// تبديل لغة.
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is User &&
+          other.id == id &&
+          other.username == username &&
+          other.phone == phone &&
+          other.avatarRef == avatarRef &&
+          other.role == role &&
+          other.gender == gender &&
+          other.preferredLanguage == preferredLanguage &&
+          other.isPhoneVerified == isPhoneVerified &&
+          other.createdAt == createdAt;
+
+  @override
+  int get hashCode => Object.hash(
+        id,
+        username,
+        phone,
+        avatarRef,
+        role,
+        gender,
+        preferredLanguage,
+        isPhoneVerified,
+        createdAt,
+      );
+
+  User copyWith({
+    String? username,
+    String? avatarRef,
+    String? gender,
+    String? preferredLanguage,
+  }) {
     return User(
       id: id,
       username: username ?? this.username,
@@ -90,6 +137,7 @@ class User {
       avatarRef: avatarRef ?? this.avatarRef,
       role: role,
       gender: gender ?? this.gender,
+      preferredLanguage: preferredLanguage ?? this.preferredLanguage,
       isPhoneVerified: isPhoneVerified,
       createdAt: createdAt,
     );

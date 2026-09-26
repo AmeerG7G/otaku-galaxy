@@ -9,4 +9,12 @@
 -->
 <resources>
     <color name="brand_launch_background">#FEF3F9</color>
+
+    <!--
+      نظير الدرجة أعلاه في الوضع الداكن: أول درجة في تدرّج شاشة البداية
+      الداكنة (`SplashBackdrop.darkGradient`). يقرأها `MainActivity` من
+      التفضيل المحفوظ قبل أول إطار، وتستعملها `values-night/` عند أول
+      إقلاع قبل أي اختيار.
+    -->
+    <color name="brand_launch_background_dark">#141024</color>
 </resources>

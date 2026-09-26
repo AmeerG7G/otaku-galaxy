@@ -14,6 +14,7 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
     required this.warning,
     required this.warningLight,
     required this.warningPale,
+    required this.warningText,
     required this.error,
     required this.errorLight,
     required this.errorPale,
@@ -52,6 +53,9 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
   final Color warning;
   final Color warningLight;
   final Color warningPale;
+
+  /// صيغة نصّية من البرتقالي — انظر [successText].
+  final Color warningText;
   final Color error;
   final Color errorLight;
   final Color errorPale;
@@ -92,6 +96,7 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
     warning: AppColors.warning,
     warningLight: AppColors.warningLight,
     warningPale: AppColors.warningPale,
+    warningText: AppColors.warningText,
     error: AppColors.error,
     errorLight: AppColors.errorLight,
     errorPale: AppColors.errorPale,
@@ -125,6 +130,7 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
     warning: AppColors.warningLight,
     warningLight: AppColors.warningLight,
     warningPale: Color(0xFF4D3510),
+    warningText: AppColors.warningLight,
     error: AppColors.errorLight,
     errorLight: AppColors.errorLight,
     errorPale: Color(0xFF4A1926),
@@ -242,6 +248,7 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
     Color? warning,
     Color? warningLight,
     Color? warningPale,
+    Color? warningText,
     Color? error,
     Color? errorLight,
     Color? errorPale,
@@ -274,6 +281,7 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
       warning: warning ?? this.warning,
       warningLight: warningLight ?? this.warningLight,
       warningPale: warningPale ?? this.warningPale,
+      warningText: warningText ?? this.warningText,
       error: error ?? this.error,
       errorLight: errorLight ?? this.errorLight,
       errorPale: errorPale ?? this.errorPale,
@@ -311,6 +319,7 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
       warning: Color.lerp(warning, other.warning, t)!,
       warningLight: Color.lerp(warningLight, other.warningLight, t)!,
       warningPale: Color.lerp(warningPale, other.warningPale, t)!,
+      warningText: Color.lerp(warningText, other.warningText, t)!,
       error: Color.lerp(error, other.error, t)!,
       errorLight: Color.lerp(errorLight, other.errorLight, t)!,
       errorPale: Color.lerp(errorPale, other.errorPale, t)!,

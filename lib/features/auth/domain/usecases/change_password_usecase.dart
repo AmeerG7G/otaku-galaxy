@@ -1,3 +1,4 @@
+import '../entities/auth_session.dart';
 import '../repositories/auth_repository.dart';
 
 /// تغيير كلمة المرور من الإعدادات عبر PATCH /auth/me/password (بلا رمز تحقق).
@@ -6,7 +7,7 @@ class ChangePasswordUsecase {
 
   final AuthRepository _repository;
 
-  Future<void> call({
+  Future<AuthSession> call({
     required String currentPassword,
     required String newPassword,
   }) => _repository.changePassword(

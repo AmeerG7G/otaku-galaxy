@@ -3,7 +3,9 @@ import express from 'express';
 import helmet from 'helmet';
 import { config } from './config/index.js';
 import { uploadsRoot } from './storage/index.js';
-import { authenticate, requireAdmin } from './middleware/auth.js';
+import { authenticate, optionalAuthenticate, requireAdmin } from './middleware/auth.js';
+import { pinLocale } from './middleware/locale.js';
+import { DEFAULT_LOCALE } from './utils/locale.js';
 import { requireSupportedAppVersion } from './middleware/app-version.js';
 import { errorHandler, globalRateLimiter, notFoundHandler } from './middleware/error-handler.js';
 import { adminRoutes } from './routes/admin.js';
@@ -53,14 +55,26 @@ export function createApp() {
 
   app.use(globalRateLimiter());
 
-  // الصور المرفوعة تُقدَّم كملفات ثابتة (سائق القرص المحلي).
+  /**
+   * الصور المرفوعة تُقدَّم كملفات ثابتة (سائق القرص المحلي) — **بالمرجع لا
+   * بالتصفّح**.
+   *
+   * [SECURITY] القرار (تدقيق 2026-09-14): صور التقييم تبقى عامّةً بمرجعها
+   * قبل الاعتماد وبعده. ما يحمي المنتظر/المرفوض هو أن المرجع لا يُخمَّن
+   * (`غرض/سنة/شهر/<uuid v4>`)، وأن لا سرداً للمجلّدات (`index: false`،
+   * و`redirect: false` كي لا يكشف طلبُ مجلّدٍ وجودَه بتحويلة 301)، وأن لا
+   * واجهةً عامّة تُدرج مرجعاً غير معتمَد (`uploads-exposure.test.ts`). مسارٌ
+   * محميّ كان سيكسر معاينةَ الرافع ولوحةَ المراجعة (لا توكن مع الصور) بلا
+   * مكسبٍ حقيقي. من حصل على رابطٍ غير معتمَد بطريقٍ ما يفتحه — مُقرٌّ به.
+   */
   app.use(
     config.uploads.publicPath,
-    express.static(uploadsRoot, { immutable: true, maxAge: '30d', index: false }),
+    express.static(uploadsRoot, { immutable: true, maxAge: '30d', index: false, redirect: false }),
   );
 
   app.use('/api/auth', authRoutes);
-  app.use('/api/catalog', catalogRoutes);
+  // مصادقة اختيارية: الزائر يُخدَم، والمسجَّل يُقرأ تفضيل لغته من صفّه.
+  app.use('/api/catalog', optionalAuthenticate, catalogRoutes);
   /**
    * عمليات العميل المحميّة — تمرّ بفحص نسخة التطبيق قبل المصادقة.
    *
@@ -69,6 +83,11 @@ export function createApp() {
    * لا تطبيقَ هاتف فلا نسخة لها. والرأس الغائب يمرّ في كل الأحوال — انظر
    * `requireSupportedAppVersion`.
    */
+  // اللوحة عربيةٌ مهما قالت الترويسة أو تفضيلُ المسؤول — انظر `pinLocale`.
+  // [CRITICAL] يُركَّب **قبل** طبقة `/api` العامّة: بادئة `/api` تطابق
+  // `/api/admin/…` أيضاً، فطلبٌ بلا توكن يُجاب من `authenticate` هناك قبل أن
+  // يصل إلى طبقة الإدارة — ولا بدّ أن يكون ٤٠١ ذاك عربياً كذلك.
+  app.use('/api/admin', pinLocale(DEFAULT_LOCALE));
   app.use('/api', requireSupportedAppVersion, authenticate, customerRoutes);
   app.use('/api/admin', authenticate, requireAdmin, adminRoutes);
 

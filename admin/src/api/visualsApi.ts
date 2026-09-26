@@ -1,59 +1,44 @@
-import { get, patch, post, remove } from './client'
-import type {
-  CreateSlotPayload,
-  UpdateSlotPayload,
-  VisualSlot,
-} from '../types/visuals'
+import { get, put, remove } from './client'
+import type { VisualSlot } from '../types/visuals'
 
 /**
- * الرسوم المُدارة — فتحات الشخصيات.
+ * الرسوم المُدارة — فتحات الشخصيات: صورة دائمة واحدة لكل موضع، ومؤقّتة
+ * واحدة فوقها إلى لحظةٍ (الهجرتان ٠٥٤ و٠٥٥).
  *
  * الرفع يمرّ بـ`uploadsApi` القائم بغرض `slot`؛ لا مسار رفع ثانٍ هنا.
- * هذه الوحدة تربط رابطاً مرفوعاً بفتحة فقط.
+ * هذه الوحدة تضع الرابط المرفوع في الفتحة أو تزيله — لا أكثر: لا إنشاء
+ * فتحات ولا حذفها (تُعرَّف بالهجرات)، ولا قوائم صور ولا تدوير.
+ * الدائمة والمؤقّتة مساران منفصلان على الخادم فلا تطمس إحداهما الأخرى.
  */
-export function listVisualSlots(): Promise<{ items: VisualSlot[] }> {
-  return get<{ items: VisualSlot[] }>('/admin/visual-slots')
+export interface VisualSlotList {
+  items: VisualSlot[]
+  /** منطقة المتجر الزمنية — تقويم «مؤقّتة حتى يوم»؛ يعلنها الخادم (`storeTimezone`). */
+  timezone: string
 }
 
-export function createVisualSlot(payload: CreateSlotPayload) {
-  return post<VisualSlot>('/admin/visual-slots', payload)
+export function listVisualSlots(): Promise<VisualSlotList> {
+  return get<VisualSlotList>('/admin/visual-slots')
 }
 
-export function updateVisualSlot(id: string, payload: UpdateSlotPayload) {
-  return patch<VisualSlot>(`/admin/visual-slots/${id}`, payload)
+/** يستبدل الصورة الدائمة — يراها الزبون فوراً ما لم تكن مؤقّتةٌ سارية. */
+export function setSlotImage(slotId: string, url: string) {
+  return put<VisualSlot>(`/admin/visual-slots/${slotId}/image`, { url })
 }
 
-export function deleteVisualSlot(id: string) {
-  return remove<null>(`/admin/visual-slots/${id}`)
+/** يزيل الصورة الدائمة — التطبيق يعود إلى الرسم المضمَّن. الملف يبقى على الخادم. */
+export function clearSlotImage(slotId: string) {
+  return remove<VisualSlot>(`/admin/visual-slots/${slotId}/image`)
 }
 
 /**
- * يضيف صورة إلى فتحة.
- *
- * `append` يبني مجموعة تدوير. `replace` يوقف كل الصور القائمة ويضع الجديدة
- * في المقدمة، فتصير هي المعروضة فوراً — وهو ما يقصده المسؤول حين يقول
- * «غيّر هذه الصورة».
+ * يضع صورةً مؤقّتة إلى لحظةٍ (ISO 8601 بإزاحتها) — تحجب الدائمة حتى تنتهي
+ * ثم تعود الدائمة تلقائياً. الخادم يرفض لحظةً في الماضي أو أبعد من عام.
  */
-export function addSlotImage(
-  slotId: string,
-  url: string,
-  mode: 'append' | 'replace' = 'append',
-) {
-  return post<VisualSlot>(`/admin/visual-slots/${slotId}/images`, { url, mode })
+export function setSlotTemporaryImage(slotId: string, url: string, until: string) {
+  return put<VisualSlot>(`/admin/visual-slots/${slotId}/temporary-image`, { url, until })
 }
 
-export function updateSlotImage(
-  slotId: string,
-  imageId: string,
-  payload: { isActive?: boolean; sortOrder?: number },
-) {
-  return patch<VisualSlot>(`/admin/visual-slots/${slotId}/images/${imageId}`, payload)
-}
-
-export function deleteSlotImage(slotId: string, imageId: string) {
-  return remove<VisualSlot>(`/admin/visual-slots/${slotId}/images/${imageId}`)
-}
-
-export function reorderSlotImages(slotId: string, imageIds: string[]) {
-  return patch<VisualSlot>(`/admin/visual-slots/${slotId}/images/reorder`, { imageIds })
+/** ينهي المؤقّتة الآن — الدائمة (أو المضمَّن) تظهر فوراً. الملف يبقى. */
+export function clearSlotTemporaryImage(slotId: string) {
+  return remove<VisualSlot>(`/admin/visual-slots/${slotId}/temporary-image`)
 }

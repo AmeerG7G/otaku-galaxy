@@ -146,9 +146,12 @@ export const governorateRepo = {
     const { rows } = await db.query<GovernorateRow>(
       `SELECT * FROM governorates WHERE is_active = TRUE ORDER BY sort_order, name`,
     );
+    // `nameCkb` يخرج من هنا وتحسمه الخدمة (`localizeNamed`) — كان مفقوداً
+    // فلم تجد الخدمة ما تختاره وبقيت المحافظات عربيةً في الواجهة الكردية.
     return rows.map((row) => ({
       id: row.id,
       name: row.name,
+      nameCkb: row.name_ckb,
       deliveryFee: Number(row.delivery_fee),
       isActive: row.is_active,
     }));

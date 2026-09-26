@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/design_system/design_system.dart';
+import '../../../../core/l10n/app_strings.dart';
 import '../../../../core/l10n/gender.dart';
 import '../../../../core/di/injection_container.dart';
 import '../../../../core/errors/app_exception.dart';
@@ -20,8 +21,6 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/constants/api_endpoints.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/foundation.dart';
-import '../../../visuals/domain/visual_slot.dart';
-import '../../../visuals/presentation/managed_artwork.dart';
 
 /// تبويب الحساب بتصميم Otaku Galaxy v2.
 ///
@@ -104,7 +103,7 @@ class AccountScreen extends StatelessWidget {
             OtakuSettingRow(
               icon: Icons.receipt_long_outlined,
               iconColor: AppColors.primary,
-              label: 'طلباتي',
+              label: context.strings('myOrders'),
               onTap: () => context.router.push(const OrdersRoute()),
             ),
             const SizedBox(height: 10),
@@ -113,7 +112,7 @@ class AccountScreen extends StatelessWidget {
             builder: (context, favorites) => OtakuSettingRow(
               icon: Icons.favorite_outline,
               iconColor: AppColors.secondary,
-              label: 'المفضلة',
+              label: context.strings('navFavorites'),
               // العدد حقيقي من حالة المفضلة المحمّلة أصلاً — بلا نداء إضافي.
               value: favorites.products.isEmpty
                   ? null
@@ -127,7 +126,7 @@ class AccountScreen extends StatelessWidget {
             OtakuSettingRow(
               icon: Icons.cake_outlined,
               iconColor: AppColors.accent,
-              label: 'إضافة تاريخ الميلاد',
+              label: context.strings('addBirthday'),
               onTap: () => _addBirthday(context),
             ),
           ],
@@ -136,7 +135,7 @@ class AccountScreen extends StatelessWidget {
             OtakuSettingRow(
               icon: Icons.settings_outlined,
               iconColor: AppColors.accentCyan,
-              label: 'الإعدادات',
+              label: context.strings('settings'),
               onTap: () => context.router.push(const SettingsRoute()),
             ),
           ],
@@ -181,8 +180,9 @@ class AccountScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '🎂 تاريخ ميلادك محفوظ — '
-                    '${birthday.day}/${birthday.month}',
+                    context.strings.p('birthdaySavedOn', {
+                      'date': '${birthday.day}/${birthday.month}',
+                    }),
                     style: theme.textTheme.bodyMedium?.copyWith(
                       fontSize: 13,
                       fontWeight: AppDimens.weightBold,
@@ -190,8 +190,9 @@ class AccountScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    'خصم ${birthday.discountPercent}٪ على طلب واحد بيوم '
-                    'ميلادك.',
+                    context.strings.p('birthdayDiscountNote', {
+                      'percent': '${birthday.discountPercent}',
+                    }),
                     style: theme.textTheme.bodySmall?.copyWith(
                       fontSize: 11.5,
                       height: 1.6,
@@ -216,33 +217,30 @@ class AccountScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const OtakuGroupLabel(
-            label: 'تابعنا وتواصل معنا',
-            padding: EdgeInsets.only(bottom: 12),
+          OtakuGroupLabel(
+            label: context.strings('followUs'),
+            padding: const EdgeInsets.only(bottom: 12),
           ),
           _SocialRow(
             icon: Icons.music_note_rounded,
-            slot: VisualSlots.socialTiktok,
-            name: 'تيك توك',
-            subtitle: 'جديد المنتجات والعروض',
+            name: context.strings('socialTiktok'),
+            subtitle: context.strings('socialTiktokSub'),
             tint: const Color(0xFF1C1B22),
             url: links.tiktok,
           ),
           const SizedBox(height: 10),
           _SocialRow(
             icon: Icons.camera_alt_outlined,
-            slot: VisualSlots.socialInstagram,
-            name: 'إنستغرام',
-            subtitle: 'صور المنتجات ولقطات المتجر',
+            name: context.strings('socialInstagram'),
+            subtitle: context.strings('socialInstagramSub'),
             tint: const Color(0xFFE1306C),
             url: links.instagram,
           ),
           const SizedBox(height: 10),
           _SocialRow(
             icon: Icons.chat_bubble_outline,
-            slot: VisualSlots.socialWhatsapp,
-            name: 'واتساب',
-            subtitle: 'تواصل مباشر مع خدمة العملاء',
+            name: context.strings('socialWhatsapp'),
+            subtitle: context.strings('socialWhatsappSub'),
             tint: const Color(0xFF25D366),
             url: links.whatsapp,
           ),
@@ -255,7 +253,7 @@ class AccountScreen extends StatelessWidget {
   Future<void> _addBirthday(BuildContext context) async {
     final saved = await showBirthdayPrompt(context);
     if (!saved || !context.mounted) return;
-    _snack(context, 'تاريخ ميلادك محفوظ 🎂', success: true);
+    _snack(context, context.strings('birthdaySaved'), success: true);
   }
 
   /// تغيير الصورة الشخصية: اختيار من معرض الجهاز، رفع عبر نقطة الوسائط
@@ -268,11 +266,17 @@ class AccountScreen extends StatelessWidget {
 
     final action = await showOtakuPicker<String>(
       context: context,
-      title: 'الصورة الشخصية',
+      title: context.strings('profilePhoto'),
       options: [
-        const OtakuPickerOption(value: 'gallery', label: 'اختيار من المعرض'),
+        OtakuPickerOption(
+          value: 'gallery',
+          label: context.strings('pickFromGallery'),
+        ),
         if (hasAvatar)
-          const OtakuPickerOption(value: 'remove', label: 'إزالة الصورة'),
+          OtakuPickerOption(
+            value: 'remove',
+            label: context.strings('removePhoto'),
+          ),
       ],
     );
     if (action == null || !context.mounted) return;
@@ -301,7 +305,7 @@ class AccountScreen extends StatelessWidget {
       await _applyAvatar(context, url);
     } catch (e) {
       if (!context.mounted) return;
-      _snack(context, _uploadError(e), success: false);
+      _snack(context, _uploadError(context, e), success: false);
     } finally {
       _avatarUploading.value = false;
     }
@@ -315,28 +319,28 @@ class AccountScreen extends StatelessWidget {
       if (!context.mounted) return;
       _snack(
         context,
-        url == null ? 'أُزيلت الصورة الشخصية' : 'تم تحديث الصورة الشخصية',
+        context.strings(url == null ? 'avatarRemoved' : 'avatarUpdated'),
         success: true,
       );
     } catch (e) {
       if (!context.mounted) return;
-      _snack(context, _uploadError(e), success: false);
+      _snack(context, _uploadError(context, e), success: false);
     }
   }
 
-  String _uploadError(Object e) =>
+  String _uploadError(BuildContext context, Object e) =>
       e is AppException && e.message.trim().isNotEmpty
       ? e.message
-      : 'تعذّر رفع الصورة، تأكد من اتصالك وحاول مرة أخرى';
+      : context.strings('avatarUploadFailed');
 
   Future<void> _confirmLogout(BuildContext context) async {
     final auth = context.read<AuthCubit>();
     final confirmed = await showOtakuConfirm(
       context: context,
-      title: 'تسجيل الخروج',
-      message: 'هل أنت متأكد من رغبتك في تسجيل الخروج؟',
-      confirmLabel: 'تسجيل الخروج',
-      cancelLabel: 'إلغاء',
+      title: context.strings('logout'),
+      message: context.strings('logoutConfirm'),
+      confirmLabel: context.strings('logout'),
+      cancelLabel: context.strings('cancel'),
       destructive: true,
     );
     if (confirmed != true) return;
@@ -365,7 +369,7 @@ class AccountScreen extends StatelessWidget {
   }
 }
 
-/// بطاقة دعوة الزائر — تدرّج بنفسجي‑وردي ورسم شخصية يخرج من الحافة.
+/// بطاقة دعوة الزائر — تدرّج بنفسجي‑وردي.
 class _GuestCard extends StatelessWidget {
   const _GuestCard({required this.onLogin});
 
@@ -390,70 +394,49 @@ class _GuestCard extends StatelessWidget {
           ),
         ],
       ),
-      clipBehavior: Clip.antiAlias,
-      child: Stack(
+      padding: const EdgeInsets.fromLTRB(22, 24, 22, 26),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          PositionedDirectional(
-            bottom: -10,
-            end: -16,
-            child: IgnorePointer(
-              child: const ManagedArtwork(
-                slot: VisualSlots.account,
-                fallbackAsset: 'assets/art/opt/a-i0.png',
-                height: 175,
-              ),
+          Text(
+            context.strings('browsingAsGuest'),
+            textAlign: TextAlign.center,
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontFamily: 'Tajawal',
+              fontWeight: AppDimens.weightBlack,
+              fontSize: 19,
+              color: Colors.white,
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(22, 24, 22, 26),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'أنت تتصفح كزائر',
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontFamily: 'Tajawal',
-                    fontWeight: AppDimens.weightBlack,
-                    fontSize: 19,
-                    color: Colors.white,
-                  ),
+          const SizedBox(height: 8),
+          Text(
+            context.g(GenderedStrings.loginToFollow),
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontSize: 12.5,
+              height: 1.7,
+              color: Colors.white.withValues(alpha: 0.88),
+            ),
+          ),
+          const SizedBox(height: 14),
+          InkWell(
+            onTap: onLogin,
+            borderRadius: BorderRadius.circular(AppDimens.radiusFull),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(AppDimens.radiusFull),
+              ),
+              child: Text(
+                context.strings('login'),
+                style: theme.textTheme.labelLarge?.copyWith(
+                  fontSize: 12.5,
+                  fontWeight: AppDimens.weightExtraBold,
+                  color: const Color(0xFF26134A),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  context.g(GenderedStrings.loginToFollow),
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    fontSize: 12.5,
-                    height: 1.7,
-                    color: Colors.white.withValues(alpha: 0.88),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                InkWell(
-                  onTap: onLogin,
-                  borderRadius: BorderRadius.circular(AppDimens.radiusFull),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 11,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(AppDimens.radiusFull),
-                    ),
-                    child: Text(
-                      'تسجيل الدخول',
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        fontSize: 12.5,
-                        fontWeight: AppDimens.weightExtraBold,
-                        color: const Color(0xFF26134A),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ],
@@ -548,7 +531,9 @@ class _ProfileCardState extends State<_ProfileCard> {
                           onEdit: widget.onEditAvatar,
                           uploading: AccountScreen._avatarUploading,
                         ),
-                        const SizedBox(width: 14),
+                        // ١٤ بصرياً: صندوق الصورة يمتدّ `_Avatar.overhang`
+                        // نحو النصّ ليحتوي زرّ «+».
+                        const SizedBox(width: 14 - _Avatar.overhang),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -563,7 +548,7 @@ class _ProfileCardState extends State<_ProfileCard> {
                                     child: Text(
                                       widget.name?.trim().isNotEmpty == true
                                           ? widget.name!
-                                          : 'اسم المستخدم',
+                                          : context.strings('username'),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: theme.textTheme.titleLarge
@@ -585,7 +570,7 @@ class _ProfileCardState extends State<_ProfileCard> {
                                   // القارئ الصوتي يقول اسم المحارف بدل
                                   // المعنى، فيُعلَن المعنى صراحةً.
                                   Semantics(
-                                    label: 'نقاط المجرّة',
+                                    label: context.strings('galaxyPoints'),
                                     child: const Text(
                                       '🌌',
                                       style: TextStyle(fontSize: 17),
@@ -597,12 +582,17 @@ class _ProfileCardState extends State<_ProfileCard> {
                               Text(
                                 // قبل وصول السلّم من الخادم لا نخترع مستوى.
                                 level == null
-                                    ? 'نقاط المجرّة'
+                                    ? context.strings('galaxyPoints')
                                     // الاسم مصرَّف بجنس صاحب الحساب: «بطل
                                     // المجرة» أو «بطلة المجرة»، وصيغة محايدة
                                     // لمن لم يختر بعد.
-                                    : 'المستوى ${level.number} — '
-                                          '${level.nameFor(context.gender)}',
+                                    : context.strings.p(
+                                        'levelNumberAndNameLong',
+                                        {
+                                          'number': '${level.number}',
+                                          'name': level.nameFor(context.gender),
+                                        },
+                                      ),
                                 // [CRITICAL] لا اقتطاع لاسم المستوى.
                                 //
                                 // كان سطراً واحداً بـ`ellipsis`، فيقرأ صاحب
@@ -646,7 +636,7 @@ class _ProfileCardState extends State<_ProfileCard> {
                       children: [
                         Expanded(
                           child: Text(
-                            '🌌 نقاط المجرّة',
+                            context.strings('galaxyPointsTitle'),
                             style: theme.textTheme.bodyMedium?.copyWith(
                               fontSize: 13,
                               fontWeight: AppDimens.weightBold,
@@ -680,7 +670,9 @@ class _ProfileCardState extends State<_ProfileCard> {
                     const SizedBox(height: 9),
                     Text(
                       remaining > 0
-                          ? 'باقي $remaining نقطة للمستوى التالي'
+                          ? context.strings.p('pointsToNextLevel', {
+                              'count': '$remaining',
+                            })
                           : context.g(GenderedStrings.reachedTopLevel),
                       style: theme.textTheme.bodySmall?.copyWith(
                         fontSize: 12.5,
@@ -713,80 +705,119 @@ class _Avatar extends StatelessWidget {
   /// حالة رفع الصورة — تُغطّي الصورة بطبقة انتظار أثناء الرفع.
   final ValueListenable<bool> uploading;
 
+  /// بروز زرّ «+» خارج مربّع الصورة (٦٤) من جهتيه.
+  ///
+  /// [CRITICAL] الصندوق يحتوي البروز لا يتركه خارجه: `RenderBox.hitTest`
+  /// يرفض ما يقع خارج حجم الصندوق قبل أن ينزل إلى أبنائه، فكان زرٌّ موضوعٌ
+  /// بـ`bottom/end: -5` لا يُصاب إلا في ١٧×١٧ بكسلاً منه، وكل نقرةٍ قريبة
+  /// تسقط إلى `InkWell` البطاقة — أي إلى شاشة النقاط. البروز يُضاف أعلى
+  /// الصندوق أيضاً كي يبقى مركز الصورة حيث كان، وتُنقص الفجوة بعده بمقداره.
+  /// (test/avatar_edit_hit_test.dart)
+  static const double overhang = 5;
+  static const double _size = 64;
+
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<bool>(
       valueListenable: uploading,
-      builder: (context, isUploading, _) => SizedBox(
-        width: 64,
-        height: 64,
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Container(
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.14),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.65),
-                  width: 2,
+      builder: (context, isUploading, _) => Semantics(
+        button: true,
+        enabled: !isUploading,
+        label: context.strings('profilePhoto'),
+        // الصورة والزرّ هدفٌ واحد. أثناء الرفع تُمتصّ النقرة ولا تُترك
+        // تسقط إلى البطاقة (مُعالِجٌ فارغ كان سيُسلّمها لشاشة النقاط).
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            if (!isUploading) onEdit();
+          },
+          child: SizedBox(
+            width: _size + overhang,
+            height: _size + overhang * 2,
+            child: Stack(
+              children: [
+                PositionedDirectional(
+                  top: overhang,
+                  start: 0,
+                  width: _size,
+                  height: _size,
+                  child: _image(isUploading),
                 ),
+                PositionedDirectional(
+                  bottom: 0,
+                  end: 0,
+                  child: _badge(context, isUploading),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _image(bool isUploading) {
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.65),
+                width: 2,
               ),
-              clipBehavior: Clip.antiAlias,
-              child: url != null && url!.trim().isNotEmpty
-                  ? Image.network(
-                      url!,
-                      fit: BoxFit.cover,
-                      // الصورة تُحمَّل من الخادم — نُظهر انتظاراً هادئاً بدل قفزة.
-                      loadingBuilder: (context, child, progress) =>
-                          progress == null ? child : const _AvatarBusy(),
-                      errorBuilder: (_, _, _) => const Icon(
-                        Icons.person_rounded,
-                        color: Colors.white,
-                        size: 30,
-                      ),
-                    )
-                  : const Icon(
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: url != null && url!.trim().isNotEmpty
+                ? Image.network(
+                    url!,
+                    fit: BoxFit.cover,
+                    // الصورة تُحمَّل من الخادم — نُظهر انتظاراً هادئاً بدل قفزة.
+                    loadingBuilder: (context, child, progress) =>
+                        progress == null ? child : const _AvatarBusy(),
+                    errorBuilder: (_, _, _) => const Icon(
                       Icons.person_rounded,
                       color: Colors.white,
                       size: 30,
                     ),
-            ),
-            if (isUploading)
-              Positioned.fill(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-                  child: const _AvatarBusy(),
-                ),
-              ),
-            PositionedDirectional(
-              bottom: -5,
-              end: -5,
-              child: InkWell(
-                onTap: isUploading ? null : onEdit,
-                customBorder: const CircleBorder(),
-                child: Container(
-                  width: 22,
-                  height: 22,
-                  decoration: BoxDecoration(
-                    color: isUploading
-                        ? AppColors.secondary.withValues(alpha: 0.5)
-                        : AppColors.secondary,
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: Theme.of(context).colorScheme.surface,
-                      width: 2,
-                    ),
+                  )
+                : const Icon(
+                    Icons.person_rounded,
+                    color: Colors.white,
+                    size: 30,
                   ),
-                  child: const Icon(Icons.add, size: 13, color: Colors.white),
-                ),
-              ),
+          ),
+        ),
+        if (isUploading)
+          Positioned.fill(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: const _AvatarBusy(),
             ),
-          ],
+          ),
+      ],
+    );
+  }
+
+  Widget _badge(BuildContext context, bool isUploading) {
+    return Container(
+      width: 22,
+      height: 22,
+      decoration: BoxDecoration(
+        color: isUploading
+            ? AppColors.secondary.withValues(alpha: 0.5)
+            : AppColors.secondary,
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: Theme.of(context).colorScheme.surface,
+          width: 2,
         ),
       ),
+      child: const Icon(Icons.add, size: 13, color: Colors.white),
     );
   }
 }
@@ -803,7 +834,10 @@ class _AvatarBusy extends StatelessWidget {
         child: SizedBox(
           width: 20,
           height: 20,
-          child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white),
+          child: CircularProgressIndicator(
+            strokeWidth: 2.2,
+            color: Colors.white,
+          ),
         ),
       ),
     );
@@ -814,7 +848,6 @@ class _AvatarBusy extends StatelessWidget {
 class _SocialRow extends StatelessWidget {
   const _SocialRow({
     required this.icon,
-    required this.slot,
     required this.name,
     required this.subtitle,
     required this.tint,
@@ -822,13 +855,6 @@ class _SocialRow extends StatelessWidget {
   });
 
   final IconData icon;
-
-  /// فتحة الأيقونة المُدارة — يرفع المسؤول شعار المنصة الحقيقي.
-  ///
-  /// لا شعار مضمَّن في الحزمة: شعارات المنصات علامات تجارية لا يجوز
-  /// تضمينها اعتباطاً، ولا حزمة أيقونات مرخَّصة في المشروع تحملها. فأيقونة
-  /// Material تبقى بديلاً معقولاً حتى يرفع المسؤول الشعار الرسمي.
-  final String slot;
   final String name;
   final String subtitle;
   final Color tint;
@@ -851,10 +877,7 @@ class _SocialRow extends StatelessWidget {
             ),
             child: Padding(
               padding: const EdgeInsets.all(9),
-              child: ManagedArtwork.orWidget(
-                slot: slot,
-                fallback: Icon(icon, size: 17, color: tint),
-              ),
+              child: Icon(icon, size: 17, color: tint),
             ),
           ),
           const SizedBox(width: 13),
@@ -896,7 +919,7 @@ class _SocialRow extends StatelessWidget {
   Future<void> _onTap(BuildContext context) async {
     final value = url.trim();
     if (value.isEmpty) {
-      _notify(context, 'الرابط يُضاف لاحقاً');
+      _notify(context, context.strings('linkComingSoon'));
       return;
     }
 
@@ -907,13 +930,13 @@ class _SocialRow extends StatelessWidget {
           : value,
     );
     if (uri == null) {
-      _notify(context, 'الرابط غير صالح');
+      _notify(context, context.strings('linkInvalid'));
       return;
     }
 
     final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!opened && context.mounted) {
-      _notify(context, 'تعذّر فتح الرابط');
+      _notify(context, context.strings('linkOpenFailed'));
     }
   }
 
@@ -952,7 +975,7 @@ class _LogoutButton extends StatelessWidget {
           border: Border.all(color: theme.colorScheme.outlineVariant),
         ),
         child: Text(
-          'تسجيل الخروج',
+          context.strings('logout'),
           style: theme.textTheme.labelLarge?.copyWith(
             fontSize: 14,
             fontWeight: AppDimens.weightBold,

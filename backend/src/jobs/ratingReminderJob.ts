@@ -1,6 +1,7 @@
 import type pg from 'pg';
 import { config } from '../config/index.js';
 import { db } from '../database/pool.js';
+import { REVIEWABLE_ITEMS_OF_ORDER } from '../repositories/orderRepo.js';
 
 /**
  * تذكير التقييم بعد الاستلام.
@@ -22,28 +23,47 @@ const REMINDER_BODY =
 /**
  * يُرسل التذكيرات المستحقة ويعيد عددها.
  *
- * الجملة واحدة ومتذرّية: `UPDATE ... RETURNING` يقفل الصفوف ويعلّمها
- * مُرسَلة، والإدراج يقرأ من نتيجته. `FOR UPDATE SKIP LOCKED` يجعل تشغيل
- * أكثر من نسخة من الخادم آمناً — كل نسخة تأخذ دفعة مختلفة بلا تكرار.
+ * الجملة واحدة ومتذرّية: `FOR UPDATE SKIP LOCKED` يقفل دفعة المستحقّ (تشغيل
+ * أكثر من نسخة من الخادم آمن — كل نسخة تأخذ دفعة مختلفة بلا تكرار)، ثم يُحسم
+ * كل طلبٍ فيها مرةً واحدة وفي الجملة نفسها:
+ *   • بقي فيه ما يُقيَّم ⇒ يُعلَّم مُرسَلاً ويُدرج إشعاره.
+ *   • قُيّم كل منتجٍ فيه ⇒ **يُسحب** التذكير (`rating_reminder_at = NULL`):
+ *     لا إشعار، ولا «أُرسل» تدّعيه اللوحة، ولا صفٌّ مستحقٌّ يُعاد فحصه في
+ *     كل دورة ثم يُطلق متأخّراً بأيام إن رُفض تقييمٌ لاحقاً (الرفض يُبلغ
+ *     الزبونَ بإشعاره هو).
+ *
+ * [CRITICAL] النصّ يعد بنقاط، ومهلته موثَّقة «لمن استلم ولم يقيّم بعد»
+ * (`config.orders.reviewReminderDelayHours`). طلبٌ قُيّمت منتجاته كلها لا يبقى
+ * فيه ما يُكسب (§40.5) — والأهلية هي `REVIEWABLE_ITEMS_OF_ORDER` نفسها التي
+ * يُخفي بها التطبيق كل دعوة تقييم (CA-16، STEP 57).
+ *
+ * تعابير `WITH` المعدِّلة تُنفَّذ مرةً واحدة كاملةً وإن لم يُقرأ ناتجها.
  */
 export async function dispatchDueRatingReminders(
   client: pg.Pool | pg.PoolClient = db,
   batchSize = config.orders.ratingReminderBatchSize,
 ): Promise<number> {
   const { rows } = await client.query<{ id: string }>(
-    `WITH due AS (
+    `WITH candidates AS (
+       SELECT o.id, EXISTS (SELECT 1 ${REVIEWABLE_ITEMS_OF_ORDER}) AS reviewable
+         FROM orders o
+        WHERE o.status = 'COMPLETED'
+          AND o.rating_reminder_sent_at IS NULL
+          AND o.rating_reminder_at IS NOT NULL
+          AND o.rating_reminder_at <= now()
+        ORDER BY o.rating_reminder_at
+        LIMIT $1
+        FOR UPDATE OF o SKIP LOCKED
+     ),
+     withdrawn AS (
+       UPDATE orders
+          SET rating_reminder_at = NULL
+        WHERE id IN (SELECT id FROM candidates WHERE NOT reviewable)
+     ),
+     due AS (
        UPDATE orders
           SET rating_reminder_sent_at = now()
-        WHERE id IN (
-          SELECT id FROM orders
-           WHERE status = 'COMPLETED'
-             AND rating_reminder_sent_at IS NULL
-             AND rating_reminder_at IS NOT NULL
-             AND rating_reminder_at <= now()
-           ORDER BY rating_reminder_at
-           LIMIT $1
-           FOR UPDATE SKIP LOCKED
-        )
+        WHERE id IN (SELECT id FROM candidates WHERE reviewable)
         RETURNING id, user_id
      )
      INSERT INTO notifications (user_id, type, title, body, order_id)
@@ -62,7 +82,9 @@ export async function dispatchDueRatingReminders(
  * فرق بين الإرسال اليدوي والمجدول من ناحية منع التكرار: أول من يعلّم الصف
  * يفوز. ضغطتان متتاليتان تُنتجان إشعاراً واحداً، والجدولة لن تعيد إرساله.
  *
- * يعيد `false` إذا كان الطلب غير مستلَم أو كان التذكير مُرسَلاً أصلاً.
+ * يعيد `false` إذا كان الطلب غير مستلَم، أو كان التذكير مُرسَلاً أصلاً، أو لم
+ * يبقَ فيه ما يُقيَّم — الأهلية نفسها التي تحكم الجدولة (CA-16)، في الجملة
+ * نفسها لا في فحصٍ قبلها.
  */
 export async function sendRatingReminderNow(
   orderId: string,
@@ -70,13 +92,14 @@ export async function sendRatingReminderNow(
 ): Promise<boolean> {
   const { rows } = await client.query<{ id: string }>(
     `WITH due AS (
-       UPDATE orders
+       UPDATE orders o
           SET rating_reminder_sent_at = now()
-        WHERE id = $1
-          AND status = 'COMPLETED'
-          AND delivered_at IS NOT NULL
-          AND rating_reminder_sent_at IS NULL
-        RETURNING id, user_id
+        WHERE o.id = $1
+          AND o.status = 'COMPLETED'
+          AND o.delivered_at IS NOT NULL
+          AND o.rating_reminder_sent_at IS NULL
+          AND EXISTS (SELECT 1 ${REVIEWABLE_ITEMS_OF_ORDER})
+        RETURNING o.id, o.user_id
      )
      INSERT INTO notifications (user_id, type, title, body, order_id)
      SELECT due.user_id, 'receiptReminder', $2, $3, due.id

@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../src/database/pool.js';
-import { api, DEV_CODE, createAdminUser, registerAndLogin } from './helpers.js';
+import { api, approveAsAdmin, createAdminUser, registerAndLogin } from './helpers.js';
 
 /**
  * حقل الجنس — مطلوب عند التسجيل الجديد، محصَّن بالقاعدة، ولا يُخمَّن أبداً.
@@ -28,8 +28,8 @@ function registerWith(body: Record<string, unknown>) {
 async function signUp(gender: 'male' | 'female') {
   const phone = freshPhone();
   const password = 'secret123';
-  await registerWith({ username: 'مختبر الجنس', phone, password, gender }).expect(200);
-  await api.post('/api/auth/verify').send({ phone, code: DEV_CODE }).expect(200);
+  const registered = await registerWith({ username: 'مختبر الجنس', phone, password, gender }).expect(202);
+  await approveAsAdmin(registered.body.data.request.id as string);
   const login = await api.post('/api/auth/login').send({ phone, password }).expect(200);
   return {
     token: login.body.data.token as string,
@@ -97,22 +97,16 @@ describe('التسجيل بالجنس', () => {
       phone,
       password: 'secret123',
       gender: 'male',
-    }).expect(200);
+    }).expect(202);
 
-    await db.query(
-      `UPDATE verification_codes
-          SET created_at = created_at - interval '1 hour'
-        WHERE phone LIKE $1`,
-      [`%${phone.slice(1)}`],
-    );
-
+    // لا رمز ولا مهلة إعادة إرسال: الاستئناف فوريّ ويحدّث الطلب المعلَّق نفسه.
     const resumed = await registerWith({
       username: 'محاولة ثانية',
       phone,
       password: 'secret123',
       gender: 'female',
     });
-    expect(resumed.status).toBe(200);
+    expect(resumed.status).toBe(202);
     expect(resumed.body.data.user.gender).toBe('female');
   });
 });
@@ -239,14 +233,10 @@ describe('تمثيل الجنس في الـAPI', () => {
       phone,
       password,
       gender: 'female',
-    }).expect(200);
+    }).expect(202);
     expect(registered.body.data.user.gender).toBe('female');
 
-    const verified = await api
-      .post('/api/auth/verify')
-      .send({ phone, code: DEV_CODE })
-      .expect(200);
-    expect(verified.body.data.user.gender).toBe('female');
+    await approveAsAdmin(registered.body.data.request.id as string);
 
     const login = await api.post('/api/auth/login').send({ phone, password }).expect(200);
     expect(login.body.data.user.gender).toBe('female');
@@ -260,6 +250,8 @@ describe('تمثيل الجنس في الـAPI', () => {
         'id',
         'isPhoneVerified',
         'phone',
+        // [I18N] مضاف بهجرة ٠٤٦ — الحارس ضد التسريب أدناه لم يُمسّ.
+        'preferredLanguage',
         'role',
         'username',
       ].sort(),

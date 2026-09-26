@@ -1,4 +1,7 @@
 import 'package:auto_route/auto_route.dart';
+import '../../../../core/l10n/app_strings.dart';
+import '../../../../core/l10n/locale_refetch.dart';
+import '../../../../core/utils/formatters.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:share_plus/share_plus.dart';
@@ -32,7 +35,8 @@ class ProductDetailScreen extends StatefulWidget {
   State<ProductDetailScreen> createState() => _ProductDetailScreenState();
 }
 
-class _ProductDetailScreenState extends State<ProductDetailScreen> {
+class _ProductDetailScreenState extends State<ProductDetailScreen>
+    with LocaleRefetch {
   Product? _product;
   bool _loading = true;
   int _quantity = 1;
@@ -43,6 +47,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     super.initState();
     _load();
   }
+
+  /// المحتوى الخادمي يُصرَّف لحظة الجلب — يُعاد جلبه بلغة الواجهة الجديدة.
+  @override
+  void onLanguageChanged() => _load();
 
   Future<void> _load() async {
     try {
@@ -182,7 +190,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 alignment: Alignment.center,
                 color: const Color(0xFF180F30).withValues(alpha: 0.74),
                 child: Text(
-                  'نفد المخزون',
+                  // نفس القاعدة: المنتظَر بموعد لا يُقال عنه «نفد».
+                  context.strings(
+                    product.availability == ProductAvailability.comingSoon
+                        ? 'comingSoon'
+                        : 'outOfStock',
+                  ),
                   style: theme.textTheme.labelMedium?.copyWith(
                     fontSize: 11,
                     fontWeight: AppDimens.weightExtraBold,
@@ -214,13 +227,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             top: 60,
             end: -46,
             child: IgnorePointer(
-              child: Opacity(
-                opacity: 0.13,
-                child: const ManagedArtwork(
-                  slot: VisualSlots.productDetail,
-                  fallbackAsset: 'assets/art/opt/a-i4.png',
-                  width: 132,
-                ),
+              // بلا شفافية — الشخصية كما صورتها (قرار 2026-09-15).
+              child: const ManagedArtwork(
+                slot: VisualSlots.productDetail,
+                fallbackAsset: 'assets/art/opt/a-i4.png',
+                width: 132,
               ),
             ),
           ),
@@ -297,7 +308,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Text(
-                    '${product.price.toStringAsFixed(0)} د.ع',
+                    context.strings.p('priceIqd', {'amount': product.price.toStringAsFixed(0)}),
                     textDirection: TextDirection.ltr,
                     style: theme.textTheme.headlineMedium?.copyWith(
                       fontFamily: 'Tajawal',
@@ -331,7 +342,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                         ),
                       ),
                       child: Text(
-                        '−${product.discountPercent}٪',
+                        context.strings.p('discountPercentBadge', {'percent': '${product.discountPercent}'}),
                         style: theme.textTheme.labelSmall?.copyWith(
                           fontSize: 10.5,
                           fontWeight: AppDimens.weightExtraBold,
@@ -344,7 +355,42 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               ),
 
               const SizedBox(height: 14),
-              ProductStockPill(stock: product.stock),
+              ProductStockPill.forProduct(product),
+
+              // الموعد المتوقَّع — يُعرض مع حالة «قريباً يتوفر» وحدها.
+              //
+              // [CRITICAL] المصدر `displayRestockAt` لا `restockAt`: المنتج
+              // الذي وصلت بضاعته قبل موعده يبقى في القاعدة حاملاً تاريخاً،
+              // وعرضُه على منتجٍ يمكن شراؤه الآن يناقض زرّ «أضف إلى السلة»
+              // فوقه مباشرة.
+              if (product.displayRestockAt != null) ...[
+                const SizedBox(height: 9),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.event_available_outlined,
+                      size: 14,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        context.strings.p('expectedRestockOn', {
+                          'date': formatShortArabicDate(
+                            context,
+                            product.displayRestockAt!,
+                          ),
+                        }),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontSize: 12,
+                          fontWeight: AppDimens.weightBold,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
 
               // ترويج التوصيل — يضبطه المسؤول على المنتج.
               if (product.hasDeliveryPromo) ...[
@@ -354,7 +400,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     const Text('🚚', style: TextStyle(fontSize: 13)),
                     const SizedBox(width: 6),
                     Text(
-                      'هذا المنتج ضمن عرض التوصيل المميّز',
+                      context.strings('deliveryPromoProduct'),
                       style: theme.textTheme.bodySmall?.copyWith(
                         fontSize: 12,
                         fontWeight: AppDimens.weightBold,
@@ -368,11 +414,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               _divider(),
 
               // الوصف.
-              Text('الوصف', style: _sectionStyle(theme)),
+              Text(context.strings('description'), style: _sectionStyle(theme)),
               const SizedBox(height: 9),
               Text(
                 product.description.trim().isEmpty
-                    ? 'لا يوجد وصف لهذا المنتج بعد.'
+                    ? context.strings('noDescriptionYet')
                     : product.description,
                 style: theme.textTheme.bodyMedium?.copyWith(
                   fontSize: 14,
@@ -384,7 +430,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               // الخيارات.
               if (product.options != null && product.options!.isNotEmpty) ...[
                 const SizedBox(height: 22),
-                Text('الخيارات المتاحة', style: _sectionStyle(theme)),
+                Text(context.strings('availableOptions'), style: _sectionStyle(theme)),
                 const SizedBox(height: 11),
                 for (final option in product.options!) ...[
                   _OptionGroup(
@@ -401,11 +447,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               const SizedBox(height: 10),
               Row(
                 children: [
-                  Expanded(child: Text('الكمية', style: _sectionStyle(theme))),
+                  Expanded(child: Text(context.strings('quantity'), style: _sectionStyle(theme))),
                   // الكمية لا تظهر للزبون إلا عند انخفاض المخزون.
                   if (product.lowStock) ...[
                     Text(
-                      'متاح ${product.stock}',
+                      context.strings.p('availableStockCount', {'count': '${product.stock}'}),
                       style: theme.textTheme.bodySmall?.copyWith(
                         fontSize: 11.5,
                         color: theme.colorScheme.onSurfaceVariant,
@@ -459,7 +505,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            'الدفع عند الاستلام',
+                            context.strings('cashOnDelivery'),
                             style: theme.textTheme.bodyMedium?.copyWith(
                               fontSize: 13,
                               fontWeight: AppDimens.weightBold,
@@ -467,7 +513,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            'تدفع بعد وصول الطلب — دون أي دفع مسبق.',
+                            context.strings('cashOnDeliveryNote'),
                             style: theme.textTheme.bodySmall?.copyWith(
                               fontSize: 11.5,
                               height: 1.6,
@@ -537,7 +583,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             children: [
               PositionedDirectional(
                 bottom: 42,
-                end: 6,
+                end: 16,
                 child: IgnorePointer(
                   child: const ManagedArtwork(
                     slot: VisualSlots.productDetailReviews,
@@ -554,8 +600,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               else
                 AnimePrimaryButton(
                   label: missingOption
-                      ? 'اختر الخيارات أولاً'
-                      : 'إضافة إلى السلة',
+                      ? context.strings('chooseOptionsFirst')
+                      : context.g(GenderedStrings.addToCart),
                   onPressed: missingOption
                       ? null
                       : () => _addToCart(context, product),
@@ -616,12 +662,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       child: Column(
         children: [
           OtakuScreenHeader.compact(
-            title: 'المنتج',
+            title: context.strings('product'),
             onBack: () => context.router.maybePop(),
           ),
           Expanded(
             child: AnimeErrorState(
-              message: 'تعذّر تحميل هذا المنتج. تأكد من اتصالك وحاول مرة أخرى.',
+              message: context.strings('productLoadFailed'),
               onAction: () {
                 setState(() => _loading = true);
                 _load();
@@ -638,9 +684,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   void _shareProduct(Product product) {
     SharePlus.instance.share(
       ShareParams(
-        text:
-            '${product.name}\n${product.price.toStringAsFixed(0)} د.ع '
-            '— مجرة الأوتاكو',
+        text: context.strings.p('shareProductText', {
+          'name': product.name,
+          'price': product.price.toStringAsFixed(0),
+        }),
       ),
     );
   }
@@ -654,7 +701,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       quantity: _quantity,
       selectedOption: _selectedOptions.isEmpty
           ? null
-          : _selectedOptions.values.join('، '),
+          : _selectedOptions.values.join(context.strings('listSeparator')),
     );
     if (!added || !context.mounted) return;
 
@@ -752,8 +799,8 @@ class _AddToCollectionTile extends StatelessWidget {
   Future<void> _open(BuildContext context) async {
     final authenticated = await requireAuthentication(
       context,
-      title: 'سجّل دخولك أولاً',
-      body: 'المجموعات تحتاج تسجيل الدخول لحسابك في مجرة الأوتاكو.',
+      title: context.gNow(GenderedStrings.loginFirst),
+      body: context.strings('loginRequiredForCollections'),
     );
     if (!authenticated) return;
     if (context.mounted) {
@@ -796,7 +843,7 @@ class _AddToCollectionTile extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                'أضف إلى مجموعتك',
+                context.strings('addToYourCollection'),
                 style: theme.textTheme.bodyMedium?.copyWith(
                   fontSize: 13.5,
                   fontWeight: AppDimens.weightBold,

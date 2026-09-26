@@ -20,6 +20,7 @@ class AnimeEmptyState extends StatelessWidget {
     this.artwork,
     this.artworkSlot,
     this.centered = false,
+    this.artworkHeight = 150,
   });
 
   final String title;
@@ -45,6 +46,9 @@ class AnimeEmptyState extends StatelessWidget {
   /// — بينما التخطيط الجانبي (رسمٌ يخرج من الحافة وإجراءٌ أسفل جهة البداية)
   /// هو ما يصفه مرجع التصميم لبقيتها. السلة وحدها تطلبه اليوم.
   final bool centered;
+
+  /// ارتفاع الرسم التزييني (الشخصية). الافتراضي 150.
+  final double artworkHeight;
 
   @override
   Widget build(BuildContext context) {
@@ -100,13 +104,13 @@ class AnimeEmptyState extends StatelessWidget {
                           child: artworkSlot == null
                               ? Image.asset(
                                   artwork!,
-                                  height: 150,
+                                  height: artworkHeight,
                                   fit: BoxFit.contain,
                                 )
                               : ManagedArtwork(
                                   slot: artworkSlot!,
                                   fallbackAsset: artwork!,
-                                  height: 150,
+                                  height: artworkHeight,
                                 ),
                         ),
                       Padding(
@@ -254,13 +258,13 @@ class AnimeEmptyState extends StatelessWidget {
                     child: artworkSlot == null
                         ? Image.asset(
                             artwork!,
-                            height: 150,
+                            height: artworkHeight,
                             fit: BoxFit.contain,
                           )
                         : ManagedArtwork(
                             slot: artworkSlot!,
                             fallbackAsset: artwork!,
-                            height: 150,
+                            height: artworkHeight,
                           ),
                   ),
                 const SizedBox(height: AppDimens.space4),

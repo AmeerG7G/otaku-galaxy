@@ -8,6 +8,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import '../../core/config/app_config.dart';
 import '../../core/design_system/design_system.dart';
 import '../../core/di/injection_container.dart' as di;
+import '../../core/l10n/locale_scope.dart';
 import '../../core/router/app_router.dart';
 import '../../features/auth/presentation/cubit/auth_cubit.dart';
 import '../../features/auth/presentation/cubit/auth_state.dart';
@@ -46,7 +47,10 @@ class OtakuGalaxyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final appRouter = di.sl<AppRouter>();
+    // [CRITICAL] إعداد الموجّه يُبنى مرة واحدة. `config()` يُنشئ محلّل مسارات
+    // جديداً في كل نداء، فكان كل تبديل لغة أو مظهر يُخطر `_RouterScope`
+    // ومعتمِديه بلا داع — وأي معتمِدٍ يتيم هناك يُسقط التطبيق بشاشة حمراء.
+    final routerConfig = di.sl<AppRouter>().routerConfig;
     return MultiRepositoryProvider(
       providers: [
         RepositoryProvider.value(value: di.sl<FetchHomeUsecase>()),
@@ -83,6 +87,13 @@ class OtakuGalaxyApp extends StatelessWidget {
           // حساب فقط — عند الدخول تُحمَّلان من الخادم، وعند الخروج تُمسحان
           // محلياً (لا سلة زائر). التصفح كزائر مسموح للتصفح فقط؛ الشاشات
           // التي تحتاج حساباً تعرض دعوة تسجيل الدخول عند الحاجة.
+          //
+          // [CRITICAL] الانتقال بين **أنواع** الحالة وحده يهمّ هنا: تحديث
+          // الملف الشخصي (اسم، صورة، لغة) يُصدر `AuthAuthenticated` جديدة
+          // لكنه ليس دخولاً — إعادة تشغيل هذه الكتلة عنده كانت تعيد تسجيل
+          // الجهاز وتحميل كل شيء مع كل تبديل لغة.
+          listenWhen: (previous, current) =>
+              previous.runtimeType != current.runtimeType,
           listener: (context, state) {
             if (state is AuthAuthenticated) {
               // إن كان المستخدم زائراً طلب تبويباً محمياً قبل الدخول
@@ -98,6 +109,10 @@ class OtakuGalaxyApp extends StatelessWidget {
               di.sl<BirthdayStorage>().refresh();
               di.sl<NotificationsCubit>().load();
               di.sl<PointsCubit>().load();
+              // تقييمات الحساب تغذّي لافتتَي «صورتك قيد المراجعة» و«لم تُقبل»
+              // في المجتمع؛ كانت تُحمَّل في `initState` شاشة المجتمع فقط — أي
+              // قبل استعادة الجلسة في الإقلاع البارد — فتبقى خاويةً أو قديمة.
+              di.sl<ReviewsCubit>().load();
               // ربط الجهاز بالحساب للإشعارات الفورية. لا يُنتظر: طلب الإذن
               // وجلب الرمز لا يجوز أن يؤخّرا دخول المستخدم، والفشل صامت
               // (الإشعار الفوري تحسين لا شرط).
@@ -156,18 +171,25 @@ class OtakuGalaxyApp extends StatelessWidget {
                 // على **كل** شاشة بلا استثناء ويتبدّل مع تبدّل المظهر. ضبطه
                 // مرة واحدة في `bootstrap` كان يترك الشريط أبيض في الوضع
                 // الداكن وأيقونات الحالة داكنةً على خلفية داكنة.
-                builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
-                  value: otakuSystemOverlay(
-                    themeState.isDark ? Brightness.dark : Brightness.light,
-                  ),
-                  child: ForceUpdateGate(
-                  repository: di.sl<AppVersionRepository>(),
-                    child: OfflineGate(
-                      child: child ?? const SizedBox.shrink(),
+                // [CRITICAL] `LocaleScope` هنا — فوق الموجّه والأوراق والحوارات
+                // — هو ما يجعل تبديل اللغة يعيد رسم كل شاشة قرأت نصّاً، لا
+                // `BlocBuilder<LocaleCubit>` وحده: إعادة بناء `MaterialApp`
+                // لا تعيد بناء المسارات المركّبة. انظر `locale_scope.dart`.
+                builder: (context, child) => LocaleScope(
+                  language: language,
+                  child: AnnotatedRegion<SystemUiOverlayStyle>(
+                    value: otakuSystemOverlay(
+                      themeState.isDark ? Brightness.dark : Brightness.light,
+                    ),
+                    child: ForceUpdateGate(
+                      repository: di.sl<AppVersionRepository>(),
+                      child: OfflineGate(
+                        child: child ?? const SizedBox.shrink(),
+                      ),
                     ),
                   ),
                 ),
-                routerConfig: appRouter.config(),
+                routerConfig: routerConfig,
               );
             },
                 ),

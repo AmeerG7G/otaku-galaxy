@@ -1,8 +1,11 @@
 import type pg from 'pg';
+import { userRepo } from '../repositories/userRepo.js';
+import { PARAM_TEMPLATES } from '../domain/notificationTemplates.js';
 import { db, withTransaction } from '../database/pool.js';
 import {
   CLAIMABLE_LEVELS,
   GALAXY_LEVELS,
+  rewardLabelFor,
   discountRewardAmount,
   findLevel,
   type GalaxyLevel,
@@ -130,29 +133,37 @@ export const loyaltyRewardsService = {
     }
 
     const fields = rewardFields(level)!;
-    const { redemption, created } = await rewardRedemptionRepo.claim(db, {
-      userId,
-      levelKey: level.key,
-      kind: fields.kind,
-      percent: fields.percent,
-      capAmount: fields.capAmount,
-      giftAmount: fields.giftAmount,
-    });
-
-    // الإشعار مربوط بالإنشاء الحقيقي لا بالطلب: بدون ذلك يتكرّر إشعار
-    // «سُجّلت مطالبتك» مع كل ضغطة، وهي نفس العلّة التي عولجت في اعتماد
-    // التقييمات (النقاط يحرسها فهرس فريد، والإشعار لا حارس له).
-    if (created) {
-      await notificationRepo.create(db, {
+    // [CRITICAL] الصفّ والإشعار في معاملة واحدة. كانا كتابتين مستقلّتين:
+    // سقوطُ الإشعار بعد إدراج الصفّ يترك مطالبةً بلا إشعار، وإعادةُ المحاولة
+    // تجد الصفّ قائماً (`created = false`) فلا تُشعر أبداً — أثرٌ يضيع بلا
+    // رجعة. الإدراج يبقى محروساً بالقيد الفريد؛ المعاملة تضمن «صفٌّ وإشعار
+    // معاً أو لا شيء» فتصير إعادة المحاولة بعد أي فشلٍ آمنةً.
+    const { redemption, created } = await withTransaction(async (tx) => {
+      const result = await rewardRedemptionRepo.claim(tx, {
         userId,
-        type: 'rewardClaimed',
-        title: fields.kind === 'gift' ? 'سُجّلت هديتك 🎁' : 'مزيّتك جاهزة 🎉',
-        body:
-          fields.kind === 'gift'
-            ? `${level.rewardLabel}. سنتواصل معك لتسليمها.`
-            : `${level.rewardLabel}. سيُطبَّق تلقائياً على طلبك القادم.`,
+        levelKey: level.key,
+        kind: fields.kind,
+        percent: fields.percent,
+        capAmount: fields.capAmount,
+        giftAmount: fields.giftAmount,
       });
-    }
+
+      // الإشعار مربوط بالإنشاء الحقيقي لا بالطلب: بدون ذلك يتكرّر إشعار
+      // «سُجّلت مطالبتك» مع كل ضغطة، وهي نفس العلّة التي عولجت في اعتماد
+      // التقييمات (النقاط يحرسها فهرس فريد، والإشعار لا حارس له).
+      if (result.created) {
+        // القالب مترجَم بلغة صاحب الحساب، فلا يُحشر فيه وصفٌ عربيّ للمزيّة.
+        const locale = await userRepo.localeOf(tx, userId);
+        await notificationRepo.create(tx, {
+          userId,
+          type: 'rewardClaimed',
+          ...PARAM_TEMPLATES[
+              fields.kind === 'gift' ? 'rewardClaimedGift' : 'rewardClaimedDiscount'
+            ][locale](rewardLabelFor(level, locale)),
+        });
+      }
+      return result;
+    });
 
     return {
       redemption,
@@ -258,11 +269,13 @@ export const loyaltyRewardsService = {
       }
 
       const level = findLevel(row.level_key);
+      const locale = await userRepo.localeOf(client, row.user_id);
       await notificationRepo.create(client, {
         userId: row.user_id,
         type: 'rewardClaimed',
-        title: 'سُلّمت هديتك 🎁',
-        body: level ? `${level.rewardLabel} — تم التسليم.` : 'تم تسليم هديتك.',
+        ...PARAM_TEMPLATES.rewardDelivered[locale](
+          level ? rewardLabelFor(level, locale) : '',
+        ),
       });
 
       return rewardRedemptionRepo.findById(client, redemptionId);
@@ -282,8 +295,10 @@ export const loyaltyRewardsService = {
       nameMale: level.nameMale,
       nameFemale: level.nameFemale,
       nameNeutral: level.nameNeutral,
+      nameCkb: level.nameCkb,
       rewardKind: level.reward.kind,
       rewardLabel: level.rewardLabel,
+      rewardLabelCkb: level.rewardLabelCkb,
       ...(level.reward.kind === 'discount'
         ? { percent: level.reward.percent, capAmount: level.reward.capAmount }
         : {}),

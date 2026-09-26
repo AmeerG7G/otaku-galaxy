@@ -39,8 +39,9 @@ async function boot(env: Record<string, string | undefined>) {
  * البيئة تُحسم صراحةً أو يسقط الإقلاع.
  *
  * [CRITICAL] كل حارس أمني في `config` مربوط بـ`appEnv`: مفتاح التوقيع
- * الافتراضي، ومزوّد الرسائل `console` الذي يطبع الرمز في السجلّ، والرمز
- * الثابت `123456`. كلها ممنوعة في `staging`/`prod` ومسموحة في `dev`. فحين
+ * الافتراضي، ووصلة القاعدة، والوسيط والعنوان العام. (كان هنا أيضاً مزوّد
+ * الرسائل ورمز التحقق الثابت — أُزيلا مع رمز SMS كلّه.) كلها ممنوعة في
+ * `staging`/`prod` ومسموحة في `dev`. فحين
  * كانت البيئة تسقط إلى `dev` بصمت عند غياب المتغيّر أو خطأ في كتابته، كانت
  * نشرةٌ حقيقية تحصل على **كل** بدائل التطوير دفعةً واحدة وتبدو سليمة.
  *
@@ -52,11 +53,9 @@ describe('APP_ENV يفشل مغلقاً', () => {
     DATABASE_URL: 'postgres://user:pass@db.example.com:5432/otaku',
     TRUST_PROXY: '1',
     PUBLIC_BASE_URL: 'https://api.example.com',
-    SMS_PROVIDER: 'http',
     SMS_BASE_URL: 'https://sms.example.com/send',
     SMS_API_KEY: 'key',
     SMS_SENDER: 'OtakuGalaxy',
-    DEV_OTP_ENABLED: undefined,
   };
 
   it('[CRITICAL] NODE_ENV=production بلا APP_ENV → سقوط لا افتراض', async () => {
@@ -84,9 +83,7 @@ describe('APP_ENV يفشل مغلقاً', () => {
       DATABASE_URL: undefined,
       TRUST_PROXY: undefined,
       PUBLIC_BASE_URL: undefined,
-      SMS_PROVIDER: undefined,
-      DEV_OTP_ENABLED: undefined,
-    });
+      });
     expect(result.ok).toBe(true);
     expect(JSON.parse((result as { stdout: string }).stdout).appEnv).toBe('dev');
   });
@@ -131,11 +128,4 @@ describe('APP_ENV يفشل مغلقاً', () => {
     expect((result as { stderr: string }).stderr).toContain('PUBLIC_BASE_URL');
   });
 
-  it('[CRITICAL] DEV_OTP_ENABLED ممنوع خارج التطوير', async () => {
-    for (const env of ['staging', 'prod']) {
-      const result = await boot({ ...REAL_SECRETS, APP_ENV: env, NODE_ENV: 'production', DEV_OTP_ENABLED: 'true' });
-      expect(result.ok, env).toBe(false);
-      expect((result as { stderr: string }).stderr).toContain('DEV_OTP_ENABLED');
-    }
-  });
 });

@@ -7,6 +7,8 @@
 // هذه اختبارات تجسيم بلا تفاعل: لا ننقر شيئاً، فنكفي ببناء الشاشة داخل
 // حامل يحتوي `context.router` وتزويد [AuthCubit] كي يُبنى الجسم كاملاً.
 
+import 'dart:async';
+
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -15,8 +17,11 @@ import 'package:otaku_galaxy/core/config/app_config.dart';
 import 'package:otaku_galaxy/core/design_system/design_system.dart';
 import 'package:otaku_galaxy/core/di/injection_container.dart';
 import 'package:otaku_galaxy/core/router/app_router.dart';
+import 'package:otaku_galaxy/features/points/domain/repositories/points_repository.dart';
+import 'package:otaku_galaxy/features/points/domain/entities/otaku_level.dart';
 import 'package:otaku_galaxy/features/auth/data/datasources/auth_local_storage.dart';
 import 'package:otaku_galaxy/features/auth/domain/entities/auth_session.dart';
+import 'package:otaku_galaxy/features/auth/domain/entities/account_request.dart';
 import 'package:otaku_galaxy/features/auth/domain/entities/user.dart';
 import 'package:otaku_galaxy/features/auth/domain/repositories/auth_repository.dart';
 import 'package:otaku_galaxy/features/auth/domain/usecases/change_password_usecase.dart';
@@ -24,10 +29,7 @@ import 'package:otaku_galaxy/features/auth/domain/usecases/forgot_password_useca
 import 'package:otaku_galaxy/features/auth/domain/usecases/get_me_usecase.dart';
 import 'package:otaku_galaxy/features/auth/domain/usecases/login_usecase.dart';
 import 'package:otaku_galaxy/features/auth/domain/usecases/register_usecase.dart';
-import 'package:otaku_galaxy/features/auth/domain/usecases/reset_password_usecase.dart';
-import 'package:otaku_galaxy/features/auth/domain/usecases/send_otp_usecase.dart';
 import 'package:otaku_galaxy/features/auth/domain/usecases/update_profile_usecase.dart';
-import 'package:otaku_galaxy/features/auth/domain/usecases/verify_otp_usecase.dart';
 import 'package:otaku_galaxy/features/auth/presentation/cubit/auth_cubit.dart';
 
 const _user = User(
@@ -44,33 +46,32 @@ class _StubAuthRepository implements AuthRepository {
   Future<AuthSession> login(String phone, String password) async =>
       const AuthSession(token: 't', user: _user);
   @override
-  Future<void> register({
+  Future<AccountRequestReceipt> register({
     required String username,
     required String phone,
     required String password,
     required String gender,
-  }) async {}
+  }) async => const AccountRequestReceipt(id: 'req-1', status: 'pending', createdAt: null);
   @override
-  Future<AuthSession> verifyOtp(String phone, String code) async =>
-      const AuthSession(token: 't', user: _user);
-  @override
-  Future<void> sendOtp(String phone) async {}
-  @override
-  Future<void> forgotPassword(String phone) async {}
-  @override
-  Future<void> resetPassword(String p, String c, String n) async {}
+  Future<AccountRequestReceipt> forgotPassword({
+    required String phone,
+    required String username,
+    required String gender,
+    required String levelKey,
+  }) async => const AccountRequestReceipt(id: 'req-1', status: 'pending', createdAt: null);
   @override
   Future<User> updateProfile({
     String? username,
     String? avatarUrl,
     bool clearAvatar = false,
     String? gender,
+    String? preferredLanguage,
   }) async => _user;
   @override
-  Future<void> changePassword({
+  Future<AuthSession> changePassword({
     required String currentPassword,
     required String newPassword,
-  }) async {}
+  }) async => AuthSession(token: 't', user: await me());
 }
 
 class _InMemoryAuthStorage implements AuthLocalStorage {
@@ -96,10 +97,7 @@ AuthCubit _cubit() {
     localStorage: _InMemoryAuthStorage(),
     loginUsecase: LoginUsecase(repo),
     registerUsecase: RegisterUsecase(repo),
-    sendOtpUsecase: SendOtpUsecase(repo),
     forgotPasswordUsecase: ForgotPasswordUsecase(repo),
-    verifyOtpUsecase: VerifyOtpUsecase(repo),
-    resetPasswordUsecase: ResetPasswordUsecase(repo),
     getMeUsecase: GetMeUsecase(repo),
     updateProfileUsecase: UpdateProfileUsecase(repo),
     changePasswordUsecase: ChangePasswordUsecase(repo),
@@ -122,7 +120,7 @@ class _AuthRouter extends RootStackRouter {
     AutoRoute(path: '/login', page: LoginRoute.page),
     AutoRoute(path: '/register', page: RegisterRoute.page),
     AutoRoute(path: '/forgot', page: ForgotPasswordRoute.page),
-    AutoRoute(path: '/otp', page: OtpVerificationRoute.page),
+    AutoRoute(path: '/account-pending', page: AccountPendingRoute.page),
   ];
 
   @override
@@ -158,24 +156,28 @@ Future<void> _pumpScreen(
   router.push(route);
   await tester.pump();
 
-  // شاشة الرمز تبدأ عدّاد إعادة الإرسال (٦٠ ث) من `initState` — نمرّر الزمن
-  // كي يكتمل العدّاد ولا يتبقّى مؤقّت معلّق عند نهاية الاختبار.
+  // شاشة الانتظار تحرّك الرسم الطافي بلا نهاية؛ لا مؤقّتات معلّقة تُنتظر.
   if (flushTimers) {
-    await tester.pump(const Duration(seconds: 61));
+    await tester.pump(const Duration(seconds: 1));
   }
-  if (route is OtpVerificationRoute) {
-    // ignore: avoid_print
-    debugPrint('====OTP TREE====');
-    debugDumpRenderTree();
-  }
+}
+
+/// سلّم لا يصل أبداً — الشاشة تبقى في حالة التحميل وتُقاس هندستها كما هي.
+class _PendingLevels implements PointsRepository {
+  @override
+  Future<List<OtakuLevel>> fetchLevels() => Completer<List<OtakuLevel>>().future;
+  @override
+  dynamic noSuchMethod(Invocation invocation) => Completer<Object?>().future;
 }
 
 void main() {
   setUpAll(() {
-    // شاشة الرمز تقرأ [AppConfig.showDevOtpHint] أثناء البناء — نزوّدها في
-    // حاوية GetIt كما يفعل `init()` في التطبيق، بلا سحب كل وكلاء الشبكة.
     if (!sl.isRegistered<AppConfig>()) {
       sl.registerLazySingleton<AppConfig>(() => AppConfig.development);
+    }
+    // استمارة نسيان كلمة المرور تقرأ السلّم من `PointsRepository` عبر GetIt.
+    if (!sl.isRegistered<PointsRepository>()) {
+      sl.registerLazySingleton<PointsRepository>(() => _PendingLevels());
     }
   });
 
@@ -195,7 +197,8 @@ void main() {
       ('login', const LoginRoute()),
       ('register', const RegisterRoute()),
       ('forgot', const ForgotPasswordRoute()),
-      ('otp', OtpVerificationRoute(phone: '07701234567')),
+      ('pending-registration', AccountPendingRoute(kind: AccountRequestKind.registration)),
+      ('pending-reset', AccountPendingRoute(kind: AccountRequestKind.passwordReset)),
     ];
 
     for (final dark in [false, true]) {
@@ -208,7 +211,7 @@ void main() {
               dark: dark,
               size: size.value,
               route: route,
-              flushTimers: name == 'otp',
+              flushTimers: name.startsWith('pending'),
             );
             expect(
               tester.takeException(),

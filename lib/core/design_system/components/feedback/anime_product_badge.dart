@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../themes/app_theme.dart';
 
 import '../../tokens/app_colors.dart';
 import '../../tokens/app_dimens.dart';
@@ -65,6 +66,8 @@ class AnimeProductBadge extends StatelessWidget {
             label,
             style: TextStyle(
               fontFamily: 'Cairo',
+              // نصٌّ مترجَم بـTextStyle جديد: لا يرث احتياط الثيم فيُذكر صراحةً.
+              fontFamilyFallback: kArabicScriptFallback,
               fontSize: fontSize,
               fontWeight: AppDimens.weightBold,
               color: Colors.white,

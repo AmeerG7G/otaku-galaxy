@@ -18,7 +18,7 @@ class SplashBackdrop extends StatelessWidget {
   const SplashBackdrop({super.key});
 
   /// `linear-gradient(170deg,#fef3f9 0%,#f2edfe 46%,#ebe3fd 100%)` —
-  /// نفسه دوماً في الوضعين الفاتح والداكن كما في المرجع.
+  /// تدرّج الوضع الفاتح.
   ///
   /// [STAGE 12] الدرجات الثلاث مشتقّة من ألوان العلامة الجديدة بالطريقة
   /// نفسها التي اشتُقّت بها القديمة: نسبةُ مزج كلِّ درجة فوق الأبيض حُلَّت
@@ -36,10 +36,35 @@ class SplashBackdrop extends StatelessWidget {
     end: Alignment.bottomCenter,
   );
 
+  /// نظير التدرّج في الوضع الداكن.
+  ///
+  /// [CRITICAL] كانت شاشة البداية فاتحةً في الوضعين لأن المرجع لا يحمل
+  /// نسخةً داكنة — فكان مستخدم الوضع الداكن يُقذف من واجهةٍ داكنة إلى شاشةِ
+  /// بدايةٍ فاتحة ثم يعود. الدرجات الثلاث هنا مشتقّة من درجات الفاتح
+  /// بالمزج نفسه فوق سطح الوضع الداكن، فتحفظ هوية التدرّج (وردي → بنفسجي)
+  /// وتتبع المظهر المختار.
+  ///
+  /// الدرجة الأولى (#141024) هي عينها `brand_launch_background_dark` في
+  /// موارد أندرويد، فلا حدّ مرئي بين نافذة النظام وأول إطار من فلاتر.
+  static const LinearGradient darkGradient = LinearGradient(
+    colors: [
+      Color(0xFF141024),
+      Color(0xFF17132C),
+      Color(0xFF1B1636),
+    ],
+    stops: [0, 0.46, 1],
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+  );
+
+  /// التدرّج المطابق للمظهر الحالي.
+  static LinearGradient gradientFor(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark ? darkGradient : gradient;
+
   @override
   Widget build(BuildContext context) {
     return DecoratedBox(
-      decoration: const BoxDecoration(gradient: gradient),
+      decoration: BoxDecoration(gradient: gradientFor(context)),
       child: const Stack(
         clipBehavior: Clip.hardEdge,
         children: [

@@ -1,4 +1,6 @@
 import 'package:auto_route/auto_route.dart';
+import '../../../core/l10n/gender.dart';
+import '../../../core/l10n/app_strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -19,8 +21,8 @@ Future<bool> addToCartGuarded(
 }) async {
   final authenticated = await requireAuthentication(
     context,
-    title: 'سجّل دخولك أولاً',
-    body: 'إضافة منتجات للسلة تحتاج تسجيل الدخول لحسابك في مجرة الأوتاكو.',
+    title: context.gNow(GenderedStrings.loginFirst),
+    body: context.strings('loginRequiredForAddToCart'),
   );
   if (!authenticated || !context.mounted) return false;
   try {
@@ -44,9 +46,9 @@ Future<bool> addToCartGuarded(
 void showAddedToCartSnack(BuildContext context) {
   showOtakuSnack(
     context,
-    message: 'تمت إضافة المنتج إلى السلة',
+    message: context.strings('addedToCart'),
     action: SnackBarAction(
-      label: 'عرض السلة',
+      label: context.strings('viewCart'),
       textColor: AppColors.secondary,
       onPressed: () {
         mainNavIndex.value = MainTab.cart;

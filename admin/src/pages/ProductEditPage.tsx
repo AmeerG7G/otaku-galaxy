@@ -17,7 +17,7 @@ import { ApiError } from '../api/client'
 export default function ProductEditPage() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
-  const { message, modal } = App.useApp()
+  const { message } = App.useApp()
   const queryClient = useQueryClient()
 
   const editQuery = useQuery({
@@ -41,6 +41,11 @@ export default function ProductEditPage() {
 
   function handleSubmit(values: ProductFormValues) {
     const optionsLoaded = editQuery.data?.optionsLoaded ?? true
+    // [CRITICAL] المنتج المعطّل لا يوفّر الخادم خياراته للوحة، والحقلُ
+    // الغائب عن `PATCH` لا يُمسّ على الخادم (`adminProductUpdateSchema`).
+    // كانت الصفحة ترسل `options: []` صراحةً فتمسح الخيارات المحفوظة خلف
+    // نافذة تأكيد تبرّر المسح بخللٍ في الخادم زال منذ زمن. الآن لا يُرسَل
+    // الحقل أصلاً، فتبقى الخيارات كما هي في القاعدة.
     const payload = {
       name: values.name,
       description: values.description,
@@ -48,8 +53,10 @@ export default function ProductEditPage() {
       categoryId: values.categoryId,
       subcategoryId: values.subcategoryId ?? null,
       stock: values.stock,
+      // `null` صريحة تمسح الموعد؛ الحقل الغائب يعني «لا تغيّر».
+      restockAt: values.restockAt ?? null,
       images: values.images,
-      options: optionsLoaded ? values.options : [],
+      ...(optionsLoaded ? { options: values.options } : {}),
       isOffer: values.isOffer,
       isSelected: values.isSelected,
       isActive: values.isActive,
@@ -61,22 +68,7 @@ export default function ProductEditPage() {
         : 0,
       franchiseIds: values.franchiseIds ?? [],
     }
-    if (optionsLoaded) {
-      updateMutation.mutate({ payload })
-      return
-    }
-    // المنتج معطّل = الخادم لا يوفر خياراته — أي حفظ يُمسحها (خَلل في واجهة
-    // الخادم: شكل التحديث يملأ الخيارات بـ [] افتراضياً). نتطلب تأكيداً صريحاً.
-    modal.confirm({
-      title: 'تحذير: سيُمسح هذا الخيارات؟',
-      content:
-        'المنتج غير نشط، وخادم الإدارة لا يوفر خياراته، وأي حفظ للتعديلات سيُمسح ' +
-        'الخيارات المحفوظة نهائياً من قاعدة البيانات. هل تريد المتابعة؟',
-      okText: 'نعم، احفظ وامسح الخيارات',
-      okButtonProps: { danger: true },
-      cancelText: 'إلغاء',
-      onOk: () => updateMutation.mutateAsync({ payload }),
-    })
+    updateMutation.mutate({ payload })
   }
 
   return (

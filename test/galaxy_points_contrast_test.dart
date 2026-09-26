@@ -86,6 +86,9 @@ final _ladder = [
 ];
 
 class _StubPoints implements PointsRepository {
+  @override
+  Future<List<OtakuLevel>> fetchLevels() async => summary.levels;
+
   _StubPoints(this.summary);
 
   final PointsSummary summary;

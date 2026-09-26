@@ -1,4 +1,5 @@
 import 'package:auto_route/auto_route.dart';
+import '../../../../core/l10n/app_strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -6,11 +7,13 @@ import '../../../../core/design_system/design_system.dart';
 import '../../../../core/l10n/gender.dart';
 import '../../../../core/errors/app_exception.dart';
 import '../../../../core/router/app_router.dart';
+import '../../../../core/utils/iraqi_phone.dart';
+import '../../domain/entities/account_request.dart';
 import '../cubit/auth_cubit.dart';
 import '../widgets/auth_field.dart';
 import '../widgets/auth_scaffold.dart';
 import '../../../settings/data/personalize_storage.dart';
-import '../../../../core/di/injection_container.dart';
+import '../../../../core/di/injection_container.dart' show sl;
 import '../../../visuals/domain/visual_slot.dart';
 
 @RoutePage()
@@ -70,8 +73,12 @@ class _LoginScreenState extends State<LoginScreen>
 
     setState(() => _loading = true);
     try {
+      // بصيغة E.164 المطبَّعة (تشمل تحويل الأرقام الشرقية) — ما يخزّنه الخادم.
       await context.read<AuthCubit>().login(
-        _phoneController.text.trim(),
+        normalizeIraqiPhone(
+              iraqiPhoneFromLocalDigits(_phoneController.text.trim()),
+            ) ??
+            iraqiPhoneFromLocalDigits(_phoneController.text.trim()),
         _passwordController.text,
       );
       if (!mounted) return;
@@ -82,15 +89,16 @@ class _LoginScreenState extends State<LoginScreen>
       );
     } on AppException catch (e) {
       if (!mounted) return;
-      // حساب صحيح لكن رقمه غير مُفعَّل: الخادم أرسل رمزاً جديداً بالفعل،
-      // فنأخذ المستخدم إلى شاشة الرمز بدل أن نعرض رفضاً يبدو بلا مخرج.
-      if (e.code == 'PHONE_NOT_VERIFIED') {
-        _showErrorSnackBar(e.message);
+      // كلمة مرور صحيحة لحساب لم توافق عليه الإدارة بعد: لا رمز يُرسل ولا
+      // شاشة رمز — نعرض شاشة «قيد المراجعة» نفسها التي رآها عند التسجيل،
+      // فيعرف أن الطلب قائم وأن الإدارة ستتواصل معه عبر واتساب.
+      if (e.code == 'ACCOUNT_PENDING_APPROVAL') {
         context.router.push(
-          OtpVerificationRoute(phone: _phoneController.text.trim()),
+          AccountPendingRoute(kind: AccountRequestKind.registration),
         );
         return;
       }
+      // مرفوض: الرسالة من الخادم تكفي — لا مسار آلي بعدها؛ التواصل مع الإدارة.
       _showErrorSnackBar(_messageOf(e));
     } catch (e) {
       if (!mounted) return;
@@ -102,8 +110,11 @@ class _LoginScreenState extends State<LoginScreen>
 
   /// يعرض رسالة الخطأ الواضحة من الخادم عند توفّرها، مع رسالة عامة غير ذلك.
   String _messageOf(Object e) {
-    if (e is AppException && e.message.trim().isNotEmpty) return e.message;
-    return 'حدث خطأ غير متوقع، يرجى المحاولة مرة أخرى';
+    if (e is AppException) {
+      final text = e.localizedMessage(context);
+      if (text.trim().isNotEmpty) return text;
+    }
+    return context.strings('unexpectedError');
   }
 
   void _showErrorSnackBar(String message) {
@@ -127,32 +138,42 @@ class _LoginScreenState extends State<LoginScreen>
       child: SlideTransition(
         position: _slideAnimation,
         child: AuthScaffold(
-          title: 'تسجيل الدخول',
+          title: context.strings('login'),
           subtitle: context.g(GenderedStrings.enterPhoneAndPassword),
           artwork: 'assets/art/opt/a-i4.png',
           artworkSlot: VisualSlots.login,
+          ctaSlot: VisualSlots.loginCta,
+          ctaArtwork: 'assets/art/opt/a-i4.png',
           artworkHeight: 196,
           artworkWidth: 138,
-          artworkBottom: -14,
+          artworkBottom: -10,
           form: Form(
             key: _formKey,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 // حقل رقم الهاتف — تسمية فوق الحقل بلا أيقونات.
-                AuthField(
+                AnimeTextField(
                   controller: _phoneController,
-                  label: 'رقم الهاتف',
-                  hint: '0770 123 4567',
-                  textDirection: TextDirection.ltr,
+                  label: context.strings('phoneNumber'),
+                  hint: context.strings('phoneHintExample'),
+                  prefixIcon: Icons.phone_outlined,
                   keyboardType: TextInputType.phone,
+                  // §49.2: البادئة `07` ثابتة في الحقل والمستخدم يكتب التسعة التي تليها؛
+                  // المُنسّق يُسقط `+964`/`00964`/`07` مما يُلصق بدل أن يقصّه.
+                  prefixText: kIraqiLocalPrefix,
+                  inputFormatters: const [IraqiLocalDigitsFormatter()],
+                  textDirection: TextDirection.ltr,
                   textInputAction: TextInputAction.next,
+                  maxLength: kIraqiLocalDigits,
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
-                      return 'يرجى إدخال رقم الهاتف';
+                      return context.strings('phoneRequiredShort');
                     }
-                    if (value.trim().length < 10) {
-                      return 'رقم الهاتف غير صحيح';
+                    if (!isValidIraqiPhone(
+                      iraqiPhoneFromLocalDigits(value.trim()),
+                    )) {
+                      return context.strings('phoneInvalid');
                     }
                     return null;
                   },
@@ -163,7 +184,7 @@ class _LoginScreenState extends State<LoginScreen>
                 // حقل كلمة المرور
                 AuthField(
                   controller: _passwordController,
-                  label: 'كلمة المرور',
+                  label: context.strings('password'),
                   hint: '••••••••',
                   obscureText: _obscure,
                   textInputAction: TextInputAction.done,
@@ -179,11 +200,11 @@ class _LoginScreenState extends State<LoginScreen>
                     onPressed: () => setState(() => _obscure = !_obscure),
                   ),
                   validator: (value) {
+                    // الدخول لا يفرض طولاً (الخادم: `min(1)`): كلمةٌ وضعتها
+                    // الإدارة أو حسابٌ قديم قد تكون أقصر مما يفرضه التسجيل،
+                    // وحجبُها هنا يمنع صاحبها من الدخول أصلاً.
                     if (value == null || value.isEmpty) {
-                      return 'يرجى إدخال كلمة المرور';
-                    }
-                    if (value.length < 6) {
-                      return 'كلمة المرور قصيرة جداً';
+                      return context.strings('passwordRequired');
                     }
                     return null;
                   },
@@ -195,7 +216,7 @@ class _LoginScreenState extends State<LoginScreen>
                 Align(
                   alignment: AlignmentDirectional.centerStart,
                   child: AnimeTextButton(
-                    label: 'نسيت كلمة المرور؟',
+                    label: context.strings('forgotPassword'),
                     onPressed: () =>
                         context.router.push(const ForgotPasswordRoute()),
                   ),
@@ -205,7 +226,7 @@ class _LoginScreenState extends State<LoginScreen>
 
                 // زر تسجيل الدخول
                 AnimePrimaryButton(
-                  label: 'تسجيل الدخول',
+                  label: context.strings('login'),
                   onPressed: _login,
                   loading: _loading,
                   height: AppDimens.buttonHeightXl,
@@ -219,12 +240,12 @@ class _LoginScreenState extends State<LoginScreen>
             children: [
               SizedBox(height: AppDimens.space2),
               AnimeTextButton(
-                label: 'ما عندك حساب؟ إنشاء حساب جديد',
+                label: context.strings('noAccountRegister'),
                 onPressed: () => context.router.push(const RegisterRoute()),
               ),
               // متابعة كزائر (بلا حساب) — تصفّح المتجر مباشرة.
               AnimeTextButton(
-                label: 'تصفح كزائر',
+                label: context.strings('browseAsGuest'),
                 onPressed: () => context.router.replace(
                   sl<PersonalizeStorage>().isDone
                       ? const MainNavigationRoute()

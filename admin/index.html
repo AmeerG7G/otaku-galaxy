@@ -4,7 +4,28 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>لوحة تحكم مجرة الاوتاكو</title>
+    <title>لوحة تحكم مجرة الأوتاكو</title>
+    <script>
+      (function () {
+        try {
+          var theme = localStorage.getItem('otaku-galaxy-admin-theme');
+          if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+          } else {
+            document.documentElement.classList.remove('dark');
+          }
+        } catch (e) {
+        }
+      })();
+    </script>
+    <style>
+      [data-theme="dark"], html.dark {
+        color-scheme: dark;
+      }
+      [data-theme="light"], html:not(.dark) {
+        color-scheme: light;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

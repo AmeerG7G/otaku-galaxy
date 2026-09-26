@@ -1,284 +1,154 @@
 import { config } from '../config/index.js';
-import { db, withTransaction } from '../database/pool.js';
+import { db } from '../database/pool.js';
 import { mediaRepo } from '../repositories/mediaRepo.js';
-import {
-  visualsRepo,
-  type RotationMode,
-  type VisualSlotDto,
-} from '../repositories/visualsRepo.js';
+import { visualsRepo, type VisualSlotDto } from '../repositories/visualsRepo.js';
 import { Errors } from '../utils/errors.js';
 
-/** فتحة كما يقرؤها التطبيق: الرابط المختار الآن + القائمة للتحميل المسبق. */
+/**
+ * فتحة كما يقرؤها التطبيق: المفتاح والصورة الفعّالة.
+ *
+ * `currentUrl` اسمٌ على السلك بقي كما كان (إصداراتُ التطبيق المنشورة تقرؤه)؛
+ * معناه اليوم: الصورة الواحدة التي يراها الزبون الآن — المؤقّتة السارية أو
+ * الدائمة. التطبيق لا يعرف أيّهما ولا يحتاج: الخادم وحده يحكم.
+ */
 export interface ResolvedSlot {
   slotKey: string;
-  rotationMode: RotationMode;
-  /** الرابط الذي يجب عرضه الآن. */
   currentUrl: string;
-  /** كل الروابط النشطة — يستعملها التطبيق للتحميل المسبق لا للاختيار. */
-  urls: string[];
-  /** متى يتغيّر الاختيار (ISO)، أو null إن كان ثابتاً. */
-  validUntil: string | null;
 }
 
-/**
- * «اليوم» بتقويم المتجر، كعدد أيام منذ حقبة يونكس.
- *
- * [CRITICAL] يُحسب على الخادم لا على الجهاز. ساعة الهاتف يملكها صاحبه:
- * تقديمها يوماً يمنحه شخصية الغد، وخادمٌ بـUTC يبدّل الشخصية الثالثة فجراً
- * ببغداد. رقم واحد من مصدر واحد يجعل كل الأجهزة ترى الشخصية نفسها.
- */
-async function storeDayNumber(): Promise<number> {
-  const { rows } = await db.query<{ day: string }>(
-    `SELECT ((now() AT TIME ZONE $1)::date - DATE '1970-01-01')::text AS day`,
-    [config.storeTimezone],
-  );
-  return Number(rows[0]?.day ?? 0);
-}
-
-/** بداية الغد بتقويم المتجر — لحظة انتهاء صلاحية الاختيار اليومي. */
-async function nextStoreMidnight(): Promise<string> {
-  const { rows } = await db.query<{ at: Date }>(
-    `SELECT (((now() AT TIME ZONE $1)::date + 1) AT TIME ZONE $1) AS at`,
-    [config.storeTimezone],
-  );
-  return rows[0]!.at.toISOString();
-}
-
-/**
- * يختار صورة الفتحة.
- *
- * `fixed`: الأولى في الترتيب الذي ضبطه المسؤول.
- * `daily`: فهرس حتمي مشتقّ من رقم اليوم — بلا عشوائية وبلا حالة على الجهاز،
- * فالنتيجة ثابتة طوال اليوم مهما أعاد التطبيق البناء أو أُعيد تشغيله.
- */
-function chooseIndex(mode: RotationMode, count: number, dayNumber: number) {
-  if (count <= 1 || mode === 'fixed') return 0;
-  return dayNumber % count;
-}
-
-/** فتحة كما تراها اللوحة: بيانات الفتحة + الصورة المعروضة الآن. */
-export interface AdminSlotDto extends VisualSlotDto {
-  /** معرّف الصورة التي يخدمها الخادم الآن، أو null إن لم تكن الفتحة معروضة. */
-  currentImageId: string | null;
-}
+/** أطول مدّةٍ لصورةٍ مؤقّتة — أطول منها «دائمةٌ» تحت اسمٍ آخر. */
+export const TEMPORARY_MAX_DAYS = 366;
 
 export const visualsService = {
   // ── واجهة العميل ──
 
   /**
-   * الإعداد المنشور. الفتحات بلا صور نشطة لا تُذكر إطلاقاً — غيابُها هو
-   * إشارة «استعمل الأصل المضمَّن»، وهي الحالة الافتراضية بعد الترقية.
+   * الإعداد المنشور. الفتحات بلا صورة لا تُذكر إطلاقاً — غيابُها هو إشارة
+   * «استعمل الأصل المضمَّن»، وهي الحالة الافتراضية بعد الترقية.
+   *
+   * `now` و`nextChangeAt` بساعة الخادم: يجدولُ التطبيق بهما إعادةَ جلبٍ
+   * واحدة لحظةَ انتهاء أقرب مؤقّتة، فتعود الدائمة عنده في وقتها ولو بقي
+   * مفتوحاً — بلا استطلاعٍ دوري ولا اعتمادٍ على ساعة الهاتف.
+   *
+   * [CRITICAL] القيم الأربع من **لقطةٍ واحدة** للقاعدة (عبارة واحدة في
+   * [visualsRepo.published]) — لا تُجمَع من استعلامات مستقلة، وإلا خرج ردٌّ
+   * تحمل فتحاتُه مؤقّتةً وبصمتُه وساعتُه حالةً بعد انتهائها.
    */
   async published(): Promise<{
     slots: ResolvedSlot[];
-    timezone: string;
     version: string;
+    now: string;
+    nextChangeAt: string | null;
   }> {
-    const [slots, version] = await Promise.all([
-      visualsRepo.listPublished(db),
-      visualsRepo.publishedVersion(db),
-    ]);
-    if (slots.length === 0) {
-      return { slots: [], timezone: config.storeTimezone, version };
-    }
-
-    const needsDay = slots.some((slot) => slot.rotationMode === 'daily');
-    const dayNumber = needsDay ? await storeDayNumber() : 0;
-    const validUntil = needsDay ? await nextStoreMidnight() : null;
-
+    const snapshot = await visualsRepo.published(db);
     return {
-      timezone: config.storeTimezone,
-      version,
-      slots: slots.map((slot) => {
-        const urls = slot.images.map((image) => image.url);
-        const index = chooseIndex(slot.rotationMode, urls.length, dayNumber);
-        return {
-          slotKey: slot.slotKey,
-          rotationMode: slot.rotationMode,
-          currentUrl: urls[index]!,
-          urls,
-          validUntil: slot.rotationMode === 'daily' ? validUntil : null,
-        };
-      }),
+      version: snapshot.version,
+      now: snapshot.now.toISOString(),
+      nextChangeAt: snapshot.nextChangeAt?.toISOString() ?? null,
+      slots: snapshot.slots.map((slot) => ({ slotKey: slot.slotKey, currentUrl: slot.activeImageUrl })),
     };
   },
 
   // ── لوحة التحكم ──
 
   /**
-   * الفتحات للوحة التحكم، ومعها **الصورة التي سيراها الزبون الآن**.
+   * الفتحات للوحة التحكم — `activeImageUrl` هي ما يراه الزبون الآن.
    *
-   * [CRITICAL] الاختيار يُحسب هنا بـ`chooseIndex` نفسها التي تخدم التطبيق.
-   * كانت اللوحة تعيد تنفيذ القاعدة بـTypeScript في المتصفح وتقرأ ساعة
-   * الجهاز: نسختان من قاعدة واحدة عبر حدّ لغتين، لا اختبار يربطهما. أوّل
-   * نمط تدوير يُضاف إلى الخادم كان سيجعل المعاينة تكذب بصمت — يرى المسؤول
-   * صورةً ويصل الزبونَ غيرها، ولا شيء يكسر ليُنبّه.
+   * `timezone` منطقة المتجر (`config.storeTimezone`): «مؤقّتة حتى يوم» سؤالٌ
+   * تقويمي، واللوحة تحوّل اليوم المختار إلى نهايته بهذه المنطقة — لا بمنطقة
+   * متصفح المسؤول — كما تُحسب أعياد الميلاد. الخادم يعلنها ولا يفترضها أحد.
    */
-  async listForAdmin(): Promise<{ items: AdminSlotDto[] }> {
-    const slots = await visualsRepo.listAll(db);
-    const needsDay = slots.some(
-      (slot) => slot.isActive && slot.rotationMode === 'daily',
-    );
-    const dayNumber = needsDay ? await storeDayNumber() : 0;
-
-    return {
-      items: slots.map((slot) => {
-        // بعد إسقاط غير النشط يصير الترتيب هو ترتيب `listPublished` نفسه
-        // (`sort_order` ثم `created_at`)، فالفهرس يشير إلى الصورة ذاتها.
-        const active = slot.images.filter((image) => image.isActive);
-        const visible = slot.isActive && active.length > 0;
-        return {
-          ...slot,
-          currentImageId: visible
-            ? active[chooseIndex(slot.rotationMode, active.length, dayNumber)]!.id
-            : null,
-        };
-      }),
-    };
-  },
-
-  async createSlot(input: {
-    slotKey: string;
-    label?: string;
-    location?: string;
-    groupKey?: string;
-    rotationMode?: RotationMode;
-  }) {
-    try {
-      return await visualsRepo.create(db, input);
-    } catch (error) {
-      if ((error as { code?: string }).code === '23505') {
-        throw Errors.conflict('توجد فتحة بهذا المفتاح', 'SLOT_KEY_TAKEN');
-      }
-      throw error;
-    }
-  },
-
-  async updateSlot(
-    id: string,
-    input: {
-      label?: string;
-      location?: string;
-      groupKey?: string;
-      isActive?: boolean;
-      rotationMode?: RotationMode;
-    },
-  ) {
-    const updated = await visualsRepo.update(db, id, input);
-    if (!updated) throw Errors.notFound('الفتحة غير موجودة');
-    return updated;
+  async listForAdmin(): Promise<{ items: VisualSlotDto[]; timezone: string }> {
+    return { items: await visualsRepo.listAll(db), timezone: config.storeTimezone };
   },
 
   /**
-   * حذف فتحة.
+   * يضع الصورة الدائمة للفتحة (استبدالٌ كامل — لا قائمة).
    *
-   * مسموح دائماً: التطبيق يعود إلى الأصل المضمَّن فوراً، فلا شاشة تنكسر.
-   * صور الفتحة تُحذف معها (`ON DELETE CASCADE`) لأنها بلا معنى خارجها —
-   * أما الملفات على القرص فتبقى، وهي قرار تنظيف منفصل.
+   * لا يلمس المؤقّتة: إن كانت مؤقّتةٌ سارية بقيت هي المعروضة حتى تنتهي،
+   * ثم تظهر هذه.
    */
-  async deleteSlot(id: string) {
-    const removed = await visualsRepo.remove(db, id);
-    if (!removed) throw Errors.notFound('الفتحة غير موجودة');
-    return { id };
+  async setImage(slotId: string, url: string) {
+    await requireSlot(slotId);
+    const media = await resolveSlotUpload(url);
+    await visualsRepo.setImage(db, slotId, { url: media.url, mediaId: media.id });
+    return (await visualsRepo.findById(db, slotId))!;
+  },
+
+  /** يزيل الصورة الدائمة — التطبيق يعود إلى الرسم المضمَّن (ما لم تكن مؤقّتةٌ سارية). */
+  async clearImage(slotId: string) {
+    const cleared = await visualsRepo.clearImage(db, slotId);
+    if (!cleared) throw Errors.notFound('الفتحة غير موجودة');
+    return (await visualsRepo.findById(db, slotId))!;
   },
 
   /**
-   * إضافة صورة إلى فتحة.
+   * يضع صورةً مؤقّتة إلى لحظةٍ محدّدة. تحلّ محلّ أي مؤقّتةٍ سابقة (واحدة
+   * في كل وقت)، ولا تلمس الدائمة أبداً.
    *
-   * الرابط يجب أن يكون ملفاً يعرفه الخادم أو رابطاً خارجياً كاملاً — نفس
-   * القاعدة التي تحرس صور التقييمات. رابط `/uploads/` لا يقابله صفّ في
-   * `media_files` يعني مرجعاً معلّقاً منذ لحظته الأولى.
+   * [CRITICAL] اللحظة تُقاس بساعة **القاعدة** لا بساعة المتصفح ولا بساعة
+   * Node — الساعة نفسها التي تقيس سريان المؤقّتة عند كل قراءة، وفي العبارة
+   * التي تكتبها. انتهاءٌ في الماضي يُرفض (كان سيضع صورةً لا تظهر لأحد ثم
+   * يقول إنها «سارية»)، وأبعد من عامٍ يُرفض (دائمةٌ باسمٍ آخر — الدائمة لها
+   * مسارها).
    */
-  /**
-   * إضافة صورة إلى فتحة، أو استبدال ما فيها.
-   *
-   * [CRITICAL] الاستبدال عملية قائمة بذاتها لا مجرد إضافة.
-   *
-   * كانت الإضافة تضع الصورة في **آخر** القائمة، والنمط الثابت يعرض
-   * **أولها**. فالمسؤول يرفع بديلاً، ويراه في اللوحة، ويبقى التطبيق يعرض
-   * القديمة إلى الأبد — واللوحة تقول إن الصورة تغيّرت بينما لم يتغيّر شيء.
-   * وهو أسوأ صنف من الأعطال: لا خطأ، ولا سجل، ولا شيء يُلاحَظ إلا التناقض.
-   *
-   * `replace` يوقف كل الصور القائمة ويضع الجديدة في المقدمة، فتصير هي
-   * المعروضة فوراً مهما كان النمط. القديمة تبقى موقوفة لا محذوفة: الملف
-   * يظل على القرص وقد تشير إليه أشياء أخرى، والتراجع يبقى ممكناً بضغطة.
-   */
-  async addImage(slotId: string, url: string, mode: 'append' | 'replace' = 'append') {
-    const slot = await visualsRepo.findById(db, slotId);
-    if (!slot) throw Errors.notFound('الفتحة غير موجودة');
-
-    const trimmed = url.trim();
-    let mediaId: string | null = null;
-
-    if (trimmed.startsWith(config.uploads.publicPath)) {
-      const media = await mediaRepo.findByUrl(db, trimmed);
-      if (!media) {
-        throw Errors.badRequest(
-          'هذه الصورة غير مرفوعة على الخادم',
-          'MEDIA_NOT_FOUND',
-        );
-      }
-      mediaId = media.id;
+  async setTemporaryImage(slotId: string, url: string, until: string) {
+    await requireSlot(slotId);
+    const media = await resolveSlotUpload(url);
+    const expiresAt = new Date(until);
+    if (Number.isNaN(expiresAt.getTime())) {
+      throw Errors.badRequest('لحظة الانتهاء غير صالحة', 'TEMPORARY_UNTIL_INVALID');
     }
-
-    try {
-      // معاملة واحدة: إمّا أن تُوقف القديمة وتُدرج الجديدة معاً، أو لا
-      // يقع شيء. الفشل في المنتصف كان سيترك الفتحة بلا صورة نشطة.
-      await withTransaction(async (tx) => {
-        if (mode === 'replace') {
-          await visualsRepo.deactivateAllImages(tx, slotId);
-        }
-        await visualsRepo.addImage(tx, {
-          slotId,
-          url: trimmed,
-          mediaId,
-          position: mode === 'replace' ? 'first' : 'last',
-        });
-      });
-    } catch (error) {
-      if ((error as { code?: string }).code === '23505') {
-        throw Errors.conflict('الصورة مضافة لهذه الفتحة مسبقاً', 'IMAGE_ALREADY_IN_SLOT');
-      }
-      throw error;
+    const verdict = await visualsRepo.setTemporaryImage(db, slotId, {
+      url: media.url,
+      mediaId: media.id,
+      until: expiresAt,
+      maxDays: TEMPORARY_MAX_DAYS,
+    });
+    if (verdict === 'past') {
+      throw Errors.badRequest('لحظة الانتهاء يجب أن تكون في المستقبل', 'TEMPORARY_UNTIL_PAST');
     }
-    return (await visualsRepo.findById(db, slotId))!;
-  },
-
-  async updateImage(
-    slotId: string,
-    imageId: string,
-    input: { isActive?: boolean; sortOrder?: number },
-  ) {
-    // الملكية تُتحقَّق صراحةً: تعديل صورة فتحة أخرى بمعرّفها وحده يجب أن
-    // يُرفض، لا أن ينجح بصمت لأن الجملة طابقت صفاً في مكان آخر.
-    if (!(await visualsRepo.imageBelongsToSlot(db, imageId, slotId))) {
-      throw Errors.notFound('الصورة غير موجودة في هذه الفتحة');
-    }
-    await visualsRepo.updateImage(db, imageId, input);
-    return (await visualsRepo.findById(db, slotId))!;
-  },
-
-  async removeImage(slotId: string, imageId: string) {
-    if (!(await visualsRepo.imageBelongsToSlot(db, imageId, slotId))) {
-      throw Errors.notFound('الصورة غير موجودة في هذه الفتحة');
-    }
-    await visualsRepo.removeImage(db, imageId);
-    return (await visualsRepo.findById(db, slotId))!;
-  },
-
-  async reorderImages(slotId: string, imageIds: string[]) {
-    const slot = await visualsRepo.findById(db, slotId);
-    if (!slot) throw Errors.notFound('الفتحة غير موجودة');
-
-    const known = new Set(slot.images.map((image) => image.id));
-    if (imageIds.length !== known.size || imageIds.some((id) => !known.has(id))) {
+    if (verdict === 'too_far') {
       throw Errors.badRequest(
-        'قائمة الترتيب يجب أن تحتوي كل صور الفتحة مرة واحدة',
-        'REORDER_MISMATCH',
+        `الصورة المؤقّتة لا تتجاوز ${TEMPORARY_MAX_DAYS} يوماً — للصورة الدائمة مسارها`,
+        'TEMPORARY_UNTIL_TOO_FAR',
       );
     }
+    if (verdict === 'missing') throw Errors.notFound('الفتحة غير موجودة');
+    return (await visualsRepo.findById(db, slotId))!;
+  },
 
-    await visualsRepo.reorder(db, slotId, imageIds);
+  /** ينهي المؤقّتة الآن — الدائمة (أو المضمَّن) تظهر فوراً. الملف يبقى. */
+  async clearTemporaryImage(slotId: string) {
+    const cleared = await visualsRepo.clearTemporaryImage(db, slotId);
+    if (!cleared) throw Errors.notFound('الفتحة غير موجودة');
     return (await visualsRepo.findById(db, slotId))!;
   },
 };
+
+async function requireSlot(slotId: string): Promise<void> {
+  if (!(await visualsRepo.findById(db, slotId))) throw Errors.notFound('الفتحة غير موجودة');
+}
+
+/**
+ * [SECURITY] الصورة يجب أن تكون **مرفوعةً من اللوحة لهذا الغرض**: مرجع
+ * `/uploads/` يقابله صفّ في `media_files` غرضُه `slot`. لا روابط خارجية
+ * (تُحمَّل عند كل زبون من خادمٍ لا نملكه ويمكن أن يبدّل محتواها)، ولا صور
+ * زبائن (تقييم أو صورة شخصية) تُنقل إلى واجهة المتجر بمعرّفها.
+ *
+ * القاعدة نفسها للدائمة والمؤقّتة — مسارٌ واحد فلا تُرخى إحداهما سهواً.
+ */
+async function resolveSlotUpload(url: string) {
+  const trimmed = url.trim();
+  if (!trimmed.startsWith(`${config.uploads.publicPath}/`)) {
+    throw Errors.badRequest('الصورة يجب أن تكون مرفوعة على الخادم', 'MEDIA_NOT_FOUND');
+  }
+  const media = await mediaRepo.findByUrl(db, trimmed);
+  if (!media) {
+    throw Errors.badRequest('هذه الصورة غير مرفوعة على الخادم', 'MEDIA_NOT_FOUND');
+  }
+  if (media.purpose !== 'slot') {
+    throw Errors.badRequest('هذه الصورة لم تُرفع لرسوم الشخصيات', 'MEDIA_NOT_SLOT_UPLOAD');
+  }
+  return { url: trimmed, id: media.id };
+}

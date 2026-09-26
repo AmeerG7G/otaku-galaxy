@@ -1,55 +1,45 @@
-/** أنماط التدوير المدعومة. `sequential`/`random` مؤجَّلان عمداً — انظر الوثائق. */
-export const ROTATION_MODES = ['fixed', 'daily'] as const
-
-export type RotationMode = (typeof ROTATION_MODES)[number]
-
-export const ROTATION_LABELS: Record<RotationMode, string> = {
-  fixed: 'ثابتة',
-  daily: 'يومية',
-}
-
-export const ROTATION_HINTS: Record<RotationMode, string> = {
-  fixed: 'تُعرض الصورة الأولى في الترتيب دائماً.',
-  daily: 'تتبدّل الصورة كل يوم بتوقيت المتجر، بترتيب ثابت لا عشوائي.',
-}
-
-export interface VisualSlotImage {
-  id: string
-  url: string
-  mediaId: string | null
-  isActive: boolean
-  sortOrder: number
-}
-
+/**
+ * فتحة بصرية: موضعٌ واحد في التطبيق يحمل صورةً دائمة واحدة أو لا شيء، وقد
+ * يحمل فوقها صورةً مؤقّتة واحدة إلى لحظةٍ محدّدة.
+ *
+ * [PRODUCT] قرار 2026-09-20 (الهجرتان ٠٥٤ و٠٥٥): لا تدوير ولا مجموعة صور
+ * ولا إيقاف مؤقّت. `imageUrl` الصورة الدائمة و`null` تعني «الرسم المضمَّن
+ * في التطبيق»؛ `temporaryImageUrl` مؤقّتةٌ **سارية** (الخادم يخفيها متى
+ * انتهت)؛ و`activeImageUrl` ما يراه الزبون الآن كما حسبه الخادم — اللوحة
+ * تعرضه ولا تعيد حسابه. الفتحات تُعرَّف بالهجرات لا من اللوحة.
+ */
 export interface VisualSlot {
   id: string
   /** المفتاح الذي يعرفه كود التطبيق — لا يُترجم ولا يُعاد تسميته. */
   slotKey: string
   /** الاسم المعروض. */
   label: string
-  /** أين يظهر هذا الرسم بالضبط داخل التطبيق. */
+  /** أين يظهر هذا الرسم بالضبط داخل التطبيق — شاشةٌ واحدة وموضعٌ واحد. */
   location: string
   /** منطقة التطبيق — تُجمَّع بها الفتحات. */
   groupKey: string
   sortOrder: number
-  isActive: boolean
-  rotationMode: RotationMode
-  images: VisualSlotImage[]
-  /**
-   * معرّف الصورة التي يخدمها الخادم الآن — يحسبها الخادم لا المتصفح.
-   *
-   * `null` إذا كانت الفتحة معطّلة أو بلا صورة نشطة، أي لا يصل الزبونَ منها
-   * شيء ويعرض التطبيقُ الأصلَ المضمَّن.
-   */
-  currentImageId: string | null
+  /** الصورة الدائمة: مرجع نسبي (`/uploads/...`) أو null حين لا صورة مضبوطة. */
+  imageUrl: string | null
+  mediaId: string | null
+  /** الصورة المؤقّتة السارية، أو null إن لم توضع أو انتهت. */
+  temporaryImageUrl: string | null
+  temporaryMediaId: string | null
+  /** لحظة انتهاء المؤقّتة (ISO 8601)، أو null. */
+  temporaryUntil: string | null
+  /** ما يراه الزبون الآن: المؤقّتة السارية، وإلا الدائمة، وإلا null (المضمَّن). */
+  activeImageUrl: string | null
+  /** مصدر الصورة الفعّالة — يحسبه الخادم. */
+  activeMode: 'temporary' | 'permanent' | 'bundled'
+  updatedAt: string
 }
 
 /**
  * مجموعات العرض — مناطق التطبيق كما يعرفها صاحب المتجر.
  *
- * التجميع ليس ترتيباً بصرياً: قائمة مسطّحة بأربعين اسماً تجعل إيجاد «شخصية
- * السلة الفارغة» بحثاً في كل مرة. المجموعة تجيب عن السؤال الحقيقي — «أين
- * أغيّر رسم شاشة الدخول؟» — بلا أن يعرف المسؤول أي اسم ملف.
+ * التجميع ليس ترتيباً بصرياً: قائمة مسطّحة بخمسةٍ وأربعين اسماً تجعل إيجاد
+ * «شخصية السلة الفارغة» بحثاً في كل مرة. المجموعة تجيب عن السؤال الحقيقي —
+ * «أين أغيّر رسم شاشة الدخول؟» — بلا أن يعرف المسؤول أي اسم ملف.
  */
 export const GROUP_LABELS: Record<string, string> = {
   auth: 'المصادقة',
@@ -62,6 +52,7 @@ export const GROUP_LABELS: Record<string, string> = {
   collections: 'المجموعات',
   account: 'الحساب والإشعارات',
   onboarding: 'الترحيب والتخصيص',
+  connectivity: 'انقطاع الاتصال',
   other: 'أخرى',
 }
 
@@ -77,21 +68,42 @@ export const GROUP_ORDER = [
   'community',
   'collections',
   'account',
+  'connectivity',
   'other',
 ]
 
-export interface CreateSlotPayload {
-  slotKey: string
-  label?: string
-  location?: string
-  groupKey?: string
-  rotationMode?: RotationMode
-}
-
-export interface UpdateSlotPayload {
-  label?: string
-  location?: string
-  groupKey?: string
-  isActive?: boolean
-  rotationMode?: RotationMode
-}
+/**
+ * أصولٌ ثابتة في التطبيق — **ليست** فتحات، ولا تُبدَّل من اللوحة.
+ *
+ * تُعرض في صفحة الرسوم كي لا يبحث المسؤول عنها بين الشخصيات: كانت أيقونات
+ * التواصل فتحاتٍ (الهجرة ٠٣٢) وصارت أصولاً ثابتة بقرار منتج (الهجرة ٠٥٣).
+ * الرابط وحده يُدار من صفحة الإعدادات. القائمة توصيفٌ للواجهة لا مصدرَ
+ * بيانات: لا صفوف لها ولا مفاتيح في التطبيق.
+ */
+export const FIXED_ASSETS: ReadonlyArray<{ name: string; where: string; why: string }> = [
+  {
+    name: 'أيقونة تيك توك',
+    where: 'شاشة الحساب — صفّ «تابعنا»',
+    why: 'أصلٌ ثابت؛ الرابط يُضبط من الإعدادات',
+  },
+  {
+    name: 'أيقونة إنستغرام',
+    where: 'شاشة الحساب — صفّ «تابعنا»',
+    why: 'أصلٌ ثابت؛ الرابط يُضبط من الإعدادات',
+  },
+  {
+    name: 'أيقونة واتساب',
+    where: 'شاشة الحساب — صفّ «تابعنا»',
+    why: 'أصلٌ ثابت؛ الرابط يُضبط من الإعدادات',
+  },
+  {
+    name: 'شعار المتجر',
+    where: 'شاشة البداية وترويسات الدخول والرئيسية',
+    why: 'يُعرض قبل الاتصال بالشبكة',
+  },
+  {
+    name: 'رسوم شاشة البداية وشاشة التحديث الإلزامي',
+    where: 'قبل أن يُسمح للتطبيق بالاتصال',
+    why: 'لا يجوز أن تعتمد على الخادم',
+  },
+]

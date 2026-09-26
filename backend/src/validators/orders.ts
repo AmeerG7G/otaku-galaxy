@@ -67,8 +67,15 @@ export const updateOrderStatusSchema = z
  */
 export const rescheduleReminderSchema = z
   .object({
-    delayHours: z.coerce.number().min(0).max(24 * 30).optional(),
-    remindAt: z.coerce.date().optional(),
+    // بلا إكراه: `z.coerce.date()` كان يقرأ `null` و`0` بدايةَ العصر (1970)
+    // فيصير التذكير مستحقاً فوراً بدل أن يُرفض؛ اللحظة ISO 8601 بإزاحتها كما
+    // في `restockAt` و`until`.
+    delayHours: z.number().min(0).max(24 * 30).optional(),
+    remindAt: z
+      .string()
+      .datetime({ offset: true, message: 'موعد التذكير غير صالح' })
+      .transform((value) => new Date(value))
+      .optional(),
   })
   .refine(
     (v) => (v.delayHours === undefined) !== (v.remindAt === undefined),

@@ -56,12 +56,20 @@ export interface AdminOrder {
   dispatchedAt: string | null
   /** لحظة تأكيد الاستلام؛ null قبل الاستلام. */
   deliveredAt: string | null
-  /** لحظة فتح التقييم للعميل (الاستلام + المهلة). */
-  ratingAvailableAt: string | null
-  /** هل صار التقييم مفتوحاً للعميل الآن؟ */
-  ratingAvailable: boolean
+  /**
+   * موعد إرسال تذكير التقييم — **ليس** موعد فتح التقييم.
+   *
+   * [CRITICAL] الاسم كما يرسله الخادم (`orderRepo.mapOrder`). كانت اللوحة
+   * تقرأ `ratingAvailableAt`/`ratingAvailable` — حقلين لم يعد الخادم يرسلهما
+   * منذ صار التقييم يُفتح بالاستلام — فتعرض «—» مكان موعدٍ موجود.
+   */
+  ratingReminderAt: string | null
   /** لحظة إرسال تذكير الاستلام؛ null إن لم يُرسل بعد. */
   ratingReminderSentAt: string | null
+  /** هل يستطيع الزبون تقييم منتجات الطلب الآن؟ يقرّره الخادم من الاستلام. */
+  canReview: boolean
+  /** منتجات الطلب التي لم يقيّمها صاحبه بعد — من الخادم. */
+  reviewableProductCount: number
   /** مسار الطلب بأوقاته. */
   statusHistory: OrderStatusEvent[]
 }

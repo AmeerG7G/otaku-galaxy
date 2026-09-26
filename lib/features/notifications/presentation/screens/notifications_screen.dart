@@ -1,4 +1,5 @@
 import 'package:auto_route/auto_route.dart';
+import '../../../../core/l10n/app_strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -61,10 +62,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       );
       // المصدر يعرّف ثلاث مجموعات فقط: اليوم، هذا الأسبوع، أقدم.
       final label = day == today
-          ? 'اليوم'
+          ? context.strings('today')
           : day.isAfter(today.subtract(const Duration(days: 7)))
-          ? 'هذا الأسبوع'
-          : 'أقدم';
+          ? context.strings('thisWeek')
+          : context.strings('older');
       groups.putIfAbsent(label, () => []).add(item);
     }
     return groups;
@@ -82,11 +83,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             return Column(
               children: [
                 OtakuScreenHeader.compact(
-                  title: 'الإشعارات',
+                  title: context.strings('notifications'),
                   onBack: () => context.router.maybePop(),
                   trailing: state.hasUnread
                       ? AnimeTextButton(
-                          label: 'تعليم الكل كمقروء',
+                          label: context.strings('markAllRead'),
                           onPressed: () =>
                               context.read<NotificationsCubit>().markAllRead(),
                         )
@@ -112,11 +113,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       );
     }
     if (state.items.isEmpty) {
-      return const AnimeEmptyState(
-        title: 'لا توجد إشعارات',
-        subtitle: 'ستظهر هنا تحديثات طلباتك وتقييماتك فور حدوثها.',
+      return AnimeEmptyState(
+        title: context.strings('noNotificationsTitle'),
+        subtitle: context.strings('noNotificationsBody'),
         artwork: 'assets/art/opt/a-i3.png',
         artworkSlot: VisualSlots.notificationsHeader,
+        centered: true,
+        artworkHeight: 180,
       );
     }
 
@@ -190,12 +193,12 @@ class _NotificationRow extends StatelessWidget {
     };
   }
 
-  String _relativeTime() {
+  String _relativeTime(BuildContext context) {
     final diff = DateTime.now().difference(notification.createdAt);
-    if (diff.inMinutes < 1) return 'الآن';
-    if (diff.inMinutes < 60) return 'قبل ${diff.inMinutes} دقيقة';
-    if (diff.inHours < 24) return 'قبل ${diff.inHours} ساعة';
-    return 'قبل ${diff.inDays} يوم';
+    if (diff.inMinutes < 1) return context.strings('justNow');
+    if (diff.inMinutes < 60) return context.strings.p('minutesAgo', {'count': '${diff.inMinutes}'});
+    if (diff.inHours < 24) return context.strings.p('hoursAgo', {'count': '${diff.inHours}'});
+    return context.strings.p('daysAgo', {'count': '${diff.inDays}'});
   }
 
   @override
@@ -271,7 +274,7 @@ class _NotificationRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  _relativeTime(),
+                  _relativeTime(context),
                   style: theme.textTheme.labelSmall?.copyWith(
                     fontSize: 10.5,
                     color: theme.colorScheme.onSurfaceVariant,

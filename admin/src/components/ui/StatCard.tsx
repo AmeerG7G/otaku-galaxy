@@ -7,7 +7,7 @@ const TONE_CHIP: Record<StatTone, { bg: string; fg: string }> = {
   brand: { bg: 'rgba(124, 92, 255, 0.12)', fg: 'var(--og-primary)' },
   secondary: { bg: 'rgba(255, 61, 143, 0.12)', fg: 'var(--og-secondary)' },
   cyan: { bg: 'rgba(78, 168, 255, 0.12)', fg: 'var(--og-cyan)' },
-  amber: { bg: 'rgba(255, 176, 46, 0.16)', fg: '#B96F00' },
+  amber: { bg: 'rgba(255, 176, 46, 0.16)', fg: 'var(--og-amber)' },
   success: { bg: 'rgba(34, 176, 125, 0.12)', fg: 'var(--og-success)' },
   error: { bg: 'rgba(255, 90, 122, 0.12)', fg: 'var(--og-error)' },
   info: { bg: 'rgba(43, 121, 194, 0.12)', fg: 'var(--og-info)' },

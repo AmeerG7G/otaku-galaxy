@@ -17,13 +17,14 @@ class Review {
     required this.rating,
     required this.comment,
     this.photoUrls = const [],
+    List<String>? photoRefs,
     required this.status,
     this.rejectionReason,
     required this.customerName,
     required this.createdAt,
     this.categoryId,
     this.categoryName,
-  });
+  }) : photoRefs = photoRefs ?? photoUrls;
 
   final String id;
   final String productId;
@@ -39,6 +40,16 @@ class Review {
   /// كانت صورةً واحدة (`photoUrl`). المكافأة مقطوعة (خمس نقاط للتقييم مهما
   /// بلغ العدد)، والسقف يفرضه الخادم والقاعدة معاً لا هذه الطبقة.
   final List<String> photoUrls;
+
+  /// مراجع الصور **كما يخزّنها الخادم** (`/uploads/…`، أو رابطٌ خارجي كامل)
+  /// — بترتيب [photoUrls] نفسه.
+  ///
+  /// [CRITICAL] هذا ما يُعاد إرساله عند تعديل تقييمٍ مرفوض، لا [photoUrls].
+  /// رابط العرض يُبنى من أصل البيئة الحالية (`localhost` من سطح المكتب،
+  /// `10.0.2.2` من المحاكي، نطاقٌ آخر في الإنتاج)، والخادم يرفض أي أصلٍ
+  /// غير أصله؛ فإرسالُ رابط العرض كان يجعل التقييم المرفوض بصورةٍ غيرَ
+  /// قابلٍ للتصحيح على الهاتف. المرجع هو الهوية؛ الرابط للعرض وحده.
+  final List<String> photoRefs;
 
   /// أول صورة أو `null` — للشاشات التي تعرض صورة واحدة (المجتمع، بطاقة
   /// التقييم). حقلٌ مشتقّ لا مصدرٌ ثانٍ.
@@ -62,6 +73,7 @@ class Review {
     int? rating,
     String? comment,
     List<String>? photoUrls,
+    List<String>? photoRefs,
     bool clearPhotos = false,
     ReviewStatus? status,
     String? rejectionReason,
@@ -75,6 +87,7 @@ class Review {
       rating: rating ?? this.rating,
       comment: comment ?? this.comment,
       photoUrls: clearPhotos ? const [] : (photoUrls ?? this.photoUrls),
+      photoRefs: clearPhotos ? const [] : (photoRefs ?? this.photoRefs),
       status: status ?? this.status,
       rejectionReason: clearRejectionReason
           ? null
@@ -91,31 +104,40 @@ class Review {
     'orderId': orderId,
     'rating': rating,
     'comment': comment,
-    'photoUrls': photoUrls,
+    // مفتاح السلك اسمه `photoUrls` وقيمته المراجع كما يخزّنها الخادم.
+    'photoUrls': photoRefs,
     'status': status.name,
     'rejectionReason': rejectionReason,
     'customerName': customerName,
     'createdAt': createdAt.toIso8601String(),
   };
 
-  factory Review.fromJson(Map<String, dynamic> json) => Review(
-    id: json['id'] as String,
-    productId: json['productId'] as String,
-    productName: json['productName'] as String,
-    orderId: json['orderId'] as String,
-    rating: json['rating'] as int,
-    comment: json['comment'] as String,
-    // كل مرجع يُحلّ إلى الأصل الفعّال الآن؛ الفارغ يسقط بدل أن يصير رابطاً
-    // مكسوراً في شبكة الصور.
-    photoUrls: [
-      for (final raw in (json['photoUrls'] as List? ?? const []))
-        ?resolveMediaUrl(raw?.toString()),
-    ],
-    status: ReviewStatus.values.byName(json['status'] as String),
-    rejectionReason: json['rejectionReason'] as String?,
-    customerName: json['customerName'] as String,
-    createdAt: DateTime.parse(json['createdAt'] as String),
-    categoryId: json['categoryId'] as String?,
-    categoryName: json['categoryName'] as String?,
-  );
+  factory Review.fromJson(Map<String, dynamic> json) {
+    final refs = _photoRefsOf(json);
+    return Review(
+      id: json['id'] as String,
+      productId: json['productId'] as String,
+      productName: json['productName'] as String,
+      orderId: json['orderId'] as String,
+      rating: json['rating'] as int,
+      comment: json['comment'] as String,
+      // كل مرجع يُحلّ إلى الأصل الفعّال الآن؛ الفارغ يسقط بدل أن يصير رابطاً
+      // مكسوراً في شبكة الصور. المراجع الخام تُحفظ جنباً إلى جنب لإعادة
+      // الإرسال — الترتيب واحد لأن الفارغ يُسقَط من الاثنين.
+      photoUrls: [for (final ref in refs) ?resolveMediaUrl(ref)],
+      photoRefs: refs,
+      status: ReviewStatus.values.byName(json['status'] as String),
+      rejectionReason: json['rejectionReason'] as String?,
+      customerName: json['customerName'] as String,
+      createdAt: DateTime.parse(json['createdAt'] as String),
+      categoryId: json['categoryId'] as String?,
+      categoryName: json['categoryName'] as String?,
+    );
+  }
 }
+
+/// المراجع غير الفارغة كما وردت من الخادم، بترتيبها.
+List<String> _photoRefsOf(Map<String, dynamic> json) => [
+  for (final raw in (json['photoUrls'] as List? ?? const []))
+    if (raw != null && raw.toString().trim().isNotEmpty) raw.toString().trim(),
+];

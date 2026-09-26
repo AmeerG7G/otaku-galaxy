@@ -10,6 +10,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otaku_galaxy/core/design_system/design_system.dart';
+import 'package:otaku_galaxy/core/l10n/app_strings.dart';
 import 'package:otaku_galaxy/core/l10n/gender.dart';
 
 /// يبني الشاشة بحالة اختيار معطاة، في الوضع المطلوب.
@@ -79,16 +80,16 @@ void main() {
       await _pump(tester, value: AppGender.male);
       final blue = _colorsOf(AppTheme.light).info;
 
-      expect(_borderColor(tester, GenderedStrings.male), blue);
-      expect(_iconColor(tester, GenderedStrings.male), blue);
+      expect(_borderColor(tester, AppStrings.arabic('genderMale')), blue);
+      expect(_iconColor(tester, AppStrings.arabic('genderMale')), blue);
     });
 
     testWidgets('الخيار الآخر يبقى محايداً', (tester) async {
       await _pump(tester, value: AppGender.male);
       final red = _colorsOf(AppTheme.light).error;
 
-      expect(_borderColor(tester, GenderedStrings.female), isNot(red));
-      expect(_iconColor(tester, GenderedStrings.female), isNot(red));
+      expect(_borderColor(tester, AppStrings.arabic('genderFemale')), isNot(red));
+      expect(_iconColor(tester, AppStrings.arabic('genderFemale')), isNot(red));
     });
   });
 
@@ -97,16 +98,16 @@ void main() {
       await _pump(tester, value: AppGender.female);
       final red = _colorsOf(AppTheme.light).error;
 
-      expect(_borderColor(tester, GenderedStrings.female), red);
-      expect(_iconColor(tester, GenderedStrings.female), red);
+      expect(_borderColor(tester, AppStrings.arabic('genderFemale')), red);
+      expect(_iconColor(tester, AppStrings.arabic('genderFemale')), red);
     });
 
     testWidgets('الخيار الآخر يبقى محايداً', (tester) async {
       await _pump(tester, value: AppGender.female);
       final blue = _colorsOf(AppTheme.light).info;
 
-      expect(_borderColor(tester, GenderedStrings.male), isNot(blue));
-      expect(_iconColor(tester, GenderedStrings.male), isNot(blue));
+      expect(_borderColor(tester, AppStrings.arabic('genderMale')), isNot(blue));
+      expect(_iconColor(tester, AppStrings.arabic('genderMale')), isNot(blue));
     });
   });
 
@@ -115,10 +116,10 @@ void main() {
       await _pump(tester, value: null);
       final colors = _colorsOf(AppTheme.light);
 
-      expect(_borderColor(tester, GenderedStrings.male), isNot(colors.info));
-      expect(_borderColor(tester, GenderedStrings.female), isNot(colors.error));
-      expect(find.text(GenderedStrings.male), findsOneWidget);
-      expect(find.text(GenderedStrings.female), findsOneWidget);
+      expect(_borderColor(tester, AppStrings.arabic('genderMale')), isNot(colors.info));
+      expect(_borderColor(tester, AppStrings.arabic('genderFemale')), isNot(colors.error));
+      expect(find.text(AppStrings.arabic('genderMale')), findsOneWidget);
+      expect(find.text(AppStrings.arabic('genderFemale')), findsOneWidget);
     });
 
     testWidgets('[CRITICAL] `unknown` لا تُلوّن بطاقةً', (tester) async {
@@ -126,8 +127,8 @@ void main() {
       await _pump(tester, value: AppGender.unknown);
       final colors = _colorsOf(AppTheme.light);
 
-      expect(_borderColor(tester, GenderedStrings.male), isNot(colors.info));
-      expect(_borderColor(tester, GenderedStrings.female), isNot(colors.error));
+      expect(_borderColor(tester, AppStrings.arabic('genderMale')), isNot(colors.info));
+      expect(_borderColor(tester, AppStrings.arabic('genderFemale')), isNot(colors.error));
     });
   });
 
@@ -135,7 +136,7 @@ void main() {
     testWidgets('الذكر يتبع أزرق الوضع الداكن', (tester) async {
       await _pump(tester, value: AppGender.male, theme: AppTheme.dark);
       expect(
-        _borderColor(tester, GenderedStrings.male),
+        _borderColor(tester, AppStrings.arabic('genderMale')),
         _colorsOf(AppTheme.dark).info,
       );
     });
@@ -143,7 +144,7 @@ void main() {
     testWidgets('الأنثى تتبع أحمر الوضع الداكن', (tester) async {
       await _pump(tester, value: AppGender.female, theme: AppTheme.dark);
       expect(
-        _borderColor(tester, GenderedStrings.female),
+        _borderColor(tester, AppStrings.arabic('genderFemale')),
         _colorsOf(AppTheme.dark).error,
       );
     });
@@ -166,8 +167,8 @@ void main() {
       await _pump(tester, value: AppGender.male);
 
       expect(
-        _borderWidth(tester, GenderedStrings.male),
-        greaterThan(_borderWidth(tester, GenderedStrings.female)!),
+        _borderWidth(tester, AppStrings.arabic('genderMale')),
+        greaterThan(_borderWidth(tester, AppStrings.arabic('genderFemale'))!),
       );
 
       // حالة الاختيار معلَنة على البطاقة نفسها، فيقرأها القارئ الصوتي بلا
@@ -177,10 +178,10 @@ void main() {
           .where((s) => s.properties.label != null)
           .toList();
       final male = cards.firstWhere(
-        (s) => s.properties.label == GenderedStrings.male,
+        (s) => s.properties.label == AppStrings.arabic('genderMale'),
       );
       final female = cards.firstWhere(
-        (s) => s.properties.label == GenderedStrings.female,
+        (s) => s.properties.label == AppStrings.arabic('genderFemale'),
       );
       expect(male.properties.selected, isTrue);
       expect(female.properties.selected, isFalse);
@@ -192,7 +193,7 @@ void main() {
       testWidgets('يعمل على ${size.width.toInt()} عرضاً', (tester) async {
         await _pump(tester, value: AppGender.female, size: size);
         expect(
-          _borderColor(tester, GenderedStrings.female),
+          _borderColor(tester, AppStrings.arabic('genderFemale')),
           _colorsOf(AppTheme.light).error,
         );
         expect(tester.takeException(), isNull);
@@ -206,7 +207,7 @@ void main() {
         direction: TextDirection.ltr,
       );
       expect(
-        _borderColor(tester, GenderedStrings.male),
+        _borderColor(tester, AppStrings.arabic('genderMale')),
         _colorsOf(AppTheme.light).info,
       );
     });

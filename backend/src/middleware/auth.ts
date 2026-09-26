@@ -13,6 +13,20 @@ declare module 'express-serve-static-core' {
 }
 
 /**
+ * `sub` يجب أن يكون UUID قبل أن يلمس القاعدة.
+ *
+ * [SECURITY] توكنٌ موقَّع توقيعاً صحيحاً لكن `sub` فيه ليس UUID كان يصل إلى
+ * `findAuthState` فيرمي PostgreSQL خطأ نوع (`22P02`) ويخرج الطلب ٥٠٠ مع
+ * كومة استدعاء في السجل — بدل ٤٠١ «رمز غير صالح». لا يفتح ذلك باباً (لا
+ * جلسة بلا صفّ)، لكن الرمز المشوَّه يجب أن يفشل كرمزٍ لا كعطلِ خادم.
+ */
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isUserId(sub: unknown): sub is string {
+  return typeof sub === 'string' && UUID_PATTERN.test(sub);
+}
+
+/**
  * فحص JWT وحقن بيانات المستخدم في الطلب.
  *
  * [CRITICAL] التوقيع الصالح **ليس** إذناً كافياً.
@@ -27,6 +41,12 @@ declare module 'express-serve-static-core' {
  * ثمن زهيد مقابل أن يعني الإيقافُ الإيقافَ.
  */
 export async function authenticate(req: Request, _res: Response, next: NextFunction) {
+  // مسارات الإدارة تمرّ من طبقة `/api` (وفيها هذا الوسيط) ثم من طبقة
+  // `/api/admin` (وفيها هو نفسه)، فكان كل طلبٍ إداري يقرأ حالة الحساب
+  // مرتين. `req.auth` لا يضعه إلا هذا الوسيط أو `optionalAuthenticate`
+  // بالفحوص نفسها — وجوده يعني أن الطلب اجتازها في هذه الدورة.
+  if (req.auth) return next();
+
   const header = req.headers.authorization;
   if (!header?.startsWith('Bearer ')) {
     return next(Errors.unauthorized('مطلوب تسجيل الدخول'));
@@ -39,7 +59,7 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
     return next(Errors.unauthorized('الرمز منتهي أو غير صالح'));
   }
 
-  if (!payload.sub || typeof payload.sub !== 'string' || !payload.role) {
+  if (!isUserId(payload.sub) || !payload.role) {
     return next(Errors.unauthorized('رمز غير صالح'));
   }
 
@@ -61,7 +81,14 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
 
     // الدور والرقم يُقرآن من القاعدة لا من التوكن: ترقيةُ أو تنزيلُ دور
     // يجب أن تسري فوراً، لا بعد أن يعيد المستخدم تسجيل الدخول.
-    req.auth = { id: state.id, role: state.role, phone: state.phone };
+    // [I18N] اللغة تُقرأ من الصفّ لا من التوكن: تبديلُها في الإعدادات يسري
+    // على الطلب التالي مباشرةً، بلا انتظار انتهاء توكنٍ عمرُه سبعة أيام.
+    req.auth = {
+      id: state.id,
+      role: state.role,
+      phone: state.phone,
+      locale: state.locale,
+    };
     return next();
   } catch (error) {
     return next(error);
@@ -72,6 +99,44 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
 export function requireAdmin(req: Request, _res: Response, next: NextFunction) {
   if (req.auth?.role !== 'admin') {
     return next(Errors.forbidden());
+  }
+  return next();
+}
+
+/**
+ * مصادقة **اختيارية** — للمسارات العامة التي يتغيّر ردّها بهوية القارئ.
+ *
+ * [CRITICAL] الكتالوج عام: يقرؤه الزائر قبل التسجيل، فلا يجوز أن يرفض.
+ * لكن الزبون المسجَّل الذي اختار الكردية يجب أن يقرأ الكردية، وتفضيلُه في
+ * صفّه لا في ترويسته. بلا هذا الوسيط كان `req.auth` غير معرَّف على
+ * `/api/catalog` مهما أرسل التطبيق توكناً، فيسقط كل شيء إلى `Accept-Language`
+ * وحدها — ويقرأ من اختار الكردية في الإعدادات عربيةً في صفحة المنتج.
+ *
+ * أي خلل في التوكن (منتهٍ، مبطَل، حساب موقوف) يُتجاهَل بصمت هنا: المسار عام
+ * أصلاً، ورفضُ زائرٍ بسبب توكن قديم في جهازه سلوكٌ أسوأ من خدمته كزائر.
+ */
+export async function optionalAuthenticate(req: Request, _res: Response, next: NextFunction) {
+  const header = req.headers.authorization;
+  if (!header?.startsWith('Bearer ')) return next();
+
+  try {
+    const payload = jwt.verify(header.slice(7), config.jwtSecret) as jwt.JwtPayload;
+    if (!isUserId(payload.sub)) return next();
+
+    const state = await userRepo.findAuthState(db, payload.sub);
+    if (!state || !state.isActive) return next();
+
+    const tokenVersion = typeof payload.tv === 'number' ? payload.tv : 0;
+    if (tokenVersion !== state.tokenVersion) return next();
+
+    req.auth = {
+      id: state.id,
+      role: state.role,
+      phone: state.phone,
+      locale: state.locale,
+    };
+  } catch {
+    // توكن غير صالح على مسار عام — يُخدَم زائراً.
   }
   return next();
 }

@@ -29,18 +29,29 @@ const franchiseImageUrl = z
     'رابط صورة غير صالح — ارفع صورة أو أدخل رابطاً يبدأ بـ http(s)://',
   );
 
+/**
+ * الأرقام في أجسام JSON تصل أرقاماً — **لا إكراه**.
+ *
+ * [CRITICAL] كان `z.coerce.number()` يحوّل `null` و`""` و`[]` إلى ٠ و`true`
+ * إلى ١ بصمت، فطلبُ `{deliveryFee: null}` كان يجعل التوصيل مجانياً بدل أن
+ * يُرفض. الإكراه مبرَّر لمعاملات الاستعلام (نصوص دائماً) لا للجسم. والسقف
+ * يطابق عمود القاعدة (`NUMERIC(12,2)` / `int4`): قيمةٌ تفيض عنه كانت تصل
+ * القاعدة فتخرج ٥٠٠ بدل ٤٠٠. سقف الترتيب هو سقف بقية مواضع الإدارة.
+ */
+const sortOrder = z.number().int().min(0).max(1000);
+
 export const createFranchiseSchema = z.object({
   name: z.string().trim().min(1, 'اسم الأنمي مطلوب').max(80),
   altNames: altNames.optional(),
   imageUrl: franchiseImageUrl.nullish(),
-  sortOrder: z.coerce.number().int().min(0).optional(),
+  sortOrder: sortOrder.optional(),
 });
 
 export const updateFranchiseSchema = z.object({
   name: z.string().trim().min(1).max(80).optional(),
   altNames: altNames.optional(),
   imageUrl: franchiseImageUrl.nullish(),
-  sortOrder: z.coerce.number().int().min(0).optional(),
+  sortOrder: sortOrder.optional(),
   isActive: z.boolean().optional(),
 });
 
@@ -50,17 +61,20 @@ export const franchiseIdParamSchema = z.object({
 
 // ── مناطق التوصيل ──
 
+/** رسوم المنطقة — نفس سقف رسوم المحافظة (`adminGovernorateSchema`). */
+const zoneDeliveryFee = z.number().min(0, 'رسوم غير صالحة').max(10_000_000);
+
 export const createZoneSchema = z.object({
   governorateId: z.string().uuid('معرّف محافظة غير صالح'),
   name: z.string().trim().min(1, 'اسم المنطقة مطلوب').max(80),
-  deliveryFee: z.coerce.number().min(0, 'رسوم غير صالحة'),
-  sortOrder: z.coerce.number().int().min(0).optional(),
+  deliveryFee: zoneDeliveryFee,
+  sortOrder: sortOrder.optional(),
 });
 
 export const updateZoneSchema = z.object({
   name: z.string().trim().min(1).max(80).optional(),
-  deliveryFee: z.coerce.number().min(0).optional(),
-  sortOrder: z.coerce.number().int().min(0).optional(),
+  deliveryFee: zoneDeliveryFee.optional(),
+  sortOrder: sortOrder.optional(),
   isActive: z.boolean().optional(),
 });
 

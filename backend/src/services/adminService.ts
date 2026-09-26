@@ -22,6 +22,14 @@ import { orderService } from './orderService.js';
 import { restockService } from './restockService.js';
 import { renumberPlacement, type AssignedOrder, type PlacementRow } from '../utils/bannerOrder.js';
 import { franchiseRepo } from '../repositories/franchisesRepo.js';
+import bcrypt from 'bcryptjs';
+import {
+  accountRequestRepo,
+  type AccountRequestKind,
+  type AccountRequestRow,
+  type AccountRequestStatus,
+} from '../repositories/accountRequestRepo.js';
+import { placeOnLadder } from '../domain/galaxyPoints.js';
 
 /** إدارة المتجر للمشرف (لوحة تحكم React مستقبلية). */
 /**
@@ -96,6 +104,29 @@ async function applyBannerOrders(tx: pg.PoolClient, assignments: AssignedOrder[]
   await tx.query(`UPDATE banners b SET sort_order = v.sort_order ${values}`, params);
 }
 
+/**
+ * القسم الفرعي للمنتج يجب أن يتبع قسمَ المنتج نفسه.
+ *
+ * [CRITICAL] لا قيدٌ في القاعدة يربط `products.subcategory_id` بـ
+ * `products.category_id` (المفتاحان الأجنبيان مستقلّان)، فكان الإنشاء
+ * والتعديل يقبلان منتجاً قسمُه «ملابس» وقسمُه الفرعي من «حقائب» ويحفظانه —
+ * فيظهر تحت شريحة قسمٍ ليس قسمه، ولا تراه لوحةُ التحكم لأن نموذجها يحصر
+ * الاختيار في فرعيّات القسم المختار. الفحص هنا عند الحدّ، وبالقيم
+ * **الفعلية** بعد التعديل: نقلُ القسم وحده مع فرعيٍّ قديم لا يتبعه تناقضٌ
+ * كذلك ويُرفض، فينقل المسؤول الاثنين معاً أو يفرّغ الفرعي صراحةً.
+ */
+async function assertSubcategoryBelongs(
+  tx: pg.PoolClient,
+  categoryId: string,
+  subcategoryId: string | null,
+): Promise<void> {
+  if (subcategoryId === null) return;
+  const subcategory = await subcategoryRepo.findById(tx, subcategoryId);
+  if (!subcategory || subcategory.categoryId !== categoryId) {
+    throw Errors.badRequest('القسم الفرعي لا يتبع هذا القسم', 'SUBCATEGORY_MISMATCH');
+  }
+}
+
 export const adminService = {
   // ===== المنتجات =====
   async createProduct(input: {
@@ -116,6 +147,7 @@ export const adminService = {
     restockAt?: string | null;
   }) {
     return withTransaction(async (tx) => {
+      await assertSubcategoryBelongs(tx, input.categoryId, input.subcategoryId ?? null);
       const { rows } = await tx.query(
         `INSERT INTO products (
            name, description, price, category_id, subcategory_id, stock,
@@ -171,6 +203,7 @@ export const adminService = {
   async listProducts(options: {
     page: number;
     limit: number;
+    q?: string;
     categoryId?: string;
     subcategoryId?: string;
     offer?: boolean;
@@ -178,9 +211,10 @@ export const adminService = {
   }) {
     // `includeInactive` هو الفارق عن القائمة العامة: المسؤول يدير المنتجات
     // المعطّلة أيضاً — بما فيها المرفوعة كعروض — لا النشطة وحدها.
-    const { offer, selected, ...rest } = options;
+    const { offer, selected, q, ...rest } = options;
     return productRepo.list(db, {
       ...rest,
+      ...(q !== undefined ? { query: q } : {}),
       ...(offer !== undefined ? { isOffer: offer } : {}),
       ...(selected !== undefined ? { isSelected: selected } : {}),
       includeInactive: true,
@@ -199,8 +233,6 @@ export const adminService = {
       isActive?: boolean;
       isOffer?: boolean;
       isSelected?: boolean;
-      rating?: number | null;
-      reviewCount?: number;
       images?: string[];
       options?: { name: string; values: string[] }[];
       previousPrice?: number | null;
@@ -225,6 +257,12 @@ export const adminService = {
       const previousStock = Number(existing.stock);
       const previousRestockAt = existing.restockAt;
 
+      await assertSubcategoryBelongs(
+        tx,
+        input.categoryId ?? existing.categoryId,
+        input.subcategoryId === undefined ? existing.subcategoryId : input.subcategoryId,
+      );
+
       const fields = [
         'name',
         'description',
@@ -235,8 +273,6 @@ export const adminService = {
         'is_active',
         'is_offer',
         'is_selected',
-        'rating',
-        'review_count',
         'previous_price',
         'has_delivery_promo',
         'delivery_promo_amount',
@@ -252,8 +288,6 @@ export const adminService = {
         is_active: input.isActive,
         is_offer: input.isOffer,
         is_selected: input.isSelected,
-        rating: input.rating,
-        review_count: input.reviewCount,
         previous_price: input.previousPrice,
         has_delivery_promo: input.hasDeliveryPromo,
         delivery_promo_amount: input.hasDeliveryPromo === false
@@ -283,11 +317,9 @@ export const adminService = {
         input.stock !== undefined && previousStock === 0 && Number(input.stock) > 0;
 
       if (cameBackInStock) {
-        await restockService.notifyRestocked(tx, id, existing.name);
-        // الموعد المتوقَّع تحقّق، فلا معنى لبقائه: تركُه يترك في القاعدة
-        // «متوقَّع أن يتوفر يوم كذا» عن منتج متوفر الآن — بيانات تصير كاذبة
-        // بمرور اليوم، وقد تُعرض ثانيةً لو نفد المخزون لاحقاً.
-        await tx.query('UPDATE products SET restock_at = NULL WHERE id = $1', [id]);
+        // إشعارات المشتركين وفراغ اشتراكاتهم ومسح الموعد المتوقَّع — التعريف
+        // نفسه الذي يستعمله رفضُ طلبٍ مقبول حين يُرجع القطعة.
+        await restockService.stockReturned(tx, id, existing.name);
       } else if (input.restockAt !== undefined) {
         // ═══ تغيّر موعد التوفر المتوقَّع ═══
         //
@@ -556,7 +588,8 @@ export const adminService = {
   },
 
   async updateOrderStatus(adminId: string, orderId: string, status: OrderStatus, note?: string) {
-    // مسار موحّد عبر orderService: تحقق الانتقال + استرجاع المخزون عند الرفض في معاملة واحدة.
+    // مسار موحّد عبر orderService: تحقق الانتقال + استهلاك المخزون عند القبول
+    // (وإرجاعه عند رفض ما قُبل) في معاملة واحدة.
     const updated = await orderService.adminUpdateStatus(adminId, orderId, {
       status,
       note,
@@ -698,17 +731,270 @@ export const adminService = {
     return notificationRepo.statsForAdmin(db);
   },
 
-  async toggleUserActive(userId: string) {
+  /**
+   * حظر/تفعيل حساب إلى الحالة **المقصودة** — تكرارُه آمن.
+   *
+   * [CRITICAL] `isActive` هو ما رآه المسؤول وقرّره في النافذة. الحالة نفسها
+   * لا تغيّر شيئاً: «حظر» ثانٍ من لوحةٍ قديمة العرض، أو إعادةُ الضغط بعد
+   * مهلة، يبقى حظراً ولا يرفع نسخة التوكن ثانيةً (جلسات الموقوف سقطت أصلاً)،
+   * و«تفعيل» مكرَّر لا يُسقط الجلسة التي فتحها الزبون بين الضغطتين. غيابه
+   * (نسخة لوحة أقدم) يقلب الحالة كما كان.
+   */
+  async setUserActive(userId: string, isActive?: boolean) {
     const user = await userRepo.findById(db, userId);
     if (!user) throw Errors.notFound('المستخدم غير موجود');
-    const nextActive = !user.is_active;
+    const nextActive = isActive ?? !user.is_active;
+    if (nextActive === user.is_active) return { id: user.id, isActive: user.is_active };
     const updated = await userRepo.update(db, userId, {
       isActive: nextActive,
       bumpTokenVersion: !nextActive,
     });
     return { id: updated.id, isActive: updated.is_active };
   },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // طلبات الحساب — إنشاءٌ وإعادةُ تعيين، تُحسم يدوياً بعد تحقّق واتساب.
+  //
+  // [CRITICAL] لا مسار هنا يقبل رمزاً أو بياناتِ تعريفٍ ليحسم آلياً. الحسم
+  // فعلُ مسؤولٍ مصادَق (`requireAdmin` على المسار) يرى الطلب بجانب الحساب
+  // المخزَّن ويقرّر بنفسه. معرّف الطلب وحده لا يُخوِّل شيئاً: كل فعلٍ يعيد
+  // التحقّق من أن الطلب معلَّق ومن نوعه ومن ارتباطه بالحساب المستهدف.
+  // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * الطلب ومعه لقطة الحساب المرتبط **لمقارنة** المسؤول — لا كلمة مرور ولا
+   * تجزئة ولا نسخة توكن، ولا شيء يقول «مطابق ⇒ موافق».
+   */
+  async shapeAccountRequest(row: AccountRequestRow) {
+    return (await this.shapeAccountRequests([row]))[0]!;
+  },
+
+  /**
+   * صفحة طلبات دفعةً واحدة: الحسابات المرتبطة بجملة والأرصدة بجملة.
+   *
+   * كان كل صفٍّ يقرأ حسابه ثم رصيده (٢×N جملة لصفحة واحدة، تتزاحم كلها
+   * على المجمّع معاً عبر `Promise.all`).
+   */
+  async shapeAccountRequests(rows: AccountRequestRow[]) {
+    const userIds = [...new Set(rows.flatMap((row) => (row.user_id ? [row.user_id] : [])))];
+    const users = await userRepo.findByIds(db, userIds);
+    const balances = await pointsRepo.balances(db, [...users.keys()]);
+    return rows.map((row) => {
+      const user = row.user_id ? (users.get(row.user_id) ?? null) : null;
+      const balance = user ? (balances.get(user.id) ?? 0) : null;
+      return shapeAccountRequestRow(row, user, balance);
+    });
+  },
+
+  async listAccountRequests(options: {
+    page: number;
+    limit: number;
+    kind?: AccountRequestKind;
+    status?: AccountRequestStatus;
+    search?: string;
+  }) {
+    const [{ items, total }, pending] = await Promise.all([
+      accountRequestRepo.list(db, options),
+      accountRequestRepo.pendingCounts(db),
+    ]);
+    return {
+      items: await this.shapeAccountRequests(items),
+      page: options.page,
+      limit: options.limit,
+      total,
+      hasMore: options.page * options.limit < total,
+      pending,
+    };
+  },
+
+  async getAccountRequest(id: string) {
+    const row = await accountRequestRepo.findById(db, id);
+    if (!row) throw Errors.notFound('الطلب غير موجود');
+    return this.shapeAccountRequest(row);
+  },
+
+  /**
+   * الموافقة على طلب **تسجيل**: يفعّل الحساب المعلَّق.
+   *
+   * طلب إعادة التعيين لا يُوافَق عليه من هنا عمداً: «موافقة» بلا كلمة مرور
+   * جديدة لا معنى لها، والحسم الوحيد له هو `setCustomerPassword` مع معرّفه.
+   * فلا يوجد مسار يضع طلب إعادة تعيين في حالة «موافَق» دون أن تُوضع كلمة.
+   */
+  async approveAccountRequest(id: string, adminId: string, note?: string | null) {
+    const row = await accountRequestRepo.findById(db, id);
+    if (!row) throw Errors.notFound('الطلب غير موجود');
+    if (row.status !== 'pending') throw Errors.conflict('الطلب محسوم مسبقاً', 'REQUEST_RESOLVED');
+    if (row.kind !== 'registration') {
+      throw Errors.badRequest('طلب إعادة التعيين يُحسم بوضع كلمة مرور جديدة لا بالموافقة', 'USE_SET_PASSWORD');
+    }
+    if (!row.user_id) throw Errors.conflict('لا حساب مرتبط بهذا الطلب', 'NO_LINKED_ACCOUNT');
+    const user = await userRepo.findById(db, row.user_id);
+    if (!user) throw Errors.conflict('الحساب المرتبط لم يعد موجوداً', 'NO_LINKED_ACCOUNT');
+
+    return withTransaction(async (tx) => {
+      const resolved = await accountRequestRepo.resolve(tx, id, { status: 'approved', resolvedBy: adminId, note });
+      if (!resolved) throw Errors.conflict('الطلب محسوم مسبقاً', 'REQUEST_RESOLVED');
+      // التفعيل: الحساب يصير قابلاً للدخول هنا فقط — لا عند إنشائه.
+      if (user.phone_verified_at === null) {
+        await userRepo.update(tx, user.id, { phoneVerifiedAt: new Date() });
+      }
+      return this.shapeAccountRequest(resolved);
+    });
+  },
+
+  /** الرفض يبقي الطلب في السجل بحالته وملاحظة المسؤول — لا حذف. */
+  async rejectAccountRequest(id: string, adminId: string, note?: string | null) {
+    const row = await accountRequestRepo.findById(db, id);
+    if (!row) throw Errors.notFound('الطلب غير موجود');
+    if (row.status !== 'pending') throw Errors.conflict('الطلب محسوم مسبقاً', 'REQUEST_RESOLVED');
+    const resolved = await accountRequestRepo.resolve(db, id, { status: 'rejected', resolvedBy: adminId, note });
+    if (!resolved) throw Errors.conflict('الطلب محسوم مسبقاً', 'REQUEST_RESOLVED');
+    return this.shapeAccountRequest(resolved);
+  },
+
+  /**
+   * المسؤول يضع كلمة مرور **جديدة دائمة** لزبون تحقّق منه عبر واتساب.
+   *
+   * ═══ القرار ═══ هذه كلمةُ المرور الفعلية للحساب، لا مؤقّتة ولا تنتهي ولا
+   * تفرض تغييراً بعد الدخول. الزبون يستعملها كما هي إلى أن يغيّرها بنفسه من
+   * الإعدادات إن شاء. لا حالة خاصة تُخزَّن ولا حقل يُضاف.
+   *
+   * [CRITICAL]
+   * - الهدف زبونٌ فقط: لا يُغيَّر بها حساب مسؤول.
+   * - كلمة المرور تُجزَّأ هنا ولا تُعاد ولا تُسجَّل — الردّ لا يحمل إلا معرّف
+   *   الحساب وحالة الطلب.
+   * - نسخة التوكن تُرفع: من استعاد حسابه بعد اختراقه يجب ألا يبقى للمخترق
+   *   توكنٌ صالح.
+   * - `requestId` اختياري: إن وُجد يجب أن يكون **معلَّقاً**، من نوع
+   *   `password_reset`، ومرتبطاً **بهذا** الحساب — وإلّا رُفض. معرّف طلبٍ
+   *   وحده لا يُخوِّل تغيير كلمة مرور حسابٍ آخر.
+   */
+  async setCustomerPassword(
+    customerId: string,
+    adminId: string,
+    input: { newPassword: string; requestId?: string | null; note?: string | null },
+  ) {
+    const user = await userRepo.findById(db, customerId);
+    if (!user || user.role !== 'customer') throw Errors.notFound('الزبون غير موجود');
+
+    let request: AccountRequestRow | null = null;
+    if (input.requestId) {
+      request = await accountRequestRepo.findById(db, input.requestId);
+      if (!request || request.kind !== 'password_reset') throw Errors.notFound('الطلب غير موجود');
+      if (request.status !== 'pending') throw Errors.conflict('الطلب محسوم مسبقاً', 'REQUEST_RESOLVED');
+      if (request.user_id !== user.id) {
+        throw Errors.badRequest('الطلب لا يخصّ هذا الحساب', 'REQUEST_ACCOUNT_MISMATCH');
+      }
+    }
+
+    const passwordHash = await bcrypt.hash(input.newPassword, config.bcryptRounds);
+    return withTransaction(async (tx) => {
+      await userRepo.update(tx, user.id, { passwordHash, bumpTokenVersion: true });
+      let resolved: AccountRequestRow | null = null;
+      if (request) {
+        resolved = await accountRequestRepo.resolve(tx, request.id, {
+          status: 'approved',
+          resolvedBy: adminId,
+          note: input.note ?? null,
+        });
+        if (!resolved) throw Errors.conflict('الطلب محسوم مسبقاً', 'REQUEST_RESOLVED');
+      }
+      return {
+        customerId: user.id,
+        request: resolved ? { id: resolved.id, status: resolved.status } : null,
+      };
+    });
+  },
+
+  /**
+   * ملفّ الزبون الكامل من مكانٍ واحد: هوية، نقاط ومستوى، طلبات الشراء،
+   * وتاريخ طلبات الحساب. لا تجزئة ولا توكن ولا نسخة توكن — أبداً.
+   */
+  async getCustomerDetail(customerId: string) {
+    const user = await userRepo.findById(db, customerId);
+    if (!user || user.role !== 'customer') throw Errors.notFound('الزبون غير موجود');
+    const [balance, orders, requests] = await Promise.all([
+      pointsRepo.balance(db, user.id),
+      orderRepo.listByUser(db, user.id, 1, 20),
+      accountRequestRepo.listForUser(db, user.id),
+    ]);
+    const placement = placeOnLadder(balance);
+    return {
+      profile: {
+        id: user.id,
+        username: user.username,
+        phone: user.phone,
+        gender: user.gender,
+        avatarUrl: user.avatar_url,
+        isActive: user.is_active,
+        isVerified: user.phone_verified_at !== null,
+        verifiedAt: user.phone_verified_at?.toISOString() ?? null,
+        preferredLanguage: user.preferred_language,
+        createdAt: user.created_at.toISOString(),
+      },
+      points: {
+        balance,
+        levelKey: placement.current.key,
+        levelNumber: placement.current.number,
+        levelName: placement.current.nameMale,
+        nextLevelKey: placement.next?.key ?? null,
+        pointsToNextLevel: placement.pointsToNext,
+      },
+      orders: {
+        items: orders.items,
+        total: orders.total,
+      },
+      requests: await this.shapeAccountRequests(requests),
+    };
+  },
 };
+
+/** الطلب ومعه لقطة الحساب المرتبط — تحويلٌ خالص بعد أن قُرئ الحساب والرصيد. */
+function shapeAccountRequestRow(
+  row: AccountRequestRow,
+  user: Awaited<ReturnType<typeof userRepo.findById>>,
+  balance: number | null,
+) {
+  const level = balance === null ? null : placeOnLadder(balance).current;
+  return {
+    id: row.id,
+    kind: row.kind,
+    status: row.status,
+    submitted: {
+      phone: row.submitted_phone,
+      username: row.submitted_username,
+      gender: row.submitted_gender,
+      levelKey: row.submitted_level_key,
+    },
+    account: user
+      ? {
+          id: user.id,
+          username: user.username,
+          phone: user.phone,
+          gender: user.gender,
+          isActive: user.is_active,
+          isVerified: user.phone_verified_at !== null,
+          levelKey: level?.key ?? null,
+          levelNumber: level?.number ?? null,
+          points: balance,
+          createdAt: user.created_at.toISOString(),
+        }
+      : null,
+    // إشاراتٌ للعين لا قرار: المسؤول يقارن بنفسه ويسأل عبر واتساب.
+    match: user
+      ? {
+          username: user.username.trim().toLowerCase() === row.submitted_username.trim().toLowerCase(),
+          gender: user.gender !== null && user.gender === row.submitted_gender,
+          level: level !== null && row.submitted_level_key !== null && level.key === row.submitted_level_key,
+        }
+      : null,
+    adminNote: row.admin_note,
+    resolvedAt: row.resolved_at?.toISOString() ?? null,
+    resolvedBy: row.resolved_by,
+    createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
+  };
+}
 
 /**
  * هل يشير التاريخان إلى اللحظة نفسها؟ (`null` يساوي `null`.)

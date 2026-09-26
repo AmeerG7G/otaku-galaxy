@@ -10,5 +10,9 @@ export default defineConfig({
     include: ['src/**/*.test.{ts,tsx}'],
     css: false,
     restoreMocks: true,
+    // ميزانية وقتٍ لا تخفيف تحقّق: صفحات antd تحت jsdom تأخذ ~٣ ثوانٍ للاختبار
+    // وحدها، والحدّ الافتراضي (٥ ثوانٍ) كان يُسقط ١٠–١٢ اختباراً سليماً حين
+    // تتزاحم العمّال على الأنوية — تمرّ كلها منفردة. مثل `testTimeout` الخادم.
+    testTimeout: 20_000,
   },
 })

@@ -16,7 +16,10 @@ import 'package:flutter_test/flutter_test.dart';
 
 /// يحمّل Tajawal وCairo من `fonts/` داخل بيئة الاختبار.
 Future<void> loadProjectFonts() async {
-  for (final family in ['Tajawal', 'Cairo']) {
+  // [CRITICAL] NotoSansArabic ليس زينة في الاختبار: هو احتياط الكردية في
+  // `AppTheme`. بدون تحميله هنا يقيس `flutter test` الكرديةَ بخطٍّ بديل
+  // للنظام بمقاييس مختلفة، فتظهر تجاوزات وهمية لا وجود لها على الجهاز.
+  for (final family in ['Tajawal', 'Cairo', 'NotoSansArabic']) {
     final loader = FontLoader(family);
     for (final file in Directory('fonts').listSync().whereType<File>()) {
       if (!file.path.contains(family)) continue;

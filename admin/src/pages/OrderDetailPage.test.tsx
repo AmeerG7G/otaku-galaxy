@@ -45,7 +45,10 @@ function order(overrides: Partial<AdminOrder> = {}): AdminOrder {
     rejectionReason: null,
     dispatchedAt: null,
     deliveredAt: null,
-    ratingAvailableAt: null,
+    ratingReminderAt: null,
+    ratingReminderSentAt: null,
+    canReview: false,
+    reviewableProductCount: 0,
     ...overrides,
   } as AdminOrder
 }

@@ -1,9 +1,12 @@
 import 'dart:async';
+import '../../../core/l10n/app_strings.dart';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/design_system/design_system.dart';
+import '../../visuals/domain/visual_slot.dart';
+import '../../visuals/presentation/managed_artwork.dart';
 
 /// يغلّف التطبيق كاملاً؛ عند انقطاع الاتصال يُعرض حاجز بلا وصول لأي محتوى
 /// — للزائر والمسجّل والعائد على حدٍّ سواء (لا شاشة رئيسية فارغة أوفلاين).
@@ -47,7 +50,7 @@ class _OfflineGateState extends State<OfflineGate> {
     return Stack(
       children: [
         widget.child,
-        if (_offline) _OfflineGateScreen(onRetry: _check),
+        if (_offline) OfflineGateScreen(onRetry: _check),
       ],
     );
   }
@@ -55,18 +58,23 @@ class _OfflineGateState extends State<OfflineGate> {
 
 /// حاجز انقطاع الاتصال بتصميم Otaku Galaxy v2.
 ///
-/// صفّ هوية أعلى الشاشة، ثم لوحة تحريرية بيضاء برسم شخصية يخرج من حافتها،
-/// ثم مؤشّر حالة نابض وزرّ إعادة محاولة متدرّج — بلا أيقونة دائرية وسط الشاشة.
-class _OfflineGateScreen extends StatefulWidget {
-  const _OfflineGateScreen({required this.onRetry});
+/// صفّ هوية أعلى الشاشة، ثم لوحة بيضاء موسَّطة: رسم الشخصية، فأيقونة انقطاع
+/// الاتصال، فالعنوان والنصّ — كلٌّ في وسط اللوحة (قرار 2026-09-20)؛ ثم مؤشّر
+/// حالة نابض موسَّط وزرّ إعادة محاولة متدرّج.
+///
+/// الرسم **أصلٌ مضمَّن لا فتحة**: هذه الشاشة تُعرض حين لا شبكة، فربطها
+/// بالخادم يعني رسماً غائباً في أسوأ لحظة (انظر `VisualSlots`). منطق الكشف
+/// وإعادة المحاولة في [OfflineGate] لم يُمسّ. عامّةٌ لتُختبر مباشرةً.
+class OfflineGateScreen extends StatefulWidget {
+  const OfflineGateScreen({super.key, required this.onRetry});
 
   final VoidCallback onRetry;
 
   @override
-  State<_OfflineGateScreen> createState() => _OfflineGateScreenState();
+  State<OfflineGateScreen> createState() => _OfflineGateScreenState();
 }
 
-class _OfflineGateScreenState extends State<_OfflineGateScreen>
+class _OfflineGateScreenState extends State<OfflineGateScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _pulse = AnimationController(
     vsync: this,
@@ -122,7 +130,7 @@ class _OfflineGateScreenState extends State<_OfflineGateScreen>
                         const OtakuStoreLogoSimple(size: 38),
                         const SizedBox(width: 11),
                         Text(
-                          'مجرة الأوتاكو',
+                          context.strings('brandName'),
                           style: theme.textTheme.titleMedium?.copyWith(
                             fontFamily: 'Tajawal',
                             fontSize: 15.5,
@@ -139,9 +147,10 @@ class _OfflineGateScreenState extends State<_OfflineGateScreen>
                         mainAxisAlignment: MainAxisAlignment.center,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          _OfflineCard(pulse: _pulse),
+                          const _OfflineCard(),
                           const SizedBox(height: 20),
                           Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               FadeTransition(
                                 opacity: _pulse,
@@ -156,7 +165,7 @@ class _OfflineGateScreenState extends State<_OfflineGateScreen>
                               ),
                               const SizedBox(width: 9),
                               Text(
-                                'غير متصل بالإنترنت',
+                                context.strings('offlineShort'),
                                 style: theme.textTheme.bodySmall?.copyWith(
                                   fontSize: 12.5,
                                   color: theme.colorScheme.onSurfaceVariant,
@@ -166,7 +175,7 @@ class _OfflineGateScreenState extends State<_OfflineGateScreen>
                           ),
                           const SizedBox(height: 22),
                           AnimePrimaryButton(
-                            label: 'إعادة المحاولة',
+                            label: context.strings('retry'),
                             onPressed: widget.onRetry,
                             height: AppDimens.buttonHeightXl,
                           ),
@@ -184,11 +193,22 @@ class _OfflineGateScreenState extends State<_OfflineGateScreen>
   }
 }
 
-/// لوحة الرسالة — سطح عائم كبير مع رسم شخصية يكسر الحافة السفلية.
+/// لوحة الرسالة — سطح عائم كبير، محتواه كلّه على محور اللوحة.
+///
+/// الرسم فوق، ثم أيقونة انقطاع الاتصال، ثم العنوان والنصّ موسَّطَين. كان
+/// الرسم يكسر الزاوية السفلية والنصّ ملتصقاً بجهة البداية، وكان النصّ يقول
+/// «يحتاج المتجر إلى اتصال» — وهو ما يعرفه القارئ من العنوان.
 class _OfflineCard extends StatelessWidget {
-  const _OfflineCard({required this.pulse});
+  const _OfflineCard();
 
-  final Animation<double> pulse;
+  /// الأصل المضمَّن — بديلُ الفتحة حين لا صورة على القرص (أول تشغيلٍ على
+  /// الإطلاق، أو صورةٌ بدّلها المسؤول ولم تُنزَّل بعد).
+  ///
+  /// [PRODUCT] كانت الشاشة مستبعَدة من الفتحات («تُعرض حين لا شبكة»).
+  /// صارت فتحةً (الهجرة ٠٥٥) لأن `ManagedArtwork` لا يحتاج الشبكة ليعرض
+  /// صورةً نزّلها الإقلاع إلى القرص، وكل مسار فشلٍ ينتهي إلى هذا الأصل —
+  /// فالشاشة لا تفرغ في أي حال.
+  static const String artwork = 'assets/art/opt/a-i17.png';
 
   @override
   Widget build(BuildContext context) {
@@ -203,56 +223,46 @@ class _OfflineCard extends StatelessWidget {
         boxShadow: colors.shadowFloating,
       ),
       clipBehavior: Clip.antiAlias,
-      child: Stack(
-        children: [
-          PositionedDirectional(
-            bottom: -16,
-            end: -14,
-            child: IgnorePointer(
-              child: Image.asset('assets/art/opt/a-i3.png', width: 126),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(22, 26, 22, 26),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            const ManagedArtwork(
+              slot: VisualSlots.offlineGate,
+              fallbackAsset: artwork,
+              height: 132,
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(22, 30, 22, 26),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.wifi_off_rounded,
-                  size: 54,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                const SizedBox(height: 20),
-                FractionallySizedBox(
-                  widthFactor: 0.78,
-                  child: Text(
-                    'لا يوجد اتصال بالإنترنت',
-                    style: theme.textTheme.headlineSmall?.copyWith(
-                      fontFamily: 'Tajawal',
-                      fontSize: 23,
-                      height: 1.35,
-                      fontWeight: AppDimens.weightBlack,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                FractionallySizedBox(
-                  widthFactor: 0.82,
-                  child: Text(
-                    'تحقّق من اتصالك وحاول مرة أخرى — يحتاج المتجر '
-                    'إلى اتصال بالإنترنت.',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontSize: 14,
-                      height: 1.85,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ],
+            const SizedBox(height: 18),
+            Icon(
+              Icons.wifi_off_rounded,
+              size: 54,
+              color: theme.colorScheme.onSurfaceVariant,
             ),
-          ),
-        ],
+            const SizedBox(height: 18),
+            Text(
+              context.strings('offlineTitle'),
+              textAlign: TextAlign.center,
+              style: theme.textTheme.headlineSmall?.copyWith(
+                fontFamily: 'Tajawal',
+                fontSize: 23,
+                height: 1.35,
+                fontWeight: AppDimens.weightBlack,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              context.strings('offlineBody'),
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontSize: 14,
+                height: 1.85,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

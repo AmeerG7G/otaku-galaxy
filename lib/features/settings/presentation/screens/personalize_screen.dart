@@ -1,4 +1,5 @@
 import 'package:auto_route/auto_route.dart';
+import '../../../../core/l10n/app_strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -51,18 +52,6 @@ class PersonalizeScreen extends StatelessWidget {
               ),
             ),
           ),
-          PositionedDirectional(
-            top: 44,
-            end: -30,
-            child: IgnorePointer(
-              child: const ManagedArtwork(
-                slot: VisualSlots.personalize,
-                fallbackAsset: 'assets/art/opt/a-i4.png',
-                width: 126,
-                opacity: 0.22,
-              ),
-            ),
-          ),
 
           SafeArea(
             child: Column(
@@ -77,7 +66,7 @@ class PersonalizeScreen extends StatelessWidget {
                       const OtakuStoreLogoSimple(size: 42),
                       const SizedBox(height: 14),
                       Text(
-                        'لنُهيّئ تجربتك',
+                        context.strings('personalizeTitle'),
                         style: theme.textTheme.headlineSmall?.copyWith(
                           fontFamily: 'Tajawal',
                           fontSize: 25,
@@ -86,17 +75,40 @@ class PersonalizeScreen extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 7),
-                      FractionallySizedBox(
-                        widthFactor: 0.84,
-                        child: Text(
-                          'اختر لغتك والمظهر المناسب لك. يمكنك تغييرهما في أي وقت '
-                          'من الإعدادات.',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            fontSize: 13.5,
-                            height: 1.75,
-                            color: theme.colorScheme.onSurfaceVariant,
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          // [CRITICAL] `Flexible` لا `FractionallySizedBox`: الصفّ
+                          // يعطي أطفاله غير المرنة عرضاً غير محدود، فكان عرض
+                          // الوصف `0.84 × ∞` — انهار تخطيط الشاشة كلها فظهرت
+                          // بيضاء. الوصف يأخذ معظم ما يتبقّى بعد الرسم، والخطّ
+                          // الباقي. (test/personalize_screen_test.dart)
+                          Flexible(
+                            flex: 5,
+                            child: Text(
+                              context.strings('personalizeBody'),
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                fontSize: 13.5,
+                                height: 1.75,
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
                           ),
-                        ),
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.only(bottom: 3),
+                              child: Container(
+                                height: 1.5,
+                                color: AppColors.secondary,
+                              ),
+                            ),
+                          ),
+                          const ManagedArtwork(
+                            slot: VisualSlots.personalize,
+                            fallbackAsset: 'assets/art/opt/a-i4.png',
+                            width: 126,
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -107,8 +119,8 @@ class PersonalizeScreen extends StatelessWidget {
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(22, 16, 22, 8),
                     children: [
-                      const OtakuGroupLabel(
-                        label: 'اللغة',
+                      OtakuGroupLabel(
+                        label: context.strings('language'),
                         padding: EdgeInsets.only(bottom: 11),
                       ),
                       BlocBuilder<LocaleCubit, AppLanguage>(
@@ -121,8 +133,8 @@ class PersonalizeScreen extends StatelessWidget {
                                 child: LanguageCard(
                                   name: language.label,
                                   subtitle: language == AppLanguage.arabic
-                                      ? 'اللغة الافتراضية'
-                                      : 'زمانی کوردی',
+                                      ? context.strings('defaultLanguage')
+                                      : language.nativeName,
                                   selected: current == language,
                                   onTap: () => context
                                       .read<LocaleCubit>()
@@ -133,8 +145,8 @@ class PersonalizeScreen extends StatelessWidget {
                           ],
                         ),
                       ),
-                      const OtakuGroupLabel(
-                        label: 'المظهر',
+                      OtakuGroupLabel(
+                        label: context.strings('appearance'),
                         padding: EdgeInsets.fromLTRB(0, 24, 0, 11),
                       ),
                       BlocBuilder<ThemeCubit, ThemeState>(
@@ -146,7 +158,7 @@ class PersonalizeScreen extends StatelessWidget {
                               Expanded(
                                 child: ThemePreviewCard(
                                   dark: false,
-                                  label: 'فاتح',
+                                  label: context.strings('themeLight'),
                                   selected: !state.isDark,
                                   onTap: () => themeCubit.setDark(false),
                                 ),
@@ -155,7 +167,7 @@ class PersonalizeScreen extends StatelessWidget {
                               Expanded(
                                 child: ThemePreviewCard(
                                   dark: true,
-                                  label: 'داكن',
+                                  label: context.strings('themeDark'),
                                   selected: state.isDark,
                                   onTap: () => themeCubit.setDark(true),
                                 ),
@@ -172,7 +184,7 @@ class PersonalizeScreen extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(22, 12, 22, 26),
                   child: AnimePrimaryButton(
-                    label: 'متابعة',
+                    label: context.strings('continueLabel'),
                     height: AppDimens.buttonHeightXl,
                     borderRadius: AppDimens.radiusMd,
                     gradient: AppColors.ctaGradient,

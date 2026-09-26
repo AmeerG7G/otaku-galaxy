@@ -46,6 +46,7 @@ final _order = Order(
   status: OrderStatus.completed,
   items: const [CartItem(product: _product)],
   canReview: true,
+  reviewableProductCount: 1,
 );
 
 Review _review(ReviewStatus status) => Review(
@@ -67,6 +68,10 @@ class _StubReviews implements ReviewRepository {
   Review? current;
   int findCalls = 0;
 
+  /// عدد مرات تحميل تقييمات الحساب — الشاشة تقرأ حالتها من هنا الآن
+  /// (`ReviewsCubit.load`) لا من `findReview` لكل منتج.
+  int loadCalls = 0;
+
   @override
   Future<Review?> findReview({
     required String orderId,
@@ -77,8 +82,10 @@ class _StubReviews implements ReviewRepository {
   }
 
   @override
-  Future<List<Review>> fetchMyReviews() async =>
-      current == null ? const [] : [current!];
+  Future<List<Review>> fetchMyReviews() async {
+    loadCalls += 1;
+    return current == null ? const [] : [current!];
+  }
   @override
   Future<List<Review>> fetchApprovedReviewsForProduct(String productId) async =>
       const [];
@@ -183,13 +190,13 @@ void main() {
     final repo = _StubReviews(_review(ReviewStatus.pending));
     await _pump(tester, repo);
     expect(find.text('تقييمك قيد المراجعة'), findsOneWidget);
-    expect(repo.findCalls, 1);
+    expect(repo.loadCalls, 1);
 
     // «إعادة تشغيل»: المسؤول رفض التقييم بين الفتحتين.
     repo.current = _review(ReviewStatus.rejected);
     await _pump(tester, repo, runId: 'restart');
 
-    expect(repo.findCalls, 2, reason: 'الشاشة سألت الخادم من جديد');
+    expect(repo.loadCalls, 2, reason: 'الشاشة سألت الخادم من جديد');
     expect(find.text('عدّل وأعد الإرسال'), findsOneWidget);
     expect(find.text('تقييمك قيد المراجعة'), findsNothing);
   });

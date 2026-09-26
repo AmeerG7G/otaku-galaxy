@@ -1,4 +1,5 @@
 import type pg from 'pg';
+import { PARAM_TEMPLATES } from '../domain/notificationTemplates.js';
 import { db, withTransaction } from '../database/pool.js';
 import {
   MAX_REVIEW_PHOTOS,
@@ -14,22 +15,61 @@ import { reviewRepo } from '../repositories/reviewsRepo.js';
 import { userRepo } from '../repositories/userRepo.js';
 import { type ReviewRow, type ReviewStatus } from '../types/index.js';
 import { Errors } from '../utils/errors.js';
+import { config } from '../config/index.js';
+
+/**
+ * يعيد مرجع الوسائط بصيغته المخزَّنة (`/uploads/…`) إن كان مطلقاً **على أصل
+ * هذا الخادم** (`publicBaseUrl`) ويؤول إليها.
+ *
+ * `https://<publicBaseUrl>/uploads/x.jpg` → `/uploads/x.jpg`؛ أما `/uploads/x.jpg`
+ * فيُعاد كما هو. أصلٌ غريب أو مسارٌ خارج `/uploads/` يُعاد كما هو ليفشل في
+ * فحص الملكية بعده — لا نقبل رابطاً لمجرّد أن مساره يشبه مساراتنا.
+ */
+export function toStoredMediaReference(reference: string): string {
+  const trimmed = reference.trim();
+  if (!/^https?:\/\//i.test(trimmed)) return trimmed;
+  try {
+    const url = new URL(trimmed);
+    const own = new URL(config.publicBaseUrl);
+    if (url.origin !== own.origin) return trimmed;
+    const prefix = `${config.uploads.publicPath.replace(/\/+$/, '')}/`;
+    return url.pathname.startsWith(prefix) ? url.pathname : trimmed;
+  } catch {
+    return trimmed;
+  }
+}
 
 /** أقصى عدد صور مجتمع تُعاد للتطبيق في طلب واحد. */
 const COMMUNITY_LIMIT = 60;
 
 /**
- * صور التقييم يجب أن تكون ملفات رفعها العميل عبر `POST /api/uploads`.
+ * صور التقييم يجب أن تكون ملفات **رفعها هذا العميل** عبر `POST /api/uploads`
+ * لغرض التقييم.
  *
  * بدون هذا الفحص يستطيع أي عميل حفظ رابط خارجي عشوائي، ثم يُعرض ذلك الرابط —
  * بعد الاعتماد — لكل مستخدمي المتجر في شاشة المجتمع، فيصير المتجر واجهةً
  * لاستضافة طرف ثالث ويتسرّب عنوان كل مشاهد إليه.
  *
+ * [SECURITY] الوجود في `media_files` لا يكفي: صورة زبونٍ آخر منشورةٌ في
+ * المجتمع، أو صورة منتجٍ رفعها المسؤول، موجودتان في الجدول — وإرفاقُ
+ * أيٍّ منهما كان ينال نقاط «تقييم بصورة» عن لقطةٍ ليست للسائل وينسبها
+ * إليه. الشرط: `uploaded_by` هو السائل و`purpose = 'review'`. الرسالة
+ * والرمز واحدان للمفقود وللمملوك لغيرك، فلا يُستنتج وجودُ ملفٍّ من الردّ.
+ *
  * [CRITICAL] كل عنصر يُفحص، لا الأول وحده: مصفوفةٌ أول عنصرها سليم وباقيها
  * روابط خارجية كانت ستمرّ لو اكتفى الفحص بواحد. والسقف يُعاد فرضه هنا رغم
  * وجوده في المخطّط لأن هذه الدالة هي آخر بوابة قبل القاعدة.
+ *
+ * `alreadyAttached`: مراجع قائمة على التقييم الذي يُعاد إرساله. فُحصت
+ * ملكيتُها حين أُرفقت أولَ مرة، وتبقى مقبولة ولو فقد صفّها رافعَه لاحقاً
+ * (`ON DELETE SET NULL`، أو بيانات أقدم) — فلا يصير تقييمٌ مرفوض غيرَ قابلٍ
+ * للتصحيح بسبب صورةٍ كانت مقبولة. المرجع **الجديد** وحده يخضع للفحص الكامل.
  */
-async function assertOwnedPhotos(photoUrls: string[] | undefined): Promise<string[]> {
+async function assertOwnedPhotos(
+  userId: string,
+  photoUrls: string[] | undefined,
+  alreadyAttached: readonly string[] = [],
+): Promise<string[]> {
   const urls = (photoUrls ?? []).map((url) => url.trim()).filter((url) => url.length > 0);
   if (urls.length === 0) return [];
   if (urls.length > MAX_REVIEW_PHOTOS) {
@@ -41,10 +81,19 @@ async function assertOwnedPhotos(photoUrls: string[] | undefined): Promise<strin
 
   // التكرار يُزال: خمس نسخ من صورة واحدة ليست خمس صور، وإبقاؤها يملأ شاشة
   // المجتمع بنفس اللقطة. المكافأة مقطوعة أصلاً فلا أثر لهذا في النقاط.
-  const unique = [...new Set(urls)];
+  //
+  // [CRITICAL] المرجع المخزَّن نسبي (`/uploads/…`). التطبيق يعرض للزبون
+  // روابط مطلقة (يحلّها بأصل الخادم)، وكان يعيد إرسالها كما هي عند تعديل
+  // تقييمٍ مرفوض، فيفشل المطابق الحرفي بـ`INVALID_PHOTO_URL` على صورةٍ
+  // يملكها فعلاً. المرجع المطلق الذي يؤول إلى `/uploads/…` يُقبل بصيغته
+  // النسبية؛ أي أصل آخر يبقى مرفوضاً كما كان.
+  const unique = [...new Set(urls.map(toStoredMediaReference))];
+  const kept = new Set(alreadyAttached);
   for (const url of unique) {
+    if (kept.has(url)) continue;
     const media = await mediaRepo.findByUrl(db, url);
-    if (!media) {
+    const owned = media !== null && media.uploaded_by === userId && media.purpose === 'review';
+    if (!owned) {
       throw Errors.badRequest('صورة التقييم غير صالحة — أعد رفعها', 'INVALID_PHOTO_URL');
     }
   }
@@ -126,7 +175,7 @@ export const reviewsService = {
       throw Errors.conflict('سبق أن قيّمت هذا المنتج', 'REVIEW_EXISTS');
     }
 
-    const photoUrls = await assertOwnedPhotos(input.photoUrls);
+    const photoUrls = await assertOwnedPhotos(userId, input.photoUrls);
 
     const user = await userRepo.findById(db, userId);
     try {
@@ -172,9 +221,16 @@ export const reviewsService = {
     const updated = await reviewRepo.resubmit(db, reviewId, {
       rating: input.rating,
       comment: input.comment,
-      photoUrls: await assertOwnedPhotos(input.photoUrls),
+      photoUrls: await assertOwnedPhotos(userId, input.photoUrls, review.photo_urls ?? []),
     });
-    if (!updated) throw Errors.notFound('التقييم غير موجود');
+    if (!updated) {
+      // [CRITICAL] التحديث مشروط بـ`status = 'rejected'` في الجملة نفسها. الفحص
+      // أعلاه قرأ «مرفوض» بلا قفل؛ اعتمادٌ يلتزم في اللحظة نفسها كان يترك هذا
+      // التحديث يمرّ بعده فيعود التقييم «معلَّقاً» ونقاطُ اعتماده في الدفتر.
+      // صفرُ صفوف يعني: حُذف، أو لم يعد مرفوضاً — يُفرَّق بينهما بقراءة ثانية.
+      if (!(await reviewRepo.findById(db, reviewId))) throw Errors.notFound('التقييم غير موجود');
+      throw Errors.badRequest('لا يمكن تعديل تقييم غير مرفوض', 'REVIEW_NOT_REJECTED');
+    }
     return updated;
   },
 
@@ -215,7 +271,14 @@ export const reviewsService = {
 
       // إعادة تطبيق نفس القرار لا تُنتج آثاراً جانبية: النقاط يحميها فهرس
       // فريد، أما الإشعار فلا — فبدونه يتكرّر إشعار «نُشر تقييمك» مع كل ضغطة.
-      const statusUnchanged = review.status === status;
+      //
+      // [CRITICAL] الحالة تُقرأ من جديد **تحت القفل** لا من القراءة الأولى:
+      // اعتمادان متزامنان يقرآن «معلَّق» معاً قبل القفل، فيرى الثاني — بعد أن
+      // يلتزم الأول — قراره «تغييراً» ويُشعر الزبون ثانيةً. القراءة بعد القفل
+      // ترى ما كتبه الأول فعلاً فيصير الثاني «الحالة نفسها» بلا أثر.
+      const locked = await reviewRepo.findById(client, reviewId);
+      if (!locked) throw Errors.notFound('التقييم غير موجود');
+      const statusUnchanged = locked.status === status;
 
       const updated = await reviewRepo.moderate(
         client,
@@ -233,8 +296,9 @@ export const reviewsService = {
         await notificationRepo.create(client, {
           userId: updated.user_id,
           type: 'reviewApproved',
-          title: 'نُشر تقييمك 🎉',
-          body: `تقييمك لـ«${updated.product_name}» صار ظاهر للجميع. شكراً إلك.`,
+          ...PARAM_TEMPLATES.reviewApproved[
+              await userRepo.localeOf(client, updated.user_id)
+            ](updated.product_name),
           reviewId: updated.id,
           productId: updated.product_id,
         });
@@ -244,8 +308,14 @@ export const reviewsService = {
         await notificationRepo.create(client, {
           userId: updated.user_id,
           type: 'reviewRejected',
-          title: 'تقييمك يحتاج تعديل',
-          body: updated.rejection_reason ?? 'تكدر تعدّله وتعيد إرساله.',
+          ...(await (async () => {
+              const t =
+                PARAM_TEMPLATES.reviewRejected[
+                  await userRepo.localeOf(client, updated.user_id)
+                ]();
+              // سبب الرفض كلام المسؤول — يصل كما كُتب ولا يُترجَم.
+              return { title: t.title, body: updated.rejection_reason ?? t.body };
+            })()),
           reviewId: updated.id,
           productId: updated.product_id,
         });

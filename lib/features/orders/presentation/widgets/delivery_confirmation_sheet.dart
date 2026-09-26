@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../core/l10n/app_strings.dart';
 
 import '../../../../core/design_system/design_system.dart';
 import '../../../../core/utils/formatters.dart';
@@ -58,7 +59,7 @@ class _DeliveryConfirmationBody extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      'هل استلمت طلبك؟',
+                      context.strings('receivedOrderQuestion'),
                       style: theme.textTheme.titleLarge?.copyWith(
                         fontFamily: 'Tajawal',
                         fontWeight: AppDimens.weightBlack,
@@ -67,7 +68,7 @@ class _DeliveryConfirmationBody extends StatelessWidget {
                     ),
                     const SizedBox(height: 7),
                     Text(
-                      'نريد التأكد من وصول طلبك إليك',
+                      context.strings('receivedOrderNote'),
                       style: theme.textTheme.bodySmall?.copyWith(
                         fontSize: 12.5,
                         height: 1.6,
@@ -105,7 +106,7 @@ class _DeliveryConfirmationBody extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    'قيد التوصيل',
+                    context.strings('statusDelivering'),
                     style: theme.textTheme.bodyMedium?.copyWith(
                       fontSize: 13.5,
                       fontWeight: AppDimens.weightBold,
@@ -114,7 +115,7 @@ class _DeliveryConfirmationBody extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  formatPrice(order.total),
+                  formatPrice(context, order.total),
                   textDirection: TextDirection.ltr,
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontFamily: 'Tajawal',
@@ -130,14 +131,14 @@ class _DeliveryConfirmationBody extends StatelessWidget {
           const SizedBox(height: 18),
 
           AnimePrimaryButton(
-            label: 'نعم، استلمت الطلب',
+            label: context.strings('yesIReceived'),
             height: AppDimens.buttonHeightXl,
             onPressed: () =>
                 Navigator.of(context).pop(DeliveryConfirmationChoice.received),
           ),
           const SizedBox(height: 10),
           AnimeOutlinedButton(
-            label: 'لم أستلمه بعد',
+            label: context.strings('notReceivedYet'),
             onPressed: () =>
                 Navigator.of(context).pop(DeliveryConfirmationChoice.notYet),
           ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../core/l10n/app_strings.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/design_system/design_system.dart';
@@ -64,7 +65,7 @@ class _ProductReviewsSectionState extends State<ProductReviewsSection> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '⭐ تقييمات العملاء',
+          context.strings('customerReviews'),
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
             fontFamily: 'Tajawal',
             fontSize: 16.5,
@@ -79,7 +80,7 @@ class _ProductReviewsSectionState extends State<ProductReviewsSection> {
           if (_withPhotos.isNotEmpty) ...[
             SizedBox(height: AppDimens.space6),
             Text(
-              '📸 صور العملاء',
+              context.strings('customerPhotos'),
               style: Theme.of(context).textTheme.titleSmall?.copyWith(
                 fontWeight: AppDimens.weightBold,
               ),
@@ -148,7 +149,7 @@ class _RatingSummary extends StatelessWidget {
           const SizedBox(width: 18),
           Expanded(
             child: Text(
-              '$count تقييم من عملاء اشتروا هذا المنتج',
+              context.strings.p('reviewsFromBuyersCount', {'count': '$count'}),
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
                 height: AppDimens.lineHeightRelaxed,
@@ -223,7 +224,7 @@ class _ReviewCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(AppDimens.radiusFull),
                 ),
                 child: Text(
-                  '✓ اشترى هذا المنتج',
+                  context.strings('verifiedBuyer'),
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
                     color: colors.successText,
                     fontWeight: AppDimens.weightBold,
@@ -263,9 +264,9 @@ class _ReviewCard extends StatelessWidget {
 class _EmptyReviews extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return const OtakuEditorialPanel(
-      title: 'لا توجد تقييمات لهذا المنتج بعد',
-      body: 'كن أول من يشارك تجربته بعد استلام طلبه.',
+    return OtakuEditorialPanel(
+      title: context.strings('noReviewsTitle'),
+      body: context.strings('noReviewsBody'),
       artwork: 'assets/art/opt/a-i1.png',
       artworkSlot: VisualSlots.productReviews,
       margin: EdgeInsets.zero,

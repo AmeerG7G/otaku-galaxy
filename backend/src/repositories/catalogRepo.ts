@@ -44,8 +44,13 @@ export function mapProduct(
   const previousPrice = toNumber(row.previous_price);
   return {
     id: row.id,
+    // [I18N] العربية دائماً هنا، والكردية بجانبها. الاختيار بينهما يقع في
+    // طبقة الخدمة (`localizeProduct`) لا هنا: لوحة التحكم تحتاج الاثنين
+    // معاً، والزبون واحداً محسوماً — ومُحوِّلٌ واحد يخدم الاثنين.
     name: row.name,
     description: row.description,
+    nameCkb: row.name_ckb,
+    descriptionCkb: row.description_ckb,
     price,
     stock: row.stock,
     images: (row.images as string[]) ?? [],
@@ -98,6 +103,16 @@ export const SELECT_WITH_IMAGES = (prefix: string) => `
 ${PRODUCT_RELATION_COLUMNS(prefix)}
   FROM products ${prefix}`;
 
+/**
+ * يهرّب محارف أنماط `LIKE` حتى يُبحث عنها حرفياً.
+ *
+ * [CRITICAL] بلا هذا كان `%` في الاستعلام يُعيد الكتالوج كله، و`_` يطابق أي
+ * حرف — من مسارٍ عام بلا مصادقة. الهروب بـ`\\` مع `ESCAPE '\\'` في الجملة.
+ */
+export function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
+
 export const productRepo = {
   async findById(db: pg.Pool | pg.PoolClient, id: string) {
     const { rows } = await db.query<ProductRow & { images?: unknown; franchise_ids?: unknown }>(
@@ -107,11 +122,30 @@ export const productRepo = {
     return rows[0] ? mapProduct(rows[0]) : null;
   },
 
+  /**
+   * عدّة منتجات بمعرّفاتها في جملة واحدة — للطلب الذي يحتاجها كلها معاً.
+   *
+   * كانت معاملة الطلب تقرأ منتج كل سطرٍ في العربة بجملةٍ مستقلة (N+1 تحت
+   * قفل العربة). المعرّف المكرَّر أو الغائب لا يظهر في الخريطة.
+   */
+  async findByIds(db: pg.Pool | pg.PoolClient, ids: string[]) {
+    const products = new Map<string, ReturnType<typeof mapProduct>>();
+    if (ids.length === 0) return products;
+    const { rows } = await db.query<ProductRow & { images?: unknown; franchise_ids?: unknown }>(
+      `${SELECT_WITH_IMAGES('p')} WHERE p.id = ANY($1::uuid[])`,
+      [ids],
+    );
+    for (const row of rows) products.set(row.id, mapProduct(row));
+    return products;
+  },
+
   async list(
     db: pg.Pool | pg.PoolClient,
     options: {
       page: number;
       limit: number;
+      /** بحث بجزء من الاسم (حرفي — `%` و`_` مهرَّبان). */
+      query?: string;
       categoryId?: string;
       subcategoryId?: string;
       isOffer?: boolean;
@@ -123,6 +157,10 @@ export const productRepo = {
     const conditions: string[] = [];
     const values: unknown[] = [];
     if (!options.includeInactive) conditions.push('p.is_active = TRUE');
+    if (options.query && options.query.trim() !== '') {
+      values.push(`%${escapeLike(options.query.trim())}%`);
+      conditions.push(`p.name ILIKE $${values.length} ESCAPE '\\'`);
+    }
     if (options.categoryId) {
       values.push(options.categoryId);
       conditions.push(`p.category_id = $${values.length}`);
@@ -195,7 +233,12 @@ export const productRepo = {
       `SELECT p.*,
 ${PRODUCT_RELATION_COLUMNS('p')},
               COALESCE(
-                (SELECT json_agg(json_build_object('id', po.id, 'name', po.name, 'values', po.values))
+                (SELECT json_agg(json_build_object(
+                          'id', po.id,
+                          'name', po.name,
+                          'nameCkb', po.name_ckb,
+                          'values', po.values,
+                          'valuesCkb', po.values_ckb))
                  FROM product_options po WHERE po.product_id = p.id),
                 '[]'::json
               ) AS options
@@ -227,23 +270,29 @@ ${PRODUCT_RELATION_COLUMNS('p')},
     page: number,
     limit: number,
   ): Promise<Paginated<ReturnType<typeof mapProduct>>> {
-    const like = `%${query}%`;
+    // حرفياً: `%`/`_`/`\` في نصّ البحث ليست أنماطاً — والهروب مُعلَن
+    // بـ`ESCAPE '\'` لا موروثاً من إعداد الخادم (انظر `escapeLike`).
+    const like = `%${escapeLike(query)}%`;
+    // [PERF] الامتيازات المطابقة تُجمع أولاً في مصفوفة ثم يُقارَن بها
+    // المعرّف، لا `EXISTS` مرتبطاً بكل صف: الشرط المرتبط داخل `OR` كان
+    // يمنع فهرس trigram على الاسم فيُمسح الكتالوج كله في كل بحث (ومع
+    // تقديرٍ مبالغ يعبر عتبة JIT فيُترجَم كل بحث من جديد). بهذه الصيغة
+    // يجمع المخطّط فهرس الاسم وفهرس المعرّف معاً (BitmapOr).
     const matches = `p.is_active = TRUE AND (
-           p.name ILIKE $1
-           OR EXISTS (
-             SELECT 1
+           p.name ILIKE $1 ESCAPE '\\'
+           OR p.id = ANY (ARRAY(
+             SELECT pf.product_id
                FROM product_franchises pf
                JOIN franchises f
                  ON f.id = pf.franchise_id AND f.is_active = TRUE
-              WHERE pf.product_id = p.id
-                AND franchise_search_text(f.name, f.alt_names) ILIKE $1
-           )
+              WHERE franchise_search_text(f.name, f.alt_names) ILIKE $1 ESCAPE '\\'
+           ))
          )`;
     const [{ rows }, countRows] = await Promise.all([
       db.query<ProductRow & { images?: unknown; franchise_ids?: unknown }>(
         `${SELECT_WITH_IMAGES('p')}
          WHERE ${matches}
-         ORDER BY (p.name ILIKE $1) DESC, p.name ASC
+         ORDER BY (p.name ILIKE $1 ESCAPE '\\') DESC, p.name ASC
          LIMIT $2 OFFSET $3`,
         [like, limit, (page - 1) * limit],
       ),
@@ -274,6 +323,7 @@ export const categoryRepo = {
                   json_build_object(
                     'id', s.id,
                     'name', s.name,
+                    'nameCkb', s.name_ckb,
                     'sortOrder', s.sort_order,
                     'isActive', s.is_active
                   )
@@ -290,12 +340,14 @@ export const categoryRepo = {
     return rows.map((row) => ({
       id: row.id,
       name: row.name,
+      nameCkb: (row as { name_ckb?: string | null }).name_ckb ?? null,
       imageUrl: row.image_url,
       sortOrder: row.sort_order,
       isActive: row.is_active,
       subcategories: row.subcategories as {
         id: string;
         name: string;
+        nameCkb: string | null;
         sortOrder: number;
         isActive: boolean;
       }[],

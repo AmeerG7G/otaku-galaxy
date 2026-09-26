@@ -1,5 +1,7 @@
 /** أنواع مشتركة للـ API (يُعتمد عليها في التحكم والتطبيقات الزبونة). */
 
+import type { AppLocale } from '../utils/locale.js';
+
 export type Role = 'customer' | 'admin';
 
 /**
@@ -57,24 +59,12 @@ export const ACTIVE_ORDER_STAGES = [
   'COMPLETED',
 ] as const satisfies readonly OrderStatus[];
 
-/**
- * الحالات التي يجوز للعميل إلغاء طلبه فيها.
- *
- * `PREPARING` مدرجة عمداً: قبل دمج «تم تأكيده» كان العميل يملك الإلغاء بعد
- * قبول الإدارة مباشرةً، وحذف تلك المرحلة كان سيسحب منه هذا الحق في اللحظة
- * نفسها التي يضغط فيها المسؤول «تأكيد». الدمج تبسيطٌ لعمل الإدارة، لا
- * تضييقٌ على العميل.
- */
-export const CUSTOMER_CANCELLABLE_STATUSES = [
-  'PENDING_ADMIN_CONFIRMATION',
-  'CONFIRMED',
-  'PREPARING',
-] as const satisfies readonly OrderStatus[];
-
 export interface AuthUser {
   id: string;
   role: Role;
   phone: string;
+  /** لغة المخاطبة المختارة — تقودها `resolveLocale` والإشعارات. */
+  locale: AppLocale;
 }
 
 /** بيانات المستخدم المكشوفة في الردود (بلا password_hash). */
@@ -88,6 +78,13 @@ export interface PublicUser {
   gender: Gender | null;
   /** هل أثبت المستخدم ملكية رقمه؟ التطبيق يوجّه غير المحقَّق لشاشة الرمز. */
   isPhoneVerified: boolean;
+  /**
+   * لغة المخاطبة المختارة — يقرؤها التطبيق عند الدخول ليوافق حالته المحلية.
+   *
+   * بدونها كان جهازٌ ثانٍ لنفس الحساب يبدأ بالعربية بينما إشعاراته تصل
+   * بالكردية: التفضيل على الخادم والحالة المحلية مصدران لا يلتقيان.
+   */
+  preferredLanguage: AppLocale;
   createdAt: string;
 }
 
@@ -136,6 +133,9 @@ export type ProductRow = {
   subcategory_id: string | null;
   name: string;
   description: string;
+  /** النسخة الكردية — `null` تعني «لم تُترجَم بعد» (هجرة ٠٤٦). */
+  name_ckb: string | null;
+  description_ckb: string | null;
   price: string | number;
   stock: number;
   is_active: boolean;
@@ -185,6 +185,7 @@ export type BannerRow = {
 export type GovernorateRow = {
   id: string;
   name: string;
+  name_ckb: string | null;
   delivery_fee: string | number;
   is_active: boolean;
   sort_order: number;
@@ -412,6 +413,7 @@ export type GovernorateZoneRow = {
   id: string;
   governorate_id: string;
   name: string;
+  name_ckb: string | null;
   delivery_fee: string | number;
   sort_order: number;
   is_active: boolean;

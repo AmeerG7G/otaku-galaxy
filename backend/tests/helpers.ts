@@ -9,7 +9,16 @@ import { db } from '../src/database/pool.js';
 export const app: Express = createApp();
 export const api = request(app);
 
-export const DEV_CODE = '123456';
+/**
+ * الاعتماد الافتراضي للتسجيل في الاختبارات.
+ *
+ * ═══ لم يعد هناك رمز تحقق ═══ كان هنا `DEV_CODE = '123456'` يُرسل إلى
+ * `/api/auth/verify`. التسجيل صار طلباً تحسمه الإدارة، فالتفعيل في
+ * الاختبارات يمرّ من **المسار الإداري الحقيقي** (`approveAsAdmin`) لا من
+ * رمزٍ ولا من كتابة مباشرة في القاعدة — حتى يبقى الاختبار شاهداً على أن
+ * لا مسار عاماً يفعّل حساباً.
+ */
+export const TEST_PASSWORD = 'secret123';
 
 /** بذور بيانات مشتركة للاختبارات: قسم + منتجات + محافظة. */
 export async function seedTestCatalog() {
@@ -51,10 +60,10 @@ export async function seedTestCatalog() {
   const { rows: [governorate] } = await db.query<{ id: string }>(
     `INSERT INTO governorates (name, delivery_fee)
      VALUES ($1, 4000) ON CONFLICT (name) DO NOTHING RETURNING id`,
-    ['بغداد'],
+    ['بغداد اختبار'],
   );
   const governorateId = governorate?.id ?? (
-    await db.query<{ id: string }>('SELECT id FROM governorates WHERE name = $1', ['بغداد'])
+    await db.query<{ id: string }>('SELECT id FROM governorates WHERE name = $1', ['بغداد اختبار'])
   ).rows[0]!.id;
 
   return { categoryId, subcategoryId, productIds, governorateId };
@@ -71,12 +80,14 @@ export async function registerAndLogin(
   phone = `077${Math.floor(10000000 + Math.random() * 89999999)}`,
   gender: 'male' | 'female' = 'male',
 ) {
-  const password = 'secret123';
-  await api
+  const password = TEST_PASSWORD;
+  const registered = await api
     .post('/api/auth/register')
     .send({ username: 'مختبر', phone, password, gender })
-    .expect(200);
-  await api.post('/api/auth/verify').send({ phone, code: DEV_CODE }).expect(200);
+    .expect(202);
+  // الحساب لا يفتح جلسةً قبل موافقة الإدارة — وهذا ما يُختبر صراحةً في
+  // `account-requests.test.ts`. هنا نوافق عبر المسار الإداري الحقيقي.
+  await approveAsAdmin(registered.body.data.request.id as string);
   const login = await api.post('/api/auth/login').send({ phone, password }).expect(200);
   // الرقم يُعاد بالصيغة التي خزّنها الخادم لا بالتي أُرسلت، فتصحّ أي مقارنة
   // في السويتات بلا أن تعرف كلٌّ منها قاعدة التطبيع.
@@ -126,6 +137,20 @@ export async function createAdminUser() {
 }
 
 /**
+ * يوافق على طلب تسجيلٍ بصفة مسؤول — عبر `POST /api/admin/account-requests/:id/approve`.
+ *
+ * المسار الإداري نفسه الذي تستعمله اللوحة: لا كتابة مباشرة في
+ * `phone_verified_at`، فلو انكسر التفعيل الحقيقي انكسرت كل الاختبارات معه.
+ */
+export async function approveAsAdmin(requestId: string) {
+  const adminToken = await createAdminUser();
+  await api
+    .post(`/api/admin/account-requests/${requestId}/approve`)
+    .set('Authorization', `Bearer ${adminToken}`)
+    .expect(200);
+}
+
+/**
  * تنظيف مستخدمي الاختبار بترتيب يعتمديات FK (أولاً ما يقيّد الحذف).
  *
  * النمط بالصيغة المعتمدة `+96477%` لأن الأرقام تُخزَّن الآن دولية. وهو
@@ -139,7 +164,7 @@ export async function purgeTestUsers(pattern = '+96477%') {
   await db.query(`DELETE FROM cart_items WHERE cart_id IN (SELECT id FROM carts WHERE user_id IN ${sub})`, [pattern]);
   await db.query(`DELETE FROM carts WHERE user_id IN ${sub}`, [pattern]);
   await db.query(`DELETE FROM favorites WHERE user_id IN ${sub}`, [pattern]);
-  await db.query('DELETE FROM verification_codes WHERE phone LIKE $1', [pattern]);
+  await db.query('DELETE FROM account_requests WHERE submitted_phone LIKE $1', [pattern]);
   await db.query('DELETE FROM users WHERE phone LIKE $1', [pattern]);
 }
 /**
@@ -161,6 +186,37 @@ export async function purgeTestUsers(pattern = '+96477%') {
  * أي رابط يرسله العميل. تكتب هذه الدالة الصفّ مباشرةً بدل المرور بـ
  * multipart، فيبقى فحص الملكية مفعَّلاً في الاختبار بدل الالتفاف عليه.
  */
+/**
+ * صورةٌ مرفوعة من اللوحة لرسوم الشخصيات (`purpose = 'slot'`) — ما تقبله
+ * `PUT /admin/visual-slots/:id/image` وحده؛ صورةُ تقييم (أعلاه) تُرفض هناك.
+ */
+export async function registerUploadedSlotImage(uploadedBy?: string) {
+  const storageKey = `slot/test/${randomUUID()}.png`;
+  const url = `${config.uploads.publicPath}/${storageKey}`;
+  await db.query(
+    `INSERT INTO media_files (storage_key, url, purpose, mime_type, size_bytes, uploaded_by)
+     VALUES ($1, $2, 'slot', 'image/png', 1024, $3)`,
+    [storageKey, url, uploadedBy ?? null],
+  );
+  return url;
+}
+
+/**
+ * «اليوم» (يوم/شهر) بتقويم المتجر — كما يقيسه الخادم في كل استعلام ميلاد.
+ *
+ * السويتات التي تسجّل «عيد ميلادي اليوم» يجب أن تسأل التقويم نفسه لا
+ * `new Date().getDate()`: على خادم تكامل يعمل بـUTC يختلف التاريخان ثلاث
+ * ساعات كل ليلة، فيتحوّل اختبارٌ صحيح إلى فشلٍ عابر بحسب ساعة التشغيل.
+ */
+export async function storeToday(): Promise<{ day: number; month: number }> {
+  const { rows } = await db.query<{ d: string; m: string }>(
+    `SELECT EXTRACT(DAY FROM (now() AT TIME ZONE $1))::text AS d,
+            EXTRACT(MONTH FROM (now() AT TIME ZONE $1))::text AS m`,
+    [config.storeTimezone],
+  );
+  return { day: Number(rows[0]!.d), month: Number(rows[0]!.m) };
+}
+
 export async function registerUploadedPhoto(uploadedBy?: string) {
   const storageKey = `review/test/${randomUUID()}.png`;
   // [CRITICAL] مرجع نسبي — نفس ما يكتبه سائق التخزين في الإنتاج.

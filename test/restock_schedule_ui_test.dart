@@ -88,10 +88,24 @@ void main() {
   tearDown(() => GetIt.I.reset());
 
   group('تنسيق التاريخ المركزي', () {
-    test('يوم وشهر بالعربية', () {
-      expect(formatShortArabicDate(DateTime(2026, 9, 15)), '15 سبتمبر');
-      expect(formatShortArabicDate(DateTime(2026, 1, 3)), '3 يناير');
-      expect(formatShortArabicDate(DateTime(2026, 12, 31)), '31 ديسمبر');
+    // صار التنسيق يحتاج سياقاً بعد نقل أسماء الشهور إلى `AppStrings`،
+    // فيُبنى سياقٌ أدنى هنا. المتوقَّع لم يتغيّر حرفاً.
+    testWidgets('يوم وشهر بالعربية', (tester) async {
+      late BuildContext context;
+      await tester.pumpWidget(
+        Builder(
+          builder: (c) {
+            context = c;
+            return const SizedBox.shrink();
+          },
+        ),
+      );
+      expect(formatShortArabicDate(context, DateTime(2026, 9, 15)), '15 سبتمبر');
+      expect(formatShortArabicDate(context, DateTime(2026, 1, 3)), '3 يناير');
+      expect(
+        formatShortArabicDate(context, DateTime(2026, 12, 31)),
+        '31 ديسمبر',
+      );
     });
   });
 

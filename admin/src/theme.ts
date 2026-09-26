@@ -119,3 +119,5 @@ export const themeConfig: ThemeConfig = {
     },
   },
 }
+
+export { themeConfig as lightThemeConfig }

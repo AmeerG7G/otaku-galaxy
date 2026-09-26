@@ -1,20 +1,20 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/errors/app_exception.dart';
+import '../../../settings/presentation/cubit/locale_cubit.dart';
 
 import '../../data/datasources/auth_local_storage.dart';
+import '../../domain/entities/account_request.dart';
 import '../../domain/entities/user.dart';
 import '../../domain/usecases/change_password_usecase.dart';
 import '../../domain/usecases/get_me_usecase.dart';
 import '../../domain/usecases/login_usecase.dart';
 import '../../domain/usecases/forgot_password_usecase.dart';
 import '../../domain/usecases/register_usecase.dart';
-import '../../domain/usecases/reset_password_usecase.dart';
-import '../../domain/usecases/send_otp_usecase.dart';
 import '../../domain/usecases/update_profile_usecase.dart';
-import '../../domain/usecases/verify_otp_usecase.dart';
 import 'auth_state.dart';
 
 /// يدير جلسة المستخدم: تسجيل الدخول، إنشاء الحساب، تسجيل الخروج،
@@ -26,25 +26,26 @@ class AuthCubit extends Cubit<AuthState> {
     required this.localStorage,
     required this.loginUsecase,
     required this.registerUsecase,
-    required this.sendOtpUsecase,
     required this.forgotPasswordUsecase,
-    required this.verifyOtpUsecase,
-    required this.resetPasswordUsecase,
     required this.getMeUsecase,
     required this.updateProfileUsecase,
     required this.changePasswordUsecase,
+    this.languageOf,
   }) : super(const AuthInitializing());
 
   final AuthLocalStorage localStorage;
   final LoginUsecase loginUsecase;
   final RegisterUsecase registerUsecase;
-  final SendOtpUsecase sendOtpUsecase;
   final ForgotPasswordUsecase forgotPasswordUsecase;
-  final VerifyOtpUsecase verifyOtpUsecase;
-  final ResetPasswordUsecase resetPasswordUsecase;
   final GetMeUsecase getMeUsecase;
   final UpdateProfileUsecase updateProfileUsecase;
   final ChangePasswordUsecase changePasswordUsecase;
+
+  /// لغة الواجهة الحالية — يقرؤها المكعّب عند كل جلسة ليدفعها إلى الخادم.
+  ///
+  /// دالّةٌ لا قيمة: اللغة تتغيّر بعد بناء المكعّب. و`null` في الاختبارات
+  /// التي لا تعنيها اللغة — فلا مزامنة ولا طلب.
+  final AppLanguage Function()? languageOf;
 
   User? _user;
   bool _sessionLoaded = false;
@@ -76,6 +77,7 @@ class AuthCubit extends Cubit<AuthState> {
       _user = user;
       await localStorage.updateUser(jsonEncode(user.toJson()));
       emit(AuthAuthenticated(user: user));
+      await _syncPreferredLanguage();
     } on AppException catch (e) {
       if (e.isUnauthorized) {
         await _clearSession();
@@ -120,7 +122,11 @@ class AuthCubit extends Cubit<AuthState> {
   }
 
   /// إنشاء حساب جديد — يُرسل رمز تحقق للهاتف.
-  Future<void> register({
+  /// إنشاء حساب — يعيد إيصال طلبٍ معلَّق، لا جلسة.
+  ///
+  /// ═══ القرار ═══ لا رمز SMS. الحساب يُفعَّل من اللوحة بعد تحقّق واتساب،
+  /// ثم يدخل الزبون بكلمته من شاشة الدخول العادية. لا شيء هنا يحفظ جلسة.
+  Future<AccountRequestReceipt> register({
     required String username,
     required String phone,
     required String password,
@@ -132,23 +138,18 @@ class AuthCubit extends Cubit<AuthState> {
     gender: gender,
   );
 
-  /// إرسال رمز التحقق إلى رقم الهاتف.
-  Future<void> sendOtp(String phone) => sendOtpUsecase.call(phone);
-
-  /// إرسال رمز إعادة تعيين كلمة المرور (Purpose: password_reset).
-  Future<void> forgotPassword(String phone) =>
-      forgotPasswordUsecase.call(phone);
-
-  /// التحقق من رمز التحقق.
-  /// التحقق من الرمز ثم حفظ الجلسة العائدة — المستخدم يصبح مصادَقاً فوراً.
-  Future<void> verifyOtp(String phone, String code) async {
-    final session = await verifyOtpUsecase.call(phone, code);
-    await _saveSession(session.token, session.user);
-  }
-
-  /// إعادة تعيين كلمة المرور.
-  Future<void> resetPassword(String phone, String code, String newPassword) =>
-      resetPasswordUsecase.call(phone, code, newPassword);
+  /// نسيت كلمة المرور — يعيد إيصال طلبٍ معلَّق تحسمه الإدارة.
+  Future<AccountRequestReceipt> forgotPassword({
+    required String phone,
+    required String username,
+    required String gender,
+    required String levelKey,
+  }) => forgotPasswordUsecase.call(
+    phone: phone,
+    username: username,
+    gender: gender,
+    levelKey: levelKey,
+  );
 
   /// تحديث الملف الشخصي (الاسم أو الصورة) عبر `PATCH /auth/me` ثم مزامنة
   /// الحالة المحلية حتى تنعكس التعديلات على بقية الشاشات فوراً.
@@ -157,6 +158,7 @@ class AuthCubit extends Cubit<AuthState> {
     String? avatar,
     bool clearAvatar = false,
     String? gender,
+    String? preferredLanguage,
   }) async {
     if (_user == null) return;
     final updated = await updateProfileUsecase.call(
@@ -164,6 +166,7 @@ class AuthCubit extends Cubit<AuthState> {
       avatarUrl: avatar,
       clearAvatar: clearAvatar,
       gender: gender,
+      preferredLanguage: preferredLanguage,
     );
     _user = updated;
     await localStorage.updateUser(jsonEncode(updated.toJson()));
@@ -171,13 +174,20 @@ class AuthCubit extends Cubit<AuthState> {
   }
 
   /// تغيير كلمة المرور من الإعدادات — مستخدم مسجّل دخوله بالفعل، بلا رمز تحقق.
+  ///
+  /// [CRITICAL] الجلسة العائدة تُحفظ فوراً: الخادم أبطل التوكن القديم برفع
+  /// `token_version`، فلو بقي في التخزين لرُفض الطلبُ التالي (أيّاً كان —
+  /// تبديل لغة، فتح السلة) بـ`SESSION_REVOKED` وخرج المستخدم بلا سبب ظاهر.
   Future<void> changePassword({
     required String currentPassword,
     required String newPassword,
-  }) => changePasswordUsecase.call(
-    currentPassword: currentPassword,
-    newPassword: newPassword,
-  );
+  }) async {
+    final session = await changePasswordUsecase.call(
+      currentPassword: currentPassword,
+      newPassword: newPassword,
+    );
+    await _saveSession(session.token, session.user);
+  }
 
   /// مسح الجلسة بشكل إجباري (انتهاء صلاحية التوكن / استجابة 401).
   Future<void> forceLogout() async {
@@ -194,5 +204,32 @@ class AuthCubit extends Cubit<AuthState> {
     await localStorage.saveSession(token, jsonEncode(user.toJson()));
     _user = user;
     emit(AuthAuthenticated(user: user));
+    await _syncPreferredLanguage();
+  }
+
+  /// يدفع لغة الواجهة إلى الخادم إن خالفت ما يحفظه عن هذا الحساب.
+  ///
+  /// [CRITICAL] الخادم يحسم لغة كل ردٍّ مصادَق بعمود `preferred_language`
+  /// **قبل** ترويسة `Accept-Language`. كان التطبيق لا يرسل الاثنين، فبقي
+  /// العمود على `ar` لكل حساب، وبقيت الأقسام والمنتجات ورسائل الخطأ عربيةً
+  /// في واجهةٍ كردية لمستخدمٍ مسجَّل. تُستدعى عند كل جلسةٍ يؤكّدها الخادم
+  /// (دخول، تسجيل، استعادة) وعند تبديل اللغة من الإعدادات.
+  ///
+  /// تفشل بصمت: مزامنةُ تفضيلٍ لا يجوز أن تُفشل دخولاً أو تبديلَ لغة.
+  /// الفرق يُعاد دفعه في الجلسة التالية.
+  Future<void> syncPreferredLanguage() => _syncPreferredLanguage();
+
+  Future<void> _syncPreferredLanguage() async {
+    final user = _user;
+    final language = languageOf?.call();
+    if (user == null || language == null) return;
+    if (user.preferredLanguage == language.code) return;
+    try {
+      await updateProfile(preferredLanguage: language.code);
+    } catch (error) {
+      // انظر أعلاه — صامتٌ للمستخدم، لا للمطوّر: السبب يُطبع في التطوير حتى
+      // لا يضيع خلف «تبديل اللغة أخرجني» بلا أثر.
+      if (kDebugMode) debugPrint('[auth] preferred-language sync failed: $error');
+    }
   }
 }
