@@ -473,6 +473,14 @@ Tested: `community.test.ts` «creates, renames, adds products and blocks other u
 
 ## 2.8 ORDERS — `PARTIAL`
 
+> **2026-09-26 — STEP 58:** step 4's "reject if inactive" does not fire for a line whose product is
+> already inactive: the cart read itself filters `p.is_active = TRUE` (since the initial commit), so
+> such a line is dropped, not rejected (CA-14, §58.3). Step 7's stock deduction moved to admin
+> approval (§47.1); `create` keeps only the request gate.
+> **2026-09-26 — STEP 59:** step 4 now holds literally — checkout reads every cart line, inactive
+> ones included, and refuses with `409 PRODUCT_UNAVAILABLE`; `GET /cart` synchronizes the cart
+> (§59.4).
+
 **Creation** (`orderService.create`, one transaction):
 1. Validate governorate is active.
 2. Load zones; if any exist the zone is **mandatory** (`ZONE_REQUIRED`) and its fee replaces the
@@ -513,6 +521,10 @@ written exactly once, in one transaction.
 | **Rating window** | **`COMPLETE`** *(2026-08-24)* | `orders.rating_available_at = delivered_at + config.orders.ratingDelayHours` (default 24 h). See §2.13 and §16. |
 
 ## 2.9 CHECKOUT — `PARTIAL`
+
+> **2026-09-26 — STEP 59 (CA-14 option A):** the body also carries `expectedPrices: [{productId,
+> unitPrice}]` — the prices the customer reviewed. A consistency check, not an amount: the server
+> refuses a mismatch with `409 PRODUCT_PRICE_CHANGED` and stores its own prices (§59.4).
 
 ```
 cart_screen → OrderDataRoute (order_data_screen.dart, AuthGuard)
@@ -4048,6 +4060,9 @@ architecture exists yet, and inventing one was out of scope).
 
 ## 21.5 Lifecycle CRUD — `IMPLEMENTED`
 
+> **2026-09-26 — STEP 59 (CA-18):** deactivating a category or subcategory hides the section only;
+> products, their stock, carts and orders are untouched — no cascade (§59.7).
+
 | Endpoint | Guard |
 |---|---|
 | `DELETE /admin/categories/:id` | `409 CATEGORY_HAS_DEPENDENTS` if any product or subcategory references it |
@@ -7398,6 +7413,11 @@ discount awaits the next order, the gift awaits the store), and **consumed/fulfi
 
 ## 40.8 Discount rewards
 
+> **2026-09-26 — STEP 59 (CA-12, owner decision):** once an order is **created**, the level discount
+> and the birthday discount it used stay consumed — also when the order is later rejected, pending
+> or after approval, for any reason including stock running out at approval. Only a submit that
+> creates no order (e.g. the stock gate at submit) leaves both available (§59.3).
+
 Explicit claim, then automatic use at the next checkout — reusing the birthday-discount architecture
 rather than building a coupon subsystem.
 
@@ -8654,6 +8674,10 @@ same thing.
 
 ## 47.1 Stock lifecycle — the business rule (F3)
 
+> **2026-09-26 — STEP 59:** the dashboard's order detail shows the **current** stock next to the
+> requested quantity (read when the order is opened, never a creation-time snapshot); approval still
+> re-checks under the lock and never trusts the displayed number (§59.6).
+
 Until now `orderRepo.create` deducted stock when the **customer submitted** and
 `rejectOrderInTransaction` restored it on rejection. The owner's rule is:
 
@@ -9852,6 +9876,13 @@ business decision · **D** historical data.
 
 ## 57.1 Decision matrix
 
+> **2026-09-26 — STEP 59:** the owner decided CA-12, CA-14, CA-15 and CA-18; the tests pinned here
+> became contracts. See §59.1 for the final table (CA-14's price-after-review `409` closed by option A, §59.4).
+
+> **2026-09-26 — STEP 58:** CA-12, CA-14, CA-15, CA-17 and CA-18 were re-derived from the code; every
+> classification below stands. Refinements (CA-12 cases, a CA-15 instance on the product form, CA-17
+> reproduced on a synthetic database, the CA-7 gate made explicit) are in §58.
+
 | CA | Class | Current behaviour (after this step) | Contract source | Decision | Implementation status | Blocks Staging? |
 |---|---|---|---|---|---|---|
 | CA-6 | **B** | A cart increment committed during an in-flight checkout now waits for it and lands in the next cart. PATCH/DELETE of a locked line: state = checkout-then-edit | Cart-row lock (`listItemsForCheckout`, §session contracts); serializability of acknowledged writes | None needed — both "cart at commit" and "cart as locked" readings coincide once every cart write takes the cart lock | **FIXED** (`cartRepo.upsertItem`) | DOES NOT BLOCK STAGING |
@@ -9886,6 +9917,9 @@ final state equals checkout-then-edit (the order keeps the locked quantity / sti
 line; the cart is empty). Only the edit's `200` body describes the pre-checkout cart.
 
 ## 57.3 CA-7 — admin notifications (A, documented)
+
+> **2026-09-26 — STEP 58:** the gate's full content — what "resolved" must cover (in-app rows **and**
+> push on a replay), push delivery state and retry semantics, and its scope — is §58.7.
 
 §53.4 already documents manual/broadcast admin notifications as **at-least-once**, the in-app row
 as the record, and push as best-effort after the commit; the multi-user insert is one statement.
@@ -10070,3 +10104,342 @@ as its neighbours). Tests: `backend/tests/contract-closure.test.ts` (new, 20),
 pins added). Tooling: `backend/scripts/restock-residue-diagnostic.sql` (new, read-only),
 `backend/scripts/domain-invariants.sql` (I22 → INFO). No migration, no admin or Flutter change,
 no data change (dev database read only).
+
+---
+
+# STEP 58 — CLOUD: CA-12/14/15/17/18 FINAL EVIDENCE PASS · CA-7 GATE MADE EXPLICIT (2026-09-26)
+
+Branch `dev-cloud-ca12-18` (snapshot `5654aff` of local `dev` at `39e68bd`). Every STEP 57 verdict
+was re-derived from the code, not from §57's text. Tests ran on a local PostgreSQL 16 in the cloud
+container; **the dev database was not reachable**, so no dev data was read or changed. Rule as in
+STEP 57: a contradiction of the spec or of an explicit invariant is a defect; two or more
+legitimate product readings are a decision, pinned and left to the owner. **No correctness defect
+was found in CA-12/14/15/17/18; no production code changed.**
+
+## 58.1 Result
+
+| CA | Class | Result | Change |
+|---|---|---|---|
+| CA-12 | C (+A for "never created") | Decision stands; the §40.8 case is contract and now pinned | 1 contract test |
+| CA-14 | C | Decision stands | none |
+| CA-15 | C | Decision stands; one more instance found (product form) and pinned | 1 pin test |
+| CA-17 | D | Dev residue; mechanism reproduced; fresh database proven clean | none (no data) |
+| CA-18 | C | Decision stands | none |
+| CA-7 | A (future gate) | Gate incomplete on replay/push semantics → documented (§58.7) | docs only |
+
+## 58.2 CA-12 — where the promise is kept and where it is open
+
+The stock can run out at **two** points, and they are different cases:
+
+| Case | What happens | Contract |
+|---|---|---|
+| A — out of stock **at submit** | `create`'s request gate answers `409 INSUFFICIENT_STOCK` **before** the level reward is reserved, inside the create transaction; no order, no reservation, no birthday usage. The next order gets both discounts | §40.8 — kept. Pinned: `[CA-12 contract §40.8]` |
+| A′ — any later failure inside `create` | the transaction rolls back reservation and usage (`REWARD_ALREADY_USED`, `BIRTHDAY_DISCOUNT_USED`, injected failures) | §40.8 — kept; pinned in `failure-retry-audit.test.ts` Phases 8–9 |
+| B — pending order rejected | both stay consumed | silent |
+| C1 — stock ran out between submit and approval → approval `409` → rejected | both stay consumed | silent (the §40.8 *example*, not its condition) |
+| C2 — approved, then rejected (parcel refused) | stock returns once (§47.1); both discounts stay consumed | silent |
+
+Refinement for the decision: `rewardAvailable` requires **today = birthday** (store calendar) and no
+usage in the store year. Deleting the usage row after the birthday date has passed gives the
+customer nothing usable. "Return the birthday discount on rejection" therefore only has an effect
+for a rejection on the birthday itself; anything wider (carry-over) is a new mechanism.
+
+## 58.3 CA-14 — refinements
+
+- The cart read (`LINE_SELECT`, used by `GET /cart` and by checkout) has filtered
+  `p.is_active = TRUE` since the initial commit. The inactive check in `create` fires only if a
+  product is deactivated between the cart read and `findByIds` of the same transaction (`409`,
+  no error code); otherwise the line is dropped and deleted with the cart (§57.7).
+- Product "delete" is soft (`is_active = FALSE`), so deleting and deactivating are the same case.
+  A pending order whose product is deactivated after submit is still approvable:
+  `consumeStockOnApproval` checks existence and stock only.
+- Not governed by any document: option values are free text (≤ 80 chars) and are not checked
+  against `product_options` at add or submit. Recorded only; not part of the CA-14 decision.
+
+## 58.4 CA-15 — endpoint inventory and a product-form instance
+
+| Endpoint | Stale-request behaviour |
+|---|---|
+| `PATCH /admin/orders/:id/status` | target + status re-read under the lock: illegal refused, **legal → last write wins** (pinned) |
+| `PATCH /admin/reviews/:id/moderate` | target + re-read under the lock: **legal → last write wins** (pinned) |
+| `POST /admin/account-requests/:id/approve·reject` | `WHERE status = 'pending'` — the second resolver is refused |
+| `POST /admin/loyalty-rewards/:id/fulfil` | `WHERE fulfilled_at IS NULL` — `409 ALREADY_FULFILLED` |
+| `PATCH …/reminder`, `POST …/reminder/send-now` | conditions in the statement |
+| `PATCH /admin/users/:id/active` | target (D1); same state = no-op; opposite targets → last write wins |
+| `PATCH /admin/products/:id` | absolute set of every field sent → **last write wins per field** |
+| categories, subcategories, banners, governorates, zones, franchises, settings | absolute set of the fields sent → last write wins |
+
+**New instance (pinned, `[CA-15 pinned] a product form …`).** `ProductEditPage.handleSubmit`
+sends **every** form field as loaded — `stock`, `isActive`, `restockAt` included (pinned as intended
+by `ProductEditPage.test.tsx`: «بقية الحقول تُرسَل كالمعتاد»). A form opened before an approval and
+saved afterwards to fix the description writes back the pre-approval stock: the units the approval
+consumed become sellable again. The same save re-activates a product deactivated in the meantime,
+and reverts a restock date another admin changed — which, being a change, notifies the waiting
+subscribers again with the old date (both effects executed with a temporary test that was not
+kept: soft-deleted product → `is_active` true again; subscriber notices 1 → 2 (new date) → 3 (old
+date), stored date back to the old one). This is CA-15 (and CA-5's absolute stock set), not a defect:
+no document defines whether a form save asserts all displayed values.
+
+The decision now has three shapes: keep; an expected-state token answered with `409` (new API
+contract on the affected endpoints + dashboard); or, for the product form only, send the fields
+the admin changed (no API change — the `PATCH` is already partial). A stock *edit* from a stale
+form remains CA-5 in all three.
+
+## 58.5 CA-17 — evidence separated by source
+
+- **Repository:** 051 is one `UPDATE products SET stock = stock + reserved`; as SQL it cannot run
+  §42.5 (`stockReturned`). The runner applies each file in its own transaction and
+  `schema_migrations.applied_at` defaults to `now()` there, so `origin_051` in the diagnostic
+  (`products.updated_at = applied_at`) is a sound provenance test.
+- **Fresh database (executed):** all 63 files applied from empty; 051 found no orders; the
+  diagnostic returned 0 rows.
+- **Synthetic old-model database (executed):** migrated to 050, seeded with one product at stock 0
+  held by a pending order, a waiting subscriber and a date; the real runner then applied 051–062.
+  The diagnostic returned exactly the dev pattern (stock 1, 1 waiting, date kept,
+  `origin_051 = true`, `residue`); the sweep reported I22 INFO = 1, I23 = 1.
+- **Dev database:** not accessible from the cloud. The two rows of §57.10 are the owner's earlier
+  local reading, not re-verified here.
+- Both remediations of §57.10 were executed on disposable copies of the synthetic database: *clear
+  silently* → 0 residue, 0 notifications; *notify now* (`restockService.stockReturned` per product,
+  one transaction each, guarded to `APP_ENV=dev`) → one `backInStock` in the subscriber's language,
+  subscription consumed, date cleared, 0 residue. Neither was run on any real database; the choice
+  is still the owner's.
+
+## 58.6 CA-18 — confirmed
+
+Only `categoryRepo.list` reads `categories.is_active` / `subcategories.is_active`. Listing,
+filters, detail, search, favourites, cart, checkout and approval gate on `products.is_active` alone.
+The dashboard labels are «نشط / معطل» (category) and «ظاهر للعملاء» (subcategory); the delete alert
+says «إن كان القسم مستعملاً فعطّله بدل حذفه» without saying what deactivation does to products. Pinned
+behaviour unchanged.
+
+## 58.7 CA-7 — the gate, complete
+
+Before real FCM delivery is enabled (completing `FcmPushProvider.obtainAccessToken` trips
+`[CA-7 tripwire]`), CA-7 is resolved only when all of the following hold for
+`POST /admin/notifications` and `POST /admin/notifications/broadcast` — today the only two callers
+of `pushService.pushToUsers`:
+
+1. **Duplicates.** A replay of the same admin action (dashboard retry after a timeout, double
+   submit) creates no second in-app row **and sends no second push**. Established rule: a retried
+   or duplicated request must not notify twice (RF-2, RF-3, reward claim — §53).
+2. **Retry.** Clients do not retry automatically (§53.4); a retry is a person repeating the action,
+   and item 1 must hold for it.
+3. **Delivery state.** The in-app row is the record (§32.5). Push is best-effort: no per-recipient
+   push status is stored; FCM `400/404` deactivates the token; a network error or timeout is
+   neither recorded nor retried.
+4. **Request duration.** FCM sends sequentially per token inside the request (`PUSH_TIMEOUT_MS`
+   each); the design must keep the dashboard below its timeout or move push after the response.
+
+Any new push call site (e.g. order-status notifications, which today do not push — §53.4) is
+outside what CA-7 analysed and needs the same review. Staging cannot run `console`/`noop` push
+providers; with `fcm` configured, push fails fast and broadcasts are in-app only until then.
+
+## 58.8 Tests and mutation
+
+- `backend/tests/contract-closure.test.ts`: 20 → 22 (`[CA-12 contract §40.8]`, `[CA-15 pinned] a
+  product form …`). Both describe existing behaviour and passed on first run (no defect ⇒ no RED).
+- Mutant: request gate disabled in `create` (`if (false && maxQty < …)`) → `[CA-12 contract §40.8]`
+  **killed** (`201` instead of `409`). Restored byte-exact (SHA-256 identical, empty diff).
+- Baseline in the cloud: 81 files / 1228 tests, 1227 passed, 1 failed —
+  `api-contract-audit.test.ts` «POST/PATCH /admin/governorates باسمٍ مكرّر → 409» assumes a
+  governorate named «بغداد» already exists (it comes from `scripts/seed.ts`, not from the suite). On
+  an empty test database the POST creates it (`201`); on re-run the file passes 51/51. Test-fixture
+  dependency, not a product regression; left unchanged (outside this step's scope). **It blocks the
+  dev → staging pull request:** CI runs `npm test` on a fresh `postgres:16` with no seed
+  (`.github/workflows/ci.yml`) and `staging` requires the CI checks (§24.2).
+
+## 58.9 Files
+
+Tests: `backend/tests/contract-closure.test.ts` (+2). Documentation: this step, and cross-reference
+notes in §2.8, §57.1 and §57.3. No production code, migration, admin, Flutter or data change.
+
+## 58.10 Out of scope, recorded
+
+`admin/src/api/productsApi.ts#adminProductToDraft` (the edit draft of a product the public API does
+not return, i.e. an inactive one) omits `restockAt`, and `ProductEditPage.handleSubmit` sends
+`restockAt: values.restockAt ?? null` — saving an inactive product clears its stored restock date.
+Same class as the `options` wipe already fixed on that page. Not changed here (not a CA of this
+step).
+
+> **2026-09-26 — STEP 59:** fixed (§59.2); the fresh-database governorate test of §58.8 is fixed too
+> (§59.2).
+
+---
+
+# STEP 59 — CLOUD: OWNER DECISIONS CA-12/14/15/18 IMPLEMENTED · PRE-STAGING BLOCKERS CLOSED (2026-09-26)
+
+Branch `dev-cloud-ca12-18` (snapshot `5654aff`), uncommitted for review. The owner decided the four
+open contracts; this step implements them, closes the two pre-staging defects found in STEP 58, and
+adds the dashboard's current-stock column. Nothing here is a production-readiness statement. The
+dev database was **not** reachable from the cloud; every database in this step was a throwaway one.
+
+## 59.1 Final contract table
+
+| CA | Decision (owner) | Status |
+|---|---|---|
+| CA-12 | A created order consumes its discounts for good; only a submit that creates no order leaves them available | Implemented (behaviour already matched) and made contract — 4 tests |
+| CA-13 | Documented in §57.6 | Unchanged |
+| CA-14 | Server authoritative; active carts synchronize price and inventory; one consolidated notice; checkout is the final safety net (`409`, no order); a price that changed after the customer's review is refused (option A) | Implemented — including `409 PRODUCT_PRICE_CHANGED` (§59.4) |
+| CA-15 | Last write wins; no optimistic concurrency; an unsent field is never nulled | Implemented as contract — the one data-loss path (inactive product `restockAt`) fixed |
+| CA-16 | Fixed in §57.9 | Unchanged |
+| CA-17 | Dev-only residue; no real database touched | Unchanged (§58.5) |
+| CA-18 | Option A — deactivating a category/subcategory hides the section only | Implemented as contract (behaviour already matched) — 3 tests |
+| CA-7 | Documentation gate before real FCM (§58.7) | Unchanged — still the gate |
+
+## 59.2 Pre-staging defects closed
+
+- **Fresh-database test fixture** (`api-contract-audit.test.ts`, duplicate governorate). The test
+  assumed «بغداد» from `seed.ts`; on the empty database CI uses it failed (`201` instead of `409`)
+  and passed only on reruns. It now creates its own uniquely named governorate, asserts both
+  duplicate paths (`POST` → `409 DUPLICATE_VALUE`, `PATCH` rename → `409 DUPLICATE_VALUE`) and
+  deletes what it created. RED on a fresh database; GREEN twice on a fresh database. No seed or
+  production change.
+- **Inactive product lost its restock date on save** (dashboard). `adminProductToDraft` — the draft of
+  a product the public API does not return — dropped `restockAt`, and the save sends
+  `restockAt: values.restockAt ?? null`. It now carries `restockAt` exactly as
+  `publicProductToDraft` does. RED (`expected null to be '2026-10-15T09:00:00.000Z'`) → GREEN;
+  two mutants (field dropped / forced `null`) killed. Test: `ProductEditPage.restock.test.tsx`.
+
+## 59.3 CA-12 — discounts stay consumed once the order exists
+
+The implementation already matched the decision: consumption happens inside the create transaction
+after the submit stock gate, and no rejection path restores either discount. Contract tests
+(`contract-closure.test.ts`): stock ran out at submit → no order, both discounts intact and applied
+to the next order (§40.8); pending order rejected → both consumed, next order gets neither; stock ran
+out at approval → rejected → both consumed; approved then rejected → both consumed, stock alone
+returns (§47.1). Mutant «restore both on rejection» killed (4 tests).
+
+## 59.4 CA-14 — active cart synchronization and the checkout safety net
+
+**Mechanism (the smallest that fits the existing architecture).** `cart_items` stores no price —
+every cart read already joins the live product. `GET /cart` therefore *is* the synchronization
+point: under the same `FOR UPDATE` cart lock the checkout takes, `cartService.sync` removes a line
+whose product is inactive or out of stock, reduces a quantity above the stock (measured per product
+across option lines; the oldest line keeps its units), never raises a quantity, and returns
+`{ items, adjustments }` (`domain/cartSync.ts#planCartSync`). One request covers the whole cart —
+no per-product polling, no catalogue fetch, no WebSocket/SSE/event bus: prices and stock change a
+few times a day from the dashboard, and the final check at submit bounds any gap.
+
+**App.** `CartCubit.sync()` applies the snapshot atomically (one state per synchronization), shares
+one request between concurrent callers, never lets an older snapshot overwrite a newer customer edit,
+and emits one consolidated `CartSyncNotice` (price change detected by comparing with what was shown;
+removal and reduction reported by the server). `CartAutoSync` (mounted in `MainNavigationScreen`)
+synchronizes on app resume, every 60 s while the app is in the foreground and the cart is not empty
+(no timer in the background), and when the cart tab opens; «إتمام الطلب» synchronizes first and
+stays on the cart if anything changed. The notice is one `showOtakuSnack` with the lines
+`cartSyncItemRemoved` / `cartSyncQuantityReduced` / `cartSyncPriceChanged` (Arabic; Sorani drafted
+and queued for native review — `review-queue.json`, 526 keys).
+
+**Checkout safety net.** Checkout now reads every line, inactive ones included, and refuses with
+`409 PRODUCT_UNAVAILABLE` instead of dropping the line silently; a quantity above the stock is
+`409 INSUFFICIENT_STOCK` (unchanged gate). No order is created and the cart is left for the next
+synchronization. On either code the review screen synchronizes the cart and returns the customer to
+it — it never resubmits from a review showing stale lines.
+
+**Price consistency at checkout — option A (owner decision).** Checkout sends the unit price
+currently represented by the synchronized customer cart: `POST /orders` carries
+`expectedPrices: [{ productId, unitPrice }]` — the two fields of a `GET /cart` line — built from the
+lines the review screen shows (`OrderData.items`, taken from `CartCubit` when the customer left the
+address step; never re-read when «تأكيد» is pressed). Inside the checkout transaction, after the cart
+lock, the server compares each expected price with the product price of the **same read** the order
+snapshot is built from; any mismatch (higher or lower, any line) returns
+`409 PRODUCT_PRICE_CHANGED` («تغيّر سعر «…» — راجع سلتك قبل الإرسال», Sorani in
+`errorMessages.ts`). The check precedes the discount reservation and the order insert, so a refusal
+leaves no order, no order items, no stock change, no level-reward or birthday consumption and an
+intact cart. The expected price is a check, never a price source: the snapshot and every total stay
+the database's. The app then synchronizes the cart, returns the customer to it and shows the existing
+consolidated price notice (`cartSyncPriceChanged` — also when a background synchronization had
+already refreshed the price before the submit); a retry is an ordinary checkout.
+
+A request without `expectedPrices` (an app build from before this step) is not checked and keeps the
+price at submit — the mixed-deployment rule of §47.4; forcing the new build is a `minVersion`
+decision. A malformed expected price is `400`. No schema change: the expectation travels in the
+request. This is a **customer checkout consistency check**, independent of the dashboard's
+**Last Write Wins** (CA-15): no ETag, version or admin-side `409` exists.
+
+## 59.5 CA-15 — last write wins
+
+The last submitted values win on every legal admin action (order status, review moderation, product
+save — stock included); illegal transitions stay refused under the lock. No ETag, version column or
+expected-state token was added. «Last write wins» covers what an admin **sends**: a field absent
+from `PATCH` is never nulled (server test) and the dashboard no longer turns a field it failed to
+load into an explicit `null` (§59.2).
+
+## 59.6 Dashboard order detail — requested quantity and current stock
+
+`GET /admin/orders/:id` (`orderRepo.findByIdForAdmin`) adds `currentStock` to each line: the
+product's stock read when the order is opened (`null` for a product deleted from the database). The
+customer's order never carries it. `OrderDetailPage` shows «الكمية المطلوبة» and «المخزون الحالي»,
+and tags a **pending** line whose request exceeds the current stock «غير كافٍ». The number is
+information only: approval still locks the products, re-reads the stock and consumes it atomically
+(§47.1). Example proven end to end: stock 1, orders A and B pending → approve A → B shows 0 (never
+the old 1), B's approval is `409 INSUFFICIENT_STOCK` with no deduction, rejecting B leaves stock 0,
+rejecting A after approval returns its unit once.
+
+## 59.7 CA-18 — category-only deactivation
+
+Deactivating a category or subcategory removes it from `GET /catalog/categories` only. It does not
+deactivate, delete or restock products, does not touch cart lines (the synchronization reports
+nothing), does not refuse checkout, and leaves pending orders approvable. Three cascade mutants
+(product deactivation, cart gating, checkout gating) killed.
+
+## 59.8 CA-7 and CA-17
+
+CA-7: documentation only — the gate of §58.7 (duplicates and replay covering in-app rows and push,
+retry by a person only, push delivery state and retry semantics, request duration, new push call
+sites) must be closed before real FCM delivery; no FCM code was added. CA-17: nothing new; no real
+database was read or written (§58.5 lists the verified remediation procedures, still the owner's
+choice).
+
+## 59.9 Tests and mutation (this step)
+
+New: `backend/tests/cart-sync.test.ts` (18, +10 for option A), `backend/tests/admin-order-current-stock.test.ts` (5),
+`test/cart_sync_test.dart` (21, +7 for option A), `admin/src/pages/ProductEditPage.restock.test.tsx` (2); added to
+`contract-closure.test.ts` (CA-12 pending rejection, CA-15 partial save, CA-18 no cascade),
+`OrderDetailPage.test.tsx` (4) and the live harness `test/api_integration_test.dart` (2, skip without a
+server). `delivery_discount_excess_test.dart`'s body-shape test now expects `expectedPrices` beside
+the address fields (still no total, discount, fee or `items`); the option-A-less price pin in
+`contract-closure.test.ts` became the mixed-deployment contract. Converted from pinned to contract: CA-12 (4), CA-14 inactive line
+(`domain-integrity-audit.test.ts`), CA-15 (3), CA-18 (2). Every mutant below was killed and its file
+restored byte-exact (SHA-256):
+
+Regression (cloud, 2026-09-26, after option A): backend `tsc` clean, **83 files / 1266 tests** on a
+freshly created, freshly migrated database (was 81 / 1228); dashboard `tsc -b` clean, lint 0 errors
+(5 warnings in untouched `main.tsx` / `ThemeProvider.tsx`), **21 files / 157 tests** (was 20 / 151),
+production build clean; `flutter analyze` clean; `flutter test --exclude-tags integration` (the CI
+command) **1233 passed, 0 failed**; the live harness against a seeded throwaway server on `:4000`
+**+12 ~1 −1** — both CA-14 live scenarios pass; the one failure needs dev-only catalogue data
+(accessories/bags sections) and predates this step. Without a server the harness's 11 failures are
+the same set as before this step.
+
+| Area | Mutant | Killed by |
+|---|---|---|
+| CA-14 | snapshot not applied / price change never reported | cubit, UI and checkout tests |
+| CA-14 | zero-stock removal disabled / removals not applied | cart-sync stock tests |
+| CA-14 | quantity may exceed stock / reductions not applied | cart-sync reduction tests |
+| CA-14 | checkout reads the filtered cart again / stock gate removed | safety-net and authority tests |
+| CA-14 | stale client price reaches the order | server-authority test |
+| CA-14 | sync without the cart lock / adjustments not returned | lock and report tests |
+| CA-14 | no sync on resume / timer in background / stale sync overwrites an edit / checkout skips the last sync / 409 leaves the stale review | Flutter tests |
+| CA-12 | discounts restored on rejection | 4 contract tests |
+| CA-15 | omitted `restockAt` nulled (server) / draft drops or nulls `restockAt` (dashboard) | partial-save and dashboard tests |
+| CA-18 | category → product cascade / cart gated by category / checkout gated by category | CA-18 contract tests |
+| Current stock | requested quantity shown as stock / approval recheck bypassed / tag never shown / tag after approval | current-stock tests |
+| CA-14 option A | comparison removed / mismatch tolerated / validation moved before the transaction (killed by the cart-lock barrier test) / discounts committed before the check | option-A backend tests |
+| CA-14 option A | success shown after a price `409` / no cart synchronization after it / expected prices not sent / expected prices re-read from the live cart at confirm / price `409` not treated as a cart conflict | Flutter option-A tests |
+| CA-14 option A — **equivalent, survived** | client price written into the snapshot (the guard admits it only when equal to the database price) / discounts consumed before the check inside the same transaction (rolled back with it) | none possible — both are behaviour-identical by construction |
+
+## 59.10 Files
+
+Backend: `src/domain/cartSync.ts` (new), `src/repositories/cartRepo.ts`, `src/services/cartService.ts`,
+`src/controllers/cartController.ts`, `src/services/orderService.ts` (error code; option-A price check),
+`src/validators/orders.ts` (`expectedPrices`), `src/domain/errorMessages.ts` (one Sorani template),
+`src/repositories/orderRepo.ts` (`findByIdForAdmin`). Dashboard: `src/api/productsApi.ts`,
+`src/pages/OrderDetailPage.tsx`, `src/types/orders.ts`. App: `lib/features/cart/domain/entities/cart_sync.dart`
+(new), `lib/features/cart/presentation/cart_auto_sync.dart` (new), `cart_repository.dart`,
+`cart_repository_impl.dart`, `cart_cubit.dart`, `cart_screen.dart`, `order_review_screen.dart`,
+`lib/features/orders/domain/entities/order_data.dart` (`expectedPrices`),
+`main_navigation_screen.dart`, `lib/core/l10n/app_strings.dart`. Localization records:
+`docs/localization/{review-queue.json, sorani-review-queue.md, status.json, README.md}`.
+No migration, no schema change, no data change.

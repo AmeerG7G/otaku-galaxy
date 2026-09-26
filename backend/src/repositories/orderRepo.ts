@@ -147,6 +147,15 @@ const ORDER_WITH_CUSTOMER = `
  * قائمةُ سماحٍ صريحة يقرأها مسارُ العميل ومسارُ الإدارة معاً، وإضافة الفائض
  * إليها كانت تكشف رقماً محاسبياً داخلياً لكل زبون يفتح طلبه.
  */
+export interface AdminOrderItem extends OrderItemSnapshot {
+  /**
+   * مخزون المنتج **الآن** — يُقرأ عند كل فتحٍ للطلب في اللوحة، لا لقطةٌ من لحظة
+   * الإنشاء. معلومةٌ للمسؤول لا قرار: القبول يعيد قراءة المخزون تحت القفل
+   * (`consumeStockOnApproval`). `null` لمنتجٍ حُذف من القاعدة.
+   */
+  currentStock: number | null;
+}
+
 export interface AdminOrderWithItems extends OrderWithItems {
   /**
    * ما تجاوز رسوم التوصيل من ترويج المنتجات — محتفَظ به للمتجر.
@@ -154,6 +163,7 @@ export interface AdminOrderWithItems extends OrderWithItems {
    * ليس خصماً للزبون ولا يدخل `total`. يُقرأ من مسارات `/admin` وحدها.
    */
   deliveryDiscountExcess: number;
+  items: AdminOrderItem[];
 }
 
 function mapOrder(row: Record<string, unknown>): OrderWithItems {
@@ -198,10 +208,18 @@ function mapOrder(row: Record<string, unknown>): OrderWithItems {
 }
 
 /** يضيف الفائض المحاسبي إلى الشكل الذي يراه العميل — لمسارات الإدارة وحدها. */
-function mapAdminOrder(row: Record<string, unknown>): AdminOrderWithItems {
+function mapAdminOrder(
+  row: Record<string, unknown>,
+  stockById: ReadonlyMap<string, number>,
+): AdminOrderWithItems {
+  const order = mapOrder(row);
   return {
-    ...mapOrder(row),
+    ...order,
     deliveryDiscountExcess: Number(row.delivery_discount_excess ?? 0),
+    items: order.items.map((item) => ({
+      ...item,
+      currentStock: item.productId ? (stockById.get(item.productId) ?? null) : null,
+    })),
   };
 }
 
@@ -359,7 +377,21 @@ export const orderRepo = {
       `${ORDER_WITH_CUSTOMER} WHERE o.id = $1`,
       [id],
     );
-    return rows[0] ? mapAdminOrder(rows[0]) : null;
+    if (!rows[0]) return null;
+    // المخزون الحالي بقراءةٍ واحدة لكل منتجات الطلب — مسار اللوحة وحده، فلا
+    // يخرج رقم مخزون المتجر في استجابة الزبون.
+    const productIds = [
+      ...new Set(
+        ((rows[0].items as OrderItemSnapshot[]) ?? [])
+          .map((item) => item.productId)
+          .filter((productId): productId is string => Boolean(productId)),
+      ),
+    ];
+    const { rows: stock } = await db.query<{ id: string; stock: number }>(
+      'SELECT id, stock FROM products WHERE id = ANY($1::uuid[])',
+      [productIds],
+    );
+    return mapAdminOrder(rows[0], new Map(stock.map((p) => [p.id, Number(p.stock)])));
   },
 
   async findById(db: pg.Pool | pg.PoolClient, id: string): Promise<OrderWithItems | null> {

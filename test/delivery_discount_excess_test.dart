@@ -184,8 +184,13 @@ void main() {
       ]) {
         expect(body.containsKey(key), isFalse, reason: '$key لا يُرسَل');
       }
-      // ما يُرسل: العنوان والمحافظة والهاتف فقط.
-      expect(body.keys.toSet(), {'governorateId', 'fullAddress', 'phone'});
+      // ما يُرسل: العنوان والمحافظة والهاتف، وأسعار الوحدة التي راجعها الزبون
+      // (CA-14، الخيار أ) — فحصٌ يرفض به الخادم سعراً تغيّر، لا مبلغٌ يُحتسب منه
+      // شيء: السعر المحفوظ سعر الخادم.
+      expect(body.keys.toSet(), {'governorateId', 'fullAddress', 'phone', 'expectedPrices'});
+      expect(body['expectedPrices'], [
+        {'productId': 'p1', 'unitPrice': _price},
+      ]);
     });
   });
 

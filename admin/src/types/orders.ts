@@ -20,6 +20,11 @@ export interface OrderItem {
   price: number
   quantity: number
   lineTotal: number
+  /**
+   * مخزون المنتج **الآن** — يرسله `GET /admin/orders/:id` وحده، مقروءاً عند فتح
+   * الطلب. `null` لمنتجٍ حُذف؛ غائبٌ في القوائم التي لا تحمله.
+   */
+  currentStock?: number | null
 }
 
 export interface AdminOrder {

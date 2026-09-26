@@ -96,6 +96,9 @@ function adminProductToDraft(product: Product): ProductFormDraft {
     hasDeliveryPromo: product.hasDeliveryPromo,
     deliveryPromoAmount: product.deliveryPromoAmount ?? 0,
     franchiseIds: product.franchiseIds,
+    // [CRITICAL] بلا هذا يصل النموذجَ حقلٌ فارغ، و`handleSubmit` يرسل
+    // `restockAt: null` صراحةً — فيمسح حفظُ منتجٍ معطّل موعدَه المحفوظ.
+    restockAt: product.restockAt ?? null,
   }
 }
 

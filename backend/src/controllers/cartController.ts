@@ -9,9 +9,10 @@ import {
 } from '../validators/cart.js';
 
 export const cartController = {
+  /** قراءة العربة **هي** مزامنتها (CA-14): الأسطر الحالية وما عُدِّل فيها. */
   get: (async (req, res) => {
-    const items = await cartService.getCart(req.auth!.id);
-    return ok(res, { items });
+    const { items, adjustments } = await cartService.sync(req.auth!.id);
+    return ok(res, { items, adjustments });
   }) as RequestHandler,
 
   add: (async (req, res) => {

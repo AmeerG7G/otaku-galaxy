@@ -129,3 +129,60 @@ describe('فائض خصم التوصيل في تفاصيل الطلب', () => {
     expect(screen.queryByText(/فائض خصم التوصيل/)).not.toBeInTheDocument()
   })
 })
+
+/**
+ * الكمية المطلوبة والمخزون الحالي (STEP 59).
+ *
+ * المخزون المعروض هو ما أرسله الخادم عند فتح الطلب — المخزون **الآن**، لا لقطة
+ * الإنشاء. معلومةٌ للمسؤول لا قرار: القبول يعيد الفحص تحت القفل على الخادم.
+ */
+describe('الكمية المطلوبة والمخزون الحالي في تفاصيل الطلب', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const line = (overrides: Record<string, unknown>) => ({
+    productId: 'p1',
+    productName: 'حقيبة ناروتو',
+    imageUrl: null,
+    optionValue: null,
+    price: 10000,
+    quantity: 3,
+    lineTotal: 30000,
+    ...overrides,
+  })
+
+  it('يعرض الكمية المطلوبة والمخزون الحالي لكل منتج', async () => {
+    vi.mocked(getOrder).mockResolvedValue(order({ items: [line({ currentStock: 6 })] as never }))
+    renderPage()
+    expect(await screen.findByRole('columnheader', { name: 'الكمية المطلوبة' })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'المخزون الحالي' })).toBeInTheDocument()
+    const row = screen.getByText('حقيبة ناروتو').closest('tr')!
+    expect(row).toHaveTextContent('3')
+    expect(row).toHaveTextContent('6')
+    expect(row).not.toHaveTextContent('غير كافٍ')
+  })
+
+  it('[CRITICAL] طلبٌ منتظر يطلب أكثر من المخزون الحالي يُعلَّم «غير كافٍ»', async () => {
+    vi.mocked(getOrder).mockResolvedValue(order({ items: [line({ quantity: 1, currentStock: 0 })] as never }))
+    renderPage()
+    const row = (await screen.findByText('حقيبة ناروتو')).closest('tr')!
+    expect(row).toHaveTextContent('غير كافٍ')
+  })
+
+  it('منتجٌ حُذف من القاعدة لا يُخمَّن له مخزون', async () => {
+    vi.mocked(getOrder).mockResolvedValue(
+      order({ items: [line({ optionValue: 'أحمر', currentStock: null })] as never }),
+    )
+    renderPage()
+    const row = (await screen.findByText('حقيبة ناروتو')).closest('tr')!
+    expect(row).toHaveTextContent('—')
+  })
+
+  it('بعد القبول لا يُعلَّم نقص: المخزون استُهلك بالفعل', async () => {
+    vi.mocked(getOrder).mockResolvedValue(
+      order({ status: 'OUT_FOR_DELIVERY', items: [line({ quantity: 1, currentStock: 0 })] as never }),
+    )
+    renderPage()
+    const row = (await screen.findByText('حقيبة ناروتو')).closest('tr')!
+    expect(row).not.toHaveTextContent('غير كافٍ')
+  })
+})

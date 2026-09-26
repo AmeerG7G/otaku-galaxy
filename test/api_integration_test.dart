@@ -9,6 +9,7 @@ import 'package:otaku_galaxy/features/auth/domain/entities/auth_session.dart';
 import 'package:otaku_galaxy/features/auth/data/repositories/auth_repository_impl.dart';
 import 'package:otaku_galaxy/features/auth/domain/repositories/auth_repository.dart';
 import 'package:otaku_galaxy/features/cart/data/repositories/cart_repository_impl.dart';
+import 'package:otaku_galaxy/features/cart/domain/entities/cart_sync.dart';
 import 'package:otaku_galaxy/features/cart/domain/repositories/cart_repository.dart';
 import 'package:otaku_galaxy/features/cart/presentation/cubit/cart_cubit.dart';
 import 'package:otaku_galaxy/features/cart/presentation/cubit/cart_state.dart';
@@ -416,6 +417,172 @@ void main() {
 
     expect(failures, isEmpty, reason: failures.join(' | '));
   }, timeout: const Timeout(Duration(minutes: 2)));
+
+  /// CA-14 (STEP 59) عبر الخادم الحقيقي: المسؤول يغيّر السعر ثم المخزون، والسلة
+  /// الحيّة تتبعهما عبر `GET /cart` نفسه (Dio + المستودع + الكيوبت)، ويُبلَّغ
+  /// الزبون برسالة واحدة لكل مزامنة؛ وإرسالٌ بعد تعطيل المنتج يُرفض بـ409.
+  test('[CA-14] السلة الحيّة تتبع السعر والمخزون على الخادم، والإرسال شبكة أمان', () async {
+    final adminApi = ApiClient(dio: Dio(BaseOptions(baseUrl: base)));
+    final AuthSession adminSession;
+    try {
+      adminSession = await AuthRepositoryImpl(api: adminApi).login('07700000000', 'admin123');
+    } on AppException catch (e) {
+      markTestSkipped('لا مسؤول مزروع (${e.message})');
+      return;
+    }
+    adminApi.tokenProvider = () => adminSession.token;
+
+    Product? product;
+    for (var page = 1; page <= 5 && product == null; page++) {
+      final result = await products.fetchProducts(page: page, limit: 50);
+      for (final p in result.items) {
+        if (p.stock >= 2) {
+          product = p;
+          break;
+        }
+      }
+      if (!result.hasMore) break;
+    }
+    if (product == null) {
+      markTestSkipped('لا منتج بمخزون ٢ على الأقل');
+      return;
+    }
+    final target = product;
+    Future<void> admin(Map<String, dynamic> body) =>
+        adminApi.patch('/admin/products/${target.id}', body: body);
+
+    final cubit = CartCubit(CartRepositoryImpl(api: api));
+    final notices = <CartSyncNotice>[];
+    final sub = cubit.notices.listen(notices.add);
+    try {
+      await cubit.load();
+      for (final item in [...cubit.state.items]) {
+        await cubit.remove(item.product.id);
+      }
+      await cubit.add(target, quantity: 2);
+
+      await admin({'price': target.price + 1000});
+      var notice = await cubit.sync();
+      expect(notice?.priceChanged, isTrue);
+      expect(cubit.state.items.single.product.price, target.price + 1000);
+      expect(cubit.state.total, (target.price + 1000) * 2);
+
+      await admin({'stock': 1});
+      notice = await cubit.sync();
+      expect(notice?.quantityReduced, isTrue);
+      expect(cubit.state.items.single.quantity, 1);
+
+      await admin({'stock': 0});
+      notice = await cubit.sync();
+      expect(notice?.itemRemoved, isTrue);
+      expect(cubit.state, isA<CartEmpty>());
+      await Future<void>.delayed(Duration.zero);
+      expect(notices, hasLength(3), reason: 'رسالة واحدة لكل مزامنة غيّرت شيئاً');
+
+      // شبكة الأمان: منتجٌ عُطِّل بعد آخر مزامنة يرفض الإرسال — لا إسقاط صامت.
+      await admin({'stock': target.stock});
+      await cubit.add(target);
+      await cubit.sync();
+      await admin({'isActive': false});
+      final gov = (await governorates.fetchGovernorates()).first;
+      await expectLater(
+        orders.placeOrder(OrderData(
+          governorateId: gov.id,
+          province: gov.name,
+          deliveryCost: gov.deliveryFee,
+          fullAddress: 'شارع الاختبار — مجرة 7',
+          phone: '07700000000',
+          items: const [],
+        )),
+        throwsA(isA<AppException>()
+            .having((e) => e.statusCode, 'statusCode', 409)
+            .having((e) => e.code, 'code', 'PRODUCT_UNAVAILABLE')),
+      );
+      notice = await cubit.sync();
+      expect(notice?.itemRemoved, isTrue, reason: 'المزامنة التالية تُزيله وتبلّغ به');
+    } finally {
+      await sub.cancel();
+      await admin({'price': target.price, 'stock': target.stock, 'isActive': true});
+      final left = await cart.fetchCart();
+      for (final line in left) {
+        if (line.lineId != null) await cart.removeFromCart(line.lineId!);
+      }
+      await cubit.close();
+    }
+  });
+
+  /// CA-14 الخيار (أ) عبر الخادم الحقيقي — السيناريو المطلوب حرفياً: الزبون يرى
+  /// X، المسؤول يغيّره إلى Y، الإرسال يحمل X ⇒ `409 PRODUCT_PRICE_CHANGED` بلا طلب،
+  /// ثم المزامنة تُظهر Y مع رسالة السعر، وإعادة الإرسال تمرّ بـY.
+  test('[CA-14 option A] سعرٌ تغيّر بعد المراجعة: 409 بلا طلب، ثم مزامنة تُظهر الجديد وإعادةٌ تنجح', () async {
+    final adminApi = ApiClient(dio: Dio(BaseOptions(baseUrl: base)));
+    final AuthSession adminSession;
+    try {
+      adminSession = await AuthRepositoryImpl(api: adminApi).login('07700000000', 'admin123');
+    } on AppException catch (e) {
+      markTestSkipped('لا مسؤول مزروع (${e.message})');
+      return;
+    }
+    adminApi.tokenProvider = () => adminSession.token;
+
+    final target = await _pickInStockProduct(products);
+    final x = target.price;
+    final y = x + 2000;
+    Future<void> admin(Map<String, dynamic> body) =>
+        adminApi.patch('/admin/products/${target.id}', body: body);
+    final gov = (await governorates.fetchGovernorates()).first;
+    OrderData checkoutFrom(CartCubit cubit) => OrderData(
+      governorateId: gov.id,
+      province: gov.name,
+      deliveryCost: gov.deliveryFee,
+      fullAddress: 'شارع الاختبار — مجرة 7',
+      phone: '07700000000',
+      items: cubit.state.items,
+    );
+
+    final cubit = CartCubit(CartRepositoryImpl(api: api));
+    final notices = <CartSyncNotice>[];
+    final sub = cubit.notices.listen(notices.add);
+    try {
+      await cubit.load();
+      for (final item in [...cubit.state.items]) {
+        await cubit.remove(item.product.id);
+      }
+      await cubit.add(target);
+      await cubit.sync();
+      expect(cubit.state.items.single.product.price, x, reason: 'الزبون يرى X');
+      final reviewed = checkoutFrom(cubit);
+      final ordersBefore = (await orders.fetchMyOrders()).length;
+
+      await admin({'price': y});
+
+      await expectLater(
+        orders.placeOrder(reviewed),
+        throwsA(isA<AppException>()
+            .having((e) => e.statusCode, 'statusCode', 409)
+            .having((e) => e.code, 'code', 'PRODUCT_PRICE_CHANGED')),
+      );
+      expect((await orders.fetchMyOrders()).length, ordersBefore, reason: 'لا طلب');
+
+      final notice = await cubit.sync();
+      expect(notice?.priceChanged, isTrue, reason: 'الزبون يُبلَّغ');
+      expect(cubit.state.items.single.product.price, y, reason: 'السلة تعرض Y');
+      await Future<void>.delayed(Duration.zero);
+      expect(notices.where((n) => n.priceChanged), hasLength(1));
+
+      final retried = await orders.placeOrder(checkoutFrom(cubit));
+      expect(retried.id, isNotEmpty, reason: 'إعادة الإرسال تمرّ بالسعر الجديد');
+      expect(retried.productsTotal, y);
+    } finally {
+      await sub.cancel();
+      await admin({'price': target.price, 'stock': target.stock, 'isActive': true});
+      final left = await cart.fetchCart();
+      for (final line in left) {
+        if (line.lineId != null) await cart.removeFromCart(line.lineId!);
+      }
+      await cubit.close();
+    }
+  });
 
   test('الطلب: إنشاء → قائمة → تفاصيل مع حالة "بانتظار التأكيد"', () async {
     final product = await _pickInStockProduct(products);

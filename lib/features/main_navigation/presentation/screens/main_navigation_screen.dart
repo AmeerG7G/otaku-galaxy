@@ -16,6 +16,7 @@ import '../../../../core/router/app_router.dart';
 import '../../../../core/di/injection_container.dart';
 import '../../../account/presentation/screens/account_screen.dart';
 import '../../../cart/presentation/screens/cart_screen.dart';
+import '../../../cart/presentation/cart_auto_sync.dart';
 import '../../../cart/presentation/cubit/cart_cubit.dart';
 import '../../../cart/presentation/cubit/cart_state.dart';
 import '../../../categories/presentation/screens/categories_screen.dart';
@@ -158,83 +159,90 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
   @override
   Widget build(BuildContext context) {
     // الشريط عائم فوق المحتوى، فنمدّ المحتوى خلفه بدل قصّه.
-    return Scaffold(
-      extendBody: true,
-      // [CRITICAL] إطارٌ واحد يغطّي التبويبات الخمسة: تمديدُ واجهةِ هاتفٍ
-      // على لوحٍ عرضه ١٣٦٦ يجعل البانرات والبطاقات مفرطةَ الاتّساع وسطورَ
-      // النصّ أطولَ من مدى القراءة. الحدّ يوسّط المحتوى ويترك هامشين، بينما
-      // شبكةُ المنتجات تملأ العرض المتاح بأعمدةٍ أكثر (`productGridColumns`).
-      // وعلى الهاتف — أضيق من الحدّ — لا أثر لهذا الإطار البتّة.
-      body: ResponsiveContentFrame(
-        maxWidth: kGridMaxWidth,
-        child: IndexedStack(index: _index, children: _screens),
-      ),
-      bottomNavigationBar: BlocBuilder<CartCubit, CartState>(
-        builder: (context, cart) => OtakuBottomNav(
-          currentIndex: _index,
-          raisedIndex: MainTab.community,
-          onSelected: (index) async {
-            // السلة والحساب تبويبان محميان: الزائر يمرّ عبر البوابة الموحّدة
-            // ذاتها في كل مكان، فإن ألغى بقي في التبويب الذي كان فيه، وإن
-            // اختار تسجيل الدخول ونجح لاحقاً وصل إلى التبويب الذي طلبه.
-            final isProtected =
-                index == MainTab.cart || index == MainTab.account;
-            if (isProtected) {
-              pendingProtectedTab = null; // إلغاء أي طلب قديم لم يُنجز.
-              final granted = await requireAuthentication(
-                context,
-                // [CRITICAL] `gNow` لا `g`.
-                //
-                // هذا الجسم يعمل **عند الضغط** لا أثناء البناء، رغم وقوعه
-                // لفظياً داخل `build`. و`context.g` يقرأ الجنس بـ`watch`،
-                // و`watch` خارج البناء يرمي تأكيداً: «Tried to listen to a
-                // value exposed with provider, from outside of the widget
-                // tree». والوسائط تُقيَّم قبل استدعاء الدالة، فكان الرمي يقع
-                // **قبل** أن يُسأل `isLoggedIn` أصلاً — فيموت المعالِج قبل
-                // `setState`، فلا يتحرّك التبويب ولا تظهر رسالة: مستخدمٌ
-                // مسجَّل يضغط السلة أو الحساب فلا يحدث شيء. `gNow` تقرأ
-                // بـ`read` فتصحّ خارج البناء.
-                title: context.gNow(GenderedStrings.loginFirst),
-                body: index == MainTab.cart
-                    ? context.strings('loginRequiredForCart')
-                    : context.strings('loginRequiredForAccount'),
-                onLoginRequested: () => pendingProtectedTab = index,
-              );
-              if (!granted || !mounted) return;
-            }
-            pendingProtectedTab = null;
-            setState(() => _index = index);
-            mainNavIndex.value = index;
-          },
-          items: [
-            OtakuNavItem(
-              icon: Icons.home_outlined,
-              activeIcon: Icons.home_rounded,
-              label: context.strings('navHome'),
-            ),
-            OtakuNavItem(
-              icon: Icons.grid_view_outlined,
-              activeIcon: Icons.grid_view_rounded,
-              label: context.strings('navCategories'),
-              gridIconCount: 4,
-            ),
-            OtakuNavItem(
-              icon: Icons.photo_library_outlined,
-              activeIcon: Icons.photo_library_rounded,
-              label: context.strings('navCommunity'),
-            ),
-            OtakuNavItem(
-              icon: Icons.shopping_bag_outlined,
-              activeIcon: Icons.shopping_bag_rounded,
-              label: context.strings('navCart'),
-              badgeCount: cart.count,
-            ),
-            OtakuNavItem(
-              icon: Icons.person_outline,
-              activeIcon: Icons.person_rounded,
-              label: context.strings('navAccount'),
-            ),
-          ],
+    //
+    // المزامنة الحيّة للسلة (CA-14) تعيش هنا لأن الغلاف يبقى مركّباً ما دام
+    // الزبون في التطبيق — تحت شاشات الدفع أيضاً — وهو من يعرف التبويب النشط.
+    return CartAutoSync(
+      tabIndex: mainNavIndex,
+      cartTab: MainTab.cart,
+      child: Scaffold(
+        extendBody: true,
+        // [CRITICAL] إطارٌ واحد يغطّي التبويبات الخمسة: تمديدُ واجهةِ هاتفٍ
+        // على لوحٍ عرضه ١٣٦٦ يجعل البانرات والبطاقات مفرطةَ الاتّساع وسطورَ
+        // النصّ أطولَ من مدى القراءة. الحدّ يوسّط المحتوى ويترك هامشين، بينما
+        // شبكةُ المنتجات تملأ العرض المتاح بأعمدةٍ أكثر (`productGridColumns`).
+        // وعلى الهاتف — أضيق من الحدّ — لا أثر لهذا الإطار البتّة.
+        body: ResponsiveContentFrame(
+          maxWidth: kGridMaxWidth,
+          child: IndexedStack(index: _index, children: _screens),
+        ),
+        bottomNavigationBar: BlocBuilder<CartCubit, CartState>(
+          builder: (context, cart) => OtakuBottomNav(
+            currentIndex: _index,
+            raisedIndex: MainTab.community,
+            onSelected: (index) async {
+              // السلة والحساب تبويبان محميان: الزائر يمرّ عبر البوابة الموحّدة
+              // ذاتها في كل مكان، فإن ألغى بقي في التبويب الذي كان فيه، وإن
+              // اختار تسجيل الدخول ونجح لاحقاً وصل إلى التبويب الذي طلبه.
+              final isProtected =
+                  index == MainTab.cart || index == MainTab.account;
+              if (isProtected) {
+                pendingProtectedTab = null; // إلغاء أي طلب قديم لم يُنجز.
+                final granted = await requireAuthentication(
+                  context,
+                  // [CRITICAL] `gNow` لا `g`.
+                  //
+                  // هذا الجسم يعمل **عند الضغط** لا أثناء البناء، رغم وقوعه
+                  // لفظياً داخل `build`. و`context.g` يقرأ الجنس بـ`watch`،
+                  // و`watch` خارج البناء يرمي تأكيداً: «Tried to listen to a
+                  // value exposed with provider, from outside of the widget
+                  // tree». والوسائط تُقيَّم قبل استدعاء الدالة، فكان الرمي يقع
+                  // **قبل** أن يُسأل `isLoggedIn` أصلاً — فيموت المعالِج قبل
+                  // `setState`، فلا يتحرّك التبويب ولا تظهر رسالة: مستخدمٌ
+                  // مسجَّل يضغط السلة أو الحساب فلا يحدث شيء. `gNow` تقرأ
+                  // بـ`read` فتصحّ خارج البناء.
+                  title: context.gNow(GenderedStrings.loginFirst),
+                  body: index == MainTab.cart
+                      ? context.strings('loginRequiredForCart')
+                      : context.strings('loginRequiredForAccount'),
+                  onLoginRequested: () => pendingProtectedTab = index,
+                );
+                if (!granted || !mounted) return;
+              }
+              pendingProtectedTab = null;
+              setState(() => _index = index);
+              mainNavIndex.value = index;
+            },
+            items: [
+              OtakuNavItem(
+                icon: Icons.home_outlined,
+                activeIcon: Icons.home_rounded,
+                label: context.strings('navHome'),
+              ),
+              OtakuNavItem(
+                icon: Icons.grid_view_outlined,
+                activeIcon: Icons.grid_view_rounded,
+                label: context.strings('navCategories'),
+                gridIconCount: 4,
+              ),
+              OtakuNavItem(
+                icon: Icons.photo_library_outlined,
+                activeIcon: Icons.photo_library_rounded,
+                label: context.strings('navCommunity'),
+              ),
+              OtakuNavItem(
+                icon: Icons.shopping_bag_outlined,
+                activeIcon: Icons.shopping_bag_rounded,
+                label: context.strings('navCart'),
+                badgeCount: cart.count,
+              ),
+              OtakuNavItem(
+                icon: Icons.person_outline,
+                activeIcon: Icons.person_rounded,
+                label: context.strings('navAccount'),
+              ),
+            ],
+          ),
         ),
       ),
     );

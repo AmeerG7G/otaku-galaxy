@@ -3,6 +3,7 @@ import '../../../../core/constants/api_endpoints.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../products/domain/entities/product.dart';
 import '../../domain/entities/cart_item.dart';
+import '../../domain/entities/cart_sync.dart';
 import '../../domain/repositories/cart_repository.dart';
 
 /// تنفيذ مستودع السلة عبر الـ API الحقيقي.
@@ -15,9 +16,21 @@ class CartRepositoryImpl implements CartRepository {
   final ApiClient _api;
 
   @override
-  Future<List<CartItem>> fetchCart() async {
+  Future<List<CartItem>> fetchCart() async => (await syncCart()).items;
+
+  /// `GET /cart` هي نقطة المزامنة نفسها — طلبٌ واحد يعيد الأسطر وتعديلاتها.
+  @override
+  Future<CartSnapshot> syncCart() async {
     final data = await _api.get(ApiEndpoints.cart) as Map<String, dynamic>;
-    return _mapLines(data);
+    final adjustments = data['adjustments'];
+    return CartSnapshot(
+      items: _mapLines(data),
+      adjustments: adjustments is List
+          ? adjustments
+                .map((e) => CartAdjustment.fromJson(e as Map<String, dynamic>))
+                .toList()
+          : const [],
+    );
   }
 
   @override

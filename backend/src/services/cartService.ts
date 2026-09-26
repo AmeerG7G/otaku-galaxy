@@ -1,4 +1,5 @@
-import { db } from '../database/pool.js';
+import { db, withTransaction } from '../database/pool.js';
+import { planCartSync } from '../domain/cartSync.js';
 import { cartRepo } from '../repositories/cartRepo.js';
 import { productRepo } from '../repositories/catalogRepo.js';
 import { Errors } from '../utils/errors.js';
@@ -6,6 +7,24 @@ import { Errors } from '../utils/errors.js';
 export const cartService = {
   async getCart(userId: string) {
     return cartRepo.listItems(db, userId);
+  },
+
+  /**
+   * مزامنة العربة مع حال المنتجات الآن — `GET /cart` (CA-14).
+   *
+   * تحت قفل العربة: يُزال سطرٌ لم يعد قابلاً للبيع، وتُخفَّض كميةٌ تتجاوز
+   * المخزون، ويعود ما عُدِّل في `adjustments` ليُبلَّغ الزبون مرةً واحدة
+   * (المزامنة التالية لا تجد شيئاً). الأسعار حيّة في الأسطر نفسها. التكرار
+   * آمن: عربةٌ صالحة لا تُمَسّ.
+   */
+  async sync(userId: string) {
+    return withTransaction(async (tx) => {
+      const lines = await cartRepo.lockForSync(tx, userId);
+      const adjustments = planCartSync(lines);
+      await cartRepo.applySync(tx, adjustments);
+      const items = await cartRepo.listItems(tx, userId);
+      return { items, adjustments };
+    });
   },
 
   async addItem(userId: string, input: { productId: string; optionValue: string | null; quantity: number }) {

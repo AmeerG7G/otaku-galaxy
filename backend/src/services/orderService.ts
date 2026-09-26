@@ -151,7 +151,13 @@ export const orderService = {
    */
   async create(
     userId: string,
-    input: { governorateId: string; fullAddress: string; phone: string; zoneId?: string | null },
+    input: {
+      governorateId: string;
+      fullAddress: string;
+      phone: string;
+      zoneId?: string | null;
+      expectedPrices?: ReadonlyArray<{ productId: string; unitPrice: number }>;
+    },
   ) {
     return withTransaction(async (tx) => {
       const governorate = await governorateRepo.listActive(tx);
@@ -194,8 +200,28 @@ export const orderService = {
       );
       for (const item of cartItems) {
         const product = products.get(item.productId);
+        // [CRITICAL] شبكة الأمان (CA-14): سطرٌ عُطِّل منتجه بعد آخر مزامنة يرفض
+        // الإرسال كله. كان يُسقط من الطلب بصمت فيخرج طلبٌ غير الذي رآه الزبون.
         if (!product || !product.isActive) {
-          throw Errors.conflict(`«${item.productName}» لم يعد متاحاً — أزله من العربة`);
+          throw Errors.conflict(
+            `«${item.productName}» لم يعد متاحاً — أزله من العربة`,
+            'PRODUCT_UNAVAILABLE',
+          );
+        }
+        // [CRITICAL] اتّساق السعر (CA-14، الخيار أ): الزبون رأى في عربته المُزامَنة
+        // سعراً غير الحالي ⇒ الإرسال كله يُرفض. المقارنة بالقراءة **نفسها** التي
+        // تُبنى منها اللقطة أدناه وداخل هذه المعاملة بعد قفل العربة — لا قراءة
+        // سابقة يمكن أن يسبقها تعديلٌ ملتزَم. يقع قبل حجز الخصمين وقبل إنشاء
+        // الطلب، فالرفض لا يترك أثراً. السعر المتوقَّع فحصٌ لا مصدر.
+        if (
+          input.expectedPrices?.some(
+            (expected) => expected.productId === product.id && expected.unitPrice !== product.price,
+          )
+        ) {
+          throw Errors.conflict(
+            `تغيّر سعر «${product.name}» — راجع سلتك قبل الإرسال`,
+            'PRODUCT_PRICE_CHANGED',
+          );
         }
         // [CRITICAL] المقارنة بمجموع الطلب من هذا المنتج لا بكمية السطر.
         // التحقق سطراً سطراً كان يمرّر عربةً فيها ثلاثة أسطر من منتجٍ

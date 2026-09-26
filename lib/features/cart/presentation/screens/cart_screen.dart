@@ -179,15 +179,46 @@ class CartScreen extends StatelessWidget {
               ),
             ),
           ),
-          AnimePrimaryButton(
-            label: context.strings('checkout'),
-            onPressed: () => context.router.push(const OrderDataRoute()),
-            height: AppDimens.buttonHeightXl,
-          ),
+          const _CheckoutButton(),
         ],
       ),
     );
   }
+}
+
+/// «إتمام الطلب» — مزامنةٌ أخيرة قبل الدفع (CA-14).
+///
+/// إن غيّرت المزامنة شيئاً (سعراً، كميةً، منتجاً نفد) يبقى الزبون في السلة
+/// ليرى ما تغيّر — الرسالة يعرضها `CartAutoSync` — ويضغط ثانيةً عن علم.
+/// وإن تعذّر الوصول يمضي كما كان: الإرسال يتحقّق على الخادم في كل حال.
+class _CheckoutButton extends StatefulWidget {
+  const _CheckoutButton();
+
+  @override
+  State<_CheckoutButton> createState() => _CheckoutButtonState();
+}
+
+class _CheckoutButtonState extends State<_CheckoutButton> {
+  bool _busy = false;
+
+  Future<void> _checkout() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final router = context.router;
+    final notice = await context.read<CartCubit>().sync();
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (notice != null && notice.hasChanges) return;
+    await router.push(const OrderDataRoute());
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimePrimaryButton(
+    label: context.strings('checkout'),
+    loading: _busy,
+    onPressed: _checkout,
+    height: AppDimens.buttonHeightXl,
+  );
 }
 
 class _SummaryRow extends StatelessWidget {

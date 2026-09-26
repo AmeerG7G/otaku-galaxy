@@ -22,6 +22,7 @@ import 'package:otaku_galaxy/core/errors/app_exception.dart';
 import 'package:otaku_galaxy/core/router/app_router.dart';
 import 'package:otaku_galaxy/features/birthday/data/birthday_storage.dart';
 import 'package:otaku_galaxy/features/cart/domain/entities/cart_item.dart';
+import 'package:otaku_galaxy/features/cart/domain/entities/cart_sync.dart';
 import 'package:otaku_galaxy/features/cart/domain/repositories/cart_repository.dart';
 import 'package:otaku_galaxy/features/cart/presentation/cubit/cart_cubit.dart';
 import 'package:otaku_galaxy/features/checkout/presentation/screens/order_review_screen.dart';
@@ -107,6 +108,8 @@ class _StubGovernorates implements GovernorateRepository {
 class _StubCart implements CartRepository {
   @override
   Future<List<CartItem>> fetchCart() async => [_item()];
+  @override
+  Future<CartSnapshot> syncCart() async => CartSnapshot(items: [_item()]);
   @override
   Future<List<CartItem>> addToCart(
     String productId, {

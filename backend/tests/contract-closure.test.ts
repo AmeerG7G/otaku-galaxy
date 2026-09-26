@@ -22,9 +22,9 @@ import {
  * لكل CA مفتوح بعد التدقيقات #1–#6 واحدٌ من اثنين هنا:
  *   • عيبٌ مثبَت (RED ثم GREEN): CA-9، CA-16، CA-17a — و CA-6 في
  *     `failure-retry-audit.test.ts` حيث حاجزه.
- *   • قرارٌ تجاري لم يُتَّخذ: السلوك الحالي **مثبَّت كما هو** حتى لا يتغيّر
- *     بلا قرار (CA-12، CA-14، CA-15، CA-18)، أو عقدٌ موثَّق يُحرس
- *     (CA-7، CA-13).
+ *   • قرارٌ تجاري: كان مثبَّتاً بانتظار القرار (CA-12، CA-14، CA-15، CA-18)؛ حسمه
+ *     المالك في STEP 59 فصارت اختباراته عقداً (شقّ السعر في CA-14: الخيار أ)؛
+ *     أو عقدٌ موثَّق يُحرس (CA-7، CA-13).
  *
  * كل حكم حالةُ قاعدةٍ بعد الحدث مباشرةً. التزامن بحواجز `pg_locks` تُراقَب
  * في `pg_stat_activity` — لا مُهل ولا احتمالات.
@@ -522,7 +522,12 @@ describe('Pre-staging contract closure (STEP 57)', () => {
   // CA-12 — خصم المستوى وخصم الميلاد على طلبٍ مرفوض (قرار مطلوب)
   // ═══════════════════════════════════════════════════════════════════
 
-  describe('CA-12 — discounts on a rejected order stay consumed (DECISION REQUIRED — pinned)', () => {
+  /**
+   * CA-12 — قرار المالك (STEP 59): الخصم الذي استعمله طلبٌ **أُنشئ** يبقى مستهلَكاً ولو رُفض
+   * الطلب لاحقاً، في كل حالات الرفض. وحده إرسالٌ فشل فلم يُنشئ طلباً يُبقي الخصمين متاحين
+   * (§40.8). كانت هذه الاختبارات «مثبَّتة بانتظار قرار» — صارت العقد نفسه.
+   */
+  describe('CA-12 — a created order consumes its discounts for good; only a submit that creates no order leaves them available (decided)', () => {
     /** زبونٌ حجز خصم «مستكشف» (١٠٠ نقطة) وسجّل ميلاده اليوم. */
     async function discountReadyCustomer() {
       const c = await customer();
@@ -546,10 +551,56 @@ describe('Pre-staging contract closure (STEP 57)', () => {
     }
 
     /**
+     * الحالة التي يحسمها §40.8 نصاً (عقد لا قرار): نفاد المخزون **عند الإرسال**
+     * — بوّابة الطلب في `create` — فلا يُنشأ طلب، ولا يُحرق خصم. البوّابة تسبق
+     * الحجز داخل معاملة الإنشاء نفسها، والخصمان يُطبَّقان على الطلب التالي.
+     * ما بعدها (نفادٌ عند القبول، رفضٌ بعد القبول) هو CA-12 المفتوح.
+     */
+    it('[CA-12 contract §40.8] stock ran out at submit → no order is created and neither discount is burned', async () => {
+      const c = await discountReadyCustomer();
+      const scarce = await product('ca12-submit-gate', 1, 20_000);
+      await api.post('/api/cart').set(bearer(c.token)).send({ productId: scarce, quantity: 1 }).expect(200);
+      // زبونٌ آخر يأخذ القطعة الأخيرة ويُقبل طلبه قبل أن يُرسل الأول.
+      const other = await customer();
+      const competing = await placeOrder(other.token, [{ productId: scarce, quantity: 1 }]);
+      expect((await setStatus(competing, 'OUT_FOR_DELIVERY')).status).toBe(200);
+
+      const submit = () => api.post('/api/orders').set(bearer(c.token))
+        .send({ governorateId, fullAddress: 'بغداد، الكرادة، شارع ٦٢', phone: '07700000000' });
+      const refused = await submit();
+      expect(refused.status).toBe(409);
+      expect(refused.body.error.code).toBe('INSUFFICIENT_STOCK');
+      expect(await count('orders WHERE user_id = $1', [c.userId])).toBe(1); // طلب الأهلية وحده
+      expect(await count(
+        `loyalty_reward_redemptions WHERE user_id = $1 AND level_key = 'explorer' AND consumed_at IS NULL`,
+        [c.userId],
+      )).toBe(1);
+      expect(await count('birthday_discount_usage WHERE user_id = $1', [c.userId])).toBe(0);
+
+      await api.patch(`/api/admin/products/${scarce}`).set(bearer(adminToken)).send({ stock: 1 }).expect(200);
+      const placed = await submit();
+      expect(placed.status).toBe(201);
+      // ميلاد 5% = 1 000، مستكشف 3% = 600 — الخصمان سليمان للطلب التالي.
+      expect(placed.body.data).toMatchObject({ discount: 1_600, loyaltyDiscount: 600 });
+    });
+
+    it('[CA-12 contract] a pending order rejected by the admin keeps both discounts consumed; the next order gets neither', async () => {
+      const c = await discountReadyCustomer();
+      const item = await product('ca12-pending', 5, 20_000);
+      const discounted = await placeOrder(c.token, [{ productId: item, quantity: 1 }]);
+      expect((await setStatus(discounted, 'REJECTED', 'تعذّر التواصل')).status).toBe(200);
+
+      expect(await discountsOf(c.userId, discounted)).toEqual({ loyaltyConsumedBy: discounted, birthdayUsages: 1 });
+      expect(await stockOf(item)).toBe(5); // المنتظر لم يحجز شيئاً (§47.1)
+      const next = await placeOrder(c.token, [{ productId: item, quantity: 1 }]);
+      expect((await one<{ discount: string }>('SELECT discount FROM orders WHERE id = $1', [next])).discount).toBe('0.00');
+    });
+
+    /**
      * سيناريو §40.8 بعينه منذ 2026-09-14: المخزون ينفد **عند القبول**، والطلب
      * يبقى منتظراً بـ`INSUFFICIENT_STOCK`، ومخرجه الوحيد الرفض.
      */
-    it('[CA-12 pinned] stock ran out at approval → the pending order is rejected → both discounts stay consumed', async () => {
+    it('[CA-12 contract] stock ran out at approval → the pending order is rejected → both discounts stay consumed', async () => {
       const c = await discountReadyCustomer();
       const scarce = await product('ca12-scarce', 1, 20_000);
       const discounted = await placeOrder(c.token, [{ productId: scarce, quantity: 1 }]);
@@ -565,7 +616,7 @@ describe('Pre-staging contract closure (STEP 57)', () => {
       expect(await discountsOf(c.userId, discounted)).toEqual({ loyaltyConsumedBy: discounted, birthdayUsages: 1 });
     });
 
-    it('[CA-12 pinned] a rejection after approval (parcel refused) also keeps both discounts consumed', async () => {
+    it('[CA-12 contract] a rejection after approval (parcel refused) also keeps both discounts consumed', async () => {
       const c = await discountReadyCustomer();
       const item = await product('ca12-refused', 5, 20_000);
       const discounted = await placeOrder(c.token, [{ productId: item, quantity: 1 }]);
@@ -614,12 +665,14 @@ describe('Pre-staging contract closure (STEP 57)', () => {
   // CA-14 — الطلب يُبنى من العربة كما يراها الخادم لحظة الالتزام
   // ═══════════════════════════════════════════════════════════════════
 
-  describe('CA-14 — the order is the server cart at commit, not the cart the customer confirmed (DECISION REQUIRED — pinned)', () => {
+  describe('CA-14 — a checkout without expected prices (older app build) keeps the price at submit (mixed deployment)', () => {
     /**
-     * الأخ الأقرب لسطرٍ عُطِّل (مثبَّت في `domain-integrity-audit.test.ts`):
-     * التطبيق لا يرسل سطراً ولا سعراً (§2.9)، فالسعر يُقرأ لحظة الالتزام.
+     * CA-14 حُسم في STEP 59: التطبيق يرسل أسعار عربته المُزامَنة (`expectedPrices`) والخادم
+     * يرفض أي اختلاف بـ`409 PRODUCT_PRICE_CHANGED` (`cart-sync.test.ts`، الخيار أ).
+     * تطبيقٌ أقدم لا يرسلها: لا توقّع يُقارَن، فيُطبَّق سعر لحظة الالتزام كما كان — مسار
+     * النشر المختلط (نمط §47.4). فرضُ التطبيق الجديد قرارُ `minVersion` لا هذا المسار.
      */
-    it('[CA-14 pinned] a price change between the customer’s review and the submit is applied to the order', async () => {
+    it('[CA-14 contract] without expected prices (older app) a price change before submit is applied at submit', async () => {
       const c = await customer();
       const item = await product('ca14-price', 5, 10_000);
       await api.post('/api/cart').set(bearer(c.token)).send({ productId: item, quantity: 1 }).expect(200);
@@ -636,11 +689,17 @@ describe('Pre-staging contract closure (STEP 57)', () => {
   });
 
   // ═══════════════════════════════════════════════════════════════════
-  // CA-15 — لوحةٌ قديمة على انتقالٍ مشروع: الأخير يفوز (قرار مطلوب)
+  // CA-15 — لوحةٌ قديمة على انتقالٍ مشروع: الأخير يفوز (قرار المالك، STEP 59)
   // ═══════════════════════════════════════════════════════════════════
 
-  describe('CA-15 — a stale dashboard on a legal transition is last-write-wins (DECISION REQUIRED — pinned)', () => {
-    it('[CA-15 pinned] a «reject» sent from a view that still showed PENDING rejects an order another admin already dispatched', async () => {
+  /**
+   * CA-15 — قرار المالك (STEP 59): **الأخير يفوز**. ما أرسله المسؤول الأخير يُكتب، ولا
+   * تزامنٌ متفائل (لا ETag ولا رقم نسخة ولا 409 لنموذجٍ قديم). الانتقال **غير المشروع**
+   * يبقى مرفوضاً تحت القفل. و«الأخير يفوز» لا يبرّر فقدَ حقلٍ لم يُرسَل: الحقل الغائب
+   * عن `PATCH` لا يُمسّ (انظر `ProductEditPage.restock.test.tsx` لجهة اللوحة).
+   */
+  describe('CA-15 — last write wins on legal admin actions; an unsent field is never nulled (decided)', () => {
+    it('[CA-15 contract] a «reject» sent from a view that still showed PENDING rejects an order another admin already dispatched', async () => {
       const c = await customer();
       const item = await product('ca15-order', 3);
       const orderId = await placeOrder(c.token, [{ productId: item, quantity: 1 }]);
@@ -660,7 +719,7 @@ describe('Pre-staging contract closure (STEP 57)', () => {
       expect(types).toEqual(expect.arrayContaining(['orderAccepted', 'orderRejected']));
     });
 
-    it('[CA-15 pinned] an «approve» sent from a view of the rejected review approves the content the customer resubmitted since', async () => {
+    it('[CA-15 contract] an «approve» sent from a view of the rejected review approves the content the customer resubmitted since', async () => {
       const c = await customer();
       const item = await product('ca15-review', 5);
       const orderId = await completedOrder(c, [{ productId: item, quantity: 1 }]);
@@ -678,13 +737,91 @@ describe('Pre-staging contract closure (STEP 57)', () => {
       );
       expect(row).toEqual({ status: 'approved', comment: 'نص جديد لم يره أي مسؤول', rating: 1 });
     });
+
+    /**
+     * الفرع نفسه على المنتج: صفحة «تعديل منتج» ترسل **كل** حقول النموذج كما
+     * حُمِّلت (`ProductEditPage.handleSubmit` — مثبَّت في `ProductEditPage.test.tsx`:
+     * «بقية الحقول تُرسَل كالمعتاد»)، والخادم يكتب المخزون قيمةً مطلقة (CA-5).
+     * نموذجٌ فُتح قبل قبول طلبٍ وحُفظ بعده لتصحيح الوصف وحده يُعيد المخزون
+     * الذي استهلكه القبول. `isActive` و`restockAt` يُرسَلان بالطريقة نفسها.
+     */
+    it('[CA-15 contract] admin A saves a form opened before admin B changed the product → the values admin A submitted win, stock included', async () => {
+      const c = await customer();
+      const item = await product('ca15-product-form', 5);
+      const loaded = (await api.get(`/api/catalog/products/${item}`).expect(200)).body.data;
+      // ما تبنيه `ProductEditPage.handleSubmit` من النموذج المحمَّل.
+      const form = {
+        name: loaded.name,
+        description: loaded.description,
+        price: loaded.price,
+        categoryId: loaded.categoryId,
+        subcategoryId: loaded.subcategoryId ?? null,
+        stock: loaded.stock,
+        restockAt: loaded.restockAt ?? null,
+        images: loaded.images,
+        options: loaded.options.map((o: { name: string; values: string[] }) => ({ name: o.name, values: o.values })),
+        isOffer: loaded.isOffer,
+        isSelected: loaded.isSelected,
+        isActive: true,
+        previousPrice: loaded.previousPrice ?? null,
+        hasDeliveryPromo: loaded.hasDeliveryPromo ?? false,
+        deliveryPromoAmount: 0,
+        franchiseIds: loaded.franchiseIds ?? [],
+      };
+
+      // المسؤول (ب) يقبل طلباً من قطعتين ويغيّر السعر بينما نموذج (أ) مفتوح.
+      const orderId = await placeOrder(c.token, [{ productId: item, quantity: 2 }]);
+      expect((await setStatus(orderId, 'OUT_FOR_DELIVERY')).status).toBe(200);
+      expect(await stockOf(item)).toBe(3);
+      await api.patch(`/api/admin/products/${item}`).set(bearer(adminToken)).send({ price: 15_000 }).expect(200);
+
+      // (أ) يصحّح الوصف ويحفظ النموذج كما حمّله — ما أرسله هو ما يُكتب.
+      await api.patch(`/api/admin/products/${item}`).set(bearer(adminToken))
+        .send({ ...form, description: 'وصف مصحَّح' }).expect(200);
+
+      expect(await stockOf(item)).toBe(5);
+      expect(Number((await one<{ price: string }>('SELECT price FROM products WHERE id = $1', [item])).price))
+        .toBe(10_000);
+      expect((await one<{ status: string }>('SELECT status FROM orders WHERE id = $1', [orderId])).status)
+        .toBe('OUT_FOR_DELIVERY');
+    });
+
+    it('[CA-15 contract] a save writes only what it sends — the restock date, options, images and activity it omits are never nulled', async () => {
+      const item = await product('ca15-partial', 0);
+      const restockAt = new Date(Date.now() + 7 * 86_400_000).toISOString();
+      await api.patch(`/api/admin/products/${item}`).set(bearer(adminToken)).send({
+        restockAt,
+        images: ['https://cdn.example.com/ca15.png'],
+        options: [{ name: 'اللون', values: ['أحمر', 'أزرق'] }],
+      }).expect(200);
+      await api.delete(`/api/admin/products/${item}`).set(bearer(adminToken)).expect(200);
+
+      // حفظٌ لاحق لا يعرف إلا الوصف.
+      await api.patch(`/api/admin/products/${item}`).set(bearer(adminToken))
+        .send({ description: 'وصف فقط' }).expect(200);
+
+      const row = await one<{ restock_at: Date | null; is_active: boolean; description: string }>(
+        'SELECT restock_at, is_active, description FROM products WHERE id = $1',
+        [item],
+      );
+      expect(row.restock_at?.toISOString()).toBe(restockAt);
+      expect(row.is_active).toBe(false);
+      expect(row.description).toBe('وصف فقط');
+      expect(await count('product_images WHERE product_id = $1', [item])).toBe(1);
+      expect(await count('product_options WHERE product_id = $1', [item])).toBe(1);
+    });
   });
 
   // ═══════════════════════════════════════════════════════════════════
-  // CA-18 — تعطيل القسم أو القسم الفرعي لا يمسّ منتجاته (قرار مطلوب)
+  // CA-18 — تعطيل القسم أو القسم الفرعي لا يمسّ منتجاته (قرار المالك، STEP 59)
   // ═══════════════════════════════════════════════════════════════════
 
-  describe('CA-18 — deactivating a category or subcategory does not gate its products (DECISION REQUIRED — pinned)', () => {
+  /**
+   * CA-18 — قرار المالك (STEP 59، الخيار A): تعطيل القسم أو القسم الفرعي **يُخفي القسم وحده**.
+   * حالة المنتج مستقلّة: لا تعطيل ولا حذف ولا مساس بالمخزون، ولا مساس بأسطر العربات، ولا
+   * رفض للإرسال بسبب القسم، ولا مساس بالطلبات القائمة. لا تتالي من القسم إلى المنتج.
+   */
+  describe('CA-18 — deactivating a category or subcategory hides the section only; products are independent (decided)', () => {
     async function assertStillSellable(productId: string, filter: string) {
       const c = await customer();
       const listed = (await api.get(`/api/catalog/products?${filter}`).expect(200)).body.data.items
@@ -695,7 +832,7 @@ describe('Pre-staging contract closure (STEP 57)', () => {
       expect(orderId).toBeTruthy();
     }
 
-    it('[CA-18 pinned] an inactive category disappears from the category list, its products stay listed, cartable and orderable', async () => {
+    it('[CA-18 contract] an inactive category disappears from the category list, its products stay listed, cartable and orderable', async () => {
       const { rows: [category] } = await db.query<{ id: string }>(
         `INSERT INTO categories (name, image_url) VALUES ($1, '') RETURNING id`,
         [`${PREFIX} قسم معطّل ${Date.now()}`],
@@ -712,7 +849,7 @@ describe('Pre-staging contract closure (STEP 57)', () => {
       await assertStillSellable(item, `categoryId=${category!.id}`);
     });
 
-    it('[CA-18 pinned] an inactive subcategory («ظاهر للعملاء» off) leaves its products listed, cartable and orderable', async () => {
+    it('[CA-18 contract] an inactive subcategory («ظاهر للعملاء» off) leaves its products listed, cartable and orderable', async () => {
       const { rows: [sub] } = await db.query<{ id: string }>(
         `INSERT INTO subcategories (category_id, name) VALUES ($1, $2) RETURNING id`,
         [categoryId, `${PREFIX} فرعي معطّل ${Date.now()}`],
@@ -723,6 +860,37 @@ describe('Pre-staging contract closure (STEP 57)', () => {
         .send({ isActive: false }).expect(200);
 
       await assertStillSellable(item, `subcategoryId=${sub!.id}`);
+    });
+
+    it('[CA-18 contract] no cascade: the product row, its stock, a cart holding it and a pending order are untouched; the order is still approvable', async () => {
+      const { rows: [category] } = await db.query<{ id: string }>(
+        `INSERT INTO categories (name, image_url) VALUES ($1, '') RETURNING id`,
+        [`${PREFIX} قسم بلا تتالٍ ${Date.now()}`],
+      );
+      createdCategories.push(category!.id);
+      const { rows: [sub] } = await db.query<{ id: string }>(
+        `INSERT INTO subcategories (category_id, name) VALUES ($1, $2) RETURNING id`,
+        [category!.id, `${PREFIX} فرعي بلا تتالٍ ${Date.now()}`],
+      );
+      const item = await product('ca18-no-cascade', 5, 10_000, { categoryId: category!.id, subcategoryId: sub!.id });
+      const buyer = await customer();
+      const pending = await placeOrder(buyer.token, [{ productId: item, quantity: 2 }]);
+      const holder = await customer();
+      await api.post('/api/cart').set(bearer(holder.token)).send({ productId: item, quantity: 1 }).expect(200);
+      const productBefore = await one('SELECT is_active, stock, category_id, subcategory_id FROM products WHERE id = $1', [item]);
+
+      await api.patch(`/api/admin/subcategories/${sub!.id}`).set(bearer(adminToken)).send({ isActive: false }).expect(200);
+      await api.patch(`/api/admin/categories/${category!.id}`).set(bearer(adminToken)).send({ isActive: false }).expect(200);
+
+      expect(await one('SELECT is_active, stock, category_id, subcategory_id FROM products WHERE id = $1', [item]))
+        .toEqual(productBefore);
+      const cart = (await api.get('/api/cart').set(bearer(holder.token)).expect(200)).body.data;
+      expect(cart.items.map((l: { productId: string; quantity: number }) => [l.productId, l.quantity])).toEqual([[item, 1]]);
+      expect(cart.adjustments).toEqual([]);
+      expect((await one<{ status: string }>('SELECT status FROM orders WHERE id = $1', [pending])).status)
+        .toBe('PENDING_ADMIN_CONFIRMATION');
+      expect((await setStatus(pending, 'OUT_FOR_DELIVERY')).status).toBe(200);
+      expect(await stockOf(item)).toBe(3);
     });
   });
 });

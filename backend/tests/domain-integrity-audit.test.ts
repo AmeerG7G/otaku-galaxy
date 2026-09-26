@@ -25,7 +25,8 @@ import {
  *   • المرحلة ٤ — لقطة الطلب التاريخية بعد تعديل الكتالوج والتوصيل.
  *   • D1 — «حظر» العميل حالةٌ مقصودة لا قلبٌ للحالة الراهنة.
  *   • D2 — المخزون العائد برفض طلبٍ مقبول يخضع لعقد «أعلمني عند توفره».
- *   • ملاحظات مثبَّتة (CA-12 / CA-13 / CA-14) — سلوكٌ قائم ينتظر قراراً؛
+ *   • ملاحظات مثبَّتة (CA-12 / CA-13 / CA-14) — سلوكٌ قائم ينتظر قراراً (CA-12 وCA-14
+ *     حُسما في STEP 59 وصار اختبارهما عقداً)؛
  *     تُثبَّت كما هي حتى لا يتغيّر بلا قرار.
  *   • المرحلة ١٣ — ترتيبٌ غير معتاد للأحداث.
  *   • المرحلة ١٤ — مسحُ الثوابت على بيانات هذا الملف في القاعدة.
@@ -438,14 +439,15 @@ describe('Domain integrity audit (#6)', () => {
   // ملاحظات مثبَّتة — تنتظر قراراً تجارياً (لا تغيير في الشيفرة)
   // ═══════════════════════════════════════════════════════════════════
 
-  describe('Pinned observations awaiting a product decision', () => {
+  describe('Pinned observations — CA-12 and CA-14 decided in STEP 59 (now contracts)', () => {
     /**
-     * CA-12: مزيّة الخصم وخصم الميلاد يُستهلكان عند **إنشاء** الطلب، والرفض لا
-     * يُرجعهما. منذ نقل استهلاك المخزون إلى القبول (2026-09-14) صار «نفد المخزون»
-     * يقع بعد الإنشاء، والمخرج الوحيد من `INSUFFICIENT_STOCK` هو الرفض — فيُحرق
-     * الخصم الذي كان §40.8 يعد بألّا يُحرق «إن نفد المخزون».
+     * CA-12 (قرار المالك، STEP 59): مزيّة الخصم وخصم الميلاد يُستهلكان عند **إنشاء**
+     * الطلب، والرفض — أيّاً كان وقته — لا يُرجعهما. §40.8 يعد بألّا يُحرق خصمٌ على طلبٍ
+     * **لم يُنشأ**: نفادُ المخزون عند الإرسال لا يُنشئ طلباً فلا يُحرق شيء
+     * (`contract-closure.test.ts`). أمّا نفادُه بين الإنشاء والقبول فيقع على طلبٍ
+     * موجود، ويبقى خصمه مستهلَكاً.
      */
-    it('[CA-12 observation] a rejected order keeps the one-time loyalty discount and the yearly birthday discount consumed', async () => {
+    it('[CA-12 contract] a rejected order keeps the one-time loyalty discount and the yearly birthday discount consumed', async () => {
       const c = await customer();
       const big = await product('ca12-big', 5, 200_000);
       const first = await placeOrder(c.token, [{ productId: big, quantity: 1 }]);
@@ -516,11 +518,12 @@ describe('Domain integrity audit (#6)', () => {
     });
 
     /**
-     * CA-14: الطلب يُبنى من العربة كما يراها الخادم لحظة الالتزام. منتجٌ
-     * عُطِّل بعد أن راجع الزبون عربته يسقط من الطلب بلا خطأ (سطره مخفيّ في
-     * كل قراءة للعربة)، ثم يُحذف مع تفريغ العربة. شاشة النجاح لا تعرض البنود.
+     * CA-14 (قرار المالك، STEP 59 — كان ملاحظةً مثبَّتة): منتجٌ عُطِّل بعد أن
+     * راجع الزبون عربته لم يعد يسقط من الطلب بصمت. المزامنة التالية
+     * (`GET /cart`) تُزيله **وتبلّغ به** (`adjustments`)، والطلب يحمل ما بقي.
+     * والإرسال بلا مزامنة بعد التعطيل يُرفض بـ409 (`cart-sync.test.ts`).
      */
-    it('[CA-14 observation] a line deactivated after the customer reviewed the cart is dropped from the order without an error', async () => {
+    it('[CA-14 contract] a line deactivated after the customer reviewed the cart is removed by the next synchronization and reported', async () => {
       const c = await customer();
       const kept = await product('ca14-kept', 5, 10_000);
       const dropped = await product('ca14-dropped', 5, 10_000);
@@ -530,9 +533,12 @@ describe('Domain integrity audit (#6)', () => {
       expect(reviewed.map((l: { productId: string }) => l.productId).sort()).toEqual([kept, dropped].sort());
 
       await api.patch(`/api/admin/products/${dropped}`).set(bearer(adminToken)).send({ isActive: false }).expect(200);
-      // العربة لم تعد تُظهر السطر، والزبون لا يملك ما «يزيله».
-      const hidden = (await api.get('/api/cart').set(bearer(c.token)).expect(200)).body.data.items;
-      expect(hidden.map((l: { productId: string }) => l.productId)).toEqual([kept]);
+      // المزامنة تُزيل السطر وتقول لماذا — لا سطرَ مخفيّاً لا يملك الزبون إزالته.
+      const synced = (await api.get('/api/cart').set(bearer(c.token)).expect(200)).body.data;
+      expect(synced.items.map((l: { productId: string }) => l.productId)).toEqual([kept]);
+      expect(synced.adjustments).toEqual([
+        expect.objectContaining({ productId: dropped, reason: 'unavailable', previousQuantity: 1, quantity: 0 }),
+      ]);
       const res = await api.post('/api/orders').set(bearer(c.token))
         .send({ governorateId, fullAddress: 'بغداد، الكرادة، شارع ٦٢', phone: '07700000000' });
       expect(res.status).toBe(201);

@@ -141,20 +141,41 @@ describe('CD-1 · تعارض التفرّد والمفاتيح الأجنبية 
     expect(res.status).toBe(409);
   });
 
+  /**
+   * الاسم المكرَّر يُنشئه الاختبار بنفسه. كان يفترض «بغداد» موجودة — وهي من
+   * `scripts/seed.ts` لا من السويت — فعلى قاعدةٍ جديدة (CI) كان أول POST يُنشئها
+   * بـ201 ويسقط، ثم ينجح في كل تشغيلٍ لاحق على الأثر الذي تركه.
+   */
   it('POST/PATCH /admin/governorates باسمٍ مكرّر → 409', async () => {
-    const dup = await api.post('/api/admin/governorates').set(A()).send({ name: 'بغداد', deliveryFee: 1 });
-    expect(dup.status).toBe(409);
-    const created = await api
-      .post('/api/admin/governorates')
-      .set(A())
-      .send({ name: `محافظة ${tag}`, deliveryFee: 1 })
-      .expect(201);
-    const renamed = await api
-      .patch(`/api/admin/governorates/${created.body.data.id}`)
-      .set(A())
-      .send({ name: 'بغداد' });
-    expect(renamed.status).toBe(409);
-    expect(renamed.body.error.code).toBe('DUPLICATE_VALUE');
+    const taken = `محافظة مأخوذة ${tag}`;
+    const ids: string[] = [];
+    try {
+      const original = await api
+        .post('/api/admin/governorates')
+        .set(A())
+        .send({ name: taken, deliveryFee: 1 })
+        .expect(201);
+      ids.push(original.body.data.id);
+
+      const dup = await api.post('/api/admin/governorates').set(A()).send({ name: taken, deliveryFee: 1 });
+      expect(dup.status).toBe(409);
+      expect(dup.body.error.code).toBe('DUPLICATE_VALUE');
+
+      const other = await api
+        .post('/api/admin/governorates')
+        .set(A())
+        .send({ name: `محافظة ${tag}`, deliveryFee: 1 })
+        .expect(201);
+      ids.push(other.body.data.id);
+      const renamed = await api
+        .patch(`/api/admin/governorates/${other.body.data.id}`)
+        .set(A())
+        .send({ name: taken });
+      expect(renamed.status).toBe(409);
+      expect(renamed.body.error.code).toBe('DUPLICATE_VALUE');
+    } finally {
+      await db.query('DELETE FROM governorates WHERE id = ANY($1::uuid[])', [ids]);
+    }
   });
 
   it('PATCH /admin/zones/:id إلى اسم منطقةٍ شقيقة → 409', async () => {

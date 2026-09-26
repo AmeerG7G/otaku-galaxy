@@ -1,4 +1,5 @@
 import type pg from 'pg';
+import type { CartAdjustment, CartSyncLine } from '../domain/cartSync.js';
 import type { CartItemRow } from '../types/index.js';
 
 export interface CartLine {
@@ -27,7 +28,8 @@ async function ensureCart(db: pg.Pool | pg.PoolClient, userId: string): Promise<
   return rows[0]!.id;
 }
 
-const LINE_SELECT = `
+/** كل أسطر العربة — المعطَّل منها أيضاً. للإرسال وحده (انظر `listItemsForCheckout`). */
+const LINE_FROM = `
   SELECT ci.id, ci.product_id AS "productId", ci.option_value AS "optionValue",
          ci.quantity, ci.created_at AS "createdAt",
          p.name AS "productName", p.stock, p.price AS "unitPrice",
@@ -37,7 +39,9 @@ const LINE_SELECT = `
           WHERE pi.product_id = p.id ORDER BY pi.sort_order LIMIT 1) AS "productImage"
   FROM cart_items ci
   JOIN products p ON p.id = ci.product_id
-  WHERE ci.cart_id = $1 AND p.is_active = TRUE`;
+  WHERE ci.cart_id = $1`;
+
+const LINE_SELECT = `${LINE_FROM} AND p.is_active = TRUE`;
 
 function mapLine(row: Record<string, unknown>): CartLine {
   return {
@@ -73,13 +77,70 @@ export const cartRepo = {
    * ثلاثة إرسالات متزامنة ⇒ ثلاثة طلبات. `FOR UPDATE` على صفّ `carts` يجعل
    * الثاني ينتظر الأول حتى يُفرغ العربة داخل معاملته، فيقرأ عربةً فارغة
    * ويُرفض بـ«العربة فارغة» كما لو أرسل متأخّراً.
+   *
+   * [CRITICAL] يقرأ الأسطر **كلها** — منتجاً عُطِّل أيضاً (CA-14). كان يقرأ
+   * بمرشِّح `is_active` فيُسقط السطر المعطَّل من الطلب بصمت، ويمحوه تفريغُ
+   * العربة، ويخرج طلبٌ غير الذي زُومن للزبون. الآن يصل السطر إلى فحص
+   * `orderService.create` فيُرفض الإرسال بـ`409 PRODUCT_UNAVAILABLE`،
+   * والمزامنة التالية تُزيله وتبلّغ الزبون.
    */
   async listItemsForCheckout(tx: pg.PoolClient, userId: string): Promise<CartLine[]> {
     const cartId = await ensureCart(tx, userId);
     await tx.query('SELECT id FROM carts WHERE id = $1 FOR UPDATE', [cartId]);
-    const { rows } = await tx.query<Record<string, unknown>>(`${LINE_SELECT}
+    const { rows } = await tx.query<Record<string, unknown>>(`${LINE_FROM}
       ORDER BY ci.created_at DESC`, [cartId]);
     return rows.map(mapLine);
+  },
+
+  /**
+   * أسطر العربة كما تحتاجها المزامنة (`planCartSync`) — بعد قفل صفّ العربة.
+   *
+   * [CRITICAL] `FOR UPDATE` نفسه الذي يأخذه الإرسال: مزامنةٌ لا تتداخل مع
+   * طلبٍ قيد الإنشاء (يقرأ الأسطر ثم يفرّغها)، ولا مع دمج كميةٍ (`upsertItem`
+   * يأخذ `KEY SHARE`). الترتيب بالإضافة — الأقدم يحتفظ بقطعه أولاً.
+   */
+  async lockForSync(tx: pg.PoolClient, userId: string): Promise<CartSyncLine[]> {
+    const cartId = await ensureCart(tx, userId);
+    await tx.query('SELECT id FROM carts WHERE id = $1 FOR UPDATE', [cartId]);
+    const { rows } = await tx.query<{
+      id: string;
+      product_id: string;
+      name: string;
+      option_value: string | null;
+      quantity: number;
+      stock: number;
+      is_active: boolean;
+    }>(
+      `SELECT ci.id, ci.product_id, p.name, ci.option_value, ci.quantity, p.stock, p.is_active
+         FROM cart_items ci
+         JOIN products p ON p.id = ci.product_id
+        WHERE ci.cart_id = $1
+        ORDER BY ci.created_at, ci.id`,
+      [cartId],
+    );
+    return rows.map((row) => ({
+      id: row.id,
+      productId: row.product_id,
+      productName: row.name,
+      optionValue: row.option_value,
+      quantity: Number(row.quantity),
+      stock: Number(row.stock),
+      isActive: row.is_active,
+    }));
+  },
+
+  /** يطبّق خطة المزامنة: صفرٌ يحذف السطر، وغيره يضبط الكمية. */
+  async applySync(tx: pg.PoolClient, adjustments: readonly CartAdjustment[]): Promise<void> {
+    const removed = adjustments.filter((a) => a.quantity === 0).map((a) => a.lineId);
+    if (removed.length > 0) {
+      await tx.query('DELETE FROM cart_items WHERE id = ANY($1::uuid[])', [removed]);
+    }
+    for (const adjustment of adjustments.filter((a) => a.quantity > 0)) {
+      await tx.query('UPDATE cart_items SET quantity = $2 WHERE id = $1', [
+        adjustment.lineId,
+        adjustment.quantity,
+      ]);
+    }
   },
 
   /**

@@ -42,12 +42,22 @@ class OrderData {
   double get total => productsTotal + payableDelivery - discount;
 
   /// جسم الطلب: الخادم يقرأ العربة ويرسل المجاميع النهائية.
+  ///
+  /// `expectedPrices` (CA-14، الخيار أ): سعر الوحدة الذي **راجعه** الزبون لكل
+  /// سطر — من [items] كما بُنيت من العربة المُزامَنة، لا قراءةً جديدة عند
+  /// الإرسال. الخادم يقارنه بالسعر الحالي ويرفض أي اختلاف بـ`409
+  /// PRODUCT_PRICE_CHANGED`. فحصٌ لا مصدر: لا يُرسَل مجموعٌ ولا خصمٌ، والسعر
+  /// المحفوظ في الطلب سعر الخادم وحده.
   Map<String, dynamic> toJson() {
     return {
       'governorateId': governorateId,
       'fullAddress': fullAddress,
       'phone': phone,
       if (zoneId != null) 'zoneId': zoneId,
+      'expectedPrices': [
+        for (final item in items)
+          {'productId': item.product.id, 'unitPrice': item.product.price},
+      ],
     };
   }
 }

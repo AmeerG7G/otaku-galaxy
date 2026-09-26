@@ -98,6 +98,10 @@ class _OrderReviewScreenState extends State<OrderReviewScreen>
       setState(() => _placed = true);
     } catch (error) {
       if (!mounted) return;
+      if (_isCartConflict(error)) {
+        await _returnToSyncedCart(error as AppException);
+        return;
+      }
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
@@ -115,6 +119,39 @@ class _OrderReviewScreenState extends State<OrderReviewScreen>
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  /// شبكة الأمان (CA-14): الخادم رفض الإرسال لأن العربة لم تعد كما راجعها
+  /// الزبون — منتجٌ عُطِّل أو نفد، أو مخزونٌ هبط تحت الكمية، أو سعرٌ تغيّر عمّا
+  /// عُرض عليه (`PRODUCT_PRICE_CHANGED`، الخيار أ).
+  static bool _isCartConflict(Object error) =>
+      error is AppException &&
+      error.statusCode == 409 &&
+      (error.code == 'INSUFFICIENT_STOCK' ||
+          error.code == 'PRODUCT_UNAVAILABLE' ||
+          error.code == 'PRODUCT_PRICE_CHANGED');
+
+  /// هذه الشاشة تعرض أسطراً ومجموعاً لم يعودا صحيحين، فلا يُعاد الإرسال منها:
+  /// تُزامَن العربة ويعود الزبون إليها ليرى ما تغيّر. رسالة المزامنة المجمَّعة
+  /// يعرضها `CartAutoSync`؛ إن لم تجد المزامنة ما تبلّغ به (أو تعذّرت) تُعرض
+  /// رسالة الخادم نفسها — قبل الرجوع، فالشريط يبقى عبر الانتقال.
+  Future<void> _returnToSyncedCart(AppException error) async {
+    final router = context.router;
+    final notice = await context.read<CartCubit>().sync();
+    if (!mounted) return;
+    if (notice == null || !notice.hasChanges) {
+      // سعرٌ حدّثته مزامنةٌ في الخلفية قبل الإرسال: المقارنة لا تجد فرقاً الآن،
+      // لكن الزبون أرسل ما راجعه — فيُبلَّغ بالرسالة المجمَّعة نفسها.
+      showOtakuSnack(
+        context,
+        message: error.code == 'PRODUCT_PRICE_CHANGED'
+            ? context.strings('cartSyncPriceChanged')
+            : error.message,
+        tone: OtakuSnackTone.error,
+      );
+    }
+    mainNavIndex.value = MainTab.cart;
+    router.popUntilRoot();
   }
 
   /// نص الخطأ المعروض عند تعذّر إنشاء الطلب — من الخادم متى أرسل واحداً.

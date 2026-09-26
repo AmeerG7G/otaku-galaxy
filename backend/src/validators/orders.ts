@@ -33,6 +33,23 @@ export const createOrderSchema = z.object({
     .transform((v) => normalizeIraqiPhone(v)!),
   /** منطقة التوصيل — إلزامية للمحافظات المقسّمة مناطق (النجف). */
   zoneId: z.string().uuid('منطقة التوصيل غير صالحة').nullish(),
+  /**
+   * سعر الوحدة الذي تعرضه عربة الزبون المُزامَنة لكل منتج (CA-14، الخيار أ) —
+   * حقلا سطر `GET /cart` نفسيهما (`productId`، `unitPrice`).
+   *
+   * [CRITICAL] **فحصٌ لا مصدر.** الخادم يقارنه بسعر المنتج الحالي داخل معاملة
+   * الإنشاء؛ أي اختلاف ⇒ `409 PRODUCT_PRICE_CHANGED` ولا طلب. لا يدخل اللقطة ولا
+   * المجموع أبداً — السعر المحفوظ سعر القاعدة وحده (§2.9). غيابه (تطبيقٌ أقدم)
+   * يعني «لا توقّع» فيُنشأ الطلب بسعر القاعدة كما كان.
+   */
+  expectedPrices: z
+    .array(
+      z.object({
+        productId: z.string().uuid('معرّف منتج غير صالح'),
+        unitPrice: z.number().nonnegative(),
+      }),
+    )
+    .optional(),
 });
 
 export const orderIdParamSchema = z.object({

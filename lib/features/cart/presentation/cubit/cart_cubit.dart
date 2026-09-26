@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../products/domain/entities/product.dart';
 import '../../domain/entities/cart_item.dart';
+import '../../domain/entities/cart_sync.dart';
 import '../../domain/repositories/cart_repository.dart';
 import 'cart_state.dart';
 
@@ -20,14 +23,49 @@ class CartCubit extends Cubit<CartState> {
 
   List<CartItem> _items = [];
 
+  /// يزداد مع كل حالةٍ تُبثّ — به تعرف المزامنة أن تعديلاً وقع أثناءها.
+  int _generation = 0;
+
+  Future<CartSyncNotice?>? _inFlight;
+
+  final _notices = StreamController<CartSyncNotice>.broadcast();
+
+  /// ما يجب أن يُبلَّغ به الزبون بعد كل مزامنةٍ غيّرت شيئاً — رسالة واحدة
+  /// مجمَّعة لكل مزامنة (انظر [CartSyncNotice]).
+  Stream<CartSyncNotice> get notices => _notices.stream;
+
   /// تحميل السلة من الخادم (بعد تسجيل الدخول أو فتح التطبيق).
-  Future<void> load() async {
+  Future<void> load() => sync();
+
+  /// مزامنة السلة مع الخادم (CA-14) — الخادم مرجع الحقيقة.
+  ///
+  /// [CRITICAL] اللقطة تُطبَّق **ذرّياً**: حالةٌ واحدة تحمل الأسطر كلها
+  /// بأسعارها وكمياتها الجديدة، فلا يرى الزبون مجموعاً قديماً بين تحديث سطرٍ
+  /// وآخر. ثم تُبثّ رسالةٌ واحدة إن تغيّر شيء.
+  ///
+  /// المزامنات المتزامنة تشترك في طلبٍ واحد. وإن عدّل الزبون العربة أثناء
+  /// المزامنة (إضافة، كمية، حذف) فردُّ ذلك التعديل أحدث من اللقطة، فلا تكتب
+  /// اللقطة فوقه — الرسالة وحدها تُبلَّغ. تُعيد `null` حين يتعذّر الوصول.
+  Future<CartSyncNotice?> sync() =>
+      _inFlight ??= _runSync().whenComplete(() => _inFlight = null);
+
+  Future<CartSyncNotice?> _runSync() async {
+    final started = _generation;
+    final shown = _items;
+    final CartSnapshot snapshot;
     try {
-      _items = await _repository.fetchCart();
-      _emit();
+      snapshot = await _repository.syncCart();
     } catch (_) {
-      // لا نُفشل الواجهة؛ تبقى السلة كما هي.
+      // غير متصل — نبقي الحالة الحالية.
+      return null;
     }
+    final notice = CartSyncNotice.between(before: shown, after: snapshot);
+    if (_generation == started) {
+      _items = snapshot.items;
+      _emit();
+    }
+    if (notice.hasChanges && !_notices.isClosed) _notices.add(notice);
+    return notice;
   }
 
   /// إضافة منتج إلى السلة عبر الخادم (يترك الخادم التحقق من المخزون).
@@ -89,7 +127,7 @@ class CartCubit extends Cubit<CartState> {
   /// مسح السلة محلياً (يُفرّغ الخادم السلة عند إنشاء الطلب).
   void clear() {
     _items = [];
-    emit(const CartEmpty());
+    _emit();
   }
 
   Future<void> _updateQuantity(String lineId, int quantity) async {
@@ -101,15 +139,8 @@ class CartCubit extends Cubit<CartState> {
     _emit();
   }
 
-  /// مزامنة مع الخادم لتصحيح أي اختلاف.
-  Future<void> _sync() async {
-    try {
-      _items = await _repository.fetchCart();
-      _emit();
-    } catch (_) {
-      // غير متصل — نبقي الحالة الحالية.
-    }
-  }
+  /// مزامنة مع الخادم لتصحيح أي اختلاف بعد تعديلٍ فشل.
+  Future<void> _sync() => sync();
 
   CartItem? _itemByProduct(String productId, String? selectedOption) {
     for (final item in _items) {
@@ -125,10 +156,17 @@ class CartCubit extends Cubit<CartState> {
   }
 
   void _emit() {
+    _generation++;
     if (_items.isEmpty) {
       emit(const CartEmpty());
     } else {
       emit(CartLoaded(items: List.unmodifiable(_items)));
     }
+  }
+
+  @override
+  Future<void> close() async {
+    await _notices.close();
+    return super.close();
   }
 }

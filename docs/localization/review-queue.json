@@ -3739,6 +3739,75 @@
   "human_reviewer": "",
   "human_notes": ""
  },
+ "cartSyncPriceChanged": {
+  "ar": "تم تحديث سعر أحد المنتجات في سلتك.",
+  "ckb": "نرخی یەکێک لە بەرهەمەکانی سەبەتەکەت نوێکرایەوە.",
+  "feature": "cart",
+  "context": "cart_auto_sync.dart — showOtakuSnack بعد مزامنة السلة (CA-14)؛ قد يجتمع أكثر من سطر في رسالة واحدة",
+  "risk": "HIGH",
+  "placeholders": [],
+  "gender": "n/a",
+  "glossary": [
+   "cart"
+  ],
+  "self_review": "SELF_REVIEWED",
+  "native_review": "NEEDS_NATIVE_REVIEW",
+  "notes": "تحذير مالي: السعر تغيّر في السلة قبل الدفع",
+  "issues": "",
+  "ai_pre_review": "NOT_REVIEWED",
+  "ai_issue": "",
+  "proposed_ckb": "",
+  "ai_explanation": "",
+  "human_decision": "PENDING",
+  "human_reviewer": "",
+  "human_notes": ""
+ },
+ "cartSyncQuantityReduced": {
+  "ar": "تغيّرت الكمية المتوفرة من أحد المنتجات في سلتك، فعدّلنا الكمية.",
+  "ckb": "بڕی بەردەستی یەکێک لە بەرهەمەکانی سەبەتەکەت گۆڕا، بۆیە بڕەکەمان ڕێکخست.",
+  "feature": "cart",
+  "context": "cart_auto_sync.dart — showOtakuSnack بعد مزامنة السلة (CA-14)؛ قد يجتمع أكثر من سطر في رسالة واحدة",
+  "risk": "HIGH",
+  "placeholders": [],
+  "gender": "n/a",
+  "glossary": [
+   "cart"
+  ],
+  "self_review": "SELF_REVIEWED",
+  "native_review": "NEEDS_NATIVE_REVIEW",
+  "notes": "الكمية خُفِّضت إلى المخزون المتاح",
+  "issues": "",
+  "ai_pre_review": "NOT_REVIEWED",
+  "ai_issue": "",
+  "proposed_ckb": "",
+  "ai_explanation": "",
+  "human_decision": "PENDING",
+  "human_reviewer": "",
+  "human_notes": ""
+ },
+ "cartSyncItemRemoved": {
+  "ar": "أحد المنتجات في سلتك لم يعد متوفراً، فأزلناه منها.",
+  "ckb": "یەکێک لە بەرهەمەکانی سەبەتەکەت ئیتر بەردەست نییە، بۆیە لێیمان لابرد.",
+  "feature": "cart",
+  "context": "cart_auto_sync.dart — showOtakuSnack بعد مزامنة السلة (CA-14)؛ قد يجتمع أكثر من سطر في رسالة واحدة",
+  "risk": "HIGH",
+  "placeholders": [],
+  "gender": "n/a",
+  "glossary": [
+   "cart"
+  ],
+  "self_review": "SELF_REVIEWED",
+  "native_review": "NEEDS_NATIVE_REVIEW",
+  "notes": "«ئیتر بەردەست نییە» كما في رسالة الخادم «لم يعد متاحاً»",
+  "issues": "",
+  "ai_pre_review": "NOT_REVIEWED",
+  "ai_issue": "",
+  "proposed_ckb": "",
+  "ai_explanation": "",
+  "human_decision": "PENDING",
+  "human_reviewer": "",
+  "human_notes": ""
+ },
  "stepOneOfTwo": {
   "ar": "الخطوة ١ من ٢",
   "ckb": "هەنگاوی 1 لە 2",

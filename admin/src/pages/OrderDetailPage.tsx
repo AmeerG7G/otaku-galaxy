@@ -10,6 +10,7 @@ import {
   Flex,
   Space,
   Table,
+  Tag,
   Timeline,
   Typography,
 } from 'antd'
@@ -84,7 +85,24 @@ export default function OrderDetailPage() {
       key: 'optionValue',
       render: (value: string | null) => value ?? '—',
     },
-    { title: 'الكمية', dataIndex: 'quantity', key: 'quantity' },
+    { title: 'الكمية المطلوبة', dataIndex: 'quantity', key: 'quantity' },
+    {
+      // المخزون **الآن** كما قرأه الخادم عند فتح الطلب — لا لقطة الإنشاء. معلومةٌ
+      // للمسؤول لا قرار: القبول يعيد الفحص تحت القفل على الخادم (§47.1).
+      title: 'المخزون الحالي',
+      dataIndex: 'currentStock',
+      key: 'currentStock',
+      render: (value: number | null | undefined, item: OrderItem) => {
+        if (value === null || value === undefined) return '—'
+        const short = order.status === 'PENDING_ADMIN_CONFIRMATION' && value < item.quantity
+        return (
+          <Space size={6}>
+            <span>{value}</span>
+            {short && <Tag color="red">غير كافٍ</Tag>}
+          </Space>
+        )
+      },
+    },
     {
       title: 'سعر الوحدة',
       dataIndex: 'price',
