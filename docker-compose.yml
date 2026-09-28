@@ -22,6 +22,8 @@ services:
       args:
         NODE_VERSION: "22"
     image: otaku-galaxy-api:${IMAGE_TAG:-latest}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     # ملف البيئة يحمل كل شيء: APP_ENV، الأسرار، وصلة القاعدة، إعداد الرسائل.
     # غيابه يعني إقلاعاً بلا إعداد — وهو ما ترفضه طبقة الإعدادات صراحةً.
     env_file:
@@ -78,6 +80,8 @@ services:
   # ---------------------------------------------------------------------------
   migrate:
     profiles: ["tools"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     build:
       context: ./backend
       target: builder
