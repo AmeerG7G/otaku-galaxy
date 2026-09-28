@@ -140,4 +140,5 @@ export const updateAppVersionSettingsSchema = z.object({
   app_android_store_url: optionalUrl.optional(),
   app_ios_store_url: optionalUrl.optional(),
   app_update_message: z.string().trim().max(300).optional(),
+  app_update_message_ckb: z.string().trim().max(300).optional(),
 });

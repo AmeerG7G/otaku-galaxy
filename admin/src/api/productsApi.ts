@@ -54,10 +54,28 @@ async function findProductInAdminList(id: string): Promise<Product | null> {
   return null
 }
 
+/**
+ * محتوى النموذج باللغتين من الحقول **الصريحة** وحدها.
+ *
+ * [CRITICAL] لا `name`/`description`: في المسار العام هما محسومان بلغة الطلب،
+ * ومتصفّحٌ يرسل `ckb` (أو مسؤولٌ تفضيله المحفوظ كردي) كان سيملأ حقل «الاسم
+ * بالعربية» بالكردية — فيكتبها الحفظ في العمود العربي. الكردية الناقصة
+ * (`null`) تصل حقلاً فارغاً يكمله المسؤول، لا نسخةً من العربية.
+ */
+function contentDraft(
+  product: Pick<Product, 'nameAr' | 'descriptionAr' | 'nameCkb' | 'descriptionCkb'>,
+) {
+  return {
+    nameAr: product.nameAr,
+    descriptionAr: product.descriptionAr,
+    nameCkb: product.nameCkb ?? '',
+    descriptionCkb: product.descriptionCkb ?? '',
+  }
+}
+
 function publicProductToDraft(product: PublicProduct): ProductFormDraft {
   return {
-    name: product.name,
-    description: product.description,
+    ...contentDraft(product),
     price: product.price,
     stock: product.stock,
     categoryId: product.categoryId,
@@ -79,8 +97,7 @@ function publicProductToDraft(product: PublicProduct): ProductFormDraft {
 
 function adminProductToDraft(product: Product): ProductFormDraft {
   return {
-    name: product.name,
-    description: product.description,
+    ...contentDraft(product),
     price: product.price,
     stock: product.stock,
     categoryId: product.categoryId,

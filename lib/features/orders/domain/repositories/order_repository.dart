@@ -1,9 +1,16 @@
+import '../entities/checkout_quote.dart';
 import '../entities/order.dart';
 import '../entities/order_data.dart';
 
 /// واجهة مستودع الطلبات (تعريف فقط).
 abstract class OrderRepository {
   Future<Order> placeOrder(OrderData data);
+
+  /// ملخّص الدفع كما يحسبه الخادم للعربة المحفوظة الآن — بلا حجز ولا استهلاك.
+  ///
+  /// [governorateId]/[zoneId] اختياريان: قبلهما تصل الخصومات وحدها، وبعدهما
+  /// رسوم التوصيل والإجمالي أيضاً.
+  Future<CheckoutQuote> fetchCheckoutQuote({String? governorateId, String? zoneId});
 
   Future<List<Order>> fetchMyOrders();
 

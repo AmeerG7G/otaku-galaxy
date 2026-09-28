@@ -43,6 +43,7 @@ class Order {
     required this.status,
     this.productsTotal = 0,
     this.discount = 0,
+    this.loyaltyDiscount = 0,
     this.deliveryDiscount = 0,
     this.items = const [],
     this.createdAt,
@@ -68,6 +69,13 @@ class Order {
 
   /// الخصم المطبق (من الخادم).
   final double discount;
+
+  /// ما جاء من مزيّة مستوى داخل [discount] — `orders.loyalty_discount` المحفوظ.
+  final double loyaltyDiscount;
+
+  /// ما بقي من [discount] بعد المزيّة (خصم الميلاد).
+  double get otherDiscount =>
+      (discount - loyaltyDiscount).clamp(0, double.infinity);
 
   /// خصم التوصيل المطبَّق وقت الطلب — لقطة تاريخية من الخادم.
   final double deliveryDiscount;
@@ -138,6 +146,7 @@ class Order {
       total: (json['total'] as num?)?.toDouble() ?? 0,
       productsTotal: (json['productsTotal'] as num?)?.toDouble() ?? 0,
       discount: (json['discount'] as num?)?.toDouble() ?? 0,
+      loyaltyDiscount: (json['loyaltyDiscount'] as num?)?.toDouble() ?? 0,
       deliveryDiscount: (json['deliveryDiscount'] as num?)?.toDouble() ?? 0,
       status: OrderStatus.fromString(json['status'] as String? ?? ''),
       items: items,
@@ -158,14 +167,20 @@ class Order {
   }
 
   /// يحوّل عنصر طلب الخادم
-  /// ({ productId, productName, imageUrl, optionValue, price, quantity, lineTotal })
+  /// ({ productId, productNameAr, productNameCkb, imageUrl, optionValue, price,
+  ///    quantity, lineTotal })
   /// إلى [CartItem] بالنموذج الذي تعرضه الواجهة.
+  ///
+  /// الاسم **لقطة** وقت الطلب باللغتين (هجرة ٠٦٦) — تعديل المنتج لاحقاً لا
+  /// يغيّرها، والواجهة تختار منها بلغتها. طلبٌ أقدم من 066 بلا كردية ⇒
+  /// `nameCkb: null` صريحة، لا اسمٌ كرديٌّ حاليّ يُلصق بتاريخٍ مضى.
   static CartItem _mapItem(Map<String, dynamic> json) {
     final image = resolveMediaUrl(json['imageUrl'] as String?);
     return CartItem(
       product: Product.fromJson({
         'id': json['productId']?.toString() ?? '',
-        'name': json['productName'] as String? ?? '',
+        'nameAr': json['productNameAr'] ?? json['productName'] ?? '',
+        'nameCkb': json['productNameCkb'],
         'price': (json['price'] as num?)?.toDouble() ?? 0,
         'images': image != null && image.isNotEmpty ? [image] : const [],
         'stock': (json['quantity'] as num?)?.toInt() ?? 0,

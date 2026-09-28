@@ -24,8 +24,10 @@ describe('التقييم للقراءة فقط من جهة الإدارة', () =
       .post('/api/admin/products')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
-        name: `منتج تدقيق ${Date.now()}`,
-        description: 'وصف',
+        nameAr: `منتج تدقيق ${Date.now()}`,
+        descriptionAr: 'وصف',
+        nameCkb: 'بەرهەمی پشکنین',
+        descriptionCkb: 'وەسف',
         price: 7000,
         categoryId: catalog.categoryId,
         subcategoryId: catalog.subcategoryId,

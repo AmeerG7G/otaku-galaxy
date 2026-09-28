@@ -18,6 +18,9 @@ import '../../../visuals/domain/visual_slot.dart';
 class OrdersScreen extends StatefulWidget {
   const OrdersScreen({super.key});
 
+  /// مقياس رسم الترويسة من مقاسه الافتراضي — أصغر ٢٠٪.
+  static const double artScale = 0.8;
+
   @override
   State<OrdersScreen> createState() => _OrdersScreenState();
 }
@@ -71,8 +74,15 @@ class _OrdersScreenState extends State<OrdersScreen> with LocaleRefetch {
             OtakuScreenHeader(
               title: context.strings('myOrders'),
               subtitle: context.strings('ordersSubtitle'),
-              artwork: 'assets/art/opt/a-i4.png',
               artworkSlot: VisualSlots.ordersHeader,
+              // أصغر ٢٠٪ وداخل الشاشة كلّه (2026-09-28). كان يتجاوز الحافة
+              // اليسرى بـ٤٠ (`defaultArtworkEnd`) فيُقصّ جانبه، ويبدأ ١٤ فوق
+              // الترويسة فيُقصّ رأسه تحت شريط الحالة. الآن يلاصق الحافة
+              // اليسرى (`end: 0`) ويبدأ تحت شريط الحالة.
+              artworkWidth:
+                  OtakuScreenHeader.defaultArtworkWidth * OrdersScreen.artScale,
+              artworkEnd: 0,
+              artworkBelowStatusBar: true,
               onBack: () => context.router.maybePop(),
             ),
             const SizedBox(height: 8),
@@ -92,7 +102,6 @@ class _OrdersScreenState extends State<OrdersScreen> with LocaleRefetch {
       return AnimeEmptyState(
         title: context.strings('noOrdersTitle'),
         subtitle: context.strings('noOrdersBody'),
-        artwork: 'assets/art/opt/a-luffy-kid.png',
         artworkSlot: VisualSlots.emptyOrders,
         actionLabel: context.strings('startShopping'),
         onAction: () => context.router.maybePop(),

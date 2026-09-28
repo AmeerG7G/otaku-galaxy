@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/design_system/design_system.dart';
-import '../../../visuals/presentation/managed_artwork.dart';
+import '../../../../core/l10n/app_strings.dart';
+import '../../../settings/presentation/cubit/locale_cubit.dart';
+import '../../../visuals/presentation/character_artwork.dart';
 
 /// هيكل شاشات المصادقة بتصميم Otaku Galaxy v2.
 ///
@@ -21,9 +23,6 @@ class AuthScaffold extends StatelessWidget {
     this.artworkHeight = 190,
     this.artworkWidth = 142,
     this.artworkBottom = -12,
-    this.ctaArtWidth = 84,
-    required this.ctaSlot,
-    required this.ctaArtwork,
     this.subtitleSpacing,
   });
 
@@ -44,11 +43,14 @@ class AuthScaffold extends StatelessWidget {
   /// واجهة عربية.
   final String? artwork;
 
-  /// مفتاح الفتحة البصرية التي يديرها المسؤول من لوحة التحكم.
+  /// مفتاح موضع الرسم (`VisualSlots`) — صورته الثابتة في `CharacterArt`.
   ///
-  /// حين يُمرَّر، يصير [artwork] هو الأصل الاحتياطي: يُعرض كما هو ما دامت
-  /// الفتحة غير مضبوطة أو تعذّر تحميل صورتها. المقاس والموضع لا يتغيّران.
+  /// حين يُمرَّر يحدّد الموضعُ صورته ولا يلزم [artwork] (المسار المباشر لرسمٍ
+  /// ليس موضعاً). المقاس والموضع كما هما.
   final String? artworkSlot;
+
+  /// رسمٌ يُعرض: موضعٌ بصورته الثابتة، أو مسارٌ مباشر.
+  bool get _hasArtwork => artworkSlot != null || artwork != null;
 
   /// صندوق رسم الرأس وإزاحته السفلية — تختلف لكل شاشة في المصدر.
   ///
@@ -58,28 +60,31 @@ class AuthScaffold extends StatelessWidget {
   final double artworkWidth;
   final double artworkBottom;
 
-  /// عرض الرسم الصغير المتدلّي من زاوية بطاقة النموذج (٩٦ لشاشة الرمز).
-  final double ctaArtWidth;
-
-  /// فتحة رسم الزاوية — **إلزامية ولكل شاشةٍ فتحتُها** (`VisualSlots.loginCta`،
-  /// `registerCta`، `forgotPasswordCta`).
-  ///
-  /// كانت الفتحة واحدةً مشتركة (`auth_cta_character`) داخل هذا الهيكل، فيبدّل
-  /// المسؤول رسمَ زاوية شاشة الدخول فيتبدّل في الشاشتين الأخريين. الموضع
-  /// موضعٌ لكل شاشة، والشاشةُ تمرّر مفتاحها (الهجرة ٠٥٤).
-  final String ctaSlot;
-
-  /// الأصل المضمَّن لرسم الزاوية — يُعرض ما دامت الفتحة بلا صورة.
-  final String ctaArtwork;
+  // [PRODUCT] لا رسم شخصية بجوار زرّ الإجراء (2026-09-28). كان رسمٌ صغير
+  // يتدلّى من زاوية بطاقة النموذج فوق الزرّ (`ctaSlot`، لكل شاشةٍ فتحتُها)؛
+  // أزاله المالك مع كل رسمٍ مجاورٍ للأزرار. البطاقة الآن النموذجُ وحده.
 
   /// تباعد بين العنوان والنص التوضيحي في الرأس. القيمة الافتراضية `space2`.
   /// شاشة «نسيت كلمة المرور» تمرّر قيمة أصغر لتحريك النص قليلاً للأعلى.
   final double? subtitleSpacing;
 
+  /// مقاس النصّ التوضيحي في الرأس — `13` للعربية كما في المرجع.
+  ///
+  /// [CRITICAL] الكردية وحدها أصغر قليلاً (2026-09-27). حروفها الخاصة
+  /// (ێ ۆ ڕ ڵ ک) لا يملكها Tajawal فتُرسم باحتياط NotoSansArabic الأطول
+  /// سطراً، وجُملها الثلاث هنا أطول من العربية: بـ١٣ كانت تنزل تحت الحدّ
+  /// الذي تغطّيه بطاقة النموذج (قيس `test/kurdish_auth_subtitle_layout_test.dart`).
+  /// العربية لا تُمسّ.
+  static const double _subtitleSize = 13;
+  static const double _subtitleSizeKurdish = 11.5;
+  static const double _subtitleHeight = 1.7;
+  static const double _subtitleHeightKurdish = 1.55;
+
   @override
   Widget build(BuildContext context) {
     final colors = context.themeColors;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isKurdish = context.language == AppLanguage.kurdish;
     final headerInk = isDark
         ? const Color(0xFFF9F6FF)
         : const Color(0xFF22133F);
@@ -152,7 +157,7 @@ class AuthScaffold extends StatelessWidget {
                               ),
                             ),
                             // رسم الشخصية يُقصّ بحافة الرأس ويبقى خلف النص.
-                            if (artwork != null)
+                            if (_hasArtwork)
                               PositionedDirectional(
                                 bottom: artworkBottom,
                                 end: -34,
@@ -165,9 +170,8 @@ class AuthScaffold extends StatelessWidget {
                                           fit: BoxFit.contain,
                                           alignment: Alignment.bottomCenter,
                                         )
-                                      : ManagedArtwork(
+                                      : CharacterArtwork(
                                           slot: artworkSlot!,
-                                          fallbackAsset: artwork!,
                                         ),
                                 ),
                               ),
@@ -208,10 +212,15 @@ class AuthScaffold extends StatelessWidget {
                                         crossAxisAlignment:
                                             CrossAxisAlignment.start,
                                         children: [
-                                          Text(
-                                            title,
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
+                                          _HeaderTitle(
+                                            title: title,
+                                            // الكردية: سطرٌ واحد يُصغَّر عند
+                                            // الحاجة وحدها. «وشەی نهێنی
+                                            // لەبیرچوو» كان يلتفّ سطرين
+                                            // فيدفع النصّ التوضيحي تحت
+                                            // البطاقة؛ العناوين التي تتّسع لا
+                                            // يتغيّر مقاسها.
+                                            singleLine: isKurdish,
                                             style: Theme.of(context)
                                                 .textTheme
                                                 .headlineSmall
@@ -228,14 +237,19 @@ class AuthScaffold extends StatelessWidget {
                                           ),
                                           Text(
                                             subtitle,
+                                            key: const Key('auth_header_subtitle'),
                                             maxLines: 2,
                                             overflow: TextOverflow.ellipsis,
                                             style: Theme.of(context)
                                                 .textTheme
                                                 .bodySmall
                                                 ?.copyWith(
-                                                  fontSize: 13,
-                                                  height: 1.7,
+                                                  fontSize: isKurdish
+                                                      ? _subtitleSizeKurdish
+                                                      : _subtitleSize,
+                                                  height: isKurdish
+                                                      ? _subtitleHeightKurdish
+                                                      : _subtitleHeight,
                                                   color: headerInk2,
                                                 ),
                                           ),
@@ -261,44 +275,26 @@ class AuthScaffold extends StatelessWidget {
                         // (أضيق من الحدّ) لا أثر لهذا الإطار البتّة.
                         child: ResponsiveContentFrame(
                           maxWidth: kFormMaxWidth,
-                          child: Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.fromLTRB(
-                                  20,
-                                  24,
-                                  20,
-                                  22,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Theme.of(context).colorScheme.surface,
-                                  borderRadius: BorderRadius.circular(
-                                    AppDimens.radiusLg,
-                                  ),
-                                  border: Border.all(
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.outlineVariant,
-                                  ),
-                                  boxShadow: colors.shadowFloating,
-                                ),
-                                child: form,
+                          child: Container(
+                            padding: const EdgeInsets.fromLTRB(
+                              20,
+                              24,
+                              20,
+                              22,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.surface,
+                              borderRadius: BorderRadius.circular(
+                                AppDimens.radiusLg,
                               ),
-                              // رسم صغير يتدلّى من زاوية البطاقة فوق زر الإجراء،
-                              // كما في `ctaArtStyle` بالمصدر.
-                              PositionedDirectional(
-                                bottom: -26,
-                                end: -18,
-                                child: IgnorePointer(
-                                  child: ManagedArtwork(
-                                    slot: ctaSlot,
-                                    fallbackAsset: ctaArtwork,
-                                    width: ctaArtWidth,
-                                  ),
-                                ),
+                              border: Border.all(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.outlineVariant,
                               ),
-                            ],
+                              boxShadow: colors.shadowFloating,
+                            ),
+                            child: form,
                           ),
                         ),
                       ),
@@ -322,6 +318,43 @@ class AuthScaffold extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// عنوان الرأس. [singleLine] يُبقيه سطراً واحداً ويصغّره **فقط** إن لم يتّسع
+/// له العمود (`FittedBox.scaleDown` لا يكبّر أبداً)؛ وإلا فسطران كما في المرجع.
+class _HeaderTitle extends StatelessWidget {
+  const _HeaderTitle({
+    required this.title,
+    required this.singleLine,
+    required this.style,
+  });
+
+  final String title;
+  final bool singleLine;
+  final TextStyle? style;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!singleLine) {
+      return Text(
+        title,
+        key: const Key('auth_header_title'),
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: style,
+      );
+    }
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: AlignmentDirectional.centerStart,
+      child: Text(
+        title,
+        key: const Key('auth_header_title'),
+        maxLines: 1,
+        style: style,
       ),
     );
   }

@@ -8,6 +8,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otaku_galaxy/core/design_system/design_system.dart';
+import 'package:otaku_galaxy/core/l10n/app_strings.dart';
+import 'package:otaku_galaxy/core/l10n/locale_scope.dart';
+import 'package:otaku_galaxy/features/settings/presentation/cubit/locale_cubit.dart';
 import 'package:otaku_galaxy/features/app_update/data/installed_version.dart';
 import 'package:otaku_galaxy/features/app_update/domain/app_version.dart';
 import 'package:otaku_galaxy/features/app_update/domain/app_version_config.dart';
@@ -180,6 +183,67 @@ void main() {
           .cast<PopScope<Object?>>()
           .where((p) => !p.canPop);
       expect(blockers, isNotEmpty, reason: 'لا حاجزَ يمنع الرجوع');
+    });
+
+    testWidgets('[CRITICAL] بلا رسم شخصية — نصٌّ وواجهة فقط', (tester) async {
+      // قرار 2026-09-27: شاشة التحديث الإلزامي لا تعرض أي شخصية أنمي. الصورة
+      // الوحيدة المسموحة شعار المتجر (`assets/branding/`).
+      await tester.pumpWidget(host());
+      await tester.pump();
+
+      final assets = tester
+          .widgetList<Image>(find.byType(Image))
+          .map((image) => image.image)
+          .whereType<AssetImage>()
+          .map((image) => image.assetName)
+          .toList();
+      expect(assets.where((a) => a.startsWith('assets/art/')), isEmpty, reason: '$assets');
+      expect(assets.every((a) => a.startsWith('assets/branding/')), isTrue, reason: '$assets');
+      // ولا صورةٌ من الشبكة ولا رسمٌ مُدار.
+      expect(
+        tester.widgetList<Image>(find.byType(Image)).where((i) => i.image is NetworkImage),
+        isEmpty,
+      );
+      expect(find.text('حدّث التطبيق للمتابعة'), findsOneWidget);
+      expect(find.byKey(const Key('force_update_button')), findsOneWidget);
+    });
+
+    Widget kurdishHost(AppVersionConfig config) => MaterialApp(
+      theme: AppTheme.light,
+      home: LocaleScope(
+        language: AppLanguage.kurdish,
+        child: Directionality(
+          textDirection: TextDirection.rtl,
+          child: ForceUpdateScreen(
+            config: config,
+            installedVersion: '1.1.0',
+            onOpenStore: (_) async {},
+          ),
+        ),
+      ),
+    );
+
+    testWidgets('[CRITICAL] كردي: رسالة المسؤول الكردية — لا رسالته العربية', (tester) async {
+      await tester.pumpWidget(kurdishHost(const AppVersionConfig(
+        minimumSupportedVersion: '1.2.0',
+        updateMessage: 'حدّث التطبيق للمتابعة',
+        updateMessageCkb: 'تکایە ئەپەکە نوێ بکەرەوە',
+      )));
+      await tester.pump();
+      expect(find.text('تکایە ئەپەکە نوێ بکەرەوە'), findsOneWidget);
+      expect(find.text('حدّث التطبيق للمتابعة'), findsNothing);
+      expect(find.text(AppStrings.kurdish('updateRequiredTitle')), findsOneWidget);
+      expect(find.text(AppStrings.kurdish('updateApp')), findsOneWidget);
+    });
+
+    testWidgets('كردي بلا رسالة كردية: النصّ الكردي الافتراضي — لا العربية', (tester) async {
+      await tester.pumpWidget(kurdishHost(const AppVersionConfig(
+        minimumSupportedVersion: '1.2.0',
+        updateMessage: 'حدّث التطبيق للمتابعة',
+      )));
+      await tester.pump();
+      expect(find.text(AppStrings.kurdish('updateRequiredMessage')), findsOneWidget);
+      expect(find.text('حدّث التطبيق للمتابعة'), findsNothing);
     });
 
     testWidgets('تُبنى بلا تجاوز على الهاتف الصغير واللوح', (tester) async {

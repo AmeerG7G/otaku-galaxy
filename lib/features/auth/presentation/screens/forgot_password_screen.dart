@@ -150,10 +150,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
     try {
       await context.read<AuthCubit>().forgotPassword(
         phone:
-            normalizeIraqiPhone(
-              iraqiPhoneFromLocalDigits(_phoneController.text.trim()),
-            ) ??
-            iraqiPhoneFromLocalDigits(_phoneController.text.trim()),
+            normalizeIraqiPhone(_phoneController.text) ?? _phoneController.text.trim(),
         username: _usernameController.text.trim(),
         gender: gender.value!,
         levelKey: level.key,
@@ -188,10 +185,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
           showBack: true,
           title: context.strings('forgotPasswordTitle'),
           subtitle: context.strings('forgotPasswordIntro'),
-          artwork: 'assets/art/opt/a-luffy-kid.png',
           artworkSlot: VisualSlots.forgotPasswordHeader,
-          ctaSlot: VisualSlots.forgotPasswordCta,
-          ctaArtwork: 'assets/art/opt/a-luffy-kid.png',
           artworkHeight: 166,
           artworkBottom: -6,
           subtitleSpacing: AppDimens.space1,
@@ -206,20 +200,17 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
                   hint: context.strings('phoneHintExample'),
                   prefixIcon: Icons.phone_outlined,
                   keyboardType: TextInputType.phone,
-                  // §49.2: البادئة `07` ثابتة في الحقل والمستخدم يكتب التسعة التي تليها؛
-                  // المُنسّق يُسقط `+964`/`00964`/`07` مما يُلصق بدل أن يقصّه.
-                  prefixText: kIraqiLocalPrefix,
-                  inputFormatters: const [IraqiLocalDigitsFormatter()],
+                  // الرقم كاملاً كما يكتبه الزبون (`07701234567`) — لا بادئة `07` ثابتة ولا مُدرَجة؛
+                  // المُنسّق يُبقي الأرقام وحدها، والحكم لقاعدة الموبايل العراقي ثم للخادم.
+                  inputFormatters: const [IraqiPhoneInputFormatter()],
                   textDirection: TextDirection.ltr,
                   textInputAction: TextInputAction.next,
-                  maxLength: kIraqiLocalDigits,
+                  maxLength: kIraqiLocalPhoneLength,
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
                       return context.strings('phoneRequiredShort');
                     }
-                    if (!isValidIraqiPhone(
-                      iraqiPhoneFromLocalDigits(value.trim()),
-                    )) {
+                    if (!isValidIraqiLocalPhone(value)) {
                       return context.strings('phoneInvalid');
                     }
                     return null;

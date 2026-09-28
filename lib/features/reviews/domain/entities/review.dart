@@ -1,3 +1,4 @@
+import '../../../../core/l10n/bilingual_text.dart';
 import '../../../../core/network/media_url.dart';
 
 /// حالة التقييم — يبدأ دائماً بانتظار المراجعة، ثم يُنشر أو يُرفض.
@@ -12,7 +13,7 @@ class Review {
   const Review({
     required this.id,
     required this.productId,
-    required this.productName,
+    required this.productNames,
     required this.orderId,
     required this.rating,
     required this.comment,
@@ -28,7 +29,11 @@ class Review {
 
   final String id;
   final String productId;
-  final String productName;
+
+  /// اسم المنتج — **لقطة** سطر الطلب باللغتين (هجرة ٠٦٦)، لا اسمه الحالي.
+  /// يُعرض بلغة الواجهة: `productNames.of(context.language)`. تقييمٌ أقدم من
+  /// 066 بلا كردية ⇒ `ckb == null` صريحة.
+  final BilingualText productNames;
   final String orderId;
 
   /// من ١ إلى ٥.
@@ -82,7 +87,7 @@ class Review {
     return Review(
       id: id,
       productId: productId,
-      productName: productName,
+      productNames: productNames,
       orderId: orderId,
       rating: rating ?? this.rating,
       comment: comment ?? this.comment,
@@ -100,7 +105,9 @@ class Review {
   Map<String, dynamic> toJson() => {
     'id': id,
     'productId': productId,
-    'productName': productName,
+    'productName': productNames.ar,
+    'productNameAr': productNames.ar,
+    'productNameCkb': productNames.ckb,
     'orderId': orderId,
     'rating': rating,
     'comment': comment,
@@ -117,7 +124,12 @@ class Review {
     return Review(
       id: json['id'] as String,
       productId: json['productId'] as String,
-      productName: json['productName'] as String,
+      productNames: BilingualText.fromJson(
+        json,
+        arKey: 'productNameAr',
+        ckbKey: 'productNameCkb',
+        legacyKey: 'productName',
+      ),
       orderId: json['orderId'] as String,
       rating: json['rating'] as int,
       comment: json['comment'] as String,

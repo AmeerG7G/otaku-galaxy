@@ -8,7 +8,9 @@ import {
   renderNotification,
 } from '../src/domain/notificationTemplates.js';
 import { formatExpectedRestockDate } from '../src/services/restockService.js';
+import { mapProduct } from '../src/repositories/catalogRepo.js';
 import { APP_LOCALES } from '../src/utils/locale.js';
+import { localizeProduct } from '../src/utils/localize.js';
 import { api, createAdminUser, registerAndLogin, seedTestCatalog } from './helpers.js';
 
 /**
@@ -148,10 +150,28 @@ describe('ردّ الكتالوج يتبع لغة القارئ', () => {
     expect(res.body.data.name).toBe('بەرهەمی وەرگێڕدراو');
   });
 
-  it('لا يُسرَّب الحقل الكردي الخام إلى الزبون', async () => {
-    const res = await api.get(`/api/catalog/products/${productId}`);
-    expect(res.body.data).not.toHaveProperty('nameCkb');
-    expect(res.body.data).not.toHaveProperty('descriptionCkb');
+  /**
+   * العقد تغيّر عمداً في 066: محتوى المنتج يخرج بلغتيه صريحاً (`nameAr`…
+   * `descriptionCkb`) لأن التطبيق يعيد الاختيار من البيانات التي عنده حين
+   * يبدّل الزبون اللغة. `name`/`description` يبقيان محسومَين بلغة الطلب
+   * لعميلٍ أقدم — وقيمتهما هي اختيار الحقول الصريحة نفسها، لا نصٌّ ثالث.
+   * بقية المحتوى (الأقسام، الخيارات، المحافظات) لغةٌ واحدة محسومة كما كان.
+   */
+  it('المنتج يحمل لغتيه صريحتين، و`name` هو اختيارها بلغة الطلب', async () => {
+    const res = await api.get(`/api/catalog/products/${productId}`).set('Accept-Language', 'ar');
+    expect(res.body.data).toMatchObject({
+      name: 'منتج مترجَم',
+      description: 'وصف عربي',
+      nameAr: 'منتج مترجَم',
+      descriptionAr: 'وصف عربي',
+      nameCkb: 'بەرهەمی وەرگێڕدراو',
+      descriptionCkb: 'وەسفی کوردی',
+      kurdishMissing: false,
+    });
+    const ckb = await api.get(`/api/catalog/products/${productId}`).set('Accept-Language', 'ckb');
+    expect(ckb.body.data.name).toBe(ckb.body.data.nameCkb);
+    expect(ckb.body.data.description).toBe(ckb.body.data.descriptionCkb);
+    expect(ckb.body.data.nameAr).toBe('منتج مترجَم');
   });
 });
 
@@ -225,24 +245,34 @@ describe('[CRITICAL] الاحتياط لا يُخرج فراغاً أبداً', 
     expect(res.body.data.name).not.toBe('');
   });
 
-  it('الكردية الفارغة تُعامَل معاملة الغائبة', async () => {
-    const { rows } = await db.query<{ id: string }>(
-      `INSERT INTO products (name, description, price, category_id, stock, is_offer, is_selected,
-                             description_ckb)
-       VALUES ('منتج بفراغ', 'وصف عربي', 5000, $1, 3, FALSE, FALSE, '   ')
-       RETURNING id`,
-      [categoryId],
-    );
-    const { token } = await registerAndLogin();
-    await api
-      .patch('/api/auth/me')
-      .set('Authorization', `Bearer ${token}`)
-      .send({ preferredLanguage: 'ckb' });
+  /**
+   * طبقتان: القاعدة لا تقبل كرديةً فارغة أصلاً (066 — «ناقص» صورته NULL
+   * وحدها)، وطبقة القراءة ما زالت تعامل الفراغ معاملة الغياب لو وصلها من أي
+   * مصدر — فلا يخرج للزبون وصفٌ فارغ على أنه «الكردية».
+   */
+  it('الكردية الفارغة تُعامَل معاملة الغائبة — والقاعدة لا تقبلها أصلاً', async () => {
+    await expect(
+      db.query(
+        `INSERT INTO products (name, description, price, category_id, stock, is_offer, is_selected,
+                               description_ckb)
+         VALUES ('منتج بفراغ', 'وصف عربي', 5000, $1, 3, FALSE, FALSE, '   ')`,
+        [categoryId],
+      ),
+    ).rejects.toMatchObject({ code: '23514' });
 
-    const res = await api
-      .get(`/api/catalog/products/${rows[0]!.id}`)
-      .set('Authorization', `Bearer ${token}`);
-    expect(res.body.data.description).toBe('وصف عربي');
+    const mapped = mapProduct({
+      id: 'x',
+      name: 'منتج بفراغ',
+      description: 'وصف عربي',
+      name_ckb: 'بەرهەم',
+      description_ckb: '   ',
+      price: 5000,
+      stock: 3,
+    } as never);
+    expect(mapped.descriptionCkb).toBeNull();
+    expect(mapped.kurdishMissing).toBe(true);
+    expect(localizeProduct(mapped, 'ckb').description).toBe('وصف عربي');
+    expect(localizeProduct(mapped, 'ckb').name).toBe('بەرهەم');
   });
 });
 

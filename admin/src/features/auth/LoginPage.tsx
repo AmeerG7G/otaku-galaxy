@@ -5,6 +5,7 @@ import { LockOutlined, PhoneOutlined } from '@ant-design/icons'
 import { login } from '../../api/authApi'
 import { ApiError } from '../../api/client'
 import { useAuthStore } from '../../stores/authStore'
+import { IRAQI_MOBILE_LENGTH, IRAQI_MOBILE_PATTERN } from '../../utils/phone'
 import { brand } from '../../theme'
 
 interface LoginFormValues {
@@ -137,13 +138,13 @@ export default function LoginPage() {
             label="رقم الهاتف"
             rules={[
               { required: true, message: 'أدخل رقم الهاتف' },
-              { pattern: /^07\d{9}$/, message: 'رقم الهاتف غير صالح' },
+              { pattern: IRAQI_MOBILE_PATTERN, message: 'رقم الهاتف غير صالح' },
             ]}
           >
             <Input
               prefix={<PhoneOutlined />}
-              placeholder="07XXXXXXXXX"
-              maxLength={11}
+              placeholder="أدخل رقم الهاتف"
+              maxLength={IRAQI_MOBILE_LENGTH}
               disabled={submitting}
             />
           </Form.Item>

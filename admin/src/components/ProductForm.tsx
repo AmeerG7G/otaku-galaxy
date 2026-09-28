@@ -20,8 +20,14 @@ import ImagesEditor from './ImagesEditor'
 import OptionsEditor from './OptionsEditor'
 
 export interface ProductFormValues {
-  name: string
-  description: string
+  /**
+   * محتوى المنتج بلغتين — أربعة حقول مستقلة يكتبها المسؤول بيده (هجرة ٠٦٦).
+   * لا ترجمة آلية ولا نسخ بين اللغتين.
+   */
+  nameAr: string
+  descriptionAr: string
+  nameCkb: string
+  descriptionCkb: string
   price: number
   stock: number
   categoryId: string
@@ -47,6 +53,36 @@ export interface ProductFormValues {
    * وأي مخزون موجب ⇒ «متوفر» مهما بقي من مواعيد.
    */
   restockAt?: string | null
+}
+
+/** حقول المحتوى الأربعة — تُقصّ قبل الإرسال كما يقصّها الخادم. */
+const CONTENT_FIELDS = ['nameAr', 'descriptionAr', 'nameCkb', 'descriptionCkb'] as const
+
+function trimContent(values: ProductFormValues): ProductFormValues {
+  const trimmed = { ...values }
+  for (const field of CONTENT_FIELDS) {
+    trimmed[field] = (values[field] ?? '').trim()
+  }
+  return trimmed
+}
+
+/**
+ * قواعد حقل محتوى: `whitespace` تجعل المسافات وحدها «فارغاً»، والحدود حدود
+ * الخادم نفسها (الاسم ٢..١٢٠، الوصف حتى ٣٠٠٠). لا قيد على الحروف.
+ */
+function contentRules(kind: 'name' | 'description', language: string, required: boolean) {
+  const label = kind === 'name' ? 'اسم المنتج' : 'وصف المنتج'
+  return [
+    ...(required
+      ? [{ required: true, whitespace: true, message: `${label} ب${language} مطلوب` }]
+      : []),
+    ...(kind === 'name'
+      ? [
+          { min: 2, message: `${label} ب${language} قصير جداً (حرفان كحد أدنى)` },
+          { max: 120, message: `${label} ب${language} طويل جداً (١٢٠ حرفاً كحد أقصى)` },
+        ]
+      : [{ max: 3000, message: `${label} ب${language} طويل جداً (٣٠٠٠ حرف كحد أقصى)` }]),
+  ]
 }
 
 interface ProductFormProps {
@@ -95,6 +131,18 @@ export default function ProductForm({
     (category) => category.id === selectedCategoryId,
   )
 
+  // ═══ الإلزام ═══
+  // الإنشاء: الأربعة إلزامية. التعديل: ما كان مكتوباً يبقى إلزامياً (لا يُفرَّغ
+  // محتوى)، وما كان ناقصاً في منتجٍ قديم اختياريٌّ مع تنبيه — حفظُ سعره أو
+  // مخزونه لا يُحجَب حتى يُكتب له نصّ، ولا يُدفع المسؤول إلى نصٍّ مختلَق.
+  const wasFilled = (field: (typeof CONTENT_FIELDS)[number]) =>
+    Boolean((initialValues?.[field] ?? '').trim())
+  const isRequired = (field: (typeof CONTENT_FIELDS)[number]) =>
+    mode === 'create' || wasFilled(field)
+  const kurdishIncomplete =
+    mode === 'edit' && (!wasFilled('nameCkb') || !wasFilled('descriptionCkb'))
+  const arabicDescriptionEmpty = mode === 'edit' && !wasFilled('descriptionAr')
+
   function changeCategory(categoryId: string) {
     form.setFieldValue('categoryId', categoryId)
     form.setFieldValue('subcategoryId', undefined)
@@ -106,7 +154,7 @@ export default function ProductForm({
       layout="vertical"
       requiredMark={false}
       initialValues={initialValues}
-      onFinish={onSubmit}
+      onFinish={(values) => onSubmit(trimContent(values))}
       style={{ maxWidth: 760 }}
     >
       {!optionsAvailable && (
@@ -119,25 +167,73 @@ export default function ProductForm({
         />
       )}
 
-      <Card title="المعلومات الأساسية" variant="outlined">
+      <Card
+        title="العربية"
+        variant="outlined"
+        data-testid="content-ar"
+        extra={<Typography.Text type="secondary">يظهر للزبون الذي يستعمل التطبيق بالعربية</Typography.Text>}
+      >
+        {arabicDescriptionEmpty && (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="الوصف العربي فارغ لهذا المنتج"
+          />
+        )}
         <Form.Item
-          name="name"
-          label="اسم المنتج"
-          rules={[
-            { required: true, message: 'اسم المنتج مطلوب' },
-            { min: 2, message: 'الاسم قصير جداً (حرفان كحد أدنى)' },
-            { max: 150, message: 'الاسم طويل جداً (150 حرفاً كحد أقصى)' },
-          ]}
+          name="nameAr"
+          label="اسم المنتج بالعربي"
+          rules={contentRules('name', 'العربية', isRequired('nameAr'))}
         >
-          <Input />
+          <Input lang="ar" dir="rtl" />
         </Form.Item>
         <Form.Item
-          name="description"
-          label="الوصف"
-          rules={[{ max: 3000, message: 'الوصف طويل جداً' }]}
+          name="descriptionAr"
+          label="وصف المنتج بالعربي"
+          rules={contentRules('description', 'العربية', isRequired('descriptionAr'))}
+          style={{ marginBottom: 0 }}
         >
-          <Input.TextArea rows={4} />
+          <Input.TextArea lang="ar" dir="rtl" rows={4} />
         </Form.Item>
+      </Card>
+
+      <Card
+        title="الكردية"
+        variant="outlined"
+        data-testid="content-ckb"
+        style={{ marginTop: 16 }}
+        extra={<Typography.Text type="secondary">سوراني — يكتبه المسؤول، لا ترجمة آلية</Typography.Text>}
+      >
+        {kurdishIncomplete && (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="الكردية ناقصة لهذا المنتج"
+            description="الزبون الكردي يراه بالعربية مع تنبيه. اكتب الاسم والوصف بالكردية ليظهر بلغته."
+          />
+        )}
+        <Form.Item
+          name="nameCkb"
+          label="ناوی بەرهەم بە کوردی"
+          tooltip="اسم المنتج بالكردية"
+          rules={contentRules('name', 'الكردية', isRequired('nameCkb'))}
+        >
+          <Input lang="ckb" dir="rtl" />
+        </Form.Item>
+        <Form.Item
+          name="descriptionCkb"
+          label="وەسفی بەرهەم بە کوردی"
+          tooltip="وصف المنتج بالكردية"
+          rules={contentRules('description', 'الكردية', isRequired('descriptionCkb'))}
+          style={{ marginBottom: 0 }}
+        >
+          <Input.TextArea lang="ckb" dir="rtl" rows={4} />
+        </Form.Item>
+      </Card>
+
+      <Card title="السعر والمخزون" variant="outlined" style={{ marginTop: 16 }}>
         <Space size="large" wrap>
           <Form.Item
             name="price"

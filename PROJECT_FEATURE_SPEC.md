@@ -865,7 +865,7 @@ Legend: ✅ present · ⚠️ partial · ❌ absent · n/a not applicable.
 | 10 | PERSONALIZATION: theme | ✅ | ✅ | n/a | n/a | n/a | n/a | ✅ | COMPLETE |
 | 11 | PERSONALIZATION: language ar/ckb | ✅ | ⚠️ 18 keys only | n/a | n/a | n/a | n/a | ✅ | PARTIAL |
 | 12 | HOME hero card | ✅ | ✅ `HomeHeroCard` | ✅ banners | ✅ | ✅ | ✅ | ⚠️ | COMPLETE |
-| 13 | HOME promo rail (موسم المدرسة / خصومات) | ✅ | ⚠️ hardcoded copy + derived max % | ❌ | ❌ | ❌ | ❌ | ❌ | UI ONLY |
+| 13 | HOME promo rail (admin `promo` banners / خصومات) | ✅ | ⚠️ derived max % fallback — **hardcoded «موسم المدرسة» card removed (STEP 62)** | ❌ | ❌ | ❌ | ❌ | ❌ | UI ONLY |
 | 14 | HOME offers section | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ OffersPage | ✅ | COMPLETE |
 | 15 | HOME categories strip | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | COMPLETE |
 | 16 | HOME featured / selected | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | COMPLETE |
@@ -1044,7 +1044,8 @@ too; it simply has no caller.)
 1. **Notification preference toggles** (`settings_screen` + `NotificationPrefsStorage`) — persist
    locally, affect nothing.
 2. **Search "suggested" chips** — 6 hardcoded strings (`search_screen.dart:37`).
-3. **Home promo rail** — «موسم المدرسة» is hardcoded copy; the second card is derived from the
+3. **Home promo rail** — «موسم المدرسة» is hardcoded copy (**removed in STEP 62** — the rail is now
+   admin `promo` banners, else only the derived discount card); the second card is derived from the
    catalog's max real discount (that half is honest, the merchandising half is not configurable).
 4. **Delivery assurance strip** — hardcoded «توصيل لكل المحافظات».
 5. **Otaku level rewards** — «خصم على الطلبات» / «هدية مع الطلب» / «وصول مبكر للتشكيلات» are
@@ -1574,7 +1575,7 @@ search suggestions · order status history · community category curation.
 | `COMMUNITY_LIMIT` = 60 | `backend/src/services/reviewsService.ts` |
 | OTP TTL 10 min / 5 attempts | `backend/src/services/otpService.ts` (duplicated in `config`, **the service constants win**) |
 | ETA presets (4 strings) | `admin/src/components/StatusTransitionButtons.tsx:34` |
-| Home promo copy «موسم المدرسة» | `lib/features/home/presentation/widgets/home_compositions.dart:189` |
+| ~~Home promo copy «موسم المدرسة»~~ | **removed in STEP 62** — no hardcoded promo copy remains in `home_compositions.dart` |
 | Search suggestion chips | `lib/features/search/presentation/screens/search_screen.dart:37` |
 
 > Note: `otpService.ts` defines its own `CODE_TTL_MS` and `MAX_ATTEMPTS` and **never reads**
@@ -7611,6 +7612,7 @@ depended on who last opened the settings page. It is now
 - Applied to the product subtotal at order creation, inside the same transaction.
 - `Math.round` rounding, kept literally — changing the rounding rule while fixing
   the percentage would have silently moved order totals nobody asked to move.
+  *(Superseded 2026-09-27 by the owner's IQD discount rounding rule, §60.7.)*
 
 The feature itself was **not** removed. `GET /api/birthday` still reports
 `discountPercent: 5` and the discount still applies (verified live).
@@ -10443,3 +10445,485 @@ Backend: `src/domain/cartSync.ts` (new), `src/repositories/cartRepo.ts`, `src/se
 `main_navigation_screen.dart`, `lib/core/l10n/app_strings.dart`. Localization records:
 `docs/localization/{review-queue.json, sorani-review-queue.md, status.json, README.md}`.
 No migration, no schema change, no data change.
+
+# STEP 60 — DEV: PHONE FIELD · CHECKOUT REWARD · KURDISH SEARCH/LAYOUT · UPDATE SCREEN · CHARACTER ART AS ASSETS (2026-09-27)
+
+Owner-requested changes. Each bug below was traced to its root cause and carries a regression test.
+
+## 60.1 Phone field — no fixed «07» prefix; the Iraqi mobile rule is unchanged
+
+The field used to show `07` as a fixed prefix (§49.2) and take the nine digits after it. The customer
+now types the whole number, `07` included (`07701234567`): nothing is pre-filled, inserted or
+reserved in the field. The validation rule is the project's existing one, identical in every layer —
+an Iraqi mobile number, national `7[5-9]` + 8 digits (075–079), stored E.164 `+9647XXXXXXXXX`:
+- App (`lib/core/utils/iraqi_phone.dart`): `isValidIraqiLocalPhone` checks the field (`^07[5-9]\d{8}$`
+  after Eastern-digit normalisation), `IraqiPhoneInputFormatter` keeps digits only (max 11, never adds
+  or removes a prefix), submission goes through the server mirror `normalizeIraqiPhone`.
+- Backend: `normalizeIraqiPhone` — unchanged (the same number is also accepted as `7…`/`964…`/`+964…`/`00964…`).
+- Database: the three migration-037 constraints `^\+9647[5-9][0-9]{8}$` — unchanged.
+- Dashboard login: `IRAQI_MOBILE_PATTERN = ^07[5-9]\d{8}$` (was `^07\d{9}$`, which let 070–074 through
+  to a server rejection), max 11, placeholder «أدخل رقم الهاتف».
+
+Hint `phoneHintExample` = «أدخل رقم الهاتف» / «ژمارەی مۆبایل بنووسە». A first draft of this step
+misread the request and widened the rule to landlines and foreign numbers (a migration 063); it was
+reverted before any shared environment ran it, so there is no migration 063 — the gap 062 → 064 is
+intentional (the runner orders files by name). Tests: `test/iraqi_phone_test.dart`,
+`test/admin_managed_account_flows_test.dart` (real register/forgot screens: no prefix, «7» stays «7»,
+landline/foreign/070/no-07 rejected), `backend/tests/phone-normalization.test.ts`,
+`admin/src/utils/phone.test.ts`.
+
+## 60.2 Claimed reward discount visible before the order is placed
+
+Root cause: order creation reserved and consumed the claimed loyalty discount correctly and
+persisted it (`orders.loyalty_discount`), but nothing showed it: both checkout screens previewed only
+the birthday discount (computed in the app), and neither the app's `Order` nor the dashboard read
+`loyaltyDiscount`. Fix: `GET /orders/checkout-quote?governorateId&zoneId` returns the server's numbers
+for the saved cart — birthday and reward discounts from the same `orderDiscounts` helper that
+`create` uses (`preview` mode reads the same candidate without `FOR UPDATE` and never consumes), and
+totals from `domain/orderPricing.ts#priceOrder`, which `orderRepo.create` now also uses. «بيانات الطلب»
+loads the quote and re-fetches it on «متابعة» (a failure keeps the customer there with
+`orderSummaryLoadFailed`); «مراجعة الطلب» shows «خصم عيد الميلاد» and «خصم مزيّة المستوى» separately
+with the server total. Order details (app) and the dashboard order page show the persisted reward
+line. The consumption rules are unchanged: consumed only inside a successful creation transaction.
+Tests: `backend/tests/checkout-reward-visibility.test.ts`, `test/checkout_flow_test.dart`,
+`test/checkout_quote_test.dart`, `admin/src/pages/OrderDetailPage.test.tsx`.
+
+## 60.3 Kurdish search
+
+Root cause: `productRepo.search` compared the query only with `products.name` (Arabic) and franchise
+names — `name_ckb` was never searched — and compared raw code points, so equivalent Arabic/Kurdish
+letter forms failed silently. Migration `064_bilingual_search_fold.sql` adds `search_fold(text)`
+(NFKC; strips harakat, tatweel, ZWNJ/ZWJ/bidi marks and leftover combining marks; folds
+ي/ى/ې/ێ→ی, ك→ک, ه/ە/ھ/ة→ه, أ/إ/آ/ٱ→ا, ؤ/ۆ→و, ڵ→ل, ڕ→ر, Eastern digits→Western; `lower`),
+`search_like_pattern(q)` and a trigram index on `product_search_text(name, name_ckb)`. The query now
+matches the Arabic **and** Kurdish product name, active category/subcategory names (both languages)
+and franchise names, as one `UNION` of id sets so every branch uses its index (PERF-4 updated to
+`idx_products_search_trgm`). No keyword lists. Tests: `backend/tests/kurdish-search.test.ts`,
+`performance-audit.test.ts` (PERF-4). Open: two Kurdish suggestion chips (`پەیکەر`, `ئێکسسوارات`) use
+words the catalog does not (`فیگەر`, `ئەکسسوارات`) — already flagged in the Sorani review queue.
+**Superseded by STEP 61.3 (migration 066):** search is now scoped to the UI language and also matches
+descriptions; the mixed `product_search_text(name, name_ckb)` document and `idx_products_search_trgm`
+are dropped. `search_fold` / `search_like_pattern` are unchanged.
+
+## 60.4 Kurdish auth headers (login, register, forgot password)
+
+Measured with the real fonts: Kurdish glyphs fall back to Noto Sans Arabic (taller lines), the three
+Kurdish sentences need two lines at 13px, and «وشەی نهێنی لەبیرچوو» wraps to two lines at 26px — which
+pushed the forgot-password subtitle under the form card (bottom 206 vs card edge 186). `AuthScaffold`,
+Kurdish only: subtitle 11.5px / height 1.55, title on one line scaled down **only when it would not fit**.
+Arabic is untouched (13px / 1.7, two-line title). Test: `test/kurdish_auth_subtitle_layout_test.dart`.
+
+## 60.5 Blocking update screen
+
+Already present and state-enforced (`ForceUpdateGate` replaces the router tree). Completed: no
+character art on the screen (text/UI only); the admin message per language (`app_update_message_ckb`,
+dashboard field «رسالة التحديث (كردي)»; empty → the Kurdish default text, never the Arabic message);
+the server's `426 APP_UPDATE_REQUIRED` for any request now makes the gate re-check immediately
+(`ApiClient.onUpdateRequired` → `AppVersionRepository.serverRejections`) instead of waiting for the
+next resume. Tests: `test/force_update_test.dart`, `test/force_update_gate_test.dart`,
+`backend/tests/app-version.test.ts`.
+
+## 60.6 «رسوم الشخصيات» removed from the dashboard — characters are static assets
+
+Removed: dashboard page/route/menu item/API client/types (`VisualSlotsPage`, `visualsApi`,
+`types/visuals`, `utils/storeDay`), backend routes `/admin/visual-slots*` and `/catalog/visuals`
+with their controller/service/repository/validators, upload purpose `slot`, the media-reference
+entries, invariant I30, and the table (migration `065_retire_visual_slots.sql`; uploaded files and
+`media_files` rows are kept). App: `VisualsRepository`, the splash `visuals` step, `ManagedArtwork`
+→ `CharacterArtwork` (`Image.asset`).
+
+**Numbered assets (repaired 2026-09-27).** Every character image the app displays is one file in
+`assets/art/characters/`, named `1.png` … `38.png` with no gaps — **N = 38 = the number of unique
+images in use**. Locations that show the same picture reference the same number (no duplicate
+copies). The only mapping is `CharacterArt` (`lib/features/visuals/domain/visual_slot.dart`):
+`CharacterArt.assets` (every `VisualSlots` key → its file) plus five named constants for art that is
+not a slot location (splash backdrop ×2, the onboarding product photo, the empty-categories and
+empty-collection states). `CharacterArtwork(slot:)` renders the mapped file and nothing else — the
+old per-screen `fallbackAsset`/`artwork`/`ctaArtwork` paths were never displayed once every slot was
+mapped, and they pointed at files that no longer exist, so they were removed (the shared components
+now take either a slot or, for non-slot art, a direct path). `pubspec.yaml` declares only
+`assets/art/characters/`; `assets/art/opt/` and `assets/art/a-l-detective.png` are gone, and images
+that were only ever fallbacks (`a-i1`, `a-i3`, `trio-l`, `a-l-detective`) or unreferenced (`l`,
+`mikasa-l`) were not carried over. **To change a character, replace `N.png` with another image of the
+same name** — every location that references `N` changes; no code, dashboard, API or database
+change. Numbers are never reassigned; new art takes `N+1`. `7.png` and `9.png` contain JPEG data, as
+their sources did (Flutter decodes by content). Guards: `test/character_art_test.dart` (1…N without
+gaps, every file used and every mapped path present, fixed location→number table, shared images share
+a number, nothing left under `assets/art/` outside `characters/`, every pubspec asset exists, no stale
+path or descriptive name anywhere in `lib/`/`test/`, every file decodes — deliberately no content
+fingerprints), `test/visual_slot_contract_test.dart`, `test/offline_gate_test.dart`,
+`backend/tests/visual-slots-retired.test.ts`, `admin/src/layouts/nav.test.ts`.
+
+> **Superseded in part by STEP 63 (2026-09-28):** numbers 2, 4, 9, 10, 14, 22, 27, 36, 37 were
+> deleted and are now documented gaps (numbers are stable addresses, never reassigned or refilled);
+> the "1…N without gaps" rule became "no gap except a documented retired number". The table below is
+> the historical numbering record; the current mapping is in STEP 63.1.
+
+Mapping (source = the image copied at numbering, with the md5 of its bytes then):
+
+| N | Used by | Source | md5 |
+|---|---|---|---|
+| 1 | `VisualSlots.login` | `characters/login.png` | `ee997a7bb9cf82d7f86041a677913eb2` |
+| 2 | `VisualSlots.loginCta` | `opt/a-i4.png` | `a4330a327288469a4f350a44d669327b` |
+| 3 | `VisualSlots.registerHeader` | `characters/register-header.png` | `71b0e4e3e7a35fc1e562ca8ba1a76c2d` |
+| 4 | `VisualSlots.registerCta`, `VisualSlots.homePromoPrimary`, `VisualSlots.cartGuestPrompt`, `VisualSlots.favoritesGuestPrompt`, `CharacterArt.splashBackdropSmall` | `opt/a-i0.png` | `1b6656ea34790d3b22024c3a28578b85` |
+| 5 | `VisualSlots.registerPending` | `characters/register-pending.png` | `1c9b9a655bbec0099e79b79e0695e137` |
+| 6 | `VisualSlots.forgotPasswordHeader` | `characters/forgot-password-header.png` | `d789554a164ece07f8031af83d0952dd` |
+| 7 | `VisualSlots.forgotPasswordCta`, `CharacterArt.onboardingProductPhoto` | `opt/a-luffy-kid.png` | `d5b407cc52417a109f549dea615550ab` |
+| 8 | `VisualSlots.forgotPasswordPending` | `characters/forgot-password-pending.png` | `828ca53a3e7f6303d617777ca1d69cea` |
+| 9 | `VisualSlots.homeHero` | `characters/home-hero.jpg` | `2273d4ab98c37031e662a95f08060fa8` |
+| 10 | `VisualSlots.homePromoSecondary` | `opt/a-i6.png` | `fe4dd728d17b19c2a5551ff93096f0b3` |
+| 11 | `VisualSlots.homeDelivery` | `characters/home-delivery.png` | `0cefaa222f2005a8146a3b95f7a11586` |
+| 12 | `VisualSlots.emptyCart`, `VisualSlots.searchHeader` | `characters/empty-cart.png` | `57ec7a4e607531ce00fef6db9d6f04af` |
+| 13 | `VisualSlots.emptyFavorites` | `characters/empty-favorites.png` | `81fb626d0fdd69ba9cf0d146f0439613` |
+| 14 | `VisualSlots.categoriesHeader` | `characters/categories-header.png` | `f1fd629dc678ad396fea781e463f3842` |
+| 15 | `VisualSlots.categoryProductsHeader`, `VisualSlots.emptyCategoryProducts` | `characters/category-products-header.png` | `a8cc82a9c9bdb26fec61a0aa9f68a2ce` |
+| 16 | `VisualSlots.productDetail` | `characters/product-detail.png` | `ded8f233437572adc1f536fb49aef841` |
+| 17 | `VisualSlots.productDetailReviews` | `characters/product-detail-reviews.png` | `0757b2089daed72c9f38f3db8652ab14` |
+| 18 | `VisualSlots.emptySearch` | `characters/empty-search.png` | `0d868e17617b91ed40fff2f7b2b9b0f2` |
+| 19 | `VisualSlots.ordersHeader`, `VisualSlots.onboardingSlideThree` | `characters/orders-header.png` | `d03e35476ad370638f91e557a90047ba` |
+| 20 | `VisualSlots.emptyOrders` | `characters/empty-orders.png` | `398054d1dfdb1fbba92a7d4b140fa04c` |
+| 21 | `VisualSlots.orderSuccess` | `characters/order-success.png` | `0972cabe5e5cd3a1f11e54a3011597b0` |
+| 22 | `VisualSlots.deliveryConfirmation` | `characters/delivery-confirmation.png` | `789a8600c1c682ab5c121202c29a88b3` |
+| 23 | `VisualSlots.points` | `characters/points.png` | `cf9691de8eb021b83a791705cf499aee` |
+| 24 | `VisualSlots.communityHeader` | `characters/community-header.png` | `783341a4e54e9252b99374dd1330d10b` |
+| 25 | `VisualSlots.communityEmpty`, `VisualSlots.communityGallery` | `characters/community-empty.png` | `dcc29e986139b94e52bf5905953b4a65` |
+| 26 | `VisualSlots.productReviews` | `characters/product-reviews.png` | `bdbd6b61e0f7913c66a83497b373ac35` |
+| 27 | `VisualSlots.writeReview` | `characters/write-review.png` | `edf6885c7546f3d83514b19182a3300d` |
+| 28 | `VisualSlots.rateOrder` | `characters/rate-order.png` | `0456df3138ff692a8f82fb9ad7418abf` |
+| 29 | `VisualSlots.reviewSubmitted` | `characters/review-submitted.png` | `b345017780bdf8801547145fe6a40795` |
+| 30 | `VisualSlots.collectionsTab` | `characters/collections-tab.png` | `603c589d588c690136df99ef4be08ef3` |
+| 31 | `VisualSlots.notificationsHeader` | `characters/notifications-header.png` | `38fa49d78e785ed377a04ac9d006b8db` |
+| 32 | `VisualSlots.onboardingSlideOne` | `characters/onboarding-slide-one.png` | `7c2283913fe339d6c59b55f033293928` |
+| 33 | `VisualSlots.onboardingSlideTwo` | `characters/onboarding-slide-two.png` | `dafbfedf193b94b59f9898d22358fc3b` |
+| 34 | `VisualSlots.personalize` | `characters/personalize.png` | `275e9979f77171e6dc6fedac68cb3eaa` |
+| 35 | `VisualSlots.offlineGate` | `opt/a-i17.png` | `804109de07834c5bac2177df116296a0` |
+| 36 | `CharacterArt.splashBackdrop` | `opt/gojo-l.png` | `b1b875a8d1056c30323a8968582d733b` |
+| 37 | `CharacterArt.emptyCategories` | `opt/a-i2.png` | `799587c0a199ecbfb88949d4f123c76b` |
+| 38 | `CharacterArt.emptyCollection` | `opt/a-i5.png` | `dd457b707ee6f8844e2bb7c32ff47ee6` |
+
+## 60.7 Discount amounts rounded to 250 IQD (owner rule)
+
+**Rule.** Every *calculated* discount amount is `max(250, round(calculated / 250) × 250)` — nearest
+multiple of 250 IQD, half up, with 250 as the minimum resulting discount. A discount that does not
+exist (0) stays 0. Examples: 89/124/125/249/250/251/374 → 250; 375/499/500/501/624 → 500;
+625/650/749/750 → 750; 876 → 1 000. (The owner's example list read "374 → 500", which contradicts the
+stated formula and "500 only when mathematically closer"; 374 is 124 from 250 and 126 from 500, so the
+formula's 250 is implemented. Flip only with a new owner decision.)
+
+**One helper.** `backend/src/domain/discountRounding.ts` — `roundDiscountIqd` (the rule),
+`discountCeilingIqd` (largest multiple of 250 ≤ an amount), `DISCOUNT_STEP_IQD = 250`. It is applied to
+the *raw* calculated value, never to a value already rounded to the dinar (double rounding moved
+374.75 → 375 → 500):
+
+| Discount | Where | Before | Now |
+|---|---|---|---|
+| Birthday 5% | `domain/birthday.ts#birthdayDiscountAmount` | `Math.round` to 1 IQD | `roundDiscountIqd(total × 5 / 100)` |
+| Level reward (3/5/10%, capped) | `domain/galaxyPoints.ts#discountRewardAmount` | `Math.floor`, then cap | `roundDiscountIqd(min(raw, cap))`, never above `discountCeilingIqd(cap)` (every cap is a multiple of 250, so the cap is unchanged) |
+
+There is no coupon/promo-code system. Not in scope, unchanged: product prices, `previous_price` and
+the display-only `discountPercent`, delivery fees, the delivery promo (an admin-set amount capped at
+the fee, not a calculated discount), and the order total (still `products + payable delivery − discount`,
+unrounded).
+
+**Fitting (new, `domain/orderPricing.ts#fitProductDiscounts`).** With a 250 minimum a very cheap cart
+can receive more discount than its products total. Both discounts are therefore fitted into the
+largest multiple of 250 ≤ the products total: the birthday discount first (it is valid only on the
+day), the level reward takes what remains (claims never lapse, §40.9). A discount fitted to 0 is
+neither applied nor consumed — the reward stays claimed and the birthday discount stays available.
+A 250 IQD cart with both gets the birthday 250 and keeps the reward; a cart under 250 IQD gets no
+discount. `priceOrder`'s own clamp is unchanged and is now a no-op safety net. The birthday usage row
+records the amount actually applied (invariant I20 holds).
+
+**Quote = creation.** `orderService.orderDiscounts` (shared by `GET /orders/checkout-quote` in
+`preview` mode and `POST /orders` in `reserve` mode) returns the fitted, rounded amounts; creation
+persists exactly those (`orders.discount`, `orders.loyalty_discount`, `birthday_discount_usage.amount`),
+and the app's order screens and the dashboard display the persisted values (no client computes a
+discount). Orders created before this rule keep their snapshotted amounts — history is never recomputed.
+
+**Unchanged contracts.** CA-12: discounts are consumed only inside a successful creation transaction;
+a submit that fails (stock, validation, price) consumes nothing; a later rejection does not restore them.
+CA-14: `expectedPrices` mismatch → `409 PRODUCT_PRICE_CHANGED` before any discount is reserved.
+
+**Tests.** `backend/tests/discount-rounding.test.ts` (65): the boundary table; zero/negative/NaN; the
+stated formula and an exact BigInt oracle for every integer 1…200 000; every half-step boundary and the
+next double below it up to 100 000 125; birthday and every level against the oracle for every integer
+total (300 000 / 250 000), every birthday boundary total up to 1e9 ± 1, two-decimal totals around 41
+boundaries; caps; fitting; `priceOrder` not rounding the total; and over the API, quote vs creation
+vs persisted row vs customer order vs dashboard order vs birthday usage for boundary carts
+(birthday + reward, each alone, the 250 and <250 carts), a CA-12 failed submit and a CA-14 price change.
+Updated to the rule: `contract-closure.test.ts` and `domain-integrity-audit.test.ts` (3% of 20 000 =
+600 → 500), `checkout-reward-visibility.test.ts` (3% of 120 000 = 3 600 → 3 500),
+`birthday-fixed-discount.test.ts` (comment). Mutation: 9/9 mutants killed (double rounding, no minimum,
+half-down, ceiling rounding, no cap guard, fitting skipped, reward-first fitting, zero → 250, old floor).
+No migration, no schema change, no app or dashboard change.
+
+---
+
+# STEP 61 — BILINGUAL PRODUCT CONTENT: ARABIC + KURDISH NAME AND DESCRIPTION (2026-09-28)
+
+Every new product carries **four separate fields written by the admin**: Arabic name, Arabic
+description, Kurdish (Sorani, `ckb`) name, Kurdish description. No machine translation, no field that
+holds both languages. The server stays the source of truth; the app picks by its active language.
+
+## 61.1 Data model (migration `066_bilingual_product_content.sql`)
+
+- **No new Arabic columns.** `products.name`/`description` have been the Arabic columns since 046, with
+  `name_ckb`/`description_ckb` beside them. Copying Arabic into `name_ar` would create two sources for
+  one text; renaming `name` would touch every query, snapshot, search function and test insert for no
+  behaviour. The columns stay; their meaning is now written in the database (`COMMENT ON COLUMN`) and
+  explicit in the API (`nameAr`/`descriptionAr`/`nameCkb`/`descriptionCkb`).
+- **"Missing" has one form: `NULL`.** Blank `description_ckb` values were normalised to `NULL`, and
+  `products_description_ckb_not_blank` forbids blanks from now on (`name_ckb` was already guarded by 046).
+- **Existing products are not given invented Kurdish.** Whatever 047/the seed/the admin did not write
+  stays `NULL`. The requirement for all four fields sits at the API on **create**. A table CHECK was
+  rejected because a CHECK (even `NOT VALID`) is re-checked on every `UPDATE`: approving an order would
+  fail on the stock decrement of any legacy product without Kurdish.
+- `idx_products_missing_ckb` now covers `name_ckb IS NULL OR description_ckb IS NULL` (the dashboard filter).
+- **Order and review snapshots in both languages:** `order_items.product_name_ckb` and
+  `reviews.product_name_ckb` (nullable). They are frozen at order time like `product_name`; old rows are
+  **not** back-filled (copying today's Kurdish name into a past order would write history that did not
+  happen). `NULL` = no Kurdish snapshot, and the Arabic snapshot is shown.
+
+## 61.2 API contract
+
+- **Admin write** (`POST/PATCH /api/admin/products`): `nameAr`, `descriptionAr`, `nameCkb`,
+  `descriptionCkb`. Create requires all four (trimmed, non-empty; names 2..120, descriptions ≤3000; any
+  Unicode). Update: each field is independent — an absent field is untouched, a present one must be
+  non-empty (content can't be cleared; `null` is rejected). The retired keys `name`/`description` are
+  **rejected with a message naming the replacement**, not silently dropped (zod strips unknown keys, so
+  a cached old dashboard bundle would otherwise report "saved" while changing nothing).
+- **Product responses** (catalog list/home/search/detail, favorites, admin list): the four explicit
+  fields (`nameCkb`/`descriptionCkb` = `null` when missing) plus `kurdishMissing`. `name`/`description`
+  stay, resolved by the request language for older clients; they always equal the explicit pick.
+  Favorites are now language-resolved too (they returned Arabic to everyone).
+- Cart lines, cart-sync adjustments, order items, reviews, and restock subscriptions carry
+  `productNameAr`/`productNameCkb` (`nameAr`/`nameCkb`) next to the legacy Arabic `productName`/`name`.
+- Language transport is unchanged: `Accept-Language` → `resolveLocale` (no `?lang=`).
+- Restock ("back in stock", expected date) and review-approved notifications name the product in each
+  recipient's language. Checkout rejection messages (unavailable / price changed / stock) name it in
+  the request language.
+- Admin list: `missingKurdish=true` filter. The admin search also matches the Kurdish name.
+
+## 61.3 Search
+
+`language=ar` (Accept-Language) searches the Arabic name **and description**; `ckb` searches the
+Kurdish name and description. A Kurdish field that is missing on a legacy product is replaced by its
+Arabic text in the Kurdish document, because that is exactly what the Kurdish UI shows for it. Arabic
+and Kurdish text for the same field never share a document. Category/subcategory names match in the UI
+language (with the same fallback); franchise names (proper nouns, no Kurdish column) match in both.
+Ranking: displayed name matches first, then the displayed name, then id (stable pagination). One
+`UNION` of id sets, so a product matching by name + description + category appears once. Indexes:
+`idx_products_search_ar_trgm` / `idx_products_search_ckb_trgm` (GIN trigram on
+`product_search_text_ar(...)` / `product_search_text_ckb(...)`), the same strategy as 064 and asserted
+per language by PERF-4. The search endpoint still has no sort or category parameters (none existed).
+
+## 61.4 Dashboard
+
+Create/edit form: a «العربية» card (اسم المنتج بالعربي · وصف المنتج بالعربي) and a «الكردية» card
+(ناوی بەرهەم بە کوردی · وەسفی بەرهەم بە کوردی). Create: all four required (whitespace counts as empty),
+values trimmed. Edit: a field that already has content is required; a field missing on a legacy product
+is optional with a visible warning and is **not sent** while empty, so it stays `NULL`. The edit draft
+reads only the explicit fields (it used to read the public, language-resolved `name`, which a Kurdish
+browser could have saved into the Arabic column). The dashboard client sends `Accept-Language: ar` on
+every request (product options still come from the public detail endpoint). The product list shows
+both names, a «الكردية ناقصة» tag, and a «الكردية ناقصة فقط» filter.
+
+## 61.5 App
+
+`Product` has `nameAr`/`nameCkb`/`descriptionAr`/`descriptionCkb` (no single `name`); `BilingualText`
+(`lib/core/l10n/bilingual_text.dart`) is the one selection rule, exposed as
+`localizedProductName(product, context.language)` / `localizedProductDescription(...)`. It uses the
+same rule as the server's `pickLocalized`. `context.language` comes from `LocaleScope` (the app's
+chosen language, not the device's), so cards, rows, detail, cart, checkout, order details, the rating
+screen, community reviews and collections switch immediately on a language change without a refetch.
+`AnimeProductCard` and the rating card take a typed `Product` (they were `dynamic`, which hid
+`product.name as String` from the analyzer). Search re-runs on a language change because the match set
+depends on the language. Product detail shows `productKurdishMissingNote` (Kurdish UI only) when it
+displays Arabic in place of missing Kurdish. Product content never enters `AppStrings`; only that
+note does (queue + status counts updated to 529, still `NEEDS_NATIVE_REVIEW`).
+
+## 61.6 Tests
+
+- Backend: `tests/bilingual-product-content.test.ts` (43 tests): create with four fields, each missing /
+  blank field rejected with its own message, Unicode/ZWNJ round trip, retired keys rejected, per-language
+  updates isolated (and from price/stock), no clearing, explicit fields and `name` parity on
+  detail/list/favorites, legacy `null` + `kurdishMissing`, admin filter, Arabic/Kurdish name +
+  description search (full and partial), no cross-language matches, legacy fallback, no duplicates,
+  stable pagination, category branch per language, cart → order → review snapshots frozen across a
+  rename, checkout error and restock notification in the recipient's language.
+- Updated: `localization.test.ts` (new contract; DB rejects blank Kurdish), PERF-4 per language,
+  CD-8 for both names, and the create/patch payloads in six suites.
+- Mutation: backend 8/8, app 7/7, dashboard 4/4 mutants killed.
+- App: `test/bilingual_product_content_test.dart` (20). Dashboard: `ProductForm.test.tsx`,
+  `ProductNewPage.test.tsx`, `ProductEditPage.test.tsx`, `ProductsPage.test.tsx`, `productsApi.test.ts`.
+
+**Open.** Option names/values are still single-language on the admin form and are wiped of their
+Kurdish on every product save (pre-existing API-audit CA). Old app builds see `name` resolved as before.
+No Kurdish content has had native review.
+
+---
+
+# STEP 62 — DEV: HOME BANNER OVERFLOW · BANNER ART INSIDE THE CARD · «موسم المدرسة» REMOVED (2026-09-28)
+
+**Branch:** `dev`. No commit, push, merge, or deployment. **No backend, database or dashboard change** —
+none was needed (see 62.3).
+
+## 62.1 Banner architecture (as found)
+
+Backend-driven. `banners` (`placement` `hero`|`promo`, migration 030/035) → `GET /catalog/home`
+(`heroBanner` = first active hero, `promoBanners` = every active promo, admin order) → `HomeData` →
+`HomeHeroCard` / `HomePromoRail` (`home_compositions.dart`). The dashboard lists every row. The dev DB
+holds exactly one banner: a **hero** «اكتشف، اجمع، واستمتع!» with an uploaded transparent PNG
+(514×597), and **no promo banners**.
+
+## 62.2 The 13 px bottom overflow — root cause
+
+`_PromoCard`'s text `Column`. The card is fixed at `32 + 80 × textScale` (112 at 1.0), the text box
+is 104 wide (196 − 16 − 76) and 80 tall, and neither `Text` had a line limit. The dev banner's title
+in the promo rail wraps to **three** lines (3 × 24 = 72), plus the 4 px gap, plus an **empty
+subtitle `Text` that still lays out one 17.25 px line** = 93.25 → overflow 13.25, printed as
+"13 pixels". Reproduced exactly with the project fonts. The hero card cannot overflow (its height is
+content-driven); the promo card's Column is the only bounded flex in the banner UI.
+
+Fix, inside the card only: title `maxLines: 2`, subtitle `maxLines: 1` (both ellipsis), the
+subtitle and its gap are omitted when blank, and the text is clamped with
+`MediaQuery.withClampedTextScaling(maxScaleFactor: HomePromoRail.maxTextScale)` — the same 1.6 the
+height formula stops at, so text can no longer grow past the height reserved for it. Worst case
+(2 title lines + 1 subtitle line) is 69 px Arabic / 76 px Kurdish of the 80 available. The card
+geometry (196 × 112, 14 above) is unchanged. No scrolling, no clipping, no global padding change.
+
+## 62.3 «موسم المدرسة» — origin and removal
+
+**Not data.** A full `pg_dump --data-only` of the dev DB has zero matches; the dashboard never had
+it. It was a hardcoded fallback `_PromoCard` in `HomePromoRail`, shown whenever there were no
+`promo` banners — which is the dev DB's state, hence "in the app, not in the dashboard".
+
+Removed: the card, its keys `promoSchoolSeason` / `promoSchoolSeasonSub` (ar + ckb) and their two
+review-queue entries (queue 529 → 527, LOW 155 → 153 in `status.json` and `README.md`,
+`sorani-review-queue.md` regenerated). With no promo banners the rail now shows only the
+«خصومات فعّالة» card derived from real discounts, and with neither it collapses to nothing
+(`SizedBox.shrink`) instead of leaving a 126 px gap. Managed banners are untouched.
+
+Kept on purpose: migrations `029` and `053` mention the text as the old *location label* of the
+`home_promo_primary_character` slot row. They are applied history, and `065` drops `visual_slots`,
+so no live row carries it. `homePromoPrimary` stays — managed promo banner #1 still uses it.
+
+> **Superseded by STEP 63.1 (2026-09-28):** `homePromoPrimary` was removed with image 4. Managed promo
+> banner #1 now has no fallback character (it shows only its uploaded image); banners #2+ and the
+> «خصومات فعّالة» card still use `homePromoSecondary` (now image 29).
+
+## 62.4 Banner art — right and up, fully inside the card
+
+Before: `PositionedDirectional(bottom: -12, end: -34)` (hero) and `(bottom: -8, end: -18)` (promo),
+no width bound. In RTL `end` is the left edge, so the art hung 34/18 px past the left and 12/8 px
+past the bottom and the card's clip cut it off — the owner's PNG lost its cloak and hand.
+
+Now one `_BannerArt` (both cards) places the image in a box inset by **r·(1 − 1/√2)** on all four
+sides (hero r = 38 → 11.13 px; promo r = 30 → 8.79 px): the smallest equal inset that keeps the
+image's corner inside the rounded corner. `Align(bottomEnd)` gives loose constraints, so the requested
+height (168 / 110) is capped to what fits and the aspect-derived width to the card. Result: hero art
+moves ~45 px right and ~23 px up, keeps its 168 px height on phones (card 197 px), and only shrinks
+when a card is shorter (151.7 px on a 174 px tablet card) — it is never cropped. The promo art is
+capped at 94.4 px (card 112 − 2 × 8.79). The admin-image and fallback paths share the same box.
+
+## 62.5 Tests
+
+- `test/home_promo_rail_overflow_test.dart` (40): existing geometry/size/theme checks retargeted to
+  the discount card; the reported banner at 1.0/1.3/1.6/2.0 in both languages; blank subtitle not
+  laid out; line limits; full text at 1.0–1.3; promo art inside the rounded card at five sizes.
+- `test/home_hero_art_bounds_test.dart` (34, new): hero art inside the card and screen at six sizes
+  × two languages × fallback/dev banner; anchored at the inset (right/up of the old spot) with
+  168 px kept; shorter card shrinks, narrow card width-caps, 1.3× text, failed admin image.
+- `test/home_school_season_removed_test.dart` (12, new): dev `/catalog/home` payload renders without
+  the card in both languages; hero/promo banners parse and render in admin order; discount card and
+  empty-rail behaviour; no key/value in `AppStrings`; repo-wide scan (lib, test, tool,
+  docs/localization, admin/src, backend src/scripts/tests) finds no reference, and only migrations
+  029/053 mention it.
+- `test/visual_slot_contract_test.dart`: `homeHero` and `homePromoPrimary` left the two-line
+  exception list (each now consumed on one line).
+- Mutation: old art offsets (34 + 5 failures), unbounded text (12), no text clamp (4), card restored
+  (8 + 1) — every mutant killed, sources restored byte-for-byte.
+
+## 62.6 Validation
+
+- `flutter analyze`: no issues.
+- Banner suites: 40 + 34 + 12 pass; slot/art/l10n/home-screen guards (7 files): 96 pass;
+  `render_sorani_review_queue.dart --check`: in sync (527).
+- Full `flutter test`: 1322 passed, 4 skipped, 11 failed — all 11 in `api_integration_test.dart`,
+  which needs the backend on `:4000` (not running; its `setUpAll` skips without initialising its
+  `late` repositories, so each test throws `LateInitializationError`). Nothing else fails.
+- `flutter build apk --flavor dev -t lib/main_dev.dart`: built `app-dev-release.apk` (75.5 MB).
+
+# STEP 63 — DEV: CHARACTER ART CORRECTIONS · DUPLICATES MERGED · NINE IMAGES DELETED (2026-09-28)
+
+Owner-requested Flutter-only corrections to character art. No backend, database, API, orders or
+discounts change. `CharacterArt` (`lib/features/visuals/domain/visual_slot.dart`) stays the only
+mapping.
+
+## 63.1 Assets — 38 → 29 files, numbers kept
+
+Numbers are addresses the owner uses ("replace 14 with 38"), so nothing was renumbered; deleted numbers
+are **documented gaps** (`_retired` in `test/character_art_test.dart`), never refilled. New art takes
+the next number after the highest.
+
+- **Duplicates merged** (the same picture saved twice at different resolutions — byte-different, so the
+  2026-09-27 numbering kept both): 14 → **38** (`categoriesHeader`), 36 → **32** (`splashBackdrop`),
+  9 and 10 → **29** (`homeHero`, `homePromoSecondary`; 9 was a JPEG with a baked checkerboard), 2 → 34
+  (moot: 2's only location, the login form-card corner, was removed — §63.2).
+- **Deleted by the owner:** 4, 22, 27, 37 — with every location that showed them (§63.2).
+- **Remaining (29):** 1, 3, 5, 6, 7, 8, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 23, 24, 25, 26, 28,
+  29, 30, 31, 32, 33, 34, 35, 38. Shared: 12 (emptyCart, searchHeader), 15 (category products ×2),
+  19 (ordersHeader, onboarding slide 3), 25 (community ×2), 29 (homeHero, homePromoSecondary,
+  reviewSubmitted), 32 (onboarding slide 1, splash backdrop), 38 (categoriesHeader, emptyCollection).
+  `CharacterArt.fixed` = splashBackdrop (32), onboardingProductPhoto (7), emptyCollection (38).
+- **Removed slots:** `loginCta`, `registerCta`, `forgotPasswordCta`, `cartGuestPrompt`,
+  `favoritesGuestPrompt`, `homePromoPrimary`, `deliveryConfirmation`, `writeReview`; removed constants
+  `splashBackdropSmall`, `emptyCategories`. All listed as retired keys in
+  `test/visual_slot_contract_test.dart`.
+
+## 63.2 Screens
+
+| Request | Change |
+|---|---|
+| Image 1 slightly lower | Login `artworkBottom` −18 → −29. The square image is drawn `contain` inside its 138×196 box and floated 29 px above the box bottom, so the bust ended 11 px above the header's bottom edge; it now sits on it. Box size and x unchanged. |
+| Characters beside buttons | Removed: the form-card corner art on login/register/forgot password (`AuthScaffold.ctaSlot`/`ctaArtWidth` gone) and the guest-prompt art behind the login button (`AnimeGuestPrompt.artworkSlot` gone). **Kept:** the product-detail bottom-bar character above-left of «أضف للسلة» (17). Empty-state illustrations were not treated as "beside buttons". |
+| «طلباتي» | Header art 126 → 100.8 (`OrdersScreen.artScale` 0.8), `artworkEnd` 0 (was −40: 40 px past the left edge), and below the status bar (it was cropped at the top under the battery/network icons). |
+| «قيّم منتجات طلبك» | Header art 126 → 107.1 (`RateOrderScreen.artScale` 0.85), end offset scaled the same (−34) so the same share stays behind the left edge; top = status-bar inset (was −14, under the icons). New opt-in `OtakuScreenHeader.artworkBelowStatusBar`; other headers unchanged. |
+| «قيّم المنتج» | Header art (27) removed. |
+| «لنهيئ تجربتك» | Order is now title → divider → character → «اختر لغتك…» → language/appearance → continue. The character is the first list item under the divider (touching it), in a fixed 126×129 box, `topCenter` (new `CharacterArtwork.alignment`), so there is no layout jump before decode; everything is inside `SafeArea`. |
+| «الأقسام» | The screen-level `SafeArea` is removed for this screen only: header and art extend into the status-bar region; the header's internal `SafeArea` still keeps the title below the icons; the body gets `MediaQuery.removePadding(removeTop)`. Global `edgeToEdge` untouched. Empty state without art (37). |
+| Image 16 | Product detail: the PNG has ≈27 px of transparent margin at width 132 and the `Stack` clipped at the 18 px padding. `Stack(clipBehavior: none)` + `end: -18 - 23`: only transparent pixels overhang; the character starts ≈4 px from the edge. Size and top unchanged. |
+| 22 | Delivery-confirmation sheet: title row without art. |
+| 4 | Also removed from the first promo banner's fallback (no art when that banner has no uploaded image) and the small splash backdrop. |
+
+## 63.3 Tests
+
+- `test/character_art_test.dart`: gaps only at documented retired numbers; retired numbers absent and
+  unreferenced; new location→number tables; shared groups; replacement checks; stale-reference scan of
+  `lib/`, `test/`, `pubspec.yaml`; **no byte-identical files and no near-duplicates** (16×16 dHash,
+  threshold 40/256 — the four owner-found pairs measure 7/14/22/37, the closest distinct pair 51).
+- `test/character_art_placement_test.dart` (16, real screens, 24 px status bar): image 1 geometry; no
+  form-card/guest-prompt art; add-to-cart exception; «طلباتي» size/left/top; rate-order size/top/end
+  and default headers unchanged; write-review and delivery sheet without art; personalize hierarchy;
+  categories status-bar use, readable title, body padding, scoped system-UI; image 16 drawn inside
+  the edge (reads the PNG's alpha).
+- Updated: `visual_slot_contract_test`, `home_promo_rail_overflow_test`, `favorites_empty_state_test`,
+  `design_system_smoke_test`.
+- Mutation: each screen fix reverted in turn (login offset, orders end, rate-order status bar, image-16
+  overhang, categories `SafeArea`) — every one fails its test; a planted copy of 36/2/14/10 fails the
+  duplicate guard; a restored retired file and a stale reference fail their guards. Sources restored
+  byte-for-byte.
+- `test/bottom_nav_surface_test.dart`: the Categories tab has no `SafeArea` any more, so its two
+  guards now measure the screen's root column (still reaches the bottom behind the nav bar) and allow
+  "no SafeArea" for Categories only; re-adding a default `SafeArea` there still fails both.
+
+## 63.4 Validation
+
+- `flutter analyze`: no issues.
+- Focused: `character_art_test` 16, `character_art_placement_test` 16, `visual_slot_contract_test` 12,
+  `home_promo_rail_overflow_test` 40, `bottom_nav_surface_test` 6 — all pass.
+- Full `flutter test`: 1342 passed, 4 skipped, 11 failed — all 11 in `api_integration_test.dart`
+  (needs the backend on `:4000`; `LateInitializationError`, same as STEP 62). Nothing else fails.
+- `flutter build apk --flavor dev -t lib/main_dev.dart`: built `app-dev-release.apk` (73.7 MB, was 75.5);
+  the bundle holds exactly the 29 character files listed in §63.1.

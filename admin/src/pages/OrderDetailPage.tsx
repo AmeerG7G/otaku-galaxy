@@ -68,6 +68,7 @@ export default function OrderDetailPage() {
   }
 
   const order = orderQuery.data
+  const loyaltyDiscount = order.loyaltyDiscount ?? 0
 
   const itemColumns = [
     {
@@ -223,6 +224,25 @@ export default function OrderDetailPage() {
           <Descriptions.Item label="الخصم">
             {formatCurrency(order.discount)}
           </Descriptions.Item>
+          {/*
+            تفصيل الخصم من الصفّ المحفوظ نفسه (`loyalty_discount`) — لا اشتقاق
+            ولا حقل عرضٍ مصطنع: المسؤول يرى أن الزبون استعمل مزيّة مستواه
+            وبكم، والباقي خصم الميلاد.
+          */}
+          {loyaltyDiscount > 0 && (
+            <Descriptions.Item label="منه خصم مزيّة المستوى">
+              <Typography.Text type="success">
+                −{formatCurrency(loyaltyDiscount)}
+              </Typography.Text>
+            </Descriptions.Item>
+          )}
+          {loyaltyDiscount > 0 && order.discount - loyaltyDiscount > 0 && (
+            <Descriptions.Item label="منه خصم عيد الميلاد">
+              <Typography.Text type="success">
+                −{formatCurrency(order.discount - loyaltyDiscount)}
+              </Typography.Text>
+            </Descriptions.Item>
+          )}
           <Descriptions.Item label="التوصيل">
             {formatCurrency(order.deliveryFee)}
           </Descriptions.Item>

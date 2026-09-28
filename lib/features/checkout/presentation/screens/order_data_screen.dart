@@ -7,12 +7,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/design_system/design_system.dart';
+import '../../../../core/errors/app_exception.dart';
+import '../../../../core/utils/request_sequence.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../birthday/presentation/widgets/birthday_discount_card.dart';
 import '../../../cart/presentation/cubit/cart_cubit.dart';
 import '../../../cart/presentation/cubit/cart_state.dart';
+import '../../../orders/domain/entities/checkout_quote.dart';
 import '../../../orders/domain/entities/order_data.dart';
+import '../../../orders/domain/usecases/fetch_checkout_quote_usecase.dart';
 import '../../../products/domain/entities/governorate.dart';
+import '../../../products/domain/entities/product.dart';
 import '../../../products/domain/usecases/fetch_governorates_usecase.dart';
 import '../../../birthday/data/birthday_storage.dart';
 import '../../../../core/di/injection_container.dart';
@@ -34,13 +39,20 @@ class _OrderDataScreenState extends State<OrderDataScreen> with LocaleRefetch {
   String? _province;
   double? _deliveryCost;
 
-  /// خصم عيد الميلاد كما يقرّره الخادم. هذه معاينة للعرض فقط — الخادم
-  /// يعيد حسابه وتطبيقه عند إنشاء الطلب، والتطبيق لا يمنح خصماً أبداً.
-  double _discountFor(double productsTotal) {
-    final birthday = sl<BirthdayStorage>();
-    if (!birthday.isRewardAvailable) return 0;
-    return (productsTotal * birthday.discountPercent / 100).roundToDouble();
-  }
+  /// ملخّص الخادم للعربة الحالية — مصدر خصمَي الميلاد ومزيّة المستوى.
+  ///
+  /// [CRITICAL] كانت هذه الشاشة تحسب خصم الميلاد على العميل ولا تعرف مزيّة
+  /// المستوى أصلاً، فيطالب الزبون بالمزيّة ثم لا يراها في ملخّص طلبه بينما
+  /// يطبّقها الخادم عند الإنشاء (2026-09-27). الآن الخصومات أرقام الخادم
+  /// نفسها (`GET /orders/checkout-quote`)؛ و«متابعة» تطلب ملخّصاً جديداً
+  /// بالمحافظة والمنطقة المختارتين فتصل المراجعةَ أرقامُ الخادم كاملة.
+  CheckoutQuote? _quote;
+  final _quoteRequests = RequestSequence();
+
+  /// «متابعة» تنتظر ملخّص الخادم — حارسُ نقرةٍ مزدوجة.
+  bool _continuing = false;
+
+  double get _quotedDiscount => _quote?.discount ?? 0;
 
   // مناطق التوصيل تأتي من الخادم لكل محافظة. متى وُجدت مناطق، صار اختيار
   // المنطقة إلزامياً ورسمها هو المحتسب بدل رسم المحافظة — القائمة تبدأ
@@ -79,6 +91,7 @@ class _OrderDataScreenState extends State<OrderDataScreen> with LocaleRefetch {
   void initState() {
     super.initState();
     _loadGovernorates();
+    _refreshQuote();
     // نُحدّث حالة الميلاد من الخادم حتى لا نعرض خصماً استُهلك على جهاز آخر.
     sl<BirthdayStorage>().refresh().then((_) {
       if (mounted) setState(() {});
@@ -135,6 +148,20 @@ class _OrderDataScreenState extends State<OrderDataScreen> with LocaleRefetch {
     }
   }
 
+  /// يحمّل خصومات الملخّص من الخادم. فشلُها هنا صامت: الملخّص يعرض ما
+  /// يعرفه، و«متابعة» تعيد الطلب وتُظهر الخطأ بدل أن تمضي بلا أرقام الخادم.
+  Future<void> _refreshQuote() async {
+    final token = _quoteRequests.next();
+    final fetchQuote = context.read<FetchCheckoutQuoteUsecase>();
+    try {
+      final quote = await fetchQuote();
+      if (!mounted || !_quoteRequests.isCurrent(token)) return;
+      setState(() => _quote = quote);
+    } catch (_) {
+      // انظر «متابعة»: هناك يُطلب الملخّص ثانيةً ويُبلَّغ الزبون بالفشل.
+    }
+  }
+
   /// يحمّل مناطق المحافظة المختارة ويصفّر الاختيار السابق.
   Future<void> _loadZones(String governorateId) async {
     setState(() {
@@ -161,7 +188,8 @@ class _OrderDataScreenState extends State<OrderDataScreen> with LocaleRefetch {
     }
   }
 
-  void _continue() {
+  Future<void> _continue() async {
+    if (_continuing) return;
     final formValid = _formKey.currentState!.validate();
     // إعادة تقييم فورية لتظهر رسائل الحقول الناقصة فوراً عند الضغط.
     setState(() => _submitted = true);
@@ -173,10 +201,42 @@ class _OrderDataScreenState extends State<OrderDataScreen> with LocaleRefetch {
       return;
     }
 
+    // ملخّص الخادم بالمحافظة والمنطقة المختارتين — ما تعرضه المراجعة.
+    final fetchQuote = context.read<FetchCheckoutQuoteUsecase>();
+    final router = context.router;
+    _quoteRequests.next();
+    setState(() => _continuing = true);
+    final CheckoutQuote quote;
+    try {
+      quote = await fetchQuote(
+        governorateId: _governorateId,
+        zoneId: _selectedZone?.id,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _continuing = false);
+      final serverMessage = error is AppException
+          ? error.localizedMessage(context).trim()
+          : '';
+      showOtakuSnack(
+        context,
+        message: serverMessage.isNotEmpty
+            ? serverMessage
+            : context.strings('orderSummaryLoadFailed'),
+        tone: OtakuSnackTone.error,
+      );
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      _quote = quote;
+      _continuing = false;
+    });
+
     final cart = context.read<CartCubit>().state;
-    final items = cart.items;
-    // رسم المنطقة يسبق رسم المحافظة متى وُجدت مناطق.
-    final effectiveDelivery = _selectedZone?.deliveryFee ?? _deliveryCost ?? 0;
+    // رسم المنطقة يسبق رسم المحافظة متى وُجدت مناطق — والخادم هو المرجع.
+    final effectiveDelivery =
+        quote.deliveryFee ?? _selectedZone?.deliveryFee ?? _deliveryCost ?? 0;
 
     final orderData = OrderData(
       governorateId: _governorateId ?? '',
@@ -184,21 +244,19 @@ class _OrderDataScreenState extends State<OrderDataScreen> with LocaleRefetch {
       deliveryCost: effectiveDelivery,
       fullAddress: _addressController.text.trim(),
       // E.164 مطبَّعاً (يشمل الأرقام الشرقية) — ما يخزّنه الخادم ويعرضه.
-      phone:
-          normalizeIraqiPhone(
-            iraqiPhoneFromLocalDigits(_phoneController.text.trim()),
-          ) ??
-          iraqiPhoneFromLocalDigits(_phoneController.text.trim()),
-      items: items,
-      discount: _discountFor(
-        items.fold<double>(0, (sum, item) => sum + item.lineTotal),
-      ),
-      // معاينة فقط — الخادم يعيد حساب الخصم عند الإنشاء بنفس القاعدة.
-      deliveryDiscount: cart.deliveryDiscountFor(effectiveDelivery),
+      phone: normalizeIraqiPhone(_phoneController.text) ?? _phoneController.text.trim(),
+      items: cart.items,
+      // أرقام الخادم — الخصومات (ومنها مزيّة المستوى) والإجمالي كما سيُحفظ.
+      discount: quote.discount,
+      loyaltyDiscount: quote.loyaltyDiscount,
+      deliveryDiscount: quote.deliveryFee == null
+          ? cart.deliveryDiscountFor(effectiveDelivery)
+          : quote.deliveryDiscount,
+      quotedTotal: quote.total,
       zoneId: _selectedZone?.id,
       zoneName: _selectedZone?.name,
     );
-    context.router.push(OrderReviewRoute(orderData: orderData));
+    router.push(OrderReviewRoute(orderData: orderData));
   }
 
   @override
@@ -243,7 +301,7 @@ class _OrderDataScreenState extends State<OrderDataScreen> with LocaleRefetch {
                           final total =
                               subtotal +
                               (deliveryCost - deliveryDiscount) -
-                              _discountFor(subtotal);
+                              _quotedDiscount;
                           return _buildOrderSummary(
                             subtotal,
                             deliveryCost,
@@ -265,7 +323,7 @@ class _OrderDataScreenState extends State<OrderDataScreen> with LocaleRefetch {
                   final total =
                       state.total +
                       (deliveryCost - state.deliveryDiscountFor(deliveryCost)) -
-                      _discountFor(state.total);
+                      _quotedDiscount;
                   return _buildContinueButton(total);
                 },
               ),
@@ -402,20 +460,17 @@ class _OrderDataScreenState extends State<OrderDataScreen> with LocaleRefetch {
               hint: context.strings('phoneHintExample'),
               prefixIcon: Icons.phone_outlined,
               keyboardType: TextInputType.phone,
-              // §49.2: البادئة `07` ثابتة في الحقل والمستخدم يكتب التسعة التي تليها؛
-              // المُنسّق يُسقط `+964`/`00964`/`07` مما يُلصق بدل أن يقصّه.
-              prefixText: kIraqiLocalPrefix,
-              inputFormatters: const [IraqiLocalDigitsFormatter()],
+              // الرقم كاملاً كما يكتبه الزبون (`07701234567`) — لا بادئة `07` ثابتة ولا مُدرَجة؛
+              // المُنسّق يُبقي الأرقام وحدها، والحكم لقاعدة الموبايل العراقي ثم للخادم.
+              inputFormatters: const [IraqiPhoneInputFormatter()],
               textDirection: TextDirection.ltr,
               textInputAction: TextInputAction.next,
-              maxLength: kIraqiLocalDigits,
+              maxLength: kIraqiLocalPhoneLength,
               validator: (value) {
                 if (value == null || value.trim().isEmpty) {
                   return context.strings('phoneRequired');
                 }
-                if (!isValidIraqiPhone(
-                  iraqiPhoneFromLocalDigits(value.trim()),
-                )) {
+                if (!isValidIraqiLocalPhone(value)) {
                   return context.strings('phoneInvalid');
                 }
                 return null;
@@ -609,7 +664,7 @@ class _OrderDataScreenState extends State<OrderDataScreen> with LocaleRefetch {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              item.product.name,
+                              localizedProductName(item.product, context.language),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: Theme.of(context).textTheme.bodySmall
@@ -667,10 +722,17 @@ class _OrderDataScreenState extends State<OrderDataScreen> with LocaleRefetch {
                   context.strings('freeDelivery'),
                   valueColor: colors.success,
                 ),
-              if (_discountFor(subtotal) > 0)
+              if ((_quote?.birthdayDiscount ?? 0) > 0)
                 _buildPriceRow(
                   context.strings('birthdayDiscount'),
-                  '-${formatPrice(_discountFor(subtotal))}',
+                  '-${formatPrice(_quote!.birthdayDiscount)}',
+                  valueColor: colors.success,
+                ),
+              // خصم مزيّة المستوى المطالَب بها — من الخادم، كما سيُحفظ.
+              if ((_quote?.loyaltyDiscount ?? 0) > 0)
+                _buildPriceRow(
+                  context.strings('loyaltyRewardDiscount'),
+                  '-${formatPrice(_quote!.loyaltyDiscount)}',
                   valueColor: colors.success,
                 ),
               Divider(color: Theme.of(context).colorScheme.outlineVariant),
@@ -776,6 +838,7 @@ class _OrderDataScreenState extends State<OrderDataScreen> with LocaleRefetch {
                 child: AnimePrimaryButton(
                   label: context.strings('reviewOrder'),
                   onPressed: _continue,
+                  loading: _continuing,
                   height: AppDimens.buttonHeightXl,
                 ),
               ),

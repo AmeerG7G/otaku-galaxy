@@ -6,8 +6,22 @@ export interface ProductOption {
 
 export interface Product {
   id: string
+  /** العربية على مسارات الإدارة — حقلٌ قديم؛ النموذج يقرأ `nameAr` صراحةً. */
   name: string
   description: string
+  /**
+   * محتوى المنتج بلغتين — أربعة حقول مستقلة (هجرة ٠٦٦).
+   *
+   * `nameAr`/`descriptionAr` العربية، و`nameCkb`/`descriptionCkb` الكردية
+   * (سوراني، الرمز `ckb`). الكردية `null` = **ناقصة** (منتج أقدم من الإلزام)،
+   * لا نصٌّ فارغ ولا عربيٌّ منسوخ.
+   */
+  nameAr: string
+  descriptionAr: string
+  nameCkb: string | null
+  descriptionCkb: string | null
+  /** هل ينقص المنتجَ اسمٌ أو وصفٌ كردي؟ — حكم الخادم. */
+  kurdishMissing: boolean
   price: number
   stock: number
   /**
@@ -61,6 +75,8 @@ export interface ListProductsParams {
    */
   offer?: 'true' | 'false'
   selected?: 'true' | 'false'
+  /** `'true'` ← المنتجات التي ينقصها اسمٌ أو وصفٌ كردي وحدها. */
+  missingKurdish?: 'true'
 }
 
 export interface ProductOptionInput {
@@ -69,8 +85,11 @@ export interface ProductOptionInput {
 }
 
 export interface ProductCreatePayload {
-  name: string
-  description?: string
+  /** الأربعة إلزامية عند الإنشاء — الخادم يرفض الناقص والفارغ. */
+  nameAr: string
+  descriptionAr: string
+  nameCkb: string
+  descriptionCkb: string
   price: number
   categoryId: string
   subcategoryId?: string | null
@@ -93,8 +112,14 @@ export interface ProductCreatePayload {
 }
 
 export interface ProductUpdatePayload {
-  name?: string
-  description?: string
+  /**
+   * كل حقلٍ لغويٍّ مستقل: الغائب لا يُمسّ على الخادم. الحاضر نصٌّ غير فارغ —
+   * لا يُفرَّغ محتوى بالتعديل.
+   */
+  nameAr?: string
+  descriptionAr?: string
+  nameCkb?: string
+  descriptionCkb?: string
   price?: number
   categoryId?: string
   subcategoryId?: string | null
@@ -120,8 +145,25 @@ export interface ProductUpdatePayload {
 
 export interface PublicProduct {
   id: string
+  /**
+   * محسومان بلغة الطلب — **لا** يُقرآن في النموذج: لغة الطلب هنا ليست مضمونة
+   * العربية، فقراءتهما كانت ستضع الكردية في حقل العربية.
+   */
   name: string
   description: string
+  /**
+   * محتوى المنتج بلغتين — أربعة حقول مستقلة (هجرة ٠٦٦).
+   *
+   * `nameAr`/`descriptionAr` العربية، و`nameCkb`/`descriptionCkb` الكردية
+   * (سوراني، الرمز `ckb`). الكردية `null` = **ناقصة** (منتج أقدم من الإلزام)،
+   * لا نصٌّ فارغ ولا عربيٌّ منسوخ.
+   */
+  nameAr: string
+  descriptionAr: string
+  nameCkb: string | null
+  descriptionCkb: string | null
+  /** هل ينقص المنتجَ اسمٌ أو وصفٌ كردي؟ — حكم الخادم. */
+  kurdishMissing: boolean
   price: number
   stock: number
   /**
@@ -147,8 +189,14 @@ export interface PublicProduct {
 }
 
 export interface ProductFormDraft {
-  name: string
-  description: string
+  nameAr: string
+  descriptionAr: string
+  /**
+   * `''` لنصٍّ ناقص في منتجٍ قديم — الحقل يظهر فارغاً ليكمله المسؤول، ولا
+   * يُرسَل ما دام فارغاً (فيبقى «ناقصاً» على الخادم).
+   */
+  nameCkb: string
+  descriptionCkb: string
   price: number
   stock: number
   /**

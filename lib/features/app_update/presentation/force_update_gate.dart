@@ -18,6 +18,8 @@ import 'screens/force_update_screen.dart';
 /// - **إعادة التشغيل**: الحكم الأخير محفوظ محلياً ويُقرأ قبل أي نداء شبكة.
 /// - **العودة من الخلفية**: يُعاد الفحص عند كل استئناف، فرفعُ الحدّ الأدنى
 ///   يسري على تطبيقٍ مفتوحٍ منذ ساعات.
+/// - **رفضُ الخادم أثناء الاستعمال**: ردّ 426 `APP_UPDATE_REQUIRED` على أي طلب
+///   يعيد الفحص فوراً (`AppVersionRepository.serverRejections`).
 class ForceUpdateGate extends StatefulWidget {
   const ForceUpdateGate({
     super.key,
@@ -43,14 +45,20 @@ class _ForceUpdateGateState extends State<ForceUpdateGate>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    widget.repository.serverRejections.addListener(_onServerRejection);
     unawaited(_bootstrap());
   }
 
   @override
   void dispose() {
+    widget.repository.serverRejections.removeListener(_onServerRejection);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
+
+  /// الخادم رفض طلباً بسبب النسخة: الفحص يُعاد من الخادم نفسه — لا يُحجب
+  /// على الإشارة وحدها، فالإعداد المقروء هو الحكم كما في كل مسار آخر.
+  void _onServerRejection() => unawaited(_refresh());
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {

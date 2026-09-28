@@ -8,7 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:otaku_galaxy/core/design_system/design_system.dart';
 import 'package:otaku_galaxy/core/l10n/app_strings.dart';
 import 'package:otaku_galaxy/features/settings/presentation/screens/personalize_screen.dart';
-import 'package:otaku_galaxy/features/visuals/presentation/managed_artwork.dart';
+import 'package:otaku_galaxy/features/visuals/presentation/character_artwork.dart';
 import 'package:otaku_galaxy/features/settings/presentation/cubit/locale_cubit.dart';
 import 'package:otaku_galaxy/features/settings/presentation/cubit/theme_cubit.dart';
 import 'package:otaku_galaxy/features/settings/presentation/cubit/theme_state.dart';
@@ -157,7 +157,7 @@ void main() {
         // ما يراه العميل فعلاً: العنوان والوصف والرسم وزر المتابعة.
         expect(find.text(AppStrings.arabic('personalizeTitle')), findsOneWidget);
         expect(find.text(AppStrings.arabic('personalizeBody')), findsOneWidget);
-        expect(find.byType(ManagedArtwork), findsOneWidget);
+        expect(find.byType(CharacterArtwork), findsOneWidget);
         expect(find.text(AppStrings.arabic('continueLabel')), findsOneWidget);
         final body = tester.getSize(
           find.text(AppStrings.arabic('personalizeBody')),

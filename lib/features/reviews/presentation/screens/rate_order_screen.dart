@@ -7,6 +7,7 @@ import '../../../../core/design_system/design_system.dart';
 import '../../../../core/l10n/gender.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../orders/domain/entities/order.dart';
+import '../../../products/domain/entities/product.dart';
 import '../../domain/entities/review.dart';
 import '../cubit/reviews_cubit.dart';
 import '../widgets/review_status_chip.dart';
@@ -21,6 +22,9 @@ class RateOrderScreen extends StatefulWidget {
   const RateOrderScreen({super.key, required this.order});
 
   final Order order;
+
+  /// مقياس رسم الترويسة من مقاسه الافتراضي — أصغر ١٥٪.
+  static const double artScale = 0.85;
 
   @override
   State<RateOrderScreen> createState() => _RateOrderScreenState();
@@ -69,8 +73,18 @@ class _RateOrderScreenState extends State<RateOrderScreen> {
             OtakuScreenHeader(
               title: '⭐ ${context.g(GenderedStrings.rateOrderProducts)}',
               subtitle: context.strings('rateOrderSubtitle'),
-              artwork: 'assets/art/opt/a-i6.png',
               artworkSlot: VisualSlots.rateOrder,
+              // أصغر ١٥٪ من رسم الترويسة الافتراضي، ويبدأ تحت شريط الحالة
+              // (2026-09-28): كان رأس الشخصية يقع تحت أيقونات البطارية
+              // والشبكة. الإزاحة الأفقية تصغر بالنسبة نفسها فيبقى الجزء نفسه
+              // من الشخصية خلف الحافة اليسرى كما كان.
+              artworkWidth:
+                  OtakuScreenHeader.defaultArtworkWidth *
+                  RateOrderScreen.artScale,
+              artworkEnd:
+                  OtakuScreenHeader.defaultArtworkEnd *
+                  RateOrderScreen.artScale,
+              artworkBelowStatusBar: true,
               onBack: () => context.router.maybePop(),
             ),
             Expanded(
@@ -88,7 +102,12 @@ class _RateOrderScreenState extends State<RateOrderScreen> {
                                 WriteReviewRoute(
                                   orderId: widget.order.id,
                                   productId: item.product.id,
-                                  productName: item.product.name,
+                                  // عنوانٌ للعرض وحده (الخادم يأخذ لقطة الاسم
+                                  // من الطلب) — بلغة الواجهة لحظة الفتح.
+                                  productName: localizedProductName(
+                                    item.product,
+                                    context.language,
+                                  ),
                                 ),
                               ),
                             ),
@@ -123,7 +142,7 @@ class _ProductReviewCard extends StatelessWidget {
     required this.onTap,
   });
 
-  final dynamic product;
+  final Product product;
   final Review? review;
   final VoidCallback onTap;
 
@@ -132,7 +151,7 @@ class _ProductReviewCard extends StatelessWidget {
     final theme = Theme.of(context);
     // التقييم المعتمد أو قيد المراجعة لا يُفتح للتعديل — المرفوض فقط يُعدَّل.
     final canEdit = review == null || review!.status == ReviewStatus.rejected;
-    final images = product.images as List<String>;
+    final images = product.images;
 
     return OtakuPanel(
       padding: const EdgeInsets.all(15),
@@ -163,7 +182,7 @@ class _ProductReviewCard extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      product.name as String,
+                      localizedProductName(product, context.language),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodyMedium?.copyWith(

@@ -14,6 +14,7 @@ class AppVersionConfig {
     this.androidStoreUrl = '',
     this.iosStoreUrl = '',
     this.updateMessage = '',
+    this.updateMessageCkb = '',
   });
 
   final String minimumSupportedVersion;
@@ -21,6 +22,10 @@ class AppVersionConfig {
   final String androidStoreUrl;
   final String iosStoreUrl;
   final String updateMessage;
+
+  /// رسالة المسؤول بالكردية — فارغةً تُعرض الرسالة الكردية الافتراضية، لا
+  /// رسالته العربية.
+  final String updateMessageCkb;
 
   /// الإعداد الفارغ = «لا حدّ أدنى» = لا حجب. هو حالة ما قبل الضبط وحالة
   /// فشل القراءة معاً، عمداً: كلتاهما «لا أعرف»، و«لا أعرف» لا تحجب.
@@ -34,6 +39,7 @@ class AppVersionConfig {
       androidStoreUrl: read('androidStoreUrl'),
       iosStoreUrl: read('iosStoreUrl'),
       updateMessage: read('updateMessage'),
+      updateMessageCkb: read('updateMessageCkb'),
     );
   }
 
@@ -43,6 +49,7 @@ class AppVersionConfig {
     'androidStoreUrl': androidStoreUrl,
     'iosStoreUrl': iosStoreUrl,
     'updateMessage': updateMessage,
+    'updateMessageCkb': updateMessageCkb,
   };
 
   /// رابط المتجر الموافق للمنصّة الحالية.

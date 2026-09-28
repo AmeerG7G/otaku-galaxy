@@ -18,7 +18,7 @@ import '../../../reviews/presentation/cubit/reviews_cubit.dart';
 import '../../../products/domain/entities/category.dart';
 import '../../../products/domain/usecases/fetch_categories_usecase.dart';
 import '../../../visuals/domain/visual_slot.dart';
-import '../../../visuals/presentation/managed_artwork.dart';
+import '../../../visuals/presentation/character_artwork.dart';
 
 /// المجتمع بتصميم Otaku Galaxy v2.
 ///
@@ -159,9 +159,8 @@ class _CommunityScreenState extends State<CommunityScreen> with LocaleRefetch {
             end: -40,
             child: IgnorePointer(
               // بلا شفافية — الشخصية كما صورتها (قرار 2026-09-15).
-              child: const ManagedArtwork(
+              child: const CharacterArtwork(
                 slot: VisualSlots.communityGallery,
-                fallbackAsset: 'assets/art/opt/a-i0.png',
                 width: 120,
               ),
             ),
@@ -276,7 +275,6 @@ class _CommunityScreenState extends State<CommunityScreen> with LocaleRefetch {
         title: context.strings('beFirstToShareTitle'),
         subtitle:
             context.strings('beFirstToShareBody'),
-        artwork: 'assets/art/opt/a-i4.png',
         artworkSlot: VisualSlots.communityEmpty,
         actionLabel: isLoggedIn ? context.strings('shareYourExperience') : null,
         onAction: isLoggedIn
@@ -393,7 +391,7 @@ class _MyPhotoStatusBanners extends StatelessWidget {
                     WriteReviewRoute(
                       orderId: rejected.orderId,
                       productId: rejected.productId,
-                      productName: rejected.productName,
+                      productName: rejected.productNames.of(context.language),
                     ),
                   ),
                 ),
@@ -632,7 +630,7 @@ class _PhotoTile extends StatelessWidget {
                   ),
                 ),
                 child: Text(
-                  review.productName,
+                  review.productNames.of(context.language),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.labelSmall?.copyWith(
@@ -686,9 +684,8 @@ class _EmptyCategoryState extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-            ManagedArtwork(
+            CharacterArtwork(
               slot: VisualSlots.communityHeader,
-              fallbackAsset: 'assets/art/opt/a-i1.png',
               height: 150,
             ),
             const SizedBox(height: 16),
@@ -831,7 +828,7 @@ class _CustomerPhotoViewerState extends State<CustomerPhotoViewer> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    current.productName,
+                    current.productNames.of(context.language),
                     style: theme.textTheme.titleMedium?.copyWith(
                       fontFamily: 'Tajawal',
                       fontWeight: AppDimens.weightExtraBold,

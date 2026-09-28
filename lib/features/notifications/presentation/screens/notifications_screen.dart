@@ -116,7 +116,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       return AnimeEmptyState(
         title: context.strings('noNotificationsTitle'),
         subtitle: context.strings('noNotificationsBody'),
-        artwork: 'assets/art/opt/a-i3.png',
         artworkSlot: VisualSlots.notificationsHeader,
         centered: true,
         artworkHeight: 180,

@@ -15,6 +15,8 @@ export interface AppVersionConfig {
   androidStoreUrl: string;
   iosStoreUrl: string;
   updateMessage: string;
+  /** رسالة التحديث بالكردية — يختار التطبيق بين الاثنتين بلغة واجهته. */
+  updateMessageCkb: string;
 }
 
 const EMPTY: AppVersionConfig = {
@@ -23,6 +25,7 @@ const EMPTY: AppVersionConfig = {
   androidStoreUrl: '',
   iosStoreUrl: '',
   updateMessage: '',
+  updateMessageCkb: '',
 };
 
 /**
@@ -53,6 +56,7 @@ export const appVersionService = {
         androidStoreUrl: settings.app_android_store_url,
         iosStoreUrl: settings.app_ios_store_url,
         updateMessage: settings.app_update_message,
+        updateMessageCkb: settings.app_update_message_ckb,
       };
     } catch {
       // [CRITICAL] تعذّر قراءة الإعداد ليس سبباً لحجب أحد. الإعداد الفارغ

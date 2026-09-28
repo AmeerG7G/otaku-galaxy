@@ -18,6 +18,7 @@ import { config } from '../config/index.js';
 import type { NotificationType, OrderStatus } from '../types/index.js';
 import type { Gender } from '../types/index.js';
 import { Errors } from '../utils/errors.js';
+import type { ProductNames } from '../utils/locale.js';
 import { orderService } from './orderService.js';
 import { restockService } from './restockService.js';
 import { renumberPlacement, type AssignedOrder, type PlacementRow } from '../utils/bannerOrder.js';
@@ -130,8 +131,11 @@ async function assertSubcategoryBelongs(
 export const adminService = {
   // ===== المنتجات =====
   async createProduct(input: {
-    name: string;
-    description: string;
+    /** المحتوى بلغتين (066) — الأربعة إلزامية ومقصوصة في المدقّق. */
+    nameAr: string;
+    descriptionAr: string;
+    nameCkb: string;
+    descriptionCkb: string;
     price: number;
     categoryId: string;
     subcategoryId?: string | null;
@@ -152,13 +156,14 @@ export const adminService = {
         `INSERT INTO products (
            name, description, price, category_id, subcategory_id, stock,
            is_offer, is_selected, previous_price, has_delivery_promo,
-           delivery_promo_amount, restock_at
+           delivery_promo_amount, restock_at, name_ckb, description_ckb
          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
          RETURNING *`,
         [
-          input.name,
-          input.description,
+          // `name`/`description` هما العمودان العربيان (046، موثَّقان في 066).
+          input.nameAr,
+          input.descriptionAr,
           input.price,
           input.categoryId,
           input.subcategoryId ?? null,
@@ -171,6 +176,8 @@ export const adminService = {
           // كان الترويج مطفأً بدل تمرير قيمة متناقضة.
           input.hasDeliveryPromo ? (input.deliveryPromoAmount ?? 0) : 0,
           input.restockAt ?? null,
+          input.nameCkb,
+          input.descriptionCkb,
         ],
       );
       const product = rows[0]!;
@@ -208,15 +215,17 @@ export const adminService = {
     subcategoryId?: string;
     offer?: boolean;
     selected?: boolean;
+    missingKurdish?: boolean;
   }) {
     // `includeInactive` هو الفارق عن القائمة العامة: المسؤول يدير المنتجات
     // المعطّلة أيضاً — بما فيها المرفوعة كعروض — لا النشطة وحدها.
-    const { offer, selected, q, ...rest } = options;
+    const { offer, selected, q, missingKurdish, ...rest } = options;
     return productRepo.list(db, {
       ...rest,
       ...(q !== undefined ? { query: q } : {}),
       ...(offer !== undefined ? { isOffer: offer } : {}),
       ...(selected !== undefined ? { isSelected: selected } : {}),
+      ...(missingKurdish === true ? { missingKurdish: true } : {}),
       includeInactive: true,
     });
   },
@@ -224,8 +233,14 @@ export const adminService = {
   async updateProduct(
     id: string,
     input: {
-      name?: string;
-      description?: string;
+      /**
+       * كل حقلٍ لغويٍّ مستقل (066): الغائب لا يُمسّ. تعديل العربية يكتب
+       * عمودَي العربية وحدهما، والكردية عمودَيها وحدهما — لا نسخ بين لغتين.
+       */
+      nameAr?: string;
+      descriptionAr?: string;
+      nameCkb?: string;
+      descriptionCkb?: string;
       price?: number;
       categoryId?: string;
       subcategoryId?: string | null;
@@ -266,6 +281,8 @@ export const adminService = {
       const fields = [
         'name',
         'description',
+        'name_ckb',
+        'description_ckb',
         'price',
         'category_id',
         'subcategory_id',
@@ -279,8 +296,10 @@ export const adminService = {
         'restock_at',
       ] as const;
       const map: Record<string, unknown> = {
-        name: input.name,
-        description: input.description,
+        name: input.nameAr,
+        description: input.descriptionAr,
+        name_ckb: input.nameCkb,
+        description_ckb: input.descriptionCkb,
         price: input.price,
         category_id: input.categoryId,
         subcategory_id: input.subcategoryId,
@@ -311,6 +330,13 @@ export const adminService = {
         await tx.query(`UPDATE products SET ${sets.join(', ')} WHERE id = $1`, values);
       }
 
+      // اسم المنتج بلغتيه **بعد** هذا الحفظ — الإشعار يصل كل مشترك بلغته
+      // (`restockService`)، والاسم الذي عدّله المسؤول للتوّ هو الصحيح.
+      const names: ProductNames = {
+        ar: input.nameAr ?? existing.nameAr,
+        ckb: input.nameCkb ?? existing.nameCkb,
+      };
+
       // عودة المخزون من صفر إلى ما فوق: إشعارات المشتركين وفراغ اشتراكاتهم
       // داخل معاملة التحديث نفسها — إمّا كاملة أو لا شيء.
       const cameBackInStock =
@@ -319,7 +345,7 @@ export const adminService = {
       if (cameBackInStock) {
         // إشعارات المشتركين وفراغ اشتراكاتهم ومسح الموعد المتوقَّع — التعريف
         // نفسه الذي يستعمله رفضُ طلبٍ مقبول حين يُرجع القطعة.
-        await restockService.stockReturned(tx, id, existing.name);
+        await restockService.stockReturned(tx, id, names);
       } else if (input.restockAt !== undefined) {
         // ═══ تغيّر موعد التوفر المتوقَّع ═══
         //
@@ -338,7 +364,7 @@ export const adminService = {
         if (changed && nextRestockAt !== null) {
           await restockService.notifyExpectedRestock(tx, {
             productId: id,
-            productName: input.name ?? existing.name,
+            productNames: names,
             restockAt: nextRestockAt,
             updated: previousRestockAt !== null,
           });

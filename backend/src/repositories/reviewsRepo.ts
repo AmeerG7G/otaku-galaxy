@@ -1,5 +1,6 @@
 import type pg from 'pg';
 import type { Paginated, ReviewDto, ReviewRow, ReviewStatus } from '../types/index.js';
+import { kurdishOrNull } from '../utils/locale.js';
 
 /** يحوّل صف قاعدة البيانات إلى الشكل الذي يتوقعه تطبيق فلاتر. */
 export function shapeReview(row: ReviewRow): ReviewDto {
@@ -8,6 +9,9 @@ export function shapeReview(row: ReviewRow): ReviewDto {
     // المنتج قد يكون محذوفاً؛ التقييم يبقى تاريخياً بسلسلة فارغة.
     productId: row.product_id ?? '',
     productName: row.product_name,
+    // لقطتا الاسم باللغتين من لقطة سطر الطلب (066). تقييمٌ أقدم بلا كردية.
+    productNameAr: row.product_name,
+    productNameCkb: kurdishOrNull(row.product_name_ckb),
     orderId: row.order_id,
     rating: row.rating,
     comment: row.comment,
@@ -104,6 +108,8 @@ export const reviewRepo = {
       orderId: string;
       productId: string;
       productName: string;
+      /** لقطة الاسم الكردي من سطر الطلب — `null` إن لم تكن للطلب كردية. */
+      productNameCkb: string | null;
       rating: number;
       comment: string;
       photoUrls: string[];
@@ -112,8 +118,9 @@ export const reviewRepo = {
   ) {
     const { rows } = await db.query<ReviewRow>(
       `INSERT INTO reviews
-         (user_id, order_id, product_id, product_name, rating, comment, photo_urls, customer_name)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         (user_id, order_id, product_id, product_name, rating, comment, photo_urls,
+          customer_name, product_name_ckb)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING *`,
       [
         input.userId,
@@ -124,6 +131,7 @@ export const reviewRepo = {
         input.comment,
         input.photoUrls,
         input.customerName,
+        input.productNameCkb,
       ],
     );
     return shapeReview(rows[0]!);

@@ -14,9 +14,9 @@ import 'package:otaku_galaxy/features/products/domain/entities/product.dart';
 
 Product _product({int stock = 0, DateTime? restockAt}) => Product(
   id: 'p1',
-  name: 'مجسم ون بيس',
+  nameAr: 'مجسم ون بيس',
   price: 25000,
-  description: 'وصف',
+  descriptionAr: 'وصف',
   images: const [],
   stock: stock,
   restockAt: restockAt,

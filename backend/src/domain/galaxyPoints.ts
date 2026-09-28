@@ -13,6 +13,8 @@
  * تعريفان يتباعدان.
  */
 
+import { discountCeilingIqd, roundDiscountIqd } from './discountRounding.js';
+
 // ═══════════════ نقاط الشراء ═══════════════
 
 /** كل ١٠٬٠٠٠ دينار من قيمة الشراء المؤهَّلة تمنح ٥ نقاط. */
@@ -324,13 +326,22 @@ export function placeOnLadder(balance: number) {
  * قيمة خصم المزيّة على مجموع منتجات.
  *
  * السقف يُطبَّق بعد النسبة دائماً: ١٠٪ من مليون دينار هي ١٠٠٬٠٠٠، والمزيّة
- * تعطي ٢٠٬٠٠٠ لا غير. التقريب نازل حتى لا يُنشئ الكسرُ ديناراً من العدم.
+ * تعطي ٢٠٬٠٠٠ لا غير. ثم قاعدة الخصم الواحدة (`roundDiscountIqd`: أقرب ٢٥٠،
+ * وأدناه ٢٥٠) على القيمة الخام — كان التقريب نازلاً إلى دينار، وقاعدة الـ٢٥٠
+ * قرار المالك (2026-09-27).
+ *
+ * [CRITICAL] السقف حدٌّ لا يُتجاوز: التقريب صعوداً لا يعبره. سقوف السلّم
+ * مضاعفاتٌ لـ٢٥٠ فلا يمسّها التقريب؛ `discountCeilingIqd` يحرس سقفاً غير ذلك
+ * لو جاء من صفّ مطالبةٍ قديم.
  */
 export function discountRewardAmount(
   reward: DiscountReward,
   productsTotal: number,
 ): number {
   if (!Number.isFinite(productsTotal) || productsTotal <= 0) return 0;
-  const raw = Math.floor((productsTotal * reward.percent) / 100);
-  return Math.max(0, Math.min(raw, reward.capAmount));
+  const raw = (productsTotal * reward.percent) / 100;
+  return Math.min(
+    roundDiscountIqd(Math.min(raw, reward.capAmount)),
+    discountCeilingIqd(reward.capAmount),
+  );
 }

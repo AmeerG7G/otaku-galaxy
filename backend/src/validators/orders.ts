@@ -52,6 +52,16 @@ export const createOrderSchema = z.object({
     .optional(),
 });
 
+/**
+ * معاينة الدفع (`GET /orders/checkout-quote`) — المحافظة والمنطقة اختياريتان:
+ * قبل اختيارهما تُعاد الخصومات وحدها، وبعده رسوم التوصيل والإجمالي أيضاً.
+ * لا مبلغ يُقبل من العميل هنا إطلاقاً.
+ */
+export const checkoutQuoteSchema = z.object({
+  governorateId: z.string().uuid('اختر محافظة صالحة').nullish(),
+  zoneId: z.string().uuid('منطقة التوصيل غير صالحة').nullish(),
+});
+
 export const orderIdParamSchema = z.object({
   id: z.string().uuid('معرّف طلب غير صالح'),
 });

@@ -3,7 +3,7 @@ import '../../../../core/l10n/app_strings.dart';
 
 import '../../../../core/design_system/design_system.dart';
 import '../../../visuals/domain/visual_slot.dart';
-import '../../../visuals/presentation/managed_artwork.dart';
+import '../../../visuals/presentation/character_artwork.dart';
 
 /// تركيبات شرائح التعريف الثلاث.
 ///
@@ -141,27 +141,22 @@ class OnboardingSlideText extends StatelessWidget {
 class _Art extends StatelessWidget {
   const _Art({
     required this.slot,
-    required this.asset,
     this.height,
     this.width,
   });
 
-  /// فتحة هذه الشريحة بعينها — كل شريحة تُدار وحدها من اللوحة.
+  /// موضع هذه الشريحة بعينها — لكل شريحة صورتها الثابتة في `CharacterArt`.
   final String slot;
 
-  final String asset;
   final double? height;
   final double? width;
 
   @override
   Widget build(BuildContext context) {
-    // الإطار الأول مضمَّن دائماً: [ManagedArtwork] يرسم الأصل المحلي فوراً
-    // ولا يبدّله إلا بعد وصول الإعداد وتحميل الصورة. شاشات الترحيب تسبق
-    // أول نداء ناجح، فلا يجوز أن تنتظر شبكة.
+    // أصلٌ مضمَّن في الحزمة: شاشات الترحيب تسبق أول نداء ناجح، فلا تنتظر شبكة.
     return IgnorePointer(
-      child: ManagedArtwork(
+      child: CharacterArtwork(
         slot: slot,
-        fallbackAsset: asset,
         height: height,
         width: width,
       ),
@@ -225,7 +220,6 @@ class OnboardingSlideOne extends StatelessWidget {
               start: -30,
               child: _Art(
                 slot: VisualSlots.onboardingSlideOne,
-                asset: 'assets/art/opt/gojo-l.png',
                 height: constraints.maxHeight * 0.78,
               ),
             ),
@@ -375,7 +369,6 @@ class OnboardingSlideTwo extends StatelessWidget {
                 // فيملأ أسفل الشريحة ويُقصّ من الأعلى.
                 child: _Art(
                   slot: VisualSlots.onboardingSlideTwo,
-                  asset: 'assets/art/opt/trio-l.png',
                   width: constraints.maxWidth * 1.32,
                 ),
               ),
@@ -419,14 +412,15 @@ class OnboardingSlideTwo extends StatelessWidget {
                       // ولا تتجاوزها.
                       clipBehavior: Clip.antiAlias,
                       child: Image.asset(
-                        'assets/art/opt/a-luffy-kid.png',
+                        CharacterArt.onboardingProductPhoto,
                         // `cover` يملأ الفتحة بلا تشويه نسب الصورة؛ الفتحة
                         // عريضة (٩٤×٥٢) والأصل أقرب للمربّع، فالقصّ رأسي.
                         fit: BoxFit.cover,
-                        // الوجه في أعلى الأصل — المحاذاة للأعلى تُبقيه داخل
-                        // القصّ بدل أن يُقتطع نصفه. (الأصل مختار في الخطوة ٣٠
+                        // القطعة المقصودة (القلادة) في وسط الأصل الرأسي، لا
+                        // أعلاه — المحاذاة العلوية كانت تُظهر الخلفية فوقها
+                        // وتقصّها هي بالذات. (الأصل مختار في الخطوة ٣٠
                         // بقرارٍ مؤكَّد؛ أُبقي عليه هنا ولم يُستبدل.)
-                        alignment: Alignment.topCenter,
+                        alignment: Alignment.center,
                         filterQuality: FilterQuality.medium,
                         // أصلٌ حُذف من الحزمة سهواً يجب أن يترك الفتحة كما
                         // كانت (خلفية ورمز) لا أن يُسقط الشريحة كلها.
@@ -455,7 +449,9 @@ class OnboardingSlideTwo extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 6),
-                    const _Bar(widthFactor: 0.52, color: AppColors.secondary),
+                    // أطول من صفّ النجوم الخمس (‎٠٫٥٢‎ كانت أقصر منه) كي
+                    // يمتدّ الفاصل تحتها بصرياً لا نصفها فقط.
+                    const _Bar(widthFactor: 0.92, color: AppColors.secondary),
                   ],
                 ),
               ),
@@ -590,11 +586,12 @@ class OnboardingSlideThree extends StatelessWidget {
             ),
             PositionedDirectional(
               bottom: -10,
-              end: 50,
+              // ملاصقٌ لليسار الفيزيائي (كان بعيداً عنه ٥٠) وأصغر بمقدار
+              // ٪٢٠ كي يبقى كاملاً داخل الشريحة.
+              end: 0,
               child: _Art(
                 slot: VisualSlots.onboardingSlideThree,
-                asset: 'assets/art/opt/a-i0.png',
-                height: constraints.maxHeight * 0.945,
+                height: constraints.maxHeight * 0.756,
               ),
             ),
 

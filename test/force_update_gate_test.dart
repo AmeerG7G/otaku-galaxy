@@ -11,6 +11,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otaku_galaxy/core/design_system/design_system.dart';
+import 'package:otaku_galaxy/core/errors/app_exception.dart';
 import 'package:otaku_galaxy/core/network/api_client.dart';
 import 'package:otaku_galaxy/features/app_update/data/app_version_repository.dart';
 import 'package:otaku_galaxy/features/app_update/data/installed_version.dart';
@@ -27,6 +28,9 @@ class _ConfigAdapter implements HttpClientAdapter {
   bool fail = false;
   int calls = 0;
 
+  /// الخادم يرفض كل طلبٍ غير إعداد النسخة بـ426 — كما يفعل وسيط النسخة.
+  bool rejectOthers = false;
+
   @override
   Future<ResponseBody> fetch(
     RequestOptions options,
@@ -38,6 +42,16 @@ class _ConfigAdapter implements HttpClientAdapter {
       throw DioException.connectionError(
         requestOptions: options,
         reason: 'الشبكة مقطوعة',
+      );
+    }
+    if (rejectOthers && !options.path.endsWith('/app-version')) {
+      return ResponseBody.fromString(
+        '{"success":false,"error":{"code":"APP_UPDATE_REQUIRED"},'
+        '"message":"يلزم تحديث التطبيق للمتابعة"}',
+        426,
+        headers: {
+          Headers.contentTypeHeader: [Headers.jsonContentType],
+        },
       );
     }
     return ResponseBody.fromString(
@@ -55,14 +69,18 @@ class _ConfigAdapter implements HttpClientAdapter {
   void close({bool force = false}) {}
 }
 
+/// العميل الذي بُني عليه آخر مستودع — تطلب منه الاختبارات طلباً عادياً.
+late ApiClient _lastClient;
+
 Future<AppVersionRepository> _repo(
   _ConfigAdapter adapter, {
   String installed = '1.0.0',
 }) async {
   final dio = Dio(BaseOptions(baseUrl: 'https://test.local/api'))
     ..httpClientAdapter = adapter;
+  _lastClient = ApiClient(dio: dio);
   return AppVersionRepository(
-    ApiClient(dio: dio),
+    _lastClient,
     StaticInstalledVersion(installed),
     await SharedPreferences.getInstance(),
   );
@@ -165,6 +183,45 @@ void main() {
     await tester.pumpWidget(
       _gate(await _repo(adapter, installed: '1.0.0'), runId: 'restart'),
     );
+    await tester.pumpAndSettle();
+    expect(find.text('محتوى التطبيق'), findsOneWidget);
+  });
+
+  testWidgets('[CRITICAL] رفعُ الحدّ والتطبيق مفتوح: أول 426 يحجب فوراً — بلا انتظار استئناف', (
+    tester,
+  ) async {
+    // كان ردّ 426 يصل رسالةَ خطأٍ عادية لكل طلب ولا يعلم به الحاجز حتى
+    // الاستئناف التالي. الآن يعيد الحاجز فحصه من الخادم عند أول رفض.
+    final adapter = _ConfigAdapter();
+    await tester.pumpWidget(_gate(await _repo(adapter, installed: '1.1.0')));
+    await tester.pumpAndSettle();
+    expect(find.text('محتوى التطبيق'), findsOneWidget);
+
+    // المسؤول يرفع الحدّ؛ الخادم يرفض الطلبات من الآن.
+    adapter
+      ..minimum = '1.2.0'
+      ..rejectOthers = true;
+    await tester.runAsync(() async {
+      await expectLater(_lastClient.get('/cart'), throwsA(isA<AppException>()));
+    });
+    await tester.pumpAndSettle();
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ForceUpdateScreen), findsOneWidget);
+    expect(find.text('محتوى التطبيق'), findsNothing);
+  });
+
+  testWidgets('426 لسببٍ غير النسخة لا يحجب — الحكم لإعداد الخادم لا للإشارة', (tester) async {
+    // الإشارة تُطلق فحصاً فقط؛ إن قال الإعداد إن النسخة مدعومة فلا حجب.
+    final adapter = _ConfigAdapter(minimum: '1.0.0')..rejectOthers = true;
+    await tester.pumpWidget(_gate(await _repo(adapter, installed: '1.1.0')));
+    await tester.pumpAndSettle();
+    await tester.runAsync(() async {
+      await expectLater(_lastClient.get('/cart'), throwsA(isA<AppException>()));
+    });
+    await tester.pumpAndSettle();
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
     await tester.pumpAndSettle();
     expect(find.text('محتوى التطبيق'), findsOneWidget);
   });

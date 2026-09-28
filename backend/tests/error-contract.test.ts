@@ -69,7 +69,7 @@ describe('عقد استجابة الأخطاء', () => {
     const leaks = [/at\s+\w+\s+\(/i, /node_modules/i, /SELECT\s/i, /pg_/i, /\.ts:\d+/];
     for (const request of [
       api.get('/api/does-not-exist-at-all'),
-      api.get('/api/admin/visual-slots'),
+      api.get('/api/admin/orders'),
       api.post('/api/auth/login').send({ phone: 'not-a-phone', password: 'x' }),
     ]) {
       const res = await request;

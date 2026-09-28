@@ -133,7 +133,11 @@ export type ProductRow = {
   subcategory_id: string | null;
   name: string;
   description: string;
-  /** النسخة الكردية — `null` تعني «لم تُترجَم بعد» (هجرة ٠٤٦). */
+  /**
+   * النسخة الكردية — `null` تعني «ناقصة» (منتج قديم؛ هجرة ٠٤٦). لا فراغ أبداً:
+   * الهجرة ٠٦٦ تمنع النصّ الفارغ في العمودين، فـ`null` هي صورة النقص الوحيدة.
+   * `name`/`description` هما **العربية** (انظر تعليقات الأعمدة في ٠٦٦).
+   */
   name_ckb: string | null;
   description_ckb: string | null;
   price: string | number;
@@ -224,7 +228,10 @@ export type OrderItemRow = {
   id: string;
   order_id: string;
   product_id: string | null;
+  /** لقطة الاسم العربي وقت الطلب. */
   product_name: string;
+  /** لقطة الاسم الكردي وقت الطلب؛ `null` = لم تكن للمنتج كردية حينها (٠٦٦). */
+  product_name_ckb: string | null;
   image_url: string | null;
   option_value: string | null;
   price: string | number;
@@ -246,7 +253,10 @@ export type ReviewRow = {
   user_id: string;
   order_id: string;
   product_id: string | null;
+  /** لقطة الاسم العربي — من لقطة سطر الطلب. */
   product_name: string;
+  /** لقطة الاسم الكردي — من لقطة سطر الطلب؛ `null` = بلا كردية (٠٦٦). */
+  product_name_ckb: string | null;
   rating: number;
   comment: string;
   /** من صفر إلى خمس صور — السقف تفرضه القاعدة لا الواجهة. */
@@ -267,7 +277,12 @@ export type ReviewRow = {
 export interface ReviewDto {
   id: string;
   productId: string;
+  /** لقطة الاسم العربي — الحقل القديم، باقٍ بمعناه لعملاءٍ أقدم. */
   productName: string;
+  /** لقطة الاسم بالعربية صراحةً (= `productName`). */
+  productNameAr: string;
+  /** لقطة الاسم بالكردية؛ `null` = بلا كردية وقت الطلب. التطبيق يختار بلغة واجهته. */
+  productNameCkb: string | null;
   orderId: string;
   rating: number;
   comment: string;
@@ -451,7 +466,8 @@ export type MediaPurpose =
   | 'banner'
   | 'franchise'
   | 'category'
-  // رسوم الشخصيات المُدارة من لوحة التحكم (فتحات بصرية).
+  // صفوفٌ تاريخية من ميزة «رسوم الشخصيات» المحذوفة (الهجرة 065) — تُقرأ ولا
+  // تُرفع بعد اليوم (ليست في [MEDIA_PURPOSES]).
   | 'slot';
 
 export const MEDIA_PURPOSES = [
@@ -461,6 +477,19 @@ export const MEDIA_PURPOSES = [
   'banner',
   'franchise',
   'category',
+] as const satisfies readonly MediaPurpose[];
+
+/**
+ * الأغراض التي يقبلها قيد القاعدة `media_files_purpose_check` — ما يُرفع
+ * اليوم **وما رُفع سابقاً**.
+ *
+ * `slot` ليس غرض رفعٍ منذ الهجرة 065 (أُزيلت «رسوم الشخصيات»)، لكن صفوفه
+ * التاريخية ما زالت في الجدول ويجب أن تبقى صالحةً للقيد؛ إسقاطه من القيد
+ * يستلزم حذفها أو تزوير غرضها. الفرق بين القائمتين مقصود ومحروس
+ * (`api-contract-audit.test.ts`).
+ */
+export const STORED_MEDIA_PURPOSES = [
+  ...MEDIA_PURPOSES,
   'slot',
 ] as const satisfies readonly MediaPurpose[];
 

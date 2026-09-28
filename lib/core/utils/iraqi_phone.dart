@@ -53,59 +53,49 @@ String? normalizeIraqiPhone(String raw) {
 
 bool isValidIraqiPhone(String raw) => normalizeIraqiPhone(raw) != null;
 
-/// بادئة الرقم العراقي المحلّي كما يعرفها كل مستخدم — ثابتة في الحقل.
-const String kIraqiLocalPrefix = '07';
+/// طول الرقم كما يكتبه الزبون كاملاً في الحقل: `07` ثم تسعة أرقام.
+const int kIraqiLocalPhoneLength = 11;
 
-/// عدد الأرقام التي يكتبها المستخدم بعد البادئة: ٠٧ + ٩ = ١١ رقماً.
-const int kIraqiLocalDigits = 9;
+final _localMobile = RegExp(r'^07[5-9]\d{8}$');
 
-/// الأرقام التسعة التي تلي `07` من أي صيغةٍ يكتبها أو يلصقها المستخدم.
+/// هل ما في حقل الهاتف رقمُ موبايلٍ عراقي كاملٌ بصيغته المحلية `07XXXXXXXXX`؟
 ///
-/// يطبّع الأرقام الشرقية، يُسقط الفواصل و`+`، ويُسقط البادئات **الصريحة**:
-/// الدولية (`00964`، `964` ثم الـ7 التي تليها) والمحلّية (`07`) — فيبقى ما
-/// بعد `07` وحده، مقصوصاً على [kIraqiLocalDigits]. `07701234567` و
-/// `+9647701234567` و`701234567` تعطي جميعاً `701234567`.
+/// [PRODUCT] (2026-09-27) لا بادئة `07` ثابتة في الحقل بعد اليوم: يكتب الزبون
+/// الرقم كاملاً بنفسه، `07` ضمناً. القاعدة لم تتغيّر — هي [normalizeIraqiPhone]
+/// نفسها (`7[5-9]` ثم ثمانية أرقام) مكتوبةً بالصيغة المحلية التي يعرفها كل
+/// زبون؛ فرقمٌ بلا `07` في أوّله لا يمرّ من الحقل.
+bool isValidIraqiLocalPhone(String raw) =>
+    _localMobile.hasMatch(normalizeDigits(raw.trim()).replaceAll(_separators, ''));
+
+/// ما يبقى في حقل الهاتف من أي نصٍّ يُكتب أو يُلصق.
 ///
-/// لا يُستدلّ على البادئة من الطول: رقمٌ عاشر يُكتب سهواً يُقصّ ولا يُزيح
-/// ما قبله — فالحقل يبقى مستقرّاً تحت أصابع المستخدم.
+/// يطبّع الأرقام الشرقية ويُسقط كل ما ليس رقماً (فواصل، `+`، حروف)، مقصوصاً
+/// على [kIraqiLocalPhoneLength].
 ///
-/// [CRITICAL] تسهيلُ كتابةٍ لا تحقّق: الحكم لـ[isValidIraqiPhone] على الرقم
-/// الكامل (`kIraqiLocalPrefix + digits`) ثم للخادم.
-String iraqiLocalDigits(String raw) {
-  var digits = normalizeDigits(raw).replaceAll(RegExp(r'[^0-9]'), '');
-  if (digits.startsWith('009647')) {
-    digits = digits.substring(6);
-  } else if (digits.startsWith('9647')) {
-    digits = digits.substring(4);
-  } else if (digits.startsWith('07')) {
-    digits = digits.substring(2);
-  }
-  return digits.length > kIraqiLocalDigits
-      ? digits.substring(0, kIraqiLocalDigits)
+/// [CRITICAL] لا بادئة تُضاف ولا تُحذف: ما كتبه الزبون يبقى أرقامَه هو —
+/// `7` لا تصير `07`. تسهيلُ كتابةٍ لا تحقّق: الحكم لـ[isValidIraqiLocalPhone]
+/// ثم للخادم.
+String iraqiPhoneInputText(String raw) {
+  final digits = normalizeDigits(raw).replaceAll(RegExp(r'[^0-9]'), '');
+  return digits.length > kIraqiLocalPhoneLength
+      ? digits.substring(0, kIraqiLocalPhoneLength)
       : digits;
 }
 
-/// الرقم الكامل بصيغته المحلّية من الأرقام المكتوبة بعد البادئة.
-String iraqiPhoneFromLocalDigits(String digits) => '$kIraqiLocalPrefix$digits';
-
-/// مُنسّق حقل الهاتف: يحوّل كل إدخالٍ إلى الأرقام التسعة بعد `07`.
-///
-/// البادئة نفسها تُعرض ثابتةً في الحقل (`prefixText`)، فلا يكتبها المستخدم
-/// — وإن كتبها (أو لصق رقماً كاملاً بأي صيغة) أُسقطت عنه بدل أن تُعدّ
-/// ضمن الأرقام التسعة. لا حروف، ولا أكثر من تسعة أرقام.
-class IraqiLocalDigitsFormatter extends TextInputFormatter {
-  const IraqiLocalDigitsFormatter();
+/// مُنسّق حقل الهاتف: أرقامٌ غربية فقط، حتى أحد عشر رقماً.
+class IraqiPhoneInputFormatter extends TextInputFormatter {
+  const IraqiPhoneInputFormatter();
 
   @override
   TextEditingValue formatEditUpdate(
     TextEditingValue oldValue,
     TextEditingValue newValue,
   ) {
-    final digits = iraqiLocalDigits(newValue.text);
-    if (digits == newValue.text) return newValue;
+    final text = iraqiPhoneInputText(newValue.text);
+    if (text == newValue.text) return newValue;
     return TextEditingValue(
-      text: digits,
-      selection: TextSelection.collapsed(offset: digits.length),
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
     );
   }
 }

@@ -5,7 +5,7 @@ import '../../../../core/design_system/design_system.dart';
 import '../../../../core/l10n/app_strings.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../visuals/domain/visual_slot.dart';
-import '../../../visuals/presentation/managed_artwork.dart';
+import '../../../visuals/presentation/character_artwork.dart';
 import '../../domain/entities/account_request.dart';
 
 /// شاشة «طلبك قيد المراجعة» — بعد التسجيل وبعد نسيان كلمة المرور.
@@ -88,11 +88,10 @@ class _AccountPendingScreenState extends State<AccountPendingScreen>
                           // موضعان مستقلّان لا فتحةُ شاشةِ الطلب: تبديل
                           // شخصية الانتظار لا يمسّ ترويسة إنشاء الحساب أو
                           // الاستعادة، والعكس (الهجرة ٠٥٤).
-                          child: ManagedArtwork(
+                          child: CharacterArtwork(
                             slot: _isRegistration
                                 ? VisualSlots.registerPending
                                 : VisualSlots.forgotPasswordPending,
-                            fallbackAsset: 'assets/art/opt/a-i6.png',
                             width: 235,
                           ),
                         ),

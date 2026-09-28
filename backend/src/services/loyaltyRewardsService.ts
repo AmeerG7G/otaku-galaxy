@@ -95,6 +95,43 @@ function toView(
   };
 }
 
+/** خصم مزيّةٍ مفتوحة على طلبٍ بعينه — القيمة كما يحسبها الخادم وحده. */
+export interface ReservedLoyaltyDiscount {
+  redemptionId: string;
+  levelKey: GalaxyLevelKey;
+  percent: number;
+  capAmount: number;
+  amount: number;
+}
+
+/**
+ * قيمة الخصم من صفّ المزيّة المفتوحة ومجموع المنتجات — للحجز وللمعاينة معاً.
+ *
+ * لا يُقرأ أي مبلغ من العميل، ولا يتجاوز الخصم سقفه المالي مهما كبر الطلب.
+ */
+function discountFromOpen(
+  open: RedemptionDto | null,
+  productsTotal: number,
+): ReservedLoyaltyDiscount | null {
+  if (!open || open.percent === null || open.capAmount === null) return null;
+
+  const amount = discountRewardAmount(
+    { kind: 'discount', percent: open.percent, capAmount: open.capAmount },
+    productsTotal,
+  );
+  // صفرٌ لا يأتي إلا من سلّةٍ بلا مجموع أو سقفٍ دون ٢٥٠ (أدنى خصمٍ مقرَّب).
+  // لا تُحرق المزيّة على خصمٍ لا قيمة له — تبقى للطلب القادم.
+  if (amount <= 0) return null;
+
+  return {
+    redemptionId: open.id,
+    levelKey: open.levelKey,
+    percent: open.percent,
+    capAmount: open.capAmount,
+    amount,
+  };
+}
+
 export const loyaltyRewardsService = {
   /** حالة كل مزيّة لهذا الزبون — تُرسل مع ملخّص النقاط. */
   async listForUser(userId: string, balance?: number): Promise<RewardView[]> {
@@ -192,19 +229,26 @@ export const loyaltyRewardsService = {
     client: pg.PoolClient,
     userId: string,
     productsTotal: number,
-  ): Promise<{ redemptionId: string; levelKey: GalaxyLevelKey; amount: number } | null> {
+  ): Promise<ReservedLoyaltyDiscount | null> {
     const open = await rewardRedemptionRepo.findOpenDiscount(client, userId);
-    if (!open || open.percent === null || open.capAmount === null) return null;
+    return discountFromOpen(open, productsTotal);
+  },
 
-    const amount = discountRewardAmount(
-      { kind: 'discount', percent: open.percent, capAmount: open.capAmount },
-      productsTotal,
-    );
-    // سلّةٌ رخيصة قد تُنتج صفراً بعد التقريب النازل. لا تُحرق المزيّة على
-    // خصمٍ لا قيمة له — تبقى للطلب القادم.
-    if (amount <= 0) return null;
-
-    return { redemptionId: open.id, levelKey: open.levelKey, amount };
+  /**
+   * ما سيحجزه [reserveDiscountForOrder] لهذه العربة الآن — **بلا حجز**.
+   *
+   * لمعاينة شاشة الدفع (`orderService.checkoutQuote`): الزبون يرى خصم
+   * مزيّته قبل التأكيد. الحساب والمرشّح واحد مع الحجز (`discountFromOpen`
+   * و`OPEN_DISCOUNT_SQL`)، لكن لا قفل ولا استهلاك — المزيّة تبقى مفتوحة حتى
+   * يُنشأ الطلب فعلاً، وفشلُ الإنشاء لا يمسّها.
+   */
+  async previewDiscountForOrder(
+    db: pg.Pool | pg.PoolClient,
+    userId: string,
+    productsTotal: number,
+  ): Promise<ReservedLoyaltyDiscount | null> {
+    const open = await rewardRedemptionRepo.peekOpenDiscount(db, userId);
+    return discountFromOpen(open, productsTotal);
   },
 
   /**

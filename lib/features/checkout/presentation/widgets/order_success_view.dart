@@ -3,7 +3,7 @@ import '../../../../core/l10n/app_strings.dart';
 
 import '../../../../core/design_system/design_system.dart';
 import '../../../visuals/domain/visual_slot.dart';
-import '../../../visuals/presentation/managed_artwork.dart';
+import '../../../visuals/presentation/character_artwork.dart';
 
 /// صفحة نجاح الطلب بتصميم Otaku Galaxy v2.
 ///
@@ -67,9 +67,8 @@ class _OrderSuccessViewState extends State<OrderSuccessView>
                           offset: Offset(0, -10 * _float.value),
                           child: child,
                         ),
-                        child: const ManagedArtwork(
+                        child: const CharacterArtwork(
                           slot: VisualSlots.orderSuccess,
-                          fallbackAsset: 'assets/art/opt/a-i6.png',
                           width: 137,
                         ),
                       ),

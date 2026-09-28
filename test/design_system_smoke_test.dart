@@ -14,9 +14,9 @@ import 'package:otaku_galaxy/features/settings/presentation/widgets/personalize_
 /// الاختيارية ظاهرة معاً، وهي التركيبة التي كانت تتجاوز التخطيط سابقاً.
 const _product = Product(
   id: 'p1',
-  name: 'تيشيرت أنمي بتصميم حصري ومطبوع بجودة عالية جداً وخامة ممتازة',
+  nameAr: 'تيشيرت أنمي بتصميم حصري ومطبوع بجودة عالية جداً وخامة ممتازة',
   price: 25000,
-  description: 'وصف',
+  descriptionAr: 'وصف',
   images: [],
   stock: 2,
   rating: 4.6,
@@ -64,7 +64,7 @@ void main() {
     'OtakuScreenHeader.plain': const OtakuScreenHeader(
       title: 'طلباتي',
       subtitle: 'تابع حالة كل طلب خطوة بخطوة',
-      artwork: 'assets/art/opt/a-i4.png',
+      artwork: 'assets/art/characters/34.png',
     ),
     'OtakuScreenHeader.tab': const OtakuScreenHeader.tab(
       title: 'الأقسام',
@@ -82,7 +82,7 @@ void main() {
     'OtakuEditorialPanel': const OtakuEditorialPanel(
       title: 'لوحة تحريرية',
       body: 'نص وصفي قصير داخل اللوحة.',
-      artwork: 'assets/art/opt/a-luffy-kid.png',
+      artwork: 'assets/art/characters/7.png',
     ),
     'OtakuSectionTitle': const OtakuSectionTitle(title: 'قسم'),
     'OtakuGroupLabel': const OtakuGroupLabel(label: 'الحساب'),
@@ -135,7 +135,7 @@ void main() {
     'AnimeEmptyState': const AnimeEmptyState(
       title: 'لا توجد طلبات بعد',
       subtitle: 'كل طلب تكمله سيظهر هنا.',
-      artwork: 'assets/art/opt/a-luffy-kid.png',
+      artwork: 'assets/art/characters/7.png',
     ),
     'LanguageCard': LanguageCard(
       name: 'العربية',

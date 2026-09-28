@@ -24,7 +24,6 @@ const OffersPage = lazy(() => import('./pages/OffersPage'))
 const RestockPage = lazy(() => import('./pages/RestockPage'))
 const ReviewsPage = lazy(() => import('./pages/ReviewsPage'))
 const FranchisesPage = lazy(() => import('./pages/FranchisesPage'))
-const VisualSlotsPage = lazy(() => import('./pages/VisualSlotsPage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 
 function App() {
@@ -58,7 +57,6 @@ function App() {
               <Route path="/restock" element={<RestockPage />} />
               <Route path="/reviews" element={<ReviewsPage />} />
               <Route path="/franchises" element={<FranchisesPage />} />
-              <Route path="/visuals" element={<VisualSlotsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
             </Route>
           </Route>

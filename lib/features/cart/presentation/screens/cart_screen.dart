@@ -9,11 +9,11 @@ import '../../../../core/router/app_router.dart';
 import '../../../auth/presentation/cubit/auth_cubit.dart';
 import '../../../auth/presentation/cubit/auth_state.dart';
 import '../../../main_navigation/presentation/screens/main_navigation_screen.dart';
+import '../../../products/domain/entities/product.dart';
 import '../../domain/entities/cart_item.dart';
 import '../cubit/cart_cubit.dart';
 import '../cubit/cart_state.dart';
 import '../../../visuals/domain/visual_slot.dart';
-import '../../../visuals/presentation/managed_artwork.dart';
 
 /// تبويب السلة بتصميم Otaku Galaxy v2.
 ///
@@ -52,7 +52,6 @@ class CartScreen extends StatelessWidget {
                         body:
                             context.g(GenderedStrings.loginToAddToCart),
                         icon: Icons.shopping_cart_outlined,
-                        artworkSlot: VisualSlots.cartGuestPrompt,
                         onLogin: () => context.router.push(const LoginRoute()),
                       )
                     : state.items.isEmpty
@@ -70,7 +69,6 @@ class CartScreen extends StatelessWidget {
     return AnimeEmptyState(
       title: context.strings('cartEmptyTitle'),
       subtitle: context.g(GenderedStrings.browseAndPick),
-      artwork: 'assets/art/opt/a-luffy-kid.png',
       artworkSlot: VisualSlots.emptyCart,
       actionLabel: context.strings('discover'),
       onAction: () => mainNavIndex.value = MainTab.home,
@@ -160,28 +158,11 @@ class CartScreen extends StatelessWidget {
     );
   }
 
-  /// زرّ إتمام الطلب — رسم شخصية يخرج من خلف الزرّ كما في التصميم.
+  /// زرّ إتمام الطلب.
   Widget _buildCheckoutButton(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 0),
-      child: Stack(
-        clipBehavior: Clip.none,
-        alignment: AlignmentDirectional.centerStart,
-        children: [
-          PositionedDirectional(
-            bottom: 24,
-            end: -10,
-            child: IgnorePointer(
-              child: const ManagedArtwork(
-                slot: VisualSlots.cartCheckout,
-                fallbackAsset: 'assets/art/opt/a-i3.png',
-                width: 76,
-              ),
-            ),
-          ),
-          const _CheckoutButton(),
-        ],
-      ),
+    return const Padding(
+      padding: EdgeInsets.fromLTRB(18, 16, 18, 0),
+      child: _CheckoutButton(),
     );
   }
 }
@@ -301,7 +282,7 @@ class _CartItemCard extends StatelessWidget {
                   children: [
                     Expanded(
                       child: Text(
-                        item.product.name,
+                        localizedProductName(item.product, context.language),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.bodyMedium?.copyWith(
@@ -390,7 +371,7 @@ class _CartItemCard extends StatelessWidget {
     final confirmed = await showOtakuConfirm(
       context: context,
       title: context.strings('removeProduct'),
-      message: context.strings.p('removeProductConfirm', {'name': item.product.name}),
+      message: context.strings.p('removeProductConfirm', {'name': localizedProductName(item.product, context.language)}),
       confirmLabel: context.strings('remove'),
       cancelLabel: context.strings('cancel'),
       destructive: true,

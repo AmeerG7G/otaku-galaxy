@@ -4,7 +4,7 @@ import '../../tokens/app_colors.dart';
 import '../../tokens/app_dimens.dart';
 import '../../tokens/app_theme_colors.dart';
 import '../buttons/anime_primary_button.dart';
-import '../../../../features/visuals/presentation/managed_artwork.dart';
+import '../../../../features/visuals/presentation/character_artwork.dart';
 
 /// حالة فارغة بتصميم Otaku Galaxy v2 — لوحة تحريرية مستديرة مع هالة لونية
 /// ورسم شخصية اختياري يخرج من حافة اللوحة، بدل أيقونة وسط الشاشة.
@@ -33,11 +33,14 @@ class AnimeEmptyState extends StatelessWidget {
   /// رسم شخصية تزييني يظهر أسفل جهة البداية داخل اللوحة.
   final String? artwork;
 
-  /// مفتاح الفتحة البصرية التي يديرها المسؤول من لوحة التحكم.
+  /// مفتاح موضع الرسم (`VisualSlots`) — صورته الثابتة في `CharacterArt`.
   ///
-  /// حين يُمرَّر، يصير [artwork] هو الأصل الاحتياطي: يُعرض كما هو ما دامت
-  /// الفتحة غير مضبوطة أو تعذّر تحميل صورتها. المقاس والموضع لا يتغيّران.
+  /// حين يُمرَّر يحدّد الموضعُ صورته ولا يلزم [artwork] (المسار المباشر لرسمٍ
+  /// ليس موضعاً). المقاس والموضع كما هما.
   final String? artworkSlot;
+
+  /// رسمٌ يُعرض: موضعٌ بصورته الثابتة، أو مسارٌ مباشر.
+  bool get _hasArtwork => artworkSlot != null || artwork != null;
 
   /// تركيب موسّط: الرسم فوق، ثم النصّ، ثم الإجراء — كلٌّ في وسط اللوحة.
   ///
@@ -97,7 +100,7 @@ class AnimeEmptyState extends StatelessWidget {
                           ),
                         ),
                       ),
-                      if (artwork != null)
+                      if (_hasArtwork)
                         PositionedDirectional(
                           bottom: -10,
                           end: -22,
@@ -107,9 +110,8 @@ class AnimeEmptyState extends StatelessWidget {
                                   height: artworkHeight,
                                   fit: BoxFit.contain,
                                 )
-                              : ManagedArtwork(
+                              : CharacterArtwork(
                                   slot: artworkSlot!,
-                                  fallbackAsset: artwork!,
                                   height: artworkHeight,
                                 ),
                         ),
@@ -124,7 +126,7 @@ class AnimeEmptyState extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            if (icon != null && artwork == null) ...[
+                            if (icon != null && !_hasArtwork) ...[
                               Container(
                                 width: 52,
                                 height: 52,
@@ -253,7 +255,7 @@ class AnimeEmptyState extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 // الرسم **فوق** الإجراء — وهو جوهر الطلب.
-                if (artwork != null)
+                if (_hasArtwork)
                   Flexible(
                     child: artworkSlot == null
                         ? Image.asset(
@@ -261,9 +263,8 @@ class AnimeEmptyState extends StatelessWidget {
                             height: artworkHeight,
                             fit: BoxFit.contain,
                           )
-                        : ManagedArtwork(
+                        : CharacterArtwork(
                             slot: artworkSlot!,
-                            fallbackAsset: artwork!,
                             height: artworkHeight,
                           ),
                   ),

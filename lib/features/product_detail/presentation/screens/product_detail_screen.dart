@@ -17,7 +17,7 @@ import '../../../products/domain/entities/product.dart';
 import '../../../products/domain/usecases/fetch_product_details_usecase.dart';
 import '../../../reviews/presentation/widgets/product_reviews_section.dart';
 import '../../../visuals/domain/visual_slot.dart';
-import '../../../visuals/presentation/managed_artwork.dart';
+import '../../../visuals/presentation/character_artwork.dart';
 import '../../../restock/presentation/restock_notify_button.dart';
 
 /// تفاصيل المنتج بتصميم Otaku Galaxy v2.
@@ -25,6 +25,10 @@ import '../../../restock/presentation/restock_notify_button.dart';
 /// فتحة صورة ثابتة بارتفاع ٣٣٠ تعلوها أزرار عائمة مربّعة (بلا `SliverAppBar`
 /// ينهار)، ثم كتلة تحريرية بالقسم والاسم والسعر، ثم الوصف والخيارات
 /// والكمية، ثم شريط إجراء سفلي ثابت يخرج من خلفه رسم شخصية.
+/// ما يتدلّى من صندوق رسم التفاصيل (الصورة 16) خلف حافة الشاشة اليسرى —
+/// من هامش الصورة الشفّاف وحده (انظر `_buildDetails`).
+const double _productArtOverhang = 23;
+
 @RoutePage()
 class ProductDetailScreen extends StatefulWidget {
   const ProductDetailScreen({super.key, required this.productId});
@@ -219,18 +223,29 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
 
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 20, 18, 14),
+      // تقصّ عند حافة الشاشة — لا يُقصّ عندها إلا هامش الصورة الشفّاف.
       clipBehavior: Clip.hardEdge,
       decoration: const BoxDecoration(),
       child: Stack(
+        // الرسم يتجاوز حدّ الحشوة بهامشه الشفّاف؛ القصّ للحاوية وحدها.
+        clipBehavior: Clip.none,
         children: [
           PositionedDirectional(
             top: 60,
-            end: -46,
+            // أقرب إلى الحافة اليسرى (2026-09-28). `-18` (حشوة الحاوية) كان
+            // يُلصق **صندوق** الصورة بالحافة، لكن الصورة 16 تحمل على يسارها
+            // هامشاً شفّافاً (≈٢٧ بكسل بعرض ١٣٢)، فتبدأ الشخصية نفسها بعيداً
+            // عن الحافة — و`Stack` كان يقصّ عند الحشوة (١٨). الآن يتدلّى
+            // الصندوق خلف الحافة بـ[_productArtOverhang] من هامشه الشفّاف
+            // وحده، فتقف الشخصية على بعد بكسلات من الحافة دون أن يُقصّ منها
+            // شيء. يحرسه `test/character_art_placement_test.dart` بقياس
+            // بكسلات الصورة الفعلية: صورةٌ بديلة بهامشٍ أضيق تُفشله قبل أن
+            // تُقصّ عند الزبون.
+            end: -18 - _productArtOverhang,
             child: IgnorePointer(
               // بلا شفافية — الشخصية كما صورتها (قرار 2026-09-15).
-              child: const ManagedArtwork(
+              child: const CharacterArtwork(
                 slot: VisualSlots.productDetail,
-                fallbackAsset: 'assets/art/opt/a-i4.png',
                 width: 132,
               ),
             ),
@@ -259,7 +274,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                           ),
                         const SizedBox(height: 8),
                         Text(
-                          product.name,
+                          localizedProductName(product, context.language),
                           style: theme.textTheme.headlineSmall?.copyWith(
                             fontFamily: 'Tajawal',
                             fontWeight: AppDimens.weightBlack,
@@ -416,16 +431,31 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
               // الوصف.
               Text(context.strings('description'), style: _sectionStyle(theme)),
               const SizedBox(height: 9),
-              Text(
-                product.description.trim().isEmpty
-                    ? context.strings('noDescriptionYet')
-                    : product.description,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  fontSize: 14,
-                  height: 1.9,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+              Builder(
+                builder: (context) {
+                  final description = localizedProductDescription(
+                    product,
+                    context.language,
+                  );
+                  return Text(
+                    description.trim().isEmpty
+                        ? context.strings('noDescriptionYet')
+                        : description,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontSize: 14,
+                      height: 1.9,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  );
+                },
               ),
+              // [CRITICAL] كرديةٌ ناقصة (منتج قديم) تُعلَن لا تُخفى: العربي
+              // يُعرض لأنه المتاح، لا لأنه «الكردية».
+              if (product.names.isFallbackIn(context.language) ||
+                  product.descriptions.isFallbackIn(context.language)) ...[
+                const SizedBox(height: 10),
+                const _KurdishMissingNote(),
+              ],
 
               // الخيارات.
               if (product.options != null && product.options!.isNotEmpty) ...[
@@ -585,9 +615,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                 bottom: 42,
                 end: 16,
                 child: IgnorePointer(
-                  child: const ManagedArtwork(
+                  child: const CharacterArtwork(
                     slot: VisualSlots.productDetailReviews,
-                    fallbackAsset: 'assets/art/opt/a-i3.png',
                     width: 82,
                   ),
                 ),
@@ -685,7 +714,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     SharePlus.instance.share(
       ShareParams(
         text: context.strings.p('shareProductText', {
-          'name': product.name,
+          'name': localizedProductName(product, context.language),
           'price': product.price.toStringAsFixed(0),
         }),
       ),
@@ -706,6 +735,38 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     if (!added || !context.mounted) return;
 
     showAddedToCartSnack(context);
+  }
+}
+
+/// إعلان أن المنتج معروضٌ بالعربية لأن كرديته ناقصة (منتج أقدم من إلزام
+/// الحقول الأربعة، هجرة ٠٦٦). يظهر في الواجهة الكردية وحدها.
+class _KurdishMissingNote extends StatelessWidget {
+  const _KurdishMissingNote();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(
+          Icons.translate_rounded,
+          size: 15,
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            context.strings('productKurdishMissingNote'),
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontSize: 12,
+              height: 1.6,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
 

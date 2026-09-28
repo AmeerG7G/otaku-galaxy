@@ -92,16 +92,59 @@ const restockAt = z
   .optional();
 
 /**
- * اسم المنتج: ٢..١٢٠ حرفاً — **سقف القاعدة نفسه** (`products_name_check`).
+ * محتوى المنتج بلغتين — أربعة حقول مستقلة يكتبها المسؤول بيده (066).
  *
- * كان المدقّق يقبل ١٥٠ فيمرّ اسمٌ من ١٣٠ حرفاً ثم يرفضه القيد برسالةٍ عامّة
- * «قيمة غير صالحة لأحد حقول المنتج» لا تقول أيَّ حقل. الحدّ عند الحدّ.
+ * الاسم: ٢..١٢٠ حرفاً بعد القصّ — **سقف القاعدة نفسه** (`products_name_check`
+ * للعربي، وقيد `name_ckb` من ٠٤٦ للكردي). كان المدقّق يقبل ١٥٠ فيمرّ اسمٌ من
+ * ١٣٠ حرفاً ثم يرفضه القيد برسالةٍ عامّة لا تقول أيَّ حقل. الحدّ عند الحدّ.
+ *
+ * الوصف: غير فارغ بعد القصّ، ٣٠٠٠ حرف كحدٍّ أقصى.
+ *
+ * `trim()` يسبق الحدّ الأدنى، فالمسافات وحدها تُرفض بالرسالة نفسها. لا قيد
+ * على الحروف: عربية، كردية (ێ ۆ ڵ ڕ ە)، أرقام، لاتينية — النصّ يُحفظ كما كُتب.
+ * والرسالة الأولى وحدها تصل المسؤول (`parse`)، فكل رسالة تسمّي حقلها ولغته.
  */
-const productName = z.string().trim().min(2).max(120, 'اسم المنتج طويل جداً (١٢٠ حرفاً كحد أقصى)');
+function contentName(language: 'العربية' | 'الكردية') {
+  const required = `اسم المنتج ب${language} مطلوب`;
+  return z
+    .string({ error: required })
+    .trim()
+    .min(1, required)
+    .min(2, `اسم المنتج ب${language} قصير جداً (حرفان كحد أدنى)`)
+    .max(120, `اسم المنتج ب${language} طويل جداً (١٢٠ حرفاً كحد أقصى)`);
+}
+
+function contentDescription(language: 'العربية' | 'الكردية') {
+  const required = `وصف المنتج ب${language} مطلوب`;
+  return z
+    .string({ error: required })
+    .trim()
+    .min(1, required)
+    .max(3000, `وصف المنتج ب${language} طويل جداً (٣٠٠٠ حرف كحد أقصى)`);
+}
+
+/**
+ * [CRITICAL] `name`/`description` لم يعودا مفتاحَي كتابة: الاسم صار أربعة
+ * حقولٍ صريحة. `zod` يُسقط المفتاح المجهول بصمت، فنسخةُ لوحةٍ قديمة مخبّأة في
+ * متصفّح كانت سترسل `name` معدَّلاً فيُحذف، ويقول الخادم «تم الحفظ» والاسم لم
+ * يتغيّر. رفضٌ صريح يسمّي البديل خيرٌ من حفظٍ كاذب.
+ */
+function retiredKey(replacement: string) {
+  return z
+    .unknown()
+    .refine(() => false, {
+      message: `هذا الحقل لم يعد مقبولاً — حدّث لوحة التحكم (استعمل ${replacement})`,
+    })
+    .optional();
+}
 
 export const adminProductCreateSchema = z.object({
-  name: productName,
-  description: z.string().trim().max(3000).default(''),
+  nameAr: contentName('العربية'),
+  descriptionAr: contentDescription('العربية'),
+  nameCkb: contentName('الكردية'),
+  descriptionCkb: contentDescription('الكردية'),
+  name: retiredKey('nameAr/nameCkb'),
+  description: retiredKey('descriptionAr/descriptionCkb'),
   price,
   categoryId: z.string().uuid('معرّف قسم غير صالح'),
   subcategoryId: z.string().uuid('معرّف قسم فرعي غير صالح').nullable().optional(),
@@ -135,8 +178,15 @@ export const adminProductCreateSchema = z.object({
  * كان يُعيد ملء الافتراضات ([]) عند غياب الحقل فيمسح البيانات — خلل موثّق.
  */
 export const adminProductUpdateSchema = z.object({
-  name: productName.optional(),
-  description: z.string().trim().max(3000).optional(),
+  // كل لغةٍ مستقلة: الحقل الغائب لا يُمسّ، فتعديل العربية لا يلمس الكردية
+  // ولا العكس. الحاضر يجب أن يكون نصاً غير فارغ — لا يُفرَّغ محتوى بتعديل،
+  // و`null` مرفوضة: «ناقص» حالُ منتجٍ قديم لم يُكمَل، لا خيارٌ يُحفظ.
+  nameAr: contentName('العربية').optional(),
+  descriptionAr: contentDescription('العربية').optional(),
+  nameCkb: contentName('الكردية').optional(),
+  descriptionCkb: contentDescription('الكردية').optional(),
+  name: retiredKey('nameAr/nameCkb'),
+  description: retiredKey('descriptionAr/descriptionCkb'),
   price: z.number().positive('السعر يجب أن يكون موجباً').max(1_000_000_000).optional(),
   categoryId: z.string().uuid('معرّف قسم غير صالح').optional(),
   subcategoryId: z.string().uuid('معرّف قسم فرعي غير صالح').nullable().optional(),
@@ -376,6 +426,11 @@ export const adminProductsQuerySchema = z.object({
     .optional()
     .transform((v) => (v === undefined ? undefined : v === 'true')),
   selected: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === 'true')),
+  /** `true` ← المنتجات التي ينقصها اسمٌ أو وصفٌ كردي وحدها (066). */
+  missingKurdish: z
     .enum(['true', 'false'])
     .optional()
     .transform((v) => (v === undefined ? undefined : v === 'true')),

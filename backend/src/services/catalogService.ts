@@ -90,8 +90,13 @@ export const catalogService = {
     return { ...page, items: page.items.map((p) => localizeProduct(p, locale)) };
   },
 
+  /**
+   * البحث بلغة الطلب نفسها التي تُحسم بها الأسماء (`resolveLocale` —
+   * ترويسة `Accept-Language` التي يرسلها التطبيق بلغة واجهته). لا معامل
+   * `?lang=` ثانٍ: آليةٌ واحدة للغة في الـAPI كله.
+   */
   async search(query: string, page: number, limit: number, locale: AppLocale) {
-    const result = await productRepo.search(db, query, page, limit);
+    const result = await productRepo.search(db, query, page, limit, locale);
     return { ...result, items: result.items.map((p) => localizeProduct(p, locale)) };
   },
 

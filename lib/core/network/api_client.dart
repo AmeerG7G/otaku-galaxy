@@ -84,6 +84,7 @@ class ApiClient {
           if (_endsSession(response?.statusCode, response?.data)) {
             _endSession(error.requestOptions, response?.statusCode, response?.data);
           }
+          _signalIfUpdateRequired(response?.statusCode, response?.data);
           handler.next(error);
         },
       ),
@@ -128,6 +129,18 @@ class ApiClient {
     onUnauthorized?.call();
   }
 
+  /// الخادم رفض الطلب لأن النسخة المثبَّتة دون الحدّ الأدنى المدعوم.
+  ///
+  /// [CRITICAL] كان هذا الردّ (426 `APP_UPDATE_REQUIRED`) يصل رسالةَ خطأٍ عادية
+  /// لكل طلب، ولا يعرف حاجز التحديث به إلا عند الاستئناف التالي — فمن رُفع
+  /// الحدّ وتطبيقه مفتوح يرى أخطاءً متتالية بلا تفسير. الآن يُبلَّغ
+  /// [onUpdateRequired] فيعيد الحاجز فحصه من الخادم فوراً؛ الحكم يبقى له.
+  void _signalIfUpdateRequired(int? status, dynamic data) {
+    if (status != 426) return;
+    final code = data is Map<String, dynamic> ? _codeFrom(data) : null;
+    if (code == 'APP_UPDATE_REQUIRED') onUpdateRequired?.call();
+  }
+
   /// وصف منصة التشغيل الحالية للتشخيص (ويب / أندرويد / آيفون / سطح مكتب).
   String get platformLabel {
     if (kIsWeb) return 'web';
@@ -162,6 +175,10 @@ class ApiClient {
 
   /// استدعاء عند انتهاء الجلسة (401).
   void Function()? onUnauthorized;
+
+  /// استدعاء حين يرفض الخادم طلباً لأن النسخة دون الحدّ (426) — يربطه
+  /// `AppVersionRepository` بحاجز التحديث.
+  void Function()? onUpdateRequired;
 
   /// النسخة المثبَّتة المعلَنة للخادم (تُقرأ عند كل طلب، متزامنةً).
   String? Function()? appVersionProvider;
@@ -269,6 +286,7 @@ class ApiClient {
     if (_endsSession(statusCode, data)) {
       _endSession(request, statusCode, data);
     }
+    _signalIfUpdateRequired(statusCode, data);
     if (data is! Map<String, dynamic>) {
       throw AppException(
         'unexpected_response',

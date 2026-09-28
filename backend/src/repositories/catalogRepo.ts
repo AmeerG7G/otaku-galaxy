@@ -5,6 +5,7 @@ import type {
   ProductRow,
   ProductSort,
 } from '../types/index.js';
+import { kurdishOrNull, type AppLocale } from '../utils/locale.js';
 
 /**
  * خريطة الترتيب: مفاتيح مغلقة ← جمل ORDER BY ثابتة.
@@ -42,15 +43,25 @@ export function mapProduct(
 ) {
   const price = Number(row.price);
   const previousPrice = toNumber(row.previous_price);
+  const nameCkb = kurdishOrNull(row.name_ckb);
+  const descriptionCkb = kurdishOrNull(row.description_ckb);
   return {
     id: row.id,
-    // [I18N] العربية دائماً هنا، والكردية بجانبها. الاختيار بينهما يقع في
-    // طبقة الخدمة (`localizeProduct`) لا هنا: لوحة التحكم تحتاج الاثنين
-    // معاً، والزبون واحداً محسوماً — ومُحوِّلٌ واحد يخدم الاثنين.
+    // [I18N] محتوى المنتج بأربعة حقولٍ صريحة (066) — مصدرها هنا وحده.
+    // `name`/`description` عربيان هنا؛ طبقة الخدمة (`localizeProduct`) تحسمهما
+    // بلغة الزبون وتُبقي الأربعة. لوحة التحكم تقرأ الأربعة كما هي.
     name: row.name,
     description: row.description,
-    nameCkb: row.name_ckb,
-    descriptionCkb: row.description_ckb,
+    nameAr: row.name,
+    descriptionAr: row.description,
+    /** `null` = ناقص (منتج قديم) — لا يُختلق ولا يُملأ بالعربية. */
+    nameCkb,
+    descriptionCkb,
+    /**
+     * هل ينقص المنتجَ اسمٌ أو وصفٌ كردي؟ حكمٌ واحد على الخادم: شارة «الكردية
+     * ناقصة» في اللوحة، وملاحظة التطبيق حين يعرض العربية مكان الكردية.
+     */
+    kurdishMissing: nameCkb === null || descriptionCkb === null,
     price,
     stock: row.stock,
     images: (row.images as string[]) ?? [],
@@ -104,6 +115,28 @@ ${PRODUCT_RELATION_COLUMNS(prefix)}
   FROM products ${prefix}`;
 
 /**
+ * مستند البحث لكل لغة (066) — جملٌ ثابتة من خريطةٍ مغلقة، لا نصٌّ من العميل.
+ *
+ * التعبير حرفياً هو تعبير الفهرس (`idx_products_search_{ar,ckb}_trgm`)؛ أي
+ * اختلافٍ فيه — ترتيب الوسائط، عمودٌ آخر — يُسقط الفهرس فيُمسح الكتالوج.
+ */
+const SEARCH_DOCUMENT: Record<AppLocale, (alias: string) => string> = {
+  ar: (a) => `product_search_text_ar(${a}.name, ${a}.description)`,
+  ckb: (a) =>
+    `product_search_text_ckb(${a}.name, ${a}.description, ${a}.name_ckb, ${a}.description_ckb)`,
+};
+
+/**
+ * الاسم كما تعرضه الواجهة بلغةٍ ما — للمنتج والقسم والقسم الفرعي معاً (لكلٍّ
+ * منها `name` عربي و`name_ckb`). الكردي الناقص يسقط إلى العربي، بقاعدة
+ * `pickLocalized` نفسها (الفراغ غيابٌ).
+ */
+const DISPLAYED_NAME: Record<AppLocale, (alias: string) => string> = {
+  ar: (a) => `${a}.name`,
+  ckb: (a) => `COALESCE(NULLIF(btrim(${a}.name_ckb), ''), ${a}.name)`,
+};
+
+/**
  * يهرّب محارف أنماط `LIKE` حتى يُبحث عنها حرفياً.
  *
  * [CRITICAL] بلا هذا كان `%` في الاستعلام يُعيد الكتالوج كله، و`_` يطابق أي
@@ -151,6 +184,11 @@ export const productRepo = {
       isOffer?: boolean;
       isSelected?: boolean;
       includeInactive?: boolean;
+      /**
+       * منتجاتٌ ينقصها اسمٌ أو وصفٌ كردي — للوحة التحكم («أكمل الكردية»).
+       * الشرط هو شرط الفهرس الجزئي `idx_products_missing_ckb` حرفياً (066).
+       */
+      missingKurdish?: boolean;
       sort?: ProductSort;
     },
   ): Promise<Paginated<ReturnType<typeof mapProduct>>> {
@@ -159,7 +197,14 @@ export const productRepo = {
     if (!options.includeInactive) conditions.push('p.is_active = TRUE');
     if (options.query && options.query.trim() !== '') {
       values.push(`%${escapeLike(options.query.trim())}%`);
-      conditions.push(`p.name ILIKE $${values.length} ESCAPE '\\'`);
+      // بحث اللوحة: المسؤول يعرف المنتج باسمه العربي أو الكردي — الاثنان
+      // اسمان للمنتج نفسه عنده، لا لغة واجهةٍ يُختار لها.
+      conditions.push(
+        `(p.name ILIKE $${values.length} ESCAPE '\\' OR p.name_ckb ILIKE $${values.length} ESCAPE '\\')`,
+      );
+    }
+    if (options.missingKurdish === true) {
+      conditions.push('(p.name_ckb IS NULL OR p.description_ckb IS NULL)');
     }
     if (options.categoryId) {
       values.push(options.categoryId);
@@ -255,51 +300,86 @@ ${PRODUCT_RELATION_COLUMNS('p')},
   },
 
   /**
-   * بحث نصي جزئي (ILIKE مع دعم العربية) — البحث في PostgreSQL لا في التطبيق.
+   * بحث نصي جزئي **بلغة الواجهة** — البحث في PostgreSQL لا في التطبيق.
    *
-   * يطابق اسم المنتج **أو** اسم الأنمي المرتبط به ومرادفاته. الأنمي بُعد
-   * تصنيف مستقل عن الأقسام، فبحثٌ عن «قاتل الشياطين» يجب أن يجمع منتجاته
-   * من كل الأقسام لا أن يعود فارغاً لأن الكلمة ليست في اسم أي منتج.
+   * يطابق اسم المنتج أو **وصفه** بلغة الطلب، أو اسم قسمه أو قسمه الفرعي بها،
+   * أو اسم الأنمي المرتبط به ومرادفاته. الأنمي بُعد تصنيف مستقل عن الأقسام،
+   * فبحثٌ عن «قاتل الشياطين» يجب أن يجمع منتجاته من كل الأقسام لا أن يعود
+   * فارغاً لأن الكلمة ليست في اسم أي منتج. أسماء الأنمي أعلامٌ بلا نسخة
+   * كردية (046)، فتُطابَق في اللغتين.
    *
-   * الامتيازات الموقوفة لا تُطابَق: إخفاء الأنمي من الواجهة يعني إخفاءه من
-   * البحث أيضاً، وإلا صار البحث باباً خلفياً لما أُخفي عمداً.
+   * [CRITICAL] اللغة (066): `ar` ← الاسم والوصف العربيان؛ `ckb` ← الكرديان.
+   * كان 064 يجمع العربي والكردي في مستندٍ واحد، فكلمةٌ عربية في واجهةٍ كردية
+   * تُظهر منتجاً باسمٍ كردي لا يحويها. الحقل الكردي **الناقص** (منتج قديم)
+   * يحلّ محلّه عربيُّه في مستند الكردية — لأنه ما تعرضه الواجهة الكردية له،
+   * فلا يكون منتجٌ ظاهرٌ في قسمه مستحيلَ الإيجاد بالبحث.
+   *
+   * [CRITICAL] المقارنة على **مفتاح بحث مطويّ** (`search_fold`، 064) لا على
+   * النصّ الخام: `ی`/`ي`، `ک`/`ك`، `ە`/`ه`، ZWNJ والتشكيل… صورٌ متكافئة تلتقي
+   * في الطرفين بالدالة نفسها. لا قائمة كلمات — ما هو مخزَّن هو ما يُبحث فيه.
+   *
+   * الامتيازات والأقسام الموقوفة لا تُطابَق: إخفاؤها من الواجهة يعني
+   * إخفاءها من البحث أيضاً، وإلا صار البحث باباً خلفياً لما أُخفي عمداً.
    */
   async search(
     db: pg.Pool | pg.PoolClient,
     query: string,
     page: number,
     limit: number,
+    locale: AppLocale,
   ): Promise<Paginated<ReturnType<typeof mapProduct>>> {
-    // حرفياً: `%`/`_`/`\` في نصّ البحث ليست أنماطاً — والهروب مُعلَن
-    // بـ`ESCAPE '\'` لا موروثاً من إعداد الخادم (انظر `escapeLike`).
-    const like = `%${escapeLike(query)}%`;
-    // [PERF] الامتيازات المطابقة تُجمع أولاً في مصفوفة ثم يُقارَن بها
-    // المعرّف، لا `EXISTS` مرتبطاً بكل صف: الشرط المرتبط داخل `OR` كان
-    // يمنع فهرس trigram على الاسم فيُمسح الكتالوج كله في كل بحث (ومع
-    // تقديرٍ مبالغ يعبر عتبة JIT فيُترجَم كل بحث من جديد). بهذه الصيغة
-    // يجمع المخطّط فهرس الاسم وفهرس المعرّف معاً (BitmapOr).
-    const matches = `p.is_active = TRUE AND (
-           p.name ILIKE $1 ESCAPE '\\'
-           OR p.id = ANY (ARRAY(
-             SELECT pf.product_id
-               FROM product_franchises pf
-               JOIN franchises f
-                 ON f.id = pf.franchise_id AND f.is_active = TRUE
-              WHERE franchise_search_text(f.name, f.alt_names) ILIKE $1 ESCAPE '\\'
-           ))
-         )`;
+    // النمط يُبنى في القاعدة (`search_like_pattern`): يُطوى نصّ الزبون بالدالة
+    // نفسها التي طُوي بها المخزَّن، ثم تُهرَّب `%`/`_`/`\` — حرفياً لا أنماطاً،
+    // والهروب مُعلَن بـ`ESCAPE '\'` لا موروثاً من إعداد الخادم.
+    const pattern = `search_like_pattern($1)`;
+    const document = SEARCH_DOCUMENT[locale];
+    const displayedName = DISPLAYED_NAME[locale];
+    // [PERF] المعرّفات المطابِقة تُجمع أولاً في مصفوفةٍ واحدة (`UNION` لكل
+    // مصدر) ثم يُقارَن بها المعرّف بفهرس المفتاح — لا `EXISTS` مرتبطاً بكل صف
+    // ولا `OR` بين مصادر مختلفة. الشرط المرتبط داخل `OR` كان يمنع فهرس
+    // trigram فيُمسح الكتالوج كله في كل بحث (ومع تقديرٍ مبالغ يعبر عتبة JIT
+    // فيُترجَم كل بحث من جديد)؛ و`OR category_id = ANY(…)` يفعل الشيء نفسه لأن
+    // الأقسام قليلة فيُقدَّر أنها تطابق معظم الكتالوج. هنا يُخطَّط كل فرعٍ بفهرسه:
+    // مستند اللغة (`idx_products_search_ar_trgm` / `idx_products_search_ckb_trgm`)،
+    // وفهرسا القسم والقسم الفرعي الجزئيّان (`is_active` في الفرع شرطُ
+    // استعمالهما)، ثم `products_pkey`. و`UNION` يجعل المنتج الذي يطابق اسمُه
+    // ووصفُه وقسمُه معاً نتيجةً واحدة لا ثلاثاً.
+    const nameMatches = `search_fold(${displayedName('p')}) LIKE ${pattern} ESCAPE '\\'`;
+    const matches = `p.is_active = TRUE AND p.id = ANY (ARRAY(
+           SELECT pn.id FROM products pn
+            WHERE pn.is_active = TRUE
+              AND ${document('pn')} LIKE ${pattern} ESCAPE '\\'
+           UNION
+           SELECT pf.product_id
+             FROM product_franchises pf
+             JOIN franchises f
+               ON f.id = pf.franchise_id AND f.is_active = TRUE
+            WHERE search_fold(franchise_search_text(f.name, f.alt_names)) LIKE ${pattern} ESCAPE '\\'
+           UNION
+           SELECT pc.id
+             FROM categories c
+             JOIN products pc ON pc.category_id = c.id AND pc.is_active = TRUE
+            WHERE c.is_active = TRUE
+              AND search_fold(${displayedName('c')}) LIKE ${pattern} ESCAPE '\\'
+           UNION
+           SELECT ps.id
+             FROM subcategories s
+             JOIN products ps ON ps.subcategory_id = s.id AND ps.is_active = TRUE
+            WHERE s.is_active = TRUE
+              AND search_fold(${displayedName('s')}) LIKE ${pattern} ESCAPE '\\'
+         ))`;
     const [{ rows }, countRows] = await Promise.all([
       db.query<ProductRow & { images?: unknown; franchise_ids?: unknown }>(
         `${SELECT_WITH_IMAGES('p')}
          WHERE ${matches}
-         ORDER BY (p.name ILIKE $1 ESCAPE '\\') DESC, p.name ASC
+         ORDER BY (${nameMatches}) DESC, ${displayedName('p')} ASC, p.id
          LIMIT $2 OFFSET $3`,
-        [like, limit, (page - 1) * limit],
+        [query, limit, (page - 1) * limit],
       ),
       db.query<{ total: string }>(
         `SELECT COUNT(*)::text AS total FROM products p
          WHERE ${matches}`,
-        [like],
+        [query],
       ),
     ]);
     const total = Number(countRows.rows[0]?.total ?? 0);

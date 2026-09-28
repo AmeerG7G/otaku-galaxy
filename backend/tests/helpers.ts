@@ -187,21 +187,6 @@ export async function purgeTestUsers(pattern = '+96477%') {
  * multipart، فيبقى فحص الملكية مفعَّلاً في الاختبار بدل الالتفاف عليه.
  */
 /**
- * صورةٌ مرفوعة من اللوحة لرسوم الشخصيات (`purpose = 'slot'`) — ما تقبله
- * `PUT /admin/visual-slots/:id/image` وحده؛ صورةُ تقييم (أعلاه) تُرفض هناك.
- */
-export async function registerUploadedSlotImage(uploadedBy?: string) {
-  const storageKey = `slot/test/${randomUUID()}.png`;
-  const url = `${config.uploads.publicPath}/${storageKey}`;
-  await db.query(
-    `INSERT INTO media_files (storage_key, url, purpose, mime_type, size_bytes, uploaded_by)
-     VALUES ($1, $2, 'slot', 'image/png', 1024, $3)`,
-    [storageKey, url, uploadedBy ?? null],
-  );
-  return url;
-}
-
-/**
  * «اليوم» (يوم/شهر) بتقويم المتجر — كما يقيسه الخادم في كل استعلام ميلاد.
  *
  * السويتات التي تسجّل «عيد ميلادي اليوم» يجب أن تسأل التقويم نفسه لا

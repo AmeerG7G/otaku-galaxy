@@ -4,8 +4,6 @@ import '../../../../core/l10n/app_strings.dart';
 import '../../../../core/design_system/design_system.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../domain/entities/order.dart';
-import '../../../visuals/domain/visual_slot.dart';
-import '../../../visuals/presentation/managed_artwork.dart';
 
 /// نتيجة ورقة «هل استلمت طلبك؟».
 enum DeliveryConfirmationChoice {
@@ -49,7 +47,8 @@ class _DeliveryConfirmationBody extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // العنوان والرسم جنباً إلى جنب كما في المرجع.
+          // العنوان بعرض الورقة. كان بجانبه رسم شخصية كما في المرجع (الصورة
+          // 22)، وأُزيل مع الصورة (2026-09-28).
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -76,16 +75,6 @@ class _DeliveryConfirmationBody extends StatelessWidget {
                       ),
                     ),
                   ],
-                ),
-              ),
-              const SizedBox(width: 10),
-              // لا `errorBuilder` هنا: [ManagedArtwork] يتولّى كل مسارات
-              // الفشل داخلياً وينتهي بها إلى الأصل المضمَّن.
-              const IgnorePointer(
-                child: ManagedArtwork(
-                  slot: VisualSlots.deliveryConfirmation,
-                  fallbackAsset: 'assets/art/opt/a-i6.png',
-                  width: 74,
                 ),
               ),
             ],

@@ -1,5 +1,5 @@
 import type pg from 'pg';
-import type { AppLocale } from '../utils/locale.js';
+import { pickProductName, type AppLocale, type ProductNames } from '../utils/locale.js';
 import { userRepo } from '../repositories/userRepo.js';
 import { MONTH_NAMES, PARAM_TEMPLATES } from '../domain/notificationTemplates.js';
 import { db, withTransaction } from '../database/pool.js';
@@ -55,7 +55,7 @@ export const restockService = {
         await notifyExpected(tx, {
           userIds: [userId],
           productId,
-          productName: product.name,
+          productNames: { ar: product.nameAr, ckb: product.nameCkb },
           restockAt: product.restockAt,
           updated: false,
         });
@@ -100,7 +100,8 @@ export const restockService = {
     tx: pg.PoolClient,
     input: {
       productId: string;
-      productName: string;
+      /** الاسم بلغتيه — كل مشترك يقرؤه بلغته (066). */
+      productNames: ProductNames;
       restockAt: string;
       /** هل هذا تعديل لموعد أُعلن سابقاً؟ يغيّر النصّ لا التصنيف. */
       updated: boolean;
@@ -122,7 +123,7 @@ export const restockService = {
   async notifyRestocked(
     tx: pg.PoolClient,
     productId: string,
-    productName: string,
+    productNames: ProductNames,
   ): Promise<number> {
     const userIds = await restockRepo.subscriberIds(tx, productId);
     if (userIds.length === 0) return 0;
@@ -134,7 +135,8 @@ export const restockService = {
       created += await notificationRepo.createMany(tx, {
         userIds: ids,
         type: 'backInStock',
-        ...PARAM_TEMPLATES.backInStock[locale](productName),
+        // [I18N] اسم المنتج بلغة المستلم لا بالعربية وحدها (066).
+        ...PARAM_TEMPLATES.backInStock[locale](pickProductName(productNames, locale)),
         productId,
       });
     }
@@ -153,8 +155,12 @@ export const restockService = {
    * اللوحة، والموعد المتوقَّع يبقى — ثم يعود «متوقَّع توفره يوم كذا» لحظةَ
    * تُباع القطعة ثانيةً. تعريفٌ واحد يُستدعى من المسارين داخل معاملة كلٍّ منهما.
    */
-  async stockReturned(tx: pg.PoolClient, productId: string, productName: string): Promise<number> {
-    const created = await this.notifyRestocked(tx, productId, productName);
+  async stockReturned(
+    tx: pg.PoolClient,
+    productId: string,
+    productNames: ProductNames,
+  ): Promise<number> {
+    const created = await this.notifyRestocked(tx, productId, productNames);
     // الموعد المتوقَّع تحقّق، فلا معنى لبقائه.
     await tx.query('UPDATE products SET restock_at = NULL WHERE id = $1', [productId]);
     return created;
@@ -206,7 +212,7 @@ async function notifyExpected(
   input: {
     userIds: string[];
     productId: string;
-    productName: string;
+    productNames: ProductNames;
     restockAt: string;
     updated: boolean;
   },
@@ -220,7 +226,7 @@ async function notifyExpected(
       type: 'restockScheduled',
       ...PARAM_TEMPLATES[input.updated ? 'restockRescheduled' : 'restockScheduled'][
         locale
-      ](input.productName, when),
+      ](pickProductName(input.productNames, locale), when),
       productId: input.productId,
     });
   }

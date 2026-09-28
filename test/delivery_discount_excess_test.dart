@@ -30,8 +30,8 @@ Product _product({
   double promoAmount = 0,
 }) => Product(
   id: id,
-  name: 'منتج',
-  description: 'وصف',
+  nameAr: 'منتج',
+  descriptionAr: 'وصف',
   price: price,
   categoryId: 'c1',
   stock: 500,

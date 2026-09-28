@@ -1,4 +1,5 @@
 import type pg from 'pg';
+import { kurdishOrNull } from '../utils/locale.js';
 
 /**
  * «أخبرني عند توفره»: اشتراك العميل بمنتج نافد المخزون.
@@ -63,15 +64,24 @@ export const restockRepo = {
     db: pg.Pool | pg.PoolClient,
     userId: string,
   ): Promise<
-    { productId: string; name: string; restockAt: string | null; inStock: boolean }[]
+    {
+      productId: string;
+      /** الاسم العربي — الحقل القديم؛ الاسمان الصريحان بجانبه (066). */
+      name: string;
+      nameAr: string;
+      nameCkb: string | null;
+      restockAt: string | null;
+      inStock: boolean;
+    }[]
   > {
     const { rows } = await db.query<{
       product_id: string;
       name: string;
+      name_ckb: string | null;
       restock_at: Date | string | null;
       in_stock: boolean;
     }>(
-      `SELECT rs.product_id, p.name, p.restock_at, (p.stock > 0) AS in_stock
+      `SELECT rs.product_id, p.name, p.name_ckb, p.restock_at, (p.stock > 0) AS in_stock
          FROM restock_subscriptions rs
          JOIN products p ON p.id = rs.product_id
         WHERE rs.user_id = $1
@@ -81,6 +91,8 @@ export const restockRepo = {
     return rows.map((r) => ({
       productId: r.product_id,
       name: r.name,
+      nameAr: r.name,
+      nameCkb: kurdishOrNull(r.name_ckb),
       restockAt: r.restock_at ? new Date(r.restock_at).toISOString() : null,
       inStock: r.in_stock === true,
     }));

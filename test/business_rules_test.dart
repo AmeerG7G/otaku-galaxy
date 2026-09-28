@@ -22,8 +22,8 @@ Product _product({
 }) {
   return Product(
     id: id,
-    name: 'منتج',
-    description: 'وصف',
+    nameAr: 'منتج',
+    descriptionAr: 'وصف',
     price: price,
     categoryId: 'c1',
     stock: 10,

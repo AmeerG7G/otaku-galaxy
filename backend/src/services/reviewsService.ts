@@ -15,6 +15,7 @@ import { reviewRepo } from '../repositories/reviewsRepo.js';
 import { userRepo } from '../repositories/userRepo.js';
 import { type ReviewRow, type ReviewStatus } from '../types/index.js';
 import { Errors } from '../utils/errors.js';
+import { kurdishOrNull, pickProductName } from '../utils/locale.js';
 import { config } from '../config/index.js';
 
 /**
@@ -183,7 +184,8 @@ export const reviewsService = {
         userId,
         orderId: input.orderId,
         productId: input.productId,
-        productName: item.productName,
+        productName: item.productNameAr,
+        productNameCkb: item.productNameCkb ?? null,
         rating: input.rating,
         comment: input.comment,
         photoUrls,
@@ -296,9 +298,16 @@ export const reviewsService = {
         await notificationRepo.create(client, {
           userId: updated.user_id,
           type: 'reviewApproved',
-          ...PARAM_TEMPLATES.reviewApproved[
-              await userRepo.localeOf(client, updated.user_id)
-            ](updated.product_name),
+          ...(await (async () => {
+              const locale = await userRepo.localeOf(client, updated.user_id);
+              // اسم المنتج بلغة صاحب التقييم — من لقطتَي الطلب (066).
+              return PARAM_TEMPLATES.reviewApproved[locale](
+                pickProductName(
+                  { ar: updated.product_name, ckb: kurdishOrNull(updated.product_name_ckb) },
+                  locale,
+                ),
+              );
+            })()),
           reviewId: updated.id,
           productId: updated.product_id,
         });

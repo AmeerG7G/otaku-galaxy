@@ -247,21 +247,26 @@ describe('Performance / resource audit', () => {
     const perfOrderId = async () =>
       (await db.query<{ id: string }>("SELECT id FROM orders WHERE number = 'perf-3'")).rows[0]!.id;
 
-    it('[PERF-4] public search uses the trigram index and never trips JIT — for both the page and the count', async () => {
-      const statements = await statementsOf(() => productRepo.search(db, 'product-12', 1, 12), /FROM products p/);
+    it.each([
+      ['ar', 'idx_products_search_ar_trgm'],
+      ['ckb', 'idx_products_search_ckb_trgm'],
+    ] as const)('[PERF-4] public search (%s) uses its language trigram index and never trips JIT — for both the page and the count', async (locale, index) => {
+      const statements = await statementsOf(() => productRepo.search(db, 'product-12', 1, 12, locale), /FROM products p/);
       expect(statements).toHaveLength(2);
       for (const { text, values } of statements) {
         const plan = await explain(text, values);
         // `name ILIKE … OR EXISTS(…)` كان يمنع فهرس trigram فيمسح الكتالوج كله
         // (وبتقديرٍ مبالغ يتجاوز عتبة JIT فيُترجَم كل بحثٍ من جديد: ~٨٠ مللي
         // ثانية إضافية لكل جملة).
-        expect(plan.usesIndex('idx_products_name_trgm'), JSON.stringify(plan.nodes.map((n) => [n['Node Type'], n['Relation Name'], n['Index Name']]))).toBe(true);
+        // الهجرة 066: مستندٌ مطويٌّ لكل لغة (اسم + وصف)، ففهرس trigram على
+        // مستند لغة الطلب هو المطلوب — لا فهرس الاسم الخام ولا مستند اللغة الأخرى.
+        expect(plan.usesIndex(index), JSON.stringify(plan.nodes.map((n) => [n['Node Type'], n['Relation Name'], n['Index Name']]))).toBe(true);
         expect(plan.jit, `JIT compiled: ${text}`).toBe(false);
       }
     });
 
-    it('[PERF-4] a one-character search (the validator minimum) still avoids JIT', async () => {
-      const statements = await statementsOf(() => productRepo.search(db, '9', 1, 12), /FROM products p/);
+    it.each(['ar', 'ckb'] as const)('[PERF-4] a one-character search (%s, the validator minimum) still avoids JIT', async (locale) => {
+      const statements = await statementsOf(() => productRepo.search(db, '9', 1, 12, locale), /FROM products p/);
       for (const { text, values } of statements) {
         expect((await explain(text, values)).jit).toBe(false);
       }

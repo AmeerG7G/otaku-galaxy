@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../tokens/app_dimens.dart';
 import '../../tokens/app_theme_colors.dart';
-import '../../../../features/visuals/presentation/managed_artwork.dart';
+import '../../../../features/visuals/presentation/character_artwork.dart';
 
 /// نمط ترويسة الشاشة في تصميم Otaku Galaxy v2.
 enum OtakuHeaderVariant {
@@ -38,6 +38,7 @@ enum OtakuHeaderVariant {
       this.artworkSlot,
       this.artworkWidth,
       this.artworkEnd,
+    this.artworkBelowStatusBar = false,
       this.gradient,
       this.variant = OtakuHeaderVariant.plain,
       this.leading,
@@ -57,6 +58,7 @@ enum OtakuHeaderVariant {
     this.artworkSlot,
     this.artworkWidth,
     this.artworkEnd,
+    this.artworkBelowStatusBar = false,
     this.leading,
     this.bottom,
   }) : variant = OtakuHeaderVariant.gradient;
@@ -72,6 +74,7 @@ enum OtakuHeaderVariant {
     this.artworkSlot,
     this.artworkWidth,
     this.artworkEnd,
+    this.artworkBelowStatusBar = false,
     this.bottom,
   }) : variant = OtakuHeaderVariant.tab,
        onBack = null,
@@ -89,6 +92,7 @@ enum OtakuHeaderVariant {
     this.artworkSlot,
     this.artworkWidth,
     this.artworkEnd,
+    this.artworkBelowStatusBar = false,
     this.leading,
     this.bottom,
   }) : variant = OtakuHeaderVariant.compact,
@@ -108,17 +112,39 @@ enum OtakuHeaderVariant {
   /// رسم شخصية تزييني خلف الترويسة.
   final String? artwork;
 
-  /// مفتاح الفتحة البصرية التي يديرها المسؤول من لوحة التحكم.
+  /// مفتاح موضع الرسم (`VisualSlots`) — صورته الثابتة في `CharacterArt`.
   ///
-  /// حين يُمرَّر، يصير [artwork] هو الأصل الاحتياطي: يُعرض كما هو ما دامت
-  /// الفتحة غير مضبوطة أو تعذّر تحميل صورتها. المقاس والموضع لا يتغيّران.
+  /// حين يُمرَّر يحدّد الموضعُ صورته ولا يلزم [artwork] (المسار المباشر لرسمٍ
+  /// ليس موضعاً). المقاس والموضع كما هما.
   final String? artworkSlot;
 
-  /// عرض الرسم التزييني (الشخصية). الافتراضي 126.
+  /// رسمٌ يُعرض: موضعٌ بصورته الثابتة، أو مسارٌ مباشر.
+  bool get _hasArtwork => artworkSlot != null || artwork != null;
+
+  /// عرض الرسم التزييني (الشخصية). الافتراضي [defaultArtworkWidth].
   final double? artworkWidth;
 
-  /// إزاحة الرسم من جهة النهاية (RTL: اليسار). الافتراضي -40.
+  /// إزاحة الرسم من جهة النهاية (RTL: اليسار). الافتراضي [defaultArtworkEnd].
   final double? artworkEnd;
+
+  /// يبدأ الرسم تحت شريط الحالة لا فوقه.
+  ///
+  /// الافتراضي `false`: الرسم يبدأ ١٤ فوق حافة الترويسة العليا كما في المرجع
+  /// — وحين تكون الترويسة أعلى الشاشة (بلا `SafeArea` خارجها) يقع رأس
+  /// الشخصية تحت أيقونات البطارية والشبكة ويُقصّ طرفه عند حافة الشاشة. `true`
+  /// يضع حافة الرسم العليا عند أسفل شريط الحالة تماماً
+  /// (`MediaQuery.paddingOf(context).top`)، فلا تداخل ولا قصّ من الأعلى. تختاره
+  /// الشاشة التي تحتاجه؛ لا يتغيّر شيءٌ لغيرها.
+  final bool artworkBelowStatusBar;
+
+  /// عرض الرسم حين لا تحدّد الشاشة [artworkWidth].
+  static const double defaultArtworkWidth = 126;
+
+  /// إزاحة الرسم من جهة النهاية حين لا تحدّد الشاشة [artworkEnd].
+  static const double defaultArtworkEnd = -40;
+
+  /// حافة الرسم العليا الافتراضية — ١٤ فوق حافة الترويسة.
+  static const double defaultArtworkTop = -14;
 
   final Gradient? gradient;
   final OtakuHeaderVariant variant;
@@ -167,7 +193,7 @@ enum OtakuHeaderVariant {
 
     return Container(
       decoration: BoxDecoration(gradient: gradient),
-      clipBehavior: gradient != null || artwork != null
+      clipBehavior: gradient != null || _hasArtwork
           ? Clip.hardEdge
           : Clip.none,
       child: Stack(
@@ -189,17 +215,21 @@ enum OtakuHeaderVariant {
           // رسم الشخصية خلف الترويسة — بلا شفافية (قرار 2026-09-15): كان
           // يُرسم بـ١٦٪ كما في المرجع لرسمٍ مضمَّن، فبدت الشخصيةُ التي يرفعها
           // المسؤول باهتةً كأنها معطوبة. تُعرض الآن كصورتها الأصلية.
-          if (artwork != null)
+          if (_hasArtwork)
             PositionedDirectional(
-              top: -14,
-              end: artworkEnd ?? -40,
+              top: artworkBelowStatusBar
+                  ? MediaQuery.paddingOf(context).top
+                  : defaultArtworkTop,
+              end: artworkEnd ?? defaultArtworkEnd,
               child: IgnorePointer(
                 child: artworkSlot == null
-                    ? Image.asset(artwork!, width: artworkWidth ?? 126)
-                    : ManagedArtwork(
+                    ? Image.asset(
+                        artwork!,
+                        width: artworkWidth ?? defaultArtworkWidth,
+                      )
+                    : CharacterArtwork(
                         slot: artworkSlot!,
-                        fallbackAsset: artwork!,
-                        width: artworkWidth ?? 126,
+                        width: artworkWidth ?? defaultArtworkWidth,
                       ),
               ),
             ),

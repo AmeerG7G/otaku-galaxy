@@ -91,9 +91,9 @@ void main() {
       expect(socials, isNot(contains('VisualSlots')));
     });
 
-    test('ولا تُتاح نسخة `ManagedArtwork` ببديلٍ من الودجات — كل موضعٍ مُدار له أصل مضمَّن', () {
-      final source = File('lib/features/visuals/presentation/managed_artwork.dart').readAsStringSync();
-      expect(source, isNot(contains('ManagedArtwork.orWidget(')));
+    test('ولا تُتاح نسخة `CharacterArtwork` ببديلٍ من الودجات — كل موضعٍ له أصل مضمَّن', () {
+      final source = File('lib/features/visuals/presentation/character_artwork.dart').readAsStringSync();
+      expect(source, isNot(contains('CharacterArtwork.orWidget(')));
       expect(source, isNot(contains('fallbackWidget')));
     });
 

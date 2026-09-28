@@ -34,6 +34,11 @@ function product(overrides: Partial<Product> = {}): Product {
     id: 'p1',
     name: 'دفتر ناروتو',
     description: '',
+    nameAr: 'دفتر ناروتو',
+    descriptionAr: '',
+    nameCkb: 'دەفتەری ناروتۆ',
+    descriptionCkb: 'وەسف',
+    kurdishMissing: false,
     price: 5000,
     stock: 7,
     restockAt: null,
@@ -139,7 +144,7 @@ describe('بحث المنتجات', () => {
 
   it('المخزون يُعرض رقماً لكل منتج، ونفاده حالةٌ مميَّزة', async () => {
     vi.mocked(listProducts).mockResolvedValue(
-      listOf([product({ id: 'p1', stock: 7 }), product({ id: 'p2', name: 'قلم لوفي', stock: 0 })]),
+      listOf([product({ id: 'p1', stock: 7 }), product({ id: 'p2', name: 'قلم لوفي', nameAr: 'قلم لوفي', stock: 0 })]),
     )
     renderPage()
     expect(await screen.findByText('متوفر (7)')).toBeInTheDocument()
@@ -260,5 +265,45 @@ describe('تزامن حقل البحث مع الرابط', () => {
     expect(searchBox()).toHaveValue('ناروتو شيبودن')
     await waitFor(() => expect(lastQ()).toBe('ناروتو شيبودن'))
     expect(searchBox()).toHaveValue('ناروتو شيبودن')
+  })
+})
+
+/**
+ * [CRITICAL] القائمة تعرض الاسمين صريحين وتعلن نقص الكردية.
+ *
+ * منتجٌ قديم بلا كردية لا يُخفى نقصه خلف الاسم العربي: شارة «الكردية ناقصة»،
+ * وترشيحٌ على الخادم يجمع الناقص كله ليُكمَل.
+ */
+describe('المنتجات — المحتوى بلغتين في القائمة', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('الاسم العربي والكردي يظهران معاً، والناقص يحمل شارته', async () => {
+    vi.mocked(listProducts).mockResolvedValue(
+      listOf([
+        product({ id: 'p1', nameAr: 'دفتر ناروتو', nameCkb: 'دەفتەری ناروتۆ' }),
+        product({ id: 'p2', name: 'قلم قديم', nameAr: 'قلم قديم', nameCkb: null, descriptionCkb: null, kurdishMissing: true }),
+      ]),
+    )
+    renderPage()
+    expect(await screen.findByText('دفتر ناروتو')).toBeInTheDocument()
+    expect(screen.getByText('دەفتەری ناروتۆ')).toBeInTheDocument()
+    expect(screen.getByText('قلم قديم')).toBeInTheDocument()
+    expect(screen.getAllByText('الكردية ناقصة')).toHaveLength(1)
+  })
+
+  it('«الكردية ناقصة فقط» يرشّح على الخادم ويعيد إلى الصفحة الأولى', async () => {
+    vi.mocked(listProducts).mockResolvedValue(listOf([product()]))
+    renderPage('/products?page=3')
+    await screen.findByText('دفتر ناروتو')
+    await userEvent.click(screen.getByRole('checkbox', { name: 'الكردية ناقصة فقط' }))
+    await waitFor(() =>
+      expect(vi.mocked(listProducts).mock.calls.at(-1)![0]).toMatchObject({
+        missingKurdish: 'true',
+        page: 1,
+      }),
+    )
+    expect(urlSearch()).toContain('missingKurdish=true')
   })
 })

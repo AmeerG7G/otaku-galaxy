@@ -68,7 +68,11 @@ class _SearchScreenState extends State<SearchScreen> with LocaleRefetch {
     }
   }
 
-  /// نتائج البحث مصرَّفة خادمياً — تُعاد للاستعلام الحالي بلغة الواجهة.
+  /// نتائج البحث تُعاد للاستعلام الحالي بلغة الواجهة الجديدة.
+  ///
+  /// [CRITICAL] المطابقة نفسها بلغة الطلب (هجرة ٠٦٦): العربية تبحث في الاسم
+  /// والوصف العربيين، والكردية في الكرديين. تبديل اللغة يغيّر **مجموعة**
+  /// النتائج لا أسماءها وحدها — والأسماء تُعرض بـ[localizedProductName].
   @override
   void onLanguageChanged() {
     final query = _controller.text.trim();
@@ -298,7 +302,6 @@ class _SearchScreenState extends State<SearchScreen> with LocaleRefetch {
         OtakuEditorialPanel(
           title: context.strings('searchIdleTitle'),
           body: context.g(GenderedStrings.searchHintBody),
-          artwork: 'assets/art/a-l-detective.png',
           artworkSlot: VisualSlots.searchHeader,
           margin: const EdgeInsets.only(top: 24),
           artHeight: 150,
@@ -367,7 +370,6 @@ class _SearchScreenState extends State<SearchScreen> with LocaleRefetch {
     return AnimeEmptyState(
       title: context.strings('noResultsTitle'),
       subtitle: context.strings('noResultsBody'),
-      artwork: 'assets/art/opt/a-i1.png',
       artworkSlot: VisualSlots.emptySearch,
       actionLabel: context.strings('browseCategories'),
       onAction: () {

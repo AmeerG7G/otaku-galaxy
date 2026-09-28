@@ -45,6 +45,7 @@ import '../../features/orders/domain/repositories/order_repository.dart';
 import '../../features/orders/domain/usecases/fetch_my_orders_usecase.dart';
 import '../../features/orders/domain/usecases/fetch_order_details_usecase.dart';
 import '../../features/orders/domain/usecases/place_order_usecase.dart';
+import '../../features/orders/domain/usecases/fetch_checkout_quote_usecase.dart';
 import '../../features/products/data/repositories/governorate_repository_impl.dart';
 import '../../features/products/data/repositories/product_repository_impl.dart';
 import '../../features/products/domain/repositories/governorate_repository.dart';
@@ -59,7 +60,6 @@ import '../../features/products/domain/usecases/search_products_usecase.dart';
 import '../../features/settings/presentation/cubit/locale_cubit.dart';
 import '../../features/settings/presentation/cubit/theme_cubit.dart';
 import '../../features/settings/data/store_settings_repository.dart';
-import '../../features/visuals/data/visuals_repository.dart';
 import '../../features/notifications/data/push_registrar.dart';
 import '../../features/notifications/data/push_token_repository.dart';
 import '../../features/restock/data/restock_repository.dart';
@@ -238,9 +238,6 @@ void _initEngagementFeatures() {
     ..registerLazySingleton<StoreSettingsRepository>(
       () => StoreSettingsRepository(api: sl<ApiClient>()),
     )
-    ..registerLazySingleton<VisualsRepository>(
-      () => VisualsRepository(api: sl<ApiClient>(), prefs: sl<SharedPreferences>()),
-    )
     ..registerLazySingleton<PersonalizeStorage>(
       () => PersonalizeStorage(sl<SharedPreferences>()),
     )
@@ -356,6 +353,9 @@ void _initOrdersFeature() {
   sl
     ..registerLazySingleton<PlaceOrderUsecase>(
       () => PlaceOrderUsecase(sl<OrderRepository>()),
+    )
+    ..registerLazySingleton<FetchCheckoutQuoteUsecase>(
+      () => FetchCheckoutQuoteUsecase(sl<OrderRepository>()),
     )
     ..registerLazySingleton<FetchMyOrdersUsecase>(
       () => FetchMyOrdersUsecase(sl<OrderRepository>()),

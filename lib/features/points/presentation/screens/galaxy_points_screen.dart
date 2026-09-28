@@ -127,7 +127,6 @@ class _GalaxyPointsScreenState extends State<GalaxyPointsScreen> {
                           title: context.strings('noActivityTitle'),
                           body:
                               context.strings('noActivityBody'),
-                          artwork: 'assets/art/opt/a-i5.png',
                           artworkSlot: VisualSlots.points,
                           margin: EdgeInsets.zero,
                           minHeight: 170,

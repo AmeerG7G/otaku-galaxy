@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { App as AntApp, ConfigProvider } from 'antd'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -157,5 +157,147 @@ describe('ضبط خصم التوصيل في نموذج المنتج', () => {
     // التلميحات في antd تُحمَّل على العنصر عبر aria/عنوان — يكفي وجود النصّ
     // في الشجرة بعد التحويم، والمهم هنا أن الحقل معنون بوضوح «/ قطعة».
     expect(screen.getByText('قيمة خصم التوصيل / قطعة')).toBeInTheDocument()
+  })
+})
+
+/**
+ * [CRITICAL] محتوى المنتج بلغتين — أربعة حقول يكتبها المسؤول (هجرة ٠٦٦).
+ *
+ * لا حقل «اسم المنتج» عامٌّ واحد: الاسم والوصف بالعربية تحت «العربية»،
+ * والاسم والوصف بالكردية تحت «الكردية». الإنشاء يُلزم الأربعة؛ التعديل لا
+ * يسمح بتفريغ ما كُتب، ولا يُجبر على اختلاق ما نقص في منتجٍ قديم.
+ */
+function renderFormIn(mode: 'create' | 'edit', initialValues = {}) {
+  const onSubmit = vi.fn()
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <QueryClientProvider client={queryClient}>
+      <ConfigProvider direction="rtl">
+        <AntApp>
+          <ProductForm
+            mode={mode}
+            optionsAvailable
+            submitting={false}
+            onSubmit={onSubmit}
+            onCancel={() => {}}
+            initialValues={{
+              price: 1000,
+              stock: 2,
+              categoryId: 'c1',
+              images: [],
+              options: [],
+              ...initialValues,
+            }}
+          />
+        </AntApp>
+      </ConfigProvider>
+    </QueryClientProvider>,
+  )
+  return { onSubmit }
+}
+
+const REQUIRED_MESSAGES = [
+  'اسم المنتج بالعربية مطلوب',
+  'وصف المنتج بالعربية مطلوب',
+  'اسم المنتج بالكردية مطلوب',
+  'وصف المنتج بالكردية مطلوب',
+]
+
+describe('[CRITICAL] محتوى المنتج بلغتين في النموذج', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(listAdminCategories).mockResolvedValue({
+      items: [{ id: 'c1', name: 'قسم', subcategories: [] }],
+    } as never)
+    vi.mocked(listFranchises).mockResolvedValue({ items: [] } as never)
+  })
+
+  it('الإنشاء يعرض الحقول الأربعة مجمَّعةً تحت «العربية» و«الكردية» — لا حقل اسمٍ عامّ', async () => {
+    renderFormIn('create')
+    const ar = await screen.findByTestId('content-ar')
+    const ckb = screen.getByTestId('content-ckb')
+    expect(within(ar).getByText('العربية')).toBeInTheDocument()
+    expect(within(ar).getByLabelText('اسم المنتج بالعربي')).toBeInTheDocument()
+    expect(within(ar).getByLabelText('وصف المنتج بالعربي')).toBeInTheDocument()
+    expect(within(ckb).getByText('الكردية')).toBeInTheDocument()
+    expect(within(ckb).getByLabelText('ناوی بەرهەم بە کوردی')).toBeInTheDocument()
+    expect(within(ckb).getByLabelText('وەسفی بەرهەم بە کوردی')).toBeInTheDocument()
+    expect(screen.queryByLabelText('اسم المنتج')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('الوصف')).not.toBeInTheDocument()
+  })
+
+  it('الإرسال الفارغ يُرفض برسالةٍ لكل حقلٍ من الأربعة ولا يصل الخادم', async () => {
+    const { onSubmit } = renderFormIn('create')
+    await screen.findByTestId('content-ar')
+    await userEvent.click(screen.getByRole('button', { name: 'إضافة المنتج' }))
+    for (const text of REQUIRED_MESSAGES) {
+      expect(await screen.findByText(text)).toBeInTheDocument()
+    }
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('المسافات وحدها فارغة — تُرفض كالغياب', async () => {
+    const { onSubmit } = renderFormIn('create')
+    await screen.findByTestId('content-ar')
+    for (const label of ['اسم المنتج بالعربي', 'وصف المنتج بالعربي', 'ناوی بەرهەم بە کوردی', 'وەسفی بەرهەم بە کوردی']) {
+      await userEvent.type(screen.getByLabelText(label), '   ')
+    }
+    await userEvent.click(screen.getByRole('button', { name: 'إضافة المنتج' }))
+    for (const text of REQUIRED_MESSAGES) {
+      expect(await screen.findByText(text)).toBeInTheDocument()
+    }
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('القيم تصل مقصوصةً كلٌّ في حقله — واليونيكود الكردي كما كُتب', async () => {
+    const { onSubmit } = renderFormIn('create')
+    await screen.findByTestId('content-ar')
+    await userEvent.type(screen.getByLabelText('اسم المنتج بالعربي'), '  حقيبة ناروتو ')
+    await userEvent.type(screen.getByLabelText('وصف المنتج بالعربي'), 'حقيبة مدرسية بتصميم ناروتو')
+    await userEvent.type(screen.getByLabelText('ناوی بەرهەم بە کوردی'), ' جانتای ناروتۆ  ')
+    await userEvent.type(screen.getByLabelText('وەسفی بەرهەم بە کوردی'), 'جانتای قوتابخانە بە دیزاینی ناروتۆ')
+    await userEvent.click(screen.getByRole('button', { name: 'إضافة المنتج' }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
+    expect(onSubmit.mock.calls[0]![0]).toMatchObject({
+      nameAr: 'حقيبة ناروتو',
+      descriptionAr: 'حقيبة مدرسية بتصميم ناروتو',
+      nameCkb: 'جانتای ناروتۆ',
+      descriptionCkb: 'جانتای قوتابخانە بە دیزاینی ناروتۆ',
+      price: 1000,
+      stock: 2,
+    })
+  })
+
+  it('التعديل: ما كان مكتوباً لا يُفرَّغ — مسح الاسم الكردي يُرفض', async () => {
+    const { onSubmit } = renderFormIn('edit', {
+      nameAr: 'حقيبة',
+      descriptionAr: 'وصف',
+      nameCkb: 'جانتا',
+      descriptionCkb: 'وەسف',
+    })
+    const input = await screen.findByLabelText('ناوی بەرهەم بە کوردی')
+    expect(input).toHaveValue('جانتا')
+    await userEvent.clear(input)
+    await userEvent.click(screen.getByRole('button', { name: 'حفظ التعديلات' }))
+    expect(await screen.findByText('اسم المنتج بالكردية مطلوب')).toBeInTheDocument()
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('[CRITICAL] منتجٌ قديم بلا كردية: النقص معلَن، والحفظ لا يُحجَب ولا يُختلق نصّ', async () => {
+    const { onSubmit } = renderFormIn('edit', {
+      nameAr: 'منتج قديم',
+      descriptionAr: '',
+      nameCkb: '',
+      descriptionCkb: '',
+    })
+    expect(await screen.findByText('الكردية ناقصة لهذا المنتج')).toBeInTheDocument()
+    expect(screen.getByText('الوصف العربي فارغ لهذا المنتج')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'حفظ التعديلات' }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
+    expect(onSubmit.mock.calls[0]![0]).toMatchObject({
+      nameAr: 'منتج قديم',
+      nameCkb: '',
+      descriptionCkb: '',
+    })
   })
 })

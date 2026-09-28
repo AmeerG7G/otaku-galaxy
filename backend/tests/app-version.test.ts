@@ -201,6 +201,46 @@ describe('ضبط الحدّ الأدنى من لوحة التحكم', () => {
     expect(publicRes.body.data.latestVersion).toBe('1.3.0');
   });
 
+  it('رسالة التحديث بالكردية تُحفظ من اللوحة وتصل التطبيق مع العربية', async () => {
+    const token = await createAdminUser();
+    const saved = await api
+      .patch('/api/admin/settings/app-version')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        app_update_message: 'حدّث التطبيق من فضلك',
+        app_update_message_ckb: 'تکایە ئەپەکە نوێ بکەرەوە',
+      });
+    expect(saved.status).toBe(200);
+    expect(saved.body.data.updateMessageCkb).toBe('تکایە ئەپەکە نوێ بکەرەوە');
+
+    const publicRes = await api.get('/api/catalog/app-version');
+    expect(publicRes.body.data.updateMessage).toBe('حدّث التطبيق من فضلك');
+    expect(publicRes.body.data.updateMessageCkb).toBe('تکایە ئەپەکە نوێ بکەرەوە');
+  });
+
+  it('[CRITICAL] رفض 426 يحمل رسالة المسؤول بلغة الطلب — لا عربية لطلبٍ كردي', async () => {
+    const { token } = await registerAndLogin();
+    await setVersionSettings({
+      app_min_supported_version: '2.0.0',
+      app_update_message: 'حدّث التطبيق من فضلك',
+      app_update_message_ckb: 'تکایە ئەپەکە نوێ بکەرەوە',
+    });
+    const reject = (language: string) =>
+      api
+        .get('/api/cart')
+        .set('Authorization', `Bearer ${token}`)
+        .set('Accept-Language', language)
+        .set('X-App-Version', '1.9.0');
+
+    const ckb = await reject('ckb');
+    expect(ckb.status).toBe(426);
+    expect(ckb.body.error.code).toBe('APP_UPDATE_REQUIRED');
+    expect(ckb.body.message).toBe('تکایە ئەپەکە نوێ بکەرەوە');
+
+    const ar = await reject('ar');
+    expect(ar.body.message).toBe('حدّث التطبيق من فضلك');
+  });
+
   it('[CRITICAL] الحدّ بصيغة فاسدة يُرفض قبل الكتابة', async () => {
     // الخطأ هنا يحجب التطبيق عن كل مستخدميه، فلا يُقبل حفظه أصلاً.
     const token = await createAdminUser();

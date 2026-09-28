@@ -34,8 +34,10 @@ describe('تصفّح الأقسام في لوحة التحكم', () => {
         .post('/api/admin/products')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
-          name: `منتج تنقّل ${Date.now()}-${i}`,
-          description: 'وصف',
+          nameAr: `منتج تنقّل ${Date.now()}-${i}`,
+          descriptionAr: 'وصف',
+          nameCkb: `بەرهەمی گەشت ${i}`,
+          descriptionCkb: 'وەسف',
           price: 5000,
           categoryId: catalog.categoryId,
           subcategoryId: catalog.subcategoryId,
@@ -51,8 +53,10 @@ describe('تصفّح الأقسام في لوحة التحكم', () => {
       .post('/api/admin/products')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
-        name: `منتج قسم آخر ${Date.now()}`,
-        description: 'وصف',
+        nameAr: `منتج قسم آخر ${Date.now()}`,
+        descriptionAr: 'وصف',
+        nameCkb: 'بەرهەمی بەشێکی تر',
+        descriptionCkb: 'وەسف',
         price: 5000,
         categoryId: catalog.categoryId,
         subcategoryId: otherSubcategoryId,
@@ -143,8 +147,10 @@ describe('تصفّح الأقسام في لوحة التحكم', () => {
       .post('/api/admin/products')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
-        name: `منتج من القسم الفرعي ${Date.now()}`,
-        description: 'وصف',
+        nameAr: `منتج من القسم الفرعي ${Date.now()}`,
+        descriptionAr: 'وصف',
+        nameCkb: 'بەرهەمی ژێربەش',
+        descriptionCkb: 'وەسف',
         price: 7000,
         categoryId: catalog.categoryId,
         subcategoryId: otherSubcategoryId,

@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { config } from '../src/config/index.js';
 import { db } from '../src/database/pool.js';
 import { mediaRepo } from '../src/repositories/mediaRepo.js';
-import { api, createAdminUser, registerAndLogin, registerUploadedSlotImage } from './helpers.js';
+import { api, createAdminUser, registerAndLogin } from './helpers.js';
 
 /**
  * رفع الوسائط: الصلاحية حسب الغرض، والتحقق من محتوى الملف الفعلي.
@@ -203,61 +203,6 @@ describe('media orphan detection (read-only)', () => {
     const urls = found.map((f) => f.url);
     expect(urls).toContain(orphanUrl);
     expect(urls).not.toContain(linkedUrl);
-  });
-
-  it('[CRITICAL] صورة الفتحة — الدائمة والمؤقّتة — ليست يتيمة، والاستعلام نفسه هو المفحوص', async () => {
-    // الفتحة تُزرع مباشرةً (الفتحات تُعرَّف بالهجرات لا من اللوحة)، والصور
-    // تُوضع عبر المسارين الحقيقيين. المرجع المخزَّن هو ما يُعدّ ربطاً — كما
-    // `image_url` سواءً بسواء، بلا قاعدة زمنية: مؤقّتةٌ انتهت وما زال صفّ
-    // الفتحة يشير إليها تبقى مربوطة حتى تُستبدل أو تُنهى.
-    const { rows } = await db.query<{ id: string }>(
-      `INSERT INTO visual_slots (slot_key, label, location, group_key)
-       VALUES ($1, 'فتحة يتيم', 'موضع اختبار', 'other') RETURNING id`,
-      [`zz_orphan_slot_${Date.now()}`],
-    );
-    const slotId = rows[0]!.id;
-    try {
-      const permanentUrl = await registerUploadedSlotImage();
-      const temporaryUrl = await registerUploadedSlotImage();
-      await db.query(
-        "UPDATE media_files SET created_at = now() - interval '2 days' WHERE url = ANY($1)",
-        [[permanentUrl, temporaryUrl]],
-      );
-      await api
-        .put(`/api/admin/visual-slots/${slotId}/image`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({ url: permanentUrl })
-        .expect(200);
-      await api
-        .put(`/api/admin/visual-slots/${slotId}/temporary-image`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({ url: temporaryUrl, until: new Date(Date.now() + 3_600_000).toISOString() })
-        .expect(200);
-
-      const threshold = new Date(Date.now() - 60_000);
-      let urls = (await mediaRepo.findUnreferenced(db, threshold)).map((f) => f.url);
-      expect(urls).not.toContain(permanentUrl);
-      expect(urls).not.toContain(temporaryUrl);
-
-      // انتهت المؤقّتة: المرجع ما يزال في الصفّ فما تزال مربوطة.
-      await db.query(
-        "UPDATE visual_slots SET temporary_until = now() - interval '1 second' WHERE id = $1",
-        [slotId],
-      );
-      urls = (await mediaRepo.findUnreferenced(db, threshold)).map((f) => f.url);
-      expect(urls).not.toContain(temporaryUrl);
-
-      // أُنهيت صراحةً: الصفّ لا يشير إليها فتصير يتيمة — الملف يبقى (لا حذف).
-      await api
-        .delete(`/api/admin/visual-slots/${slotId}/temporary-image`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .expect(200);
-      urls = (await mediaRepo.findUnreferenced(db, threshold)).map((f) => f.url);
-      expect(urls).toContain(temporaryUrl);
-      expect(urls).not.toContain(permanentUrl);
-    } finally {
-      await db.query('DELETE FROM visual_slots WHERE id = $1', [slotId]);
-    }
   });
 
   it('الملف المرفوع للتوّ لا يُعدّ يتيماً — حارس السباق', async () => {

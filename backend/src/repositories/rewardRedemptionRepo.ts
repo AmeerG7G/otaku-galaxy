@@ -58,6 +58,12 @@ export function shapeRedemption(row: RedemptionRow): RedemptionDto {
   };
 }
 
+/** «الخصم المفتوح» الأقدم للزبون — تعريفٌ واحد للحجز وللمعاينة. */
+const OPEN_DISCOUNT_SQL = `SELECT * FROM loyalty_reward_redemptions
+        WHERE user_id = $1 AND kind = 'discount' AND consumed_at IS NULL
+        ORDER BY claimed_at
+        LIMIT 1`;
+
 export const rewardRedemptionRepo = {
   async listForUser(db: pg.Pool | pg.PoolClient, userId: string) {
     const { rows } = await db.query<RedemptionRow>(
@@ -122,13 +128,23 @@ export const rewardRedemptionRepo = {
    */
   async findOpenDiscount(client: pg.PoolClient, userId: string) {
     const { rows } = await client.query<RedemptionRow>(
-      `SELECT * FROM loyalty_reward_redemptions
-        WHERE user_id = $1 AND kind = 'discount' AND consumed_at IS NULL
-        ORDER BY claimed_at
-        LIMIT 1
+      `${OPEN_DISCOUNT_SQL}
         FOR UPDATE`,
       [userId],
     );
+    return rows[0] ? shapeRedemption(rows[0]) : null;
+  },
+
+  /**
+   * الخصم المفتوح نفسه الذي سيختاره [findOpenDiscount] — **بلا قفل**.
+   *
+   * لمعاينة شاشة الدفع وحدها (`orderService.checkoutQuote`): قراءةٌ لا تحجز
+   * شيئاً ولا تستهلك شيئاً. الشرط والترتيب واحد (`OPEN_DISCOUNT_SQL`)، فما
+   * يُعرض على الزبون هو المرشّح الذي سيحجزه الإنشاء — والحكم النهائي يبقى
+   * للإنشاء تحت القفل.
+   */
+  async peekOpenDiscount(db: pg.Pool | pg.PoolClient, userId: string) {
+    const { rows } = await db.query<RedemptionRow>(OPEN_DISCOUNT_SQL, [userId]);
     return rows[0] ? shapeRedemption(rows[0]) : null;
   },
 

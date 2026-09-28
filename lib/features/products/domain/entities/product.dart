@@ -1,4 +1,6 @@
+import '../../../../core/l10n/bilingual_text.dart';
 import '../../../../core/network/media_url.dart';
+import '../../../settings/presentation/cubit/locale_cubit.dart';
 
 /// حالة توفّر المنتج كما يراها الزبون.
 ///
@@ -26,9 +28,11 @@ enum ProductAvailability {
 class Product {
   const Product({
     required this.id,
-    required this.name,
+    required this.nameAr,
+    this.nameCkb,
     required this.price,
-    required this.description,
+    this.descriptionAr = '',
+    this.descriptionCkb,
     required this.images,
     this.categoryId,
     this.categoryName,
@@ -50,9 +54,27 @@ class Product {
   });
 
   final String id;
-  final String name;
+
+  // ═══ المحتوى بلغتين (هجرة ٠٦٦) ═══
+  //
+  // [CRITICAL] لا `name` ولا `description` واحداً: الخادم يرسل الأربعة
+  // صريحة، والتطبيق يختار بلغة واجهته **الآن** ([localizedProductName]) —
+  // فالمنتج المحفوظ في السلة أو المفضلة أو قائمةٍ مفتوحة يتبدّل مع تبديل
+  // اللغة بلا جلبٍ ثانٍ، ويُعرف نقص كرديته بدل أن يُعرض العربي على أنه كردي.
+
+  /// اسم المنتج بالعربية — حاضرٌ دائماً.
+  final String nameAr;
+
+  /// اسم المنتج بالكردية؛ `null` = ناقص (منتج قديم). لا فراغ أبداً.
+  final String? nameCkb;
+
+  /// وصف المنتج بالعربية — قد يكون فارغاً لمنتجٍ قديم أو لسطر سلة/طلب.
+  final String descriptionAr;
+
+  /// وصف المنتج بالكردية؛ `null` = ناقص.
+  final String? descriptionCkb;
+
   final double price;
-  final String description;
   final List<String> images;
   final String? categoryId;
   final String? categoryName;
@@ -97,6 +119,16 @@ class Product {
   /// الإشعار يقع حين يصير المخزون موجباً فعلاً (`restockService`).
   final DateTime? restockAt;
 
+  /// الاسم بلغتيه — ما تختار منه [localizedProductName].
+  BilingualText get names => BilingualText(ar: nameAr, ckb: nameCkb);
+
+  /// الوصف بلغتيه — ما تختار منه [localizedProductDescription].
+  BilingualText get descriptions =>
+      BilingualText(ar: descriptionAr, ckb: descriptionCkb);
+
+  /// هل ينقص المنتجَ اسمٌ أو وصفٌ كردي؟ — نفس حكم الخادم (`kurdishMissing`).
+  bool get kurdishMissing => nameCkb == null || descriptionCkb == null;
+
   /// هل يملك المنتج خصماً حقيقياً مدعوماً ببيانات الخادم؟
   bool get hasDiscount =>
       previousPrice != null &&
@@ -132,11 +164,27 @@ class Product {
       availability == ProductAvailability.comingSoon ? restockAt : null;
 
   factory Product.fromJson(Map<String, dynamic> json) {
+    // الحقول الصريحة أولاً؛ `name`/`description` (المحسومان بلغة الطلب) لا
+    // يُقرآن إلا من ردٍّ أقدم لا يحمل غيرهما — انظر [BilingualText.fromJson].
+    final names = BilingualText.fromJson(
+      json,
+      arKey: 'nameAr',
+      ckbKey: 'nameCkb',
+      legacyKey: 'name',
+    );
+    final descriptions = BilingualText.fromJson(
+      json,
+      arKey: 'descriptionAr',
+      ckbKey: 'descriptionCkb',
+      legacyKey: 'description',
+    );
     return Product(
       id: json['id']?.toString() ?? '',
-      name: json['name'] as String? ?? '',
+      nameAr: names.ar,
+      nameCkb: names.ckb,
       price: (json['price'] as num?)?.toDouble() ?? 0,
-      description: json['description'] as String? ?? '',
+      descriptionAr: descriptions.ar,
+      descriptionCkb: descriptions.ckb,
       images: resolveMediaUrls(json['images'] as List?),
       categoryId: json['categoryId']?.toString(),
       categoryName: json['categoryName'] as String?,
@@ -168,9 +216,11 @@ class Product {
   Product copyWith({bool? inFavorites}) {
     return Product(
       id: id,
-      name: name,
+      nameAr: nameAr,
+      nameCkb: nameCkb,
       price: price,
-      description: description,
+      descriptionAr: descriptionAr,
+      descriptionCkb: descriptionCkb,
       images: images,
       categoryId: categoryId,
       categoryName: categoryName,
@@ -192,6 +242,18 @@ class Product {
     );
   }
 }
+
+/// [CRITICAL] اسم المنتج بلغة الواجهة — **الآلية الوحيدة** لتسمية منتج.
+///
+/// كل شاشة (البطاقة، التفاصيل، البحث، السلة، المفضلة، الطلبات، التقييم)
+/// تمرّ من هنا بلغة `context.language` — لغة التطبيق المختارة لا لغة الجهاز.
+/// الكردية الناقصة تسقط إلى العربية، ويُعرف ذلك بـ[BilingualText.isFallbackIn].
+String localizedProductName(Product product, AppLanguage language) =>
+    product.names.of(language);
+
+/// وصف المنتج بلغة الواجهة — نظير [localizedProductName].
+String localizedProductDescription(Product product, AppLanguage language) =>
+    product.descriptions.of(language);
 
 class ProductOption {
   const ProductOption({required this.name, required this.values});

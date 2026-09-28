@@ -33,7 +33,6 @@ import 'package:otaku_galaxy/features/splash/presentation/widgets/splash_animati
 import 'package:otaku_galaxy/features/splash/presentation/widgets/splash_backdrop.dart';
 import 'package:otaku_galaxy/features/splash/presentation/widgets/splash_brand.dart';
 import 'package:otaku_galaxy/features/splash/presentation/widgets/splash_loader.dart';
-import 'package:otaku_galaxy/features/visuals/data/visuals_repository.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const _user = User(
@@ -305,15 +304,13 @@ void main() {
       SharedPreferences.setMockInitialValues({});
       prefs = await SharedPreferences.getInstance();
       _registerOrReplace<OnboardingStorage>(OnboardingStorage(prefs));
-      // لا ندخل الشبكة في الاختبار — نُسجّل نسختين بلا عمليات.
+      // لا ندخل الشبكة في الاختبار — نُسجّل نسخةً بلا عمليات.
       _registerOrReplace<StoreSettingsRepository>(_NoopStoreSettings());
-      _registerOrReplace<VisualsRepository>(_NoopVisuals());
     });
 
     tearDown(() {
       _unregister<OnboardingStorage>();
       _unregister<StoreSettingsRepository>();
-      _unregister<VisualsRepository>();
     });
 
     testWidgets('يُبنى فاتحاً ويُظهر كل عناصر المرجع بلا تجاوز', (tester) async {
@@ -543,7 +540,7 @@ void main() {
 
 
     testWidgets(
-        '[CRITICAL] عطب ← «إعادة المحاولة» ← إقلاعٌ تامّ ← انتقال: خطوة الرسوم تُعاد فلا يبقى الشريط عند ٧٥٪',
+        '[CRITICAL] عطب ← «إعادة المحاولة» ← إقلاعٌ تامّ ← انتقال: كل الخطوات تُعاد فلا يبقى الشريط ناقصاً',
         (tester) async {
       final router = _SplashRouter();
       tester.view.physicalSize = const Size(412, 892);
@@ -626,17 +623,10 @@ void _unregister<T extends Object>() {
   if (sl.isRegistered<T>()) sl.unregister<T>();
 }
 
-// نسختان لا تلمسان الشبكة — تستبدلان المستودعين الحقيقيين في الاختبار.
+// نسخةٌ لا تلمس الشبكة — تستبدل المستودع الحقيقي في الاختبار.
 class _NoopStoreSettings extends StoreSettingsRepository {
   @override
   Future<StoreSocialLinks> refresh() async => links;
-}
-
-class _NoopVisuals extends VisualsRepository {
-  @override
-  Future<void> refresh() async {}
-  @override
-  Future<void> prefetch() async {}
 }
 
 // رواتر مصغّر: شاشة البداية بدايةً، ووجهتا التنقل (التعريف / الرئيسية)

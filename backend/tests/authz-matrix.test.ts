@@ -244,7 +244,6 @@ describe('Phase 3 — vertical privilege escalation (every admin endpoint)', () 
   let adminToken: string;
   let catalog: Awaited<ReturnType<typeof seedTestCatalog>>;
   let orderId: string;
-  let slotId: string;
   let pendingRequestId: string;
   let pendingUserId: string;
   const U = randomUUID();
@@ -265,9 +264,6 @@ describe('Phase 3 — vertical privilege escalation (every admin endpoint)', () 
       .send({ governorateId: catalog.governorateId, fullAddress: 'بغداد، الكرادة', phone: '07744444444' })
       .expect(201);
     orderId = order.body.data.id;
-
-    const slot = await db.query<{ id: string }>('SELECT id FROM visual_slots ORDER BY slot_key LIMIT 1');
-    slotId = slot.rows[0]!.id;
 
     // طلب تسجيل معلَّق لزبون آخر — هدفٌ للموافقة/الرفض غير المصرَّح بهما.
     const pendingPhone = `077${Math.floor(10000000 + Math.random() * 89999999)}`;
@@ -346,11 +342,6 @@ describe('Phase 3 — vertical privilege escalation (every admin endpoint)', () 
     ['post', () => '/api/admin/notifications', { userId: U, title: 'x', body: 'x' }],
     ['post', () => '/api/admin/notifications/broadcast', { audience: { type: 'all' }, title: 'x', body: 'x' }],
     ['post', () => '/api/admin/notifications/audience', { audience: { type: 'all' } }],
-    ['get', () => '/api/admin/visual-slots'],
-    ['put', () => `/api/admin/visual-slots/${slotId}/image`, { url: '/uploads/slot/x.png' }],
-    ['delete', () => `/api/admin/visual-slots/${slotId}/image`],
-    ['put', () => `/api/admin/visual-slots/${slotId}/temporary-image`, { url: '/uploads/slot/x.png', until: '2030-01-01T00:00:00Z' }],
-    ['delete', () => `/api/admin/visual-slots/${slotId}/temporary-image`],
     ['post', () => '/api/admin/uploads'],
   ];
 
@@ -376,7 +367,6 @@ describe('Phase 3 — vertical privilege escalation (every admin endpoint)', () 
           .replace('/api/admin', '')
           .replace(new RegExp(`/${U}`, 'g'), '/:id')
           .replace(`/${orderId}`, '/:id')
-          .replace(`/${slotId}`, '/:id')
           .replace(`/${customer.userId}`, '/:id')
           .replace(`/${pendingRequestId}`, '/:id')}`,
       ),
@@ -418,12 +408,6 @@ describe('Phase 3 — vertical privilege escalation (every admin endpoint)', () 
     expectDenied(await api.post('/api/admin/products').set(bearer(customer.token)).send({ name: 'x', price: 1000, categoryId: catalog.categoryId, subcategoryId: catalog.subcategoryId, stock: 1 }), 403, 'FORBIDDEN');
     const after = await db.query<{ n: string }>('SELECT COUNT(*)::text AS n FROM products');
     expect(after.rows[0]!.n).toBe(before.rows[0]!.n);
-
-    // صورة فتحة
-    const slotBefore = await db.query<{ image_url: string | null }>('SELECT image_url FROM visual_slots WHERE id = $1', [slotId]);
-    expectDenied(await api.put(`/api/admin/visual-slots/${slotId}/image`).set(bearer(customer.token)).send({ url: '/uploads/slot/x.png' }), 403, 'FORBIDDEN');
-    const slotAfter = await db.query<{ image_url: string | null }>('SELECT image_url FROM visual_slots WHERE id = $1', [slotId]);
-    expect(slotAfter.rows[0]!.image_url).toBe(slotBefore.rows[0]!.image_url);
   });
 
   it('the same calls succeed for a real admin (the deny is about role, not the route being dead)', async () => {
@@ -437,7 +421,8 @@ describe('Phase 3 — vertical privilege escalation (every admin endpoint)', () 
       '89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a49444154789c6360000002000100ffff03000006000557bfabd40000000049454e44ae426082',
       'hex',
     );
-    for (const purpose of ['product', 'banner', 'category', 'franchise', 'slot']) {
+    // (`slot` لم يعد غرض رفعٍ أصلاً — الهجرة 065؛ يحرسه `visual-slots-retired.test.ts`.)
+    for (const purpose of ['product', 'banner', 'category', 'franchise']) {
       const res = await api
         .post('/api/uploads')
         .set(bearer(customer.token))
@@ -949,7 +934,7 @@ describe('Phase 6 — sensitive field exposure', () => {
   });
 
   it('public catalogue and settings responses carry no secrets or internal configuration', async () => {
-    for (const path of ['/api/catalog/home', '/api/catalog/settings', '/api/catalog/app-version', '/api/catalog/visuals', '/api/catalog/loyalty-levels']) {
+    for (const path of ['/api/catalog/home', '/api/catalog/settings', '/api/catalog/app-version', '/api/catalog/loyalty-levels']) {
       const res = await api.get(path).expect(200);
       expectNoSecrets(res.body);
       expect(JSON.stringify(res.body)).not.toContain(config.jwtSecret);
@@ -1060,10 +1045,8 @@ describe('Phase 7/8 — registration approval and admin-mediated reset', () => {
 
 describe('Phase 10 — media and static file boundary', () => {
   let adminToken: string;
-  let slotId: string;
   beforeAll(async () => {
     adminToken = await createAdminUser();
-    slotId = (await db.query<{ id: string }>('SELECT id FROM visual_slots ORDER BY slot_key LIMIT 1')).rows[0]!.id;
   });
   afterAll(async () => {
     await purgeTestUsers();
@@ -1081,17 +1064,6 @@ describe('Phase 10 — media and static file boundary', () => {
     expect(res.status).not.toBe(200);
     expect(res.text ?? '').not.toContain('"name": "otaku-galaxy-api"');
     expect(res.text ?? '').not.toContain('JWT_SECRET');
-  });
-
-  it('a slot image must be an admin-uploaded slot file — not an external URL, not a customer photo', async () => {
-    const before = (await db.query<{ image_url: string | null }>('SELECT image_url FROM visual_slots WHERE id = $1', [slotId])).rows[0]!.image_url;
-    expect((await api.put(`/api/admin/visual-slots/${slotId}/image`).set(bearer(adminToken)).send({ url: 'https://evil.example.com/x.png' })).status).toBe(400);
-    const customer = await registerAndLogin();
-    const reviewPhoto = await registerUploadedPhoto(customer.userId);
-    expect((await api.put(`/api/admin/visual-slots/${slotId}/image`).set(bearer(adminToken)).send({ url: reviewPhoto })).status).toBe(400);
-    expect((await api.put(`/api/admin/visual-slots/${slotId}/image`).set(bearer(adminToken)).send({ url: '/uploads/slot/2026/01/ghost.png' })).status).toBe(400);
-    const after = (await db.query<{ image_url: string | null }>('SELECT image_url FROM visual_slots WHERE id = $1', [slotId])).rows[0]!.image_url;
-    expect(after).toBe(before);
   });
 
   it('upload purpose cannot be used as a path — only enum values are accepted', async () => {

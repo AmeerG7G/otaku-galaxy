@@ -1,9 +1,11 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import '../../../../core/l10n/app_strings.dart';
 
 import '../../../../core/design_system/design_system.dart';
 import '../../../visuals/domain/visual_slot.dart';
-import '../../../visuals/presentation/managed_artwork.dart';
+import '../../../visuals/presentation/character_artwork.dart';
 import '../../../products/domain/entities/banner.dart' as model;
 
 /// عنوان قسم بتصميم v2: عنوان عريض بخط Tajawal + رابط «عرض الكل» اختياري.
@@ -48,8 +50,71 @@ class SectionHeader extends StatelessWidget {
   }
 }
 
-/// بطاقة البطل في الرئيسية — تدرّج وردي→بنفسجي→أزرق مع رسم شخصية يخرج
-/// من حدّ البطاقة. الرسم تزييني خلف المحتوى ولا يُستخدم كصورة منتج.
+/// رسم البنر — صورة المسؤول، أو شخصية الموضع حين لا صورة أو فشل تحميلها —
+/// محصوراً داخل البطاقة ومثبَّتاً في زاويتها السفلية الطرفية (اليسرى في RTL).
+///
+/// [CRITICAL] كان الرسم `PositionedDirectional(bottom: سالب، end: سالب)` بلا
+/// عرضٍ أقصى، فيخرج من يسار البطاقة ومن أسفلها ويقصّه `clipBehavior` — جزءٌ
+/// من الشخصية لا يُرى أبداً. الآن يُعطى صندوقاً داخل البطاقة من الجهات الأربع
+/// ([insetFor])، فيُصغَّر الارتفاع المطلوب إلى ما يتّسع له الصندوق بدل أن
+/// يُقصّ، ولا يتجاوز العرضُ البطاقة مهما كانت نسبة الصورة المرفوعة.
+class _BannerArt extends StatelessWidget {
+  const _BannerArt({
+    required this.slot,
+    required this.height,
+    required this.cornerRadius,
+    this.imageUrl,
+  });
+
+  /// فتحة الشخصية المضمَّنة — تُعرض حين لا صورة أو فشل تحميلها. `null`:
+  /// لا شخصية احتياطية (البطاقة الترويجية الأولى منذ حذف الصورة 4).
+  final String? slot;
+
+  /// الارتفاع المطلوب — سقفٌ لا وعد: البطاقة الأقصر تُصغّره ولا تقصّه.
+  final double height;
+
+  /// نصف قطر زاوية البطاقة — يحدّد أصغر إزاحة آمنة.
+  final double cornerRadius;
+  final String? imageUrl;
+
+  /// أصغر إزاحةٍ متساوية عن حافّتين تُبقي زاوية الرسم داخل انحناء زاوية
+  /// البطاقة: r·(1 − 1/√2). أقلّ منها وتقصّ الزاويةُ المدوَّرة طرفَ الصورة.
+  static double insetFor(double cornerRadius) =>
+      cornerRadius * (1 - math.sqrt1_2);
+
+  @override
+  Widget build(BuildContext context) {
+    final inset = insetFor(cornerRadius);
+    final slot = this.slot;
+    final Widget fallback = slot == null
+        ? const SizedBox.shrink()
+        : CharacterArtwork(slot: slot, height: height);
+    return PositionedDirectional(
+      top: inset,
+      bottom: inset,
+      start: inset,
+      end: inset,
+      // `Align` يمرّر قيوداً فضفاضة: الارتفاع المطلوب يُقصر على المتاح،
+      // والعرض المشتقّ من نسبة الصورة يُقصر على عرض البطاقة.
+      child: Align(
+        alignment: AlignmentDirectional.bottomEnd,
+        child: imageUrl != null
+            ? Image.network(
+                imageUrl!,
+                height: height,
+                fit: BoxFit.contain,
+                alignment: AlignmentDirectional.bottomEnd,
+                // فشل تحميل صورة البنر يعود للشخصية المضمَّنة بدل ترك فجوة.
+                errorBuilder: (_, _, _) => fallback,
+              )
+            : fallback,
+      ),
+    );
+  }
+}
+
+/// بطاقة البطل في الرئيسية — تدرّج وردي→بنفسجي→أزرق مع رسم شخصية في
+/// زاويتها. الرسم تزييني خلف المحتوى ولا يُستخدم كصورة منتج.
 class HomeHeroCard extends StatelessWidget {
   const HomeHeroCard({super.key, required this.onShop, this.banner});
 
@@ -91,32 +156,13 @@ class HomeHeroCard extends StatelessWidget {
                 ),
               ),
             ),
-            // صورة البنر التي يرفعها المسؤول تحلّ محلّ الشخصية المضمَّنة.
-            // الموضع والمقاس لا يتغيّران — الصورة فقط.
-            PositionedDirectional(
-              bottom: -12,
-              end: -34,
-              child: SizedBox(
-                height: 168,
-                child: banner?.imageUrl != null
-                    ? Image.network(
-                        banner!.imageUrl!,
-                        height: 168,
-                        fit: BoxFit.contain,
-                        // فشل تحميل صورة البنر يعود للشخصية المضمَّنة بدل
-                        // ترك فجوة في أبرز لوحة على الشاشة.
-                        errorBuilder: (_, _, _) => const ManagedArtwork(
-                          slot: VisualSlots.homeHero,
-                          fallbackAsset: 'assets/art/opt/a-i5.png',
-                          height: 168,
-                        ),
-                      )
-                    : const ManagedArtwork(
-                        slot: VisualSlots.homeHero,
-                        fallbackAsset: 'assets/art/opt/a-i5.png',
-                        height: 168,
-                      ),
-              ),
+            // صورة البنر التي يرفعها المسؤول تحلّ محلّ الشخصية المضمَّنة،
+            // في الموضع والمقاس نفسيهما.
+            _BannerArt(
+              slot: VisualSlots.homeHero,
+              imageUrl: banner?.imageUrl,
+              height: 168,
+              cornerRadius: AppDimens.radiusXl,
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(22, 22, 22, 24),
@@ -199,8 +245,12 @@ class HomeHeroCard extends StatelessWidget {
 /// الشريط الترويجي تحت البطل.
 ///
 /// عدد البطاقات ليس ثابتاً: يضيف المسؤول ما يشاء من لوحة التحكم ويرتّبها.
-/// حين لا يضبط شيئاً تبقى البطاقتان المضمَّنتان كما كانتا — الشاشة لا تفرغ
-/// لأن أحداً لم يفتح اللوحة بعد.
+/// حين لا يضبط شيئاً تظهر بطاقة «خصومات فعّالة» وحدها، مشتقّةً من خصمٍ حقيقي
+/// في الكتالوج؛ وبلا خصمٍ حقيقي لا يظهر الشريط إطلاقاً.
+///
+/// [PRODUCT] أُزيلت البطاقة الترويجية الأولى المضمَّنة (2026-09-28): نصٌّ
+/// تسويقيّ ثابت في الكود يظهر في التطبيق ولا يراه المسؤول في اللوحة ولا
+/// يستطيع إزالته. الترويج اليدوي مكانه بنرات `promo` من اللوحة.
 class HomePromoRail extends StatelessWidget {
   const HomePromoRail({
     super.key,
@@ -251,11 +301,18 @@ class HomePromoRail extends StatelessWidget {
   /// مقصوصاً، ومن لم يكبّره يدفع ثمن فراغٍ لا يحتاجه.
   static double cardHeightFor(double textScale) =>
       _cardVerticalPadding +
-      (_cardHeight - _cardVerticalPadding) * textScale.clamp(1.0, 1.6);
+      (_cardHeight - _cardVerticalPadding) *
+          textScale.clamp(1.0, maxTextScale);
+
+  /// أعلى مقياس خطٍّ يحجز له [cardHeightFor] ارتفاعاً — ونصّ البطاقة لا
+  /// يُرسم بأكبر منه، وإلا كبر النصّ فوق ارتفاعٍ توقّف عن الكبر.
+  static const double maxTextScale = 1.6;
 
   @override
   Widget build(BuildContext context) {
     final managed = banners;
+    // بلا بنرات مُدارة ولا خصمٍ حقيقي لا شيء يُعرض — لا صفّ فارغ بارتفاعه.
+    if (managed.isEmpty && maxDiscount == null) return const SizedBox.shrink();
     final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
     final cardHeight = cardHeightFor(textScale);
     return SizedBox(
@@ -282,12 +339,9 @@ class HomePromoRail extends StatelessWidget {
                         ? banner.title!.trim()
                         : context.strings('promoBadge'),
                     subtitle: banner.subtitle,
-                    slot: index == 0
-                        ? VisualSlots.homePromoPrimary
-                        : VisualSlots.homePromoSecondary,
-                    art: index == 0
-                        ? 'assets/art/opt/a-i0.png'
-                        : 'assets/art/opt/a-i6.png',
+                    // الأولى بلا شخصية احتياطية: كانت الصورة 4، وحُذفت
+                    // (2026-09-28) — صورة البنر المرفوعة وحدها تُعرض.
+                    slot: index == 0 ? null : VisualSlots.homePromoSecondary,
                     imageUrl: banner.imageUrl,
                     height: cardHeight,
                     colors: _palettes[index % _palettes.length],
@@ -299,26 +353,13 @@ class HomePromoRail extends StatelessWidget {
               ]
             : [
                 _PromoCard(
-                  title: context.strings('promoSchoolSeason'),
-                  subtitle: context.strings('promoSchoolSeasonSub'),
-                  slot: VisualSlots.homePromoPrimary,
-                  art: 'assets/art/opt/a-i0.png',
+                  title: context.strings('promoActiveDiscounts'),
+                  subtitle: context.strings.p('promoUpToDiscount', {'percent': '$maxDiscount'}),
+                  slot: VisualSlots.homePromoSecondary,
                   height: cardHeight,
-                  colors: _palettes[0],
+                  colors: _palettes[1],
                   onTap: onTap,
                 ),
-                if (maxDiscount != null) ...[
-                  const SizedBox(width: AppDimens.space4),
-                  _PromoCard(
-                    title: context.strings('promoActiveDiscounts'),
-                    subtitle: context.strings.p('promoUpToDiscount', {'percent': '$maxDiscount'}),
-                    slot: VisualSlots.homePromoSecondary,
-                    art: 'assets/art/opt/a-i6.png',
-                    height: cardHeight,
-                    colors: _palettes[1],
-                    onTap: onTap,
-                  ),
-                ],
               ],
       ),
     );
@@ -330,7 +371,6 @@ class _PromoCard extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.slot,
-    required this.art,
     this.imageUrl,
     required this.colors,
     required this.onTap,
@@ -343,10 +383,8 @@ class _PromoCard extends StatelessWidget {
   final String title;
   final String subtitle;
 
-  /// فتحة هذه البطاقة بعينها — البطاقتان تُدارتان مستقلتين من اللوحة.
-  final String slot;
-
-  final String art;
+  /// فتحة شخصية هذه البطاقة حين لا صورة بنر — `null` للأولى (بلا شخصية).
+  final String? slot;
 
   /// صورة البنر إن رفعها المسؤول — تحلّ محلّ رسم الفتحة.
   final String? imageUrl;
@@ -372,52 +410,50 @@ class _PromoCard extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: Stack(
           children: [
-            PositionedDirectional(
-              bottom: -8,
-              end: -18,
-              child: SizedBox(
-                height: 110,
-                child: imageUrl != null
-                    ? Image.network(
-                        imageUrl!,
-                        height: 110,
-                        fit: BoxFit.contain,
-                        errorBuilder: (_, _, _) => ManagedArtwork(
-                          slot: slot,
-                          fallbackAsset: art,
-                          height: 110,
-                        ),
-                      )
-                    : ManagedArtwork(
-                        slot: slot,
-                        fallbackAsset: art,
-                        height: 110,
-                      ),
-              ),
+            _BannerArt(
+              slot: slot,
+              imageUrl: imageUrl,
+              height: 110,
+              cornerRadius: AppDimens.radiusLg,
             ),
             Padding(
               padding: const EdgeInsetsDirectional.fromSTEB(16, 16, 76, 16),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontSize: 16,
-                      fontWeight: AppDimens.weightBlack,
-                      color: Colors.white,
+              // [CRITICAL] صندوق النصّ ثابت: ١٠٤ عرضاً (١٩٦ − ١٦ − ٧٦) و٨٠
+              // ارتفاعاً عند مقياس ١. كان النصّان بلا حدّ أسطر، فعنوان بنرٍ من
+              // اللوحة يلتفّ ثلاثة أسطر (٧٢) + ٤ + سطر عنوانٍ فرعي **فارغ**
+              // يحجز ١٧ = ٩٣، أي تجاوز ١٣ بكسل. الحدّ الآن هو ما يحجزه
+              // الارتفاع: سطرا عنوان + سطر فرعي (٦٩ عربياً، ٧٦ كردياً ≤ ٨٠)،
+              // والفرعي الفارغ لا يُرسم. والخطّ لا يكبر فوق ما حُسب له الارتفاع.
+              child: MediaQuery.withClampedTextScaling(
+                maxScaleFactor: HomePromoRail.maxTextScale,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontSize: 16,
+                        fontWeight: AppDimens.weightBlack,
+                        color: Colors.white,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      fontSize: 11.5,
-                      color: Colors.white.withValues(alpha: 0.88),
-                    ),
-                  ),
-                ],
+                    if (subtitle.trim().isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          fontSize: 11.5,
+                          color: Colors.white.withValues(alpha: 0.88),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ),
             ),
           ],
@@ -450,9 +486,8 @@ class DeliveryAssuranceStrip extends StatelessWidget {
             PositionedDirectional(
               bottom: -18,
               end: -14,
-              child: const ManagedArtwork(
+              child: const CharacterArtwork(
                 slot: VisualSlots.homeDelivery,
-                fallbackAsset: 'assets/art/opt/a-i3.png',
                 height: 116,
               ),
             ),

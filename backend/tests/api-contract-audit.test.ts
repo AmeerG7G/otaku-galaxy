@@ -20,6 +20,7 @@ import {
   GENDERS,
   MEDIA_PURPOSES,
   NOTIFICATION_TYPES,
+  STORED_MEDIA_PURPOSES,
   REVIEW_STATUSES,
 } from '../src/types/index.js';
 import { ORDER_STATUSES } from '../src/types/order-status.js';
@@ -89,7 +90,10 @@ async function createProduct(overrides: Record<string, unknown> = {}) {
     .post('/api/admin/products')
     .set(A())
     .send({
-      name: `منتج تدقيق ${randomUUID().slice(0, 8)}`,
+      nameAr: `منتج تدقيق ${randomUUID().slice(0, 8)}`,
+      descriptionAr: 'وصف تدقيق',
+      nameCkb: 'بەرهەمی پشکنین',
+      descriptionCkb: 'وەسفی پشکنین',
       price: 1000,
       categoryId: seed.categoryId,
       stock: 5,
@@ -287,7 +291,7 @@ describe('CD-2 · القسم الفرعي للمنتج يجب أن يتبع قس
 
   it('الإنشاء بقسمٍ فرعي من قسمٍ آخر → 400 SUBCATEGORY_MISMATCH ولا صفّ يُكتب', async () => {
     const name = `منتج متناقض ${tag}`;
-    const res = await createProduct({ name, categoryId: otherCategoryId, subcategoryId: seed.subcategoryId });
+    const res = await createProduct({ nameAr: name, categoryId: otherCategoryId, subcategoryId: seed.subcategoryId });
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('SUBCATEGORY_MISMATCH');
     const { rows } = await db.query('SELECT 1 FROM products WHERE name = $1', [name]);
@@ -518,14 +522,21 @@ describe('CD-7 · أنواع الإشعارات: القاعدة == الخادم 
 // CD-8 · حدّ اسم المنتج عند الحدّ لا عند القاعدة
 // ═══════════════════════════════════════════════════════════════════════
 describe('CD-8 · اسم المنتج: المدقّق يطابق قيد القاعدة (١٢٠ حرفاً)', () => {
-  it('اسم من ١٢١ حرفاً → 400 VALIDATION_ERROR لا «قيمة غير صالحة لأحد الحقول»', async () => {
-    const res = await createProduct({ name: 'م'.repeat(121) });
+  // الحدّ نفسه للاسمين (066): `products_name_check` للعربي، وقيد `name_ckb` (046) للكردي.
+  it.each([
+    ['nameAr', 'م'],
+    ['nameCkb', 'ێ'],
+  ] as const)('%s من ١٢١ حرفاً → 400 VALIDATION_ERROR لا «قيمة غير صالحة لأحد الحقول»', async (field, letter) => {
+    const res = await createProduct({ [field]: letter.repeat(121) });
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
 
-  it('اسم من ١٢٠ حرفاً يمرّ', async () => {
-    const res = await createProduct({ name: 'م'.repeat(120) });
+  it.each([
+    ['nameAr', 'م'],
+    ['nameCkb', 'ێ'],
+  ] as const)('%s من ١٢٠ حرفاً يمرّ', async (field, letter) => {
+    const res = await createProduct({ [field]: letter.repeat(120) });
     expect(res.status).toBe(201);
   });
 });
@@ -636,7 +647,7 @@ describe('حرّاس · دلالات الغياب و null في التعديل', 
     expect(created.status).toBe(201);
     const id = created.body.data.id;
 
-    const untouched = await api.patch(`/api/admin/products/${id}`).set(A()).send({ description: 'x' }).expect(200);
+    const untouched = await api.patch(`/api/admin/products/${id}`).set(A()).send({ descriptionAr: 'x' }).expect(200);
     expect(untouched.body.data.previousPrice).toBe(2000);
     expect(untouched.body.data.subcategoryId).toBe(seed.subcategoryId);
     expect(untouched.body.data.restockAt).toBe(restockAt);
@@ -756,7 +767,9 @@ describe('حرّاس · التعدادات: القاعدة == الشيفرة', (
     ['orders', 'orders_status_check', ORDER_STATUSES],
     ['reviews', 'reviews_status_check', REVIEW_STATUSES],
     ['notifications', 'notifications_type_check', NOTIFICATION_TYPES],
-    ['media_files', 'media_files_purpose_check', MEDIA_PURPOSES],
+    // القيد يقبل أغراض الرفع الحالية + `slot` التاريخي (الهجرة 065)؛
+    // الرفع نفسه يقبل `MEDIA_PURPOSES` وحدها — يحرسه `visual-slots-retired`.
+    ['media_files', 'media_files_purpose_check', STORED_MEDIA_PURPOSES],
     ['users', 'users_gender_check', GENDERS],
     ['banners', 'banners_placement_check', BANNER_PLACEMENTS],
     ['banners', 'banners_destination_type_check', BANNER_DESTINATIONS],

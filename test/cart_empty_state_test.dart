@@ -24,7 +24,7 @@ void main() {
               body: AnimeEmptyState(
                 title: 'السلة فاضية',
                 subtitle: 'خذ جولة بالمتجر واختار اللي يعجبك، السلة راح تنتظرك.',
-                artwork: 'assets/art/opt/a-luffy-kid.png',
+                artwork: 'assets/art/characters/7.png',
                 actionLabel: 'استكشف المنتجات',
                 onAction: () {},
                 centered: true,
@@ -34,7 +34,7 @@ void main() {
       ),
     );
     await tester.runAsync(() async {
-      await precacheImage(const AssetImage('assets/art/opt/a-luffy-kid.png'),
+      await precacheImage(const AssetImage('assets/art/characters/7.png'),
           tester.element(find.byType(Scaffold)));
       await Future<void>.delayed(const Duration(milliseconds: 300));
     });

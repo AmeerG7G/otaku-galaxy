@@ -170,16 +170,14 @@ void main() {
     });
 
     test('[CRITICAL] العمل الشبكي غير الحرج ليس خطوة مطلوبة', () {
-      // إعدادات المتجر والكتالوج وجلبُ إعداد الرسوم تعمل في الخلفية: إدراجُها
-      // هنا كان سيجعل الإقلاع يفشل مع الشبكة. خطوة `visuals` **ليست** ذلك
-      // الجلب: هي قراءة الصور المحفوظة من القرص وحده بميزانيةٍ محدودة (انظر
-      // `VisualsRepository.warmRestored`) — تتمّ بلا شبكة وبلا محفوظ على حدٍّ
-      // سواء، ويحرسها `splash_screen_test` بمستودعٍ يفشل جلبُه.
+      // إعدادات المتجر والكتالوج تعمل في الخلفية: إدراجُها هنا كان سيجعل
+      // الإقلاع يفشل مع الشبكة. وخطوة `visuals` (تدفئة رسوم الشخصيات المُدارة
+      // من القرص) أُزيلت مع الميزة في 2026-09-27 — الرسوم أصولٌ في الحزمة.
       final names = StartupStep.values.map((s) => s.name).toList();
       expect(names, isNot(contains('storeSettings')));
       expect(names, isNot(contains('catalog')));
       expect(names, isNot(contains('visualsFetch')));
-      expect(names, contains('visuals'));
+      expect(names, isNot(contains('visuals')));
     });
   });
 }

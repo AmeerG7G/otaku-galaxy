@@ -9,6 +9,7 @@
 
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
+import 'package:otaku_galaxy/core/l10n/bilingual_text.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -187,7 +188,7 @@ void main() {
       final review = Review(
         id: 'r',
         productId: 'p',
-        productName: 'n',
+        productNames: const BilingualText(ar: 'n'),
         orderId: 'o',
         rating: 5,
         comment: 'c',

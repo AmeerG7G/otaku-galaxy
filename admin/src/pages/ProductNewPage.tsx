@@ -57,8 +57,11 @@ export default function ProductNewPage() {
 
   function handleSubmit(values: ProductFormValues) {
     createMutation.mutate({
-      name: values.name,
-      description: values.description,
+      // المحتوى باللغتين — الأربعة إلزامية ومقصوصة في النموذج.
+      nameAr: values.nameAr,
+      descriptionAr: values.descriptionAr,
+      nameCkb: values.nameCkb,
+      descriptionCkb: values.descriptionCkb,
       price: values.price,
       categoryId: values.categoryId,
       subcategoryId: values.subcategoryId ?? null,
@@ -117,6 +120,10 @@ export default function ProductNewPage() {
         mode="create"
         optionsAvailable
         initialValues={{
+          nameAr: '',
+          descriptionAr: '',
+          nameCkb: '',
+          descriptionCkb: '',
           categoryId: presetCategoryId,
           subcategoryId: presetSubcategoryId ?? null,
           images: [],

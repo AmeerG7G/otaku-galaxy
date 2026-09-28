@@ -29,6 +29,7 @@ import '../../features/settings/presentation/cubit/theme_state.dart';
 import '../../features/orders/domain/usecases/fetch_order_details_usecase.dart';
 import '../../features/orders/domain/usecases/fetch_my_orders_usecase.dart';
 import '../../features/orders/domain/usecases/place_order_usecase.dart';
+import '../../features/orders/domain/usecases/fetch_checkout_quote_usecase.dart';
 import '../../features/products/domain/usecases/fetch_categories_usecase.dart';
 import '../../features/products/domain/usecases/fetch_category_products_usecase.dart';
 import '../../features/products/domain/usecases/fetch_governorates_usecase.dart';
@@ -60,6 +61,7 @@ class OtakuGalaxyApp extends StatelessWidget {
         RepositoryProvider.value(value: di.sl<FetchProductDetailsUsecase>()),
         RepositoryProvider.value(value: di.sl<FetchProductsUsecase>()),
         RepositoryProvider.value(value: di.sl<PlaceOrderUsecase>()),
+        RepositoryProvider.value(value: di.sl<FetchCheckoutQuoteUsecase>()),
         RepositoryProvider.value(value: di.sl<FetchMyOrdersUsecase>()),
         RepositoryProvider.value(value: di.sl<FetchOrderDetailsUsecase>()),
         RepositoryProvider.value(value: di.sl<FetchGovernoratesUsecase>()),

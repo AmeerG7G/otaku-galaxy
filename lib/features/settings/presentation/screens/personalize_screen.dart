@@ -12,7 +12,7 @@ import '../cubit/theme_cubit.dart';
 import '../cubit/theme_state.dart';
 import '../widgets/personalize_cards.dart';
 import '../../../visuals/domain/visual_slot.dart';
-import '../../../visuals/presentation/managed_artwork.dart';
+import '../../../visuals/presentation/character_artwork.dart';
 
 /// شاشة التخصيص بتصميم Otaku Galaxy v2.
 ///
@@ -23,6 +23,9 @@ import '../../../visuals/presentation/managed_artwork.dart';
 class PersonalizeScreen extends StatelessWidget {
   const PersonalizeScreen({super.key});
 
+  /// الفاصل تحت العنوان — الرسم ملاصقٌ له من تحته (تحرسه الاختبارات).
+  static const Key dividerKey = Key('personalize_divider');
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -30,8 +33,8 @@ class PersonalizeScreen extends StatelessWidget {
     return Scaffold(
       body: Stack(
         children: [
-          // المصدر يضع الهالة على اليمين الفيزيائي (right) والرسم على اليسار
-          // (left)، أي `start` و`end` على الترتيب في واجهة عربية.
+          // المصدر يضع الهالة على اليمين الفيزيائي (right)، أي `start` في
+          // واجهة عربية.
           PositionedDirectional(
             top: -90,
             start: -70,
@@ -52,14 +55,18 @@ class PersonalizeScreen extends StatelessWidget {
               ),
             ),
           ),
-
+          // [PRODUCT] التسلسل (2026-09-28): العنوان ← الفاصل ← الشخصية ←
+          // «اختر لغتك…» ← الاختيارات. كانت الشخصية تطفو أعلى اليسار فوق
+          // الترويسة (`top: 60`) والنصّ الوصفي تحت العنوان فوق الفاصل؛ الآن
+          // تقف الشخصية تحت الفاصل ملاصقةً له، والنصّ تحتها. كلّها داخل
+          // `SafeArea`، فلا شيء تحت شريط الحالة.
           SafeArea(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // ── الترويسة ──
+                // ── الترويسة: الشعار ثم العنوان فوق فاصلٍ بعرض الترويسة ──
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(22, 26, 22, 8),
+                  padding: const EdgeInsets.fromLTRB(22, 26, 22, 0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -74,51 +81,49 @@ class PersonalizeScreen extends StatelessWidget {
                           fontWeight: AppDimens.weightBlack,
                         ),
                       ),
-                      const SizedBox(height: 7),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          // [CRITICAL] `Flexible` لا `FractionallySizedBox`: الصفّ
-                          // يعطي أطفاله غير المرنة عرضاً غير محدود، فكان عرض
-                          // الوصف `0.84 × ∞` — انهار تخطيط الشاشة كلها فظهرت
-                          // بيضاء. الوصف يأخذ معظم ما يتبقّى بعد الرسم، والخطّ
-                          // الباقي. (test/personalize_screen_test.dart)
-                          Flexible(
-                            flex: 5,
-                            child: Text(
-                              context.strings('personalizeBody'),
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                fontSize: 13.5,
-                                height: 1.75,
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ),
-                          Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.only(bottom: 3),
-                              child: Container(
-                                height: 1.5,
-                                color: AppColors.secondary,
-                              ),
-                            ),
-                          ),
-                          const ManagedArtwork(
-                            slot: VisualSlots.personalize,
-                            fallbackAsset: 'assets/art/opt/a-i4.png',
-                            width: 126,
-                          ),
-                        ],
+                      const SizedBox(height: 16),
+                      Container(
+                        key: dividerKey,
+                        height: 1.5,
+                        color: AppColors.secondary,
                       ),
                     ],
                   ),
                 ),
 
-                // ── الاختيارات ──
+                // ── الشخصية ثم الوصف ثم الاختيارات ──
                 Expanded(
+                  // بلا حشوة علوية: أوّل ما في القائمة الشخصيةُ ملاصقةً للفاصل.
                   child: ListView(
-                    padding: const EdgeInsets.fromLTRB(22, 16, 22, 8),
+                    padding: const EdgeInsets.fromLTRB(22, 0, 22, 8),
                     children: [
+                      // جهة النهاية (اليسار الفيزيائي) كما كانت، مقابل
+                      // الهالة أعلى اليمين. صندوقٌ ثابت لا عرضٌ وحده: الصورة
+                      // في مجرى القائمة، وبلا ارتفاعٍ معلوم تبدأ بارتفاع صفر
+                      // حتى تُفكّ فيقفز النصّ تحتها. ١٢٦×١٢٩ شكلُ الصورة 34؛
+                      // صورةٌ بديلة بشكلٍ آخر تُحتوى داخله ملاصقةً للفاصل
+                      // (`topCenter`).
+                      const Align(
+                        alignment: AlignmentDirectional.centerEnd,
+                        child: IgnorePointer(
+                          child: CharacterArtwork(
+                            slot: VisualSlots.personalize,
+                            width: 126,
+                            height: 129,
+                            alignment: Alignment.topCenter,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        context.strings('personalizeBody'),
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontSize: 13.5,
+                          height: 1.75,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
                       OtakuGroupLabel(
                         label: context.strings('language'),
                         padding: EdgeInsets.only(bottom: 11),

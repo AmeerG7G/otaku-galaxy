@@ -18,7 +18,8 @@ const _sizes = <String, Size>{
 };
 
 /// نصوص المفضلة الحقيقية كما في `favorites_screen.dart`.
-const _artwork = 'assets/art/opt/a-i2.png';
+// رسم المفضلة الفارغة الحقيقي (`emptyFavorites`). كان 37، وحُذفت (2026-09-28).
+const _artwork = 'assets/art/characters/13.png';
 const _action = 'اكتشف منتجات';
 
 Future<void> _pump(WidgetTester tester, Size size) async {

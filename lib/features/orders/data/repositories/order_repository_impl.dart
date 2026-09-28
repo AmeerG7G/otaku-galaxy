@@ -1,5 +1,6 @@
 import '../../../../core/constants/api_endpoints.dart';
 import '../../../../core/network/api_client.dart';
+import '../../domain/entities/checkout_quote.dart';
 import '../../domain/entities/order.dart';
 import '../../domain/entities/order_data.dart';
 import '../../domain/repositories/order_repository.dart';
@@ -16,6 +17,23 @@ class OrderRepositoryImpl implements OrderRepository {
         await _api.post(ApiEndpoints.orders, body: data.toJson())
             as Map<String, dynamic>;
     return Order.fromJson(orderData);
+  }
+
+  @override
+  Future<CheckoutQuote> fetchCheckoutQuote({
+    String? governorateId,
+    String? zoneId,
+  }) async {
+    final data =
+        await _api.get(
+              ApiEndpoints.checkoutQuote,
+              query: {
+                'governorateId': ?governorateId,
+                'zoneId': ?zoneId,
+              },
+            )
+            as Map<String, dynamic>;
+    return CheckoutQuote.fromJson(data);
   }
 
   @override

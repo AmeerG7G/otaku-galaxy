@@ -39,9 +39,9 @@ class _Boom implements Exception {
 
 Product _product(String id, String name) => Product(
   id: id,
-  name: name,
+  nameAr: name,
   price: 1000,
-  description: '',
+  descriptionAr: '',
   images: const [],
   categoryId: 'c1',
 );

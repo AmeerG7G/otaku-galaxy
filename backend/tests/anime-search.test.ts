@@ -60,8 +60,10 @@ describe('البحث بالأنمي', () => {
         .post('/api/admin/products')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
-          name,
-          description: 'وصف',
+          nameAr: name,
+          descriptionAr: 'وصف',
+          nameCkb: name,
+          descriptionCkb: 'وەسف',
           price: 9000,
           categoryId: catalog.categoryId,
           subcategoryId,
@@ -79,8 +81,10 @@ describe('البحث بالأنمي', () => {
       .post('/api/admin/products')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
-        name: PIN,
-        description: 'وصف',
+        nameAr: PIN,
+        descriptionAr: 'وصف',
+        nameCkb: PIN,
+        descriptionCkb: 'وەسف',
         price: 3000,
         categoryId: catalog.categoryId,
         stock: 5,

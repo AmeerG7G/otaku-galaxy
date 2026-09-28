@@ -127,7 +127,7 @@ void main() {
 
     final someProducts = await products.fetchProducts(page: 1, limit: 1);
     expect(someProducts.items, isNotEmpty);
-    final sample = someProducts.items.first.name.trim();
+    final sample = someProducts.items.first.nameAr.trim();
     final term = sample.length >= 3 ? sample.substring(0, 3) : sample;
     final search = await products.searchProducts(term, limit: 5);
     expect(

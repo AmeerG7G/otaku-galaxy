@@ -75,10 +75,7 @@ class _LoginScreenState extends State<LoginScreen>
     try {
       // بصيغة E.164 المطبَّعة (تشمل تحويل الأرقام الشرقية) — ما يخزّنه الخادم.
       await context.read<AuthCubit>().login(
-        normalizeIraqiPhone(
-              iraqiPhoneFromLocalDigits(_phoneController.text.trim()),
-            ) ??
-            iraqiPhoneFromLocalDigits(_phoneController.text.trim()),
+        normalizeIraqiPhone(_phoneController.text) ?? _phoneController.text.trim(),
         _passwordController.text,
       );
       if (!mounted) return;
@@ -140,13 +137,14 @@ class _LoginScreenState extends State<LoginScreen>
         child: AuthScaffold(
           title: context.strings('login'),
           subtitle: context.g(GenderedStrings.enterPhoneAndPassword),
-          artwork: 'assets/art/opt/a-i4.png',
           artworkSlot: VisualSlots.login,
-          ctaSlot: VisualSlots.loginCta,
-          ctaArtwork: 'assets/art/opt/a-i4.png',
           artworkHeight: 196,
           artworkWidth: 138,
-          artworkBottom: -10,
+          // أنزل قليلاً (كان -18، 2026-09-28): الصورة 1 مربّعة، فتُرسم داخل
+          // صندوق ١٣٨×١٩٦ (`contain`، موسَّطة) بارتفاع ١٣٨ وتطفو ٢٩ فوق قاعه —
+          // فكان صدرها ينتهي ١١ بكسل فوق حافة الرأس. -29 يُجلسها على الحافة
+          // نفسها؛ العرض والارتفاع والموضع الأفقي كما هي.
+          artworkBottom: -29,
           form: Form(
             key: _formKey,
             child: Column(
@@ -159,20 +157,17 @@ class _LoginScreenState extends State<LoginScreen>
                   hint: context.strings('phoneHintExample'),
                   prefixIcon: Icons.phone_outlined,
                   keyboardType: TextInputType.phone,
-                  // §49.2: البادئة `07` ثابتة في الحقل والمستخدم يكتب التسعة التي تليها؛
-                  // المُنسّق يُسقط `+964`/`00964`/`07` مما يُلصق بدل أن يقصّه.
-                  prefixText: kIraqiLocalPrefix,
-                  inputFormatters: const [IraqiLocalDigitsFormatter()],
+                  // الرقم كاملاً كما يكتبه الزبون (`07701234567`) — لا بادئة `07` ثابتة ولا مُدرَجة؛
+                  // المُنسّق يُبقي الأرقام وحدها، والحكم لقاعدة الموبايل العراقي ثم للخادم.
+                  inputFormatters: const [IraqiPhoneInputFormatter()],
                   textDirection: TextDirection.ltr,
                   textInputAction: TextInputAction.next,
-                  maxLength: kIraqiLocalDigits,
+                  maxLength: kIraqiLocalPhoneLength,
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
                       return context.strings('phoneRequiredShort');
                     }
-                    if (!isValidIraqiPhone(
-                      iraqiPhoneFromLocalDigits(value.trim()),
-                    )) {
+                    if (!isValidIraqiLocalPhone(value)) {
                       return context.strings('phoneInvalid');
                     }
                     return null;

@@ -267,7 +267,6 @@ class _EmptyReviews extends StatelessWidget {
     return OtakuEditorialPanel(
       title: context.strings('noReviewsTitle'),
       body: context.strings('noReviewsBody'),
-      artwork: 'assets/art/opt/a-i1.png',
       artworkSlot: VisualSlots.productReviews,
       margin: EdgeInsets.zero,
       minHeight: 150,

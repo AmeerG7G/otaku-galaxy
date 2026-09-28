@@ -31,6 +31,7 @@ customerRoutes.post('/orders', orderController.create);
 customerRoutes.get('/orders', orderController.listMine);
 // قبل '/orders/:id' وإلا التقطه كمعرّف ورفضه التحقق كـUUID غير صالح.
 customerRoutes.get('/orders/pending-confirmation', orderController.pendingConfirmation);
+customerRoutes.get('/orders/checkout-quote', orderController.checkoutQuote);
 customerRoutes.get('/orders/:id', orderController.getMine);
 // [PRODUCT] لا إلغاء من العميل. القرار أن الإلغاء صلاحيةُ إدارةٍ وحدها،
 // تمرّ عبر `PATCH /api/admin/orders/:id/status` بحالة `REJECTED` وسببٍ

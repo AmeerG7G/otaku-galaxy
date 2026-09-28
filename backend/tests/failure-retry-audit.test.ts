@@ -20,7 +20,6 @@ import {
   purgeTestUsers,
   registerAndLogin,
   registerUploadedPhoto,
-  registerUploadedSlotImage,
   seedTestCatalog,
   storeToday,
 } from './helpers.js';
@@ -1486,24 +1485,6 @@ describe('Failure / retry / idempotency audit', () => {
       expect(await mediaRowsOf(user.userId)).toBe(2);
       const used = await mediaRepo.bytesUploadedSince(db, user.userId, new Date(Date.now() - 60_000));
       expect(used).toBe(2 * PNG.byteLength);
-    });
-
-    it('visual-slot image set/clear are idempotent single statements: repeating them is a no-op, clearing twice → 200', async () => {
-      const { rows } = await db.query<{ id: string }>(`SELECT id FROM visual_slots ORDER BY slot_key LIMIT 1`);
-      const slotId = rows[0]!.id;
-      const url = await registerUploadedSlotImage();
-      const set = (u: string) => api.put(`/api/admin/visual-slots/${slotId}/image`).set(authed(adminToken)).send({ url: u });
-      expect((await set(url)).status).toBe(200);
-      expect((await set(url)).status).toBe(200);
-      const after = await db.query<{ image_url: string | null }>('SELECT image_url FROM visual_slots WHERE id = $1', [slotId]);
-      expect(after.rows[0]!.image_url).toBe(url);
-      const clear = () => api.delete(`/api/admin/visual-slots/${slotId}/image`).set(authed(adminToken));
-      expect((await clear()).status).toBe(200);
-      expect((await clear()).status).toBe(200);
-      const cleared = await db.query<{ image_url: string | null }>('SELECT image_url FROM visual_slots WHERE id = $1', [slotId]);
-      expect(cleared.rows[0]!.image_url).toBeNull();
-      // الملف يبقى في القاعدة (لا حذف للوسائط بالعقد).
-      expect(await count('FROM media_files WHERE url = $1', [url])).toBe(1);
     });
   });
 });

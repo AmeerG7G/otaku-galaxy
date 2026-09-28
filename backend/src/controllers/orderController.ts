@@ -1,15 +1,31 @@
 import type { RequestHandler } from 'express';
 import { orderService } from '../services/orderService.js';
+import { resolveLocale } from '../utils/locale.js';
 import { created, ok } from '../utils/response.js';
 import { parse } from '../utils/zod.js';
-import { listOrdersSchema, orderIdParamSchema, createOrderSchema } from '../validators/orders.js';
+import {
+  checkoutQuoteSchema,
+  createOrderSchema,
+  listOrdersSchema,
+  orderIdParamSchema,
+} from '../validators/orders.js';
 import { paginationSchema } from '../validators/catalog.js';
 
 export const orderController = {
   create: (async (req, res) => {
     const input = parse(createOrderSchema, req.body);
-    const order = await orderService.create(req.auth!.id, input);
+    const order = await orderService.create(req.auth!.id, input, resolveLocale(req));
     return created(res, order, 'تم استلام طلبك — سنتواصل معك قريباً');
+  }) as RequestHandler,
+
+  /** ملخّص الدفع بأرقام الخادم — الخصومات (ومنها مزيّة المستوى) قبل التأكيد. */
+  checkoutQuote: (async (req, res) => {
+    const input = parse(checkoutQuoteSchema, {
+      governorateId: req.query.governorateId,
+      zoneId: req.query.zoneId,
+    });
+    const quote = await orderService.checkoutQuote(req.auth!.id, input);
+    return ok(res, quote);
   }) as RequestHandler,
 
   listMine: (async (req, res) => {

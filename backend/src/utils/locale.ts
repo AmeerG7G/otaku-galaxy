@@ -76,9 +76,34 @@ export function pickLocalized(
   return arabic;
 }
 
-/** هل ينقص هذا الصفَّ نصٌّ كردي؟ — تستعمله لوحة التحكم لا الزبون. */
+/** هل ينقص هذا الصفَّ نصٌّ كردي؟ */
 export function isMissingKurdish(kurdish: string | null | undefined): boolean {
   return typeof kurdish !== 'string' || kurdish.trim() === '';
+}
+
+/**
+ * النصّ الكردي كما يخرج في الـAPI: نصٌّ حاضر، أو `null` — صورة «ناقص» الوحيدة.
+ *
+ * [CRITICAL] العميل يقرّر «ناقص» بـ`== null` وحده. ترك `''` أو مسافاتٍ تخرج
+ * كان سيجعله يعرض سطراً فارغاً على أنه «الكردية» — بنفس القاعدة التي تجعل
+ * [pickLocalized] يعامل الفراغ معاملة الغياب.
+ */
+export function kurdishOrNull(kurdish: string | null | undefined): string | null {
+  return isMissingKurdish(kurdish) ? null : (kurdish as string);
+}
+
+/**
+ * اسم منتجٍ بلغتيه — لقطةً كان أو محتوىً حيّاً — لنصٍّ يُولَّد لمستلمٍ بلغته
+ * (إشعار التوفر، إشعار اعتماد التقييم). `ckb` قد تغيب: يُسقط إلى العربية بـ
+ * [pickLocalized] كأي نصٍّ آخر.
+ */
+export interface ProductNames {
+  ar: string;
+  ckb: string | null;
+}
+
+export function pickProductName(names: ProductNames, locale: AppLocale): string {
+  return pickLocalized(names.ar, names.ckb, locale);
 }
 
 /**

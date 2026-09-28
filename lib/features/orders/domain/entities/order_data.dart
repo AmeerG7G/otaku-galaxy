@@ -9,7 +9,9 @@ class OrderData {
     required this.phone,
     required this.items,
     this.discount = 0,
+    this.loyaltyDiscount = 0,
     this.deliveryDiscount = 0,
+    this.quotedTotal,
     this.zoneId,
     this.zoneName,
   });
@@ -21,7 +23,19 @@ class OrderData {
   final String fullAddress;
   final String phone;
   final List<CartItem> items;
+
+  /// الخصم على المنتجات كما حسبه الخادم في ملخّص الدفع (الميلاد + المزيّة).
   final double discount;
+
+  /// الجزء الآتي من مزيّة المستوى داخل [discount] — للعرض في المراجعة.
+  final double loyaltyDiscount;
+
+  /// خصم الميلاد: ما بقي من [discount] بعد المزيّة.
+  double get birthdayDiscount =>
+      (discount - loyaltyDiscount).clamp(0, double.infinity);
+
+  /// الإجمالي كما أعاده ملخّص الخادم (`CheckoutQuote.total`)، إن وُجد.
+  final double? quotedTotal;
 
   /// خصم التوصيل المعاين — الخادم يعيد حسابه ويطبّقه عند الإنشاء.
   final double deliveryDiscount;
@@ -39,7 +53,8 @@ class OrderData {
   double get productsTotal =>
       items.fold(0, (sum, item) => sum + item.lineTotal);
 
-  double get total => productsTotal + payableDelivery - discount;
+  /// إجمالي الخادم متى وصل ملخّصه — لا يُعاد حسابه على العميل.
+  double get total => quotedTotal ?? productsTotal + payableDelivery - discount;
 
   /// جسم الطلب: الخادم يقرأ العربة ويرسل المجاميع النهائية.
   ///

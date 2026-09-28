@@ -4,10 +4,13 @@ import '../../../l10n/app_strings.dart';
 import '../../tokens/app_dimens.dart';
 import '../../tokens/app_theme_colors.dart';
 import '../buttons/anime_primary_button.dart';
-import '../../../../features/visuals/presentation/managed_artwork.dart';
 
 /// بطاقة «أنت تتصفح كزائر» بتصميم Otaku Galaxy v2 — لوحة مستديرة موسّطة
-/// مع هالة لونية ورسم شخصية يخرج من الحافة، وزر تسجيل دخول واضح.
+/// مع هالة لونية وزر تسجيل دخول واضح.
+///
+/// [PRODUCT] بلا رسم شخصية (2026-09-28). كان رسمٌ يخرج من الزاوية السفلية
+/// خلف زرّ الدخول، بموضعٍ لكل شاشة (`cart_guest_prompt_character`،
+/// `favorites_guest_prompt_character`)؛ أزاله المالك مع كل رسمٍ مجاورٍ للأزرار.
 class AnimeGuestPrompt extends StatelessWidget {
   const AnimeGuestPrompt({
     super.key,
@@ -15,24 +18,12 @@ class AnimeGuestPrompt extends StatelessWidget {
     required this.body,
     required this.onLogin,
     this.icon = Icons.person_outline,
-    this.artwork = 'assets/art/opt/a-i0.png',
-    required this.artworkSlot,
   });
 
   final String title;
   final String body;
   final VoidCallback onLogin;
   final IconData icon;
-  final String? artwork;
-
-  /// مفتاح الفتحة البصرية التي يديرها المسؤول من لوحة التحكم — **إلزامي
-  /// وتمرّره الشاشة** (`VisualSlots.cartGuestPrompt` في السلة،
-  /// `favoritesGuestPrompt` في المفضلة).
-  ///
-  /// كان للمكوّن مفتاحٌ افتراضي واحد (`guest_prompt_character`) يخدم التبويبين
-  /// معاً، فيبدّل المسؤول شخصية السلة فتتبدّل المفضلة. المكوّن المشترك لا
-  /// يملك موضعاً؛ الموضع للشاشة (الهجرة ٠٥٤). [artwork] هو الأصل الاحتياطي.
-  final String artworkSlot;
 
   @override
   Widget build(BuildContext context) {
@@ -71,16 +62,6 @@ class AnimeGuestPrompt extends StatelessWidget {
                   ),
                 ),
               ),
-              if (artwork != null)
-                PositionedDirectional(
-                  bottom: -14,
-                  start: -26,
-                  child: ManagedArtwork(
-                    slot: artworkSlot,
-                    fallbackAsset: artwork!,
-                    height: 132,
-                  ),
-                ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
                 child: Column(

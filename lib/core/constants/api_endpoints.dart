@@ -29,6 +29,8 @@ class ApiEndpoints {
   static const String confirmReceiptSuffix = '/confirm-receipt';
   /// الطلب المنتظر تأكيد استلامه — يقرؤه التطبيق عند كل فتح.
   static const String pendingConfirmation = '/orders/pending-confirmation';
+  /// ملخّص الدفع بأرقام الخادم قبل التأكيد (خصم الميلاد ومزيّة المستوى).
+  static const String checkoutQuote = '/orders/checkout-quote';
 
   // التقييمات (عميل).
   static const String reviews = '/reviews';
@@ -74,9 +76,6 @@ class ApiEndpoints {
   // إعدادات نسخة التطبيق (إجبار التحديث) — عام، وخارج فحص النسخة عمداً
   // حتى تستطيع النسخة المحجوبة قراءة سبب الحجب ورابط المتجر.
   static const String appVersion = '/catalog/app-version';
-
-  // رسوم الشخصيات المُدارة من لوحة التحكم (فتحات بصرية).
-  static const String visuals = '/catalog/visuals';
 
   // رفع صور تقييمات العملاء.
   static const String uploads = '/uploads';

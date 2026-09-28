@@ -5,6 +5,8 @@ export interface AppVersionConfig {
   androidStoreUrl: string
   iosStoreUrl: string
   updateMessage: string
+  /** الرسالة بالكردية — فارغةً يعرض التطبيق نصّه الكردي الافتراضي. */
+  updateMessageCkb?: string
 }
 
 /** حمولة الحفظ — بمفاتيح `store_settings` نفسها التي يتحقق منها الخادم. */
@@ -14,6 +16,7 @@ export interface AppVersionSettingsPayload {
   app_android_store_url?: string
   app_ios_store_url?: string
   app_update_message?: string
+  app_update_message_ckb?: string
 }
 
 /**

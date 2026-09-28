@@ -4,8 +4,8 @@
  "production_status": "PROVISIONALLY_ACCEPTED_FOR_PRODUCTION",
  "native_review_status": "PENDING_NO_HUMAN_NATIVE_REVIEW_PERFORMED",
  "native_approved_count": 0,
- "needs_native_review_count": 526,
- "total_strings": 526,
+ "needs_native_review_count": 527,
+ "total_strings": 527,
  "accepted_on": "2026-09-08",
  "accepted_by": "product decision — not a linguistic decision",
  "reason": "Current Kurdish user base is small; localization is being shipped provisionally and will be refined through future native review and user feedback.",
@@ -16,7 +16,7 @@
  ],
  "what_this_status_does_NOT_mean": [
   "It is NOT native approval.",
-  "No Sorani speaker has read any of these 526 strings.",
+  "No Sorani speaker has read any of these 527 strings.",
   "native_approved_count is 0 and must stay 0 until a named human reviewer approves keys individually in review-queue.json."
  ],
  "review_queue": "docs/localization/review-queue.json",
@@ -24,17 +24,17 @@
  "future_review_priority": [
   {
    "priority": "HIGH",
-   "count": 122,
+   "count": 124,
    "scope": "checkout and delivery, errors, order statuses, loyalty and rewards, login gates, long sentences, strings mirroring backend notification text"
   },
   {
    "priority": "MEDIUM",
-   "count": 249,
+   "count": 250,
    "scope": "product UI, settings, account, search and filters, counters"
   },
   {
    "priority": "LOW",
-   "count": 155,
+   "count": 153,
    "scope": "generic labels, navigation, short buttons"
   }
  ],

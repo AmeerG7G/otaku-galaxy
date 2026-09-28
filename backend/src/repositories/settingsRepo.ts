@@ -42,6 +42,9 @@ export const APP_VERSION_SETTING_KEYS = [
   'app_android_store_url',
   'app_ios_store_url',
   'app_update_message',
+  // الرسالة نفسها بالكردية — فارغةً يعرض التطبيق نصّه الكردي الافتراضي لا
+  // الرسالة العربية (2026-09-27).
+  'app_update_message_ckb',
 ] as const;
 
 export const SETTING_KEYS = [
@@ -72,6 +75,7 @@ const EMPTY_SETTINGS: StoreSettings = {
   app_android_store_url: '',
   app_ios_store_url: '',
   app_update_message: '',
+  app_update_message_ckb: '',
 };
 
 export const settingsRepo = {

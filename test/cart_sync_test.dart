@@ -52,8 +52,8 @@ CartItem _item(
 }) => CartItem(
   product: Product(
     id: product,
-    name: 'منتج $product',
-    description: '',
+    nameAr: 'منتج $product',
+    descriptionAr: '',
     price: price,
     images: const [],
     stock: stock,

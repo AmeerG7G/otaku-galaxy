@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/design_system/tokens/app_colors.dart';
+import '../../../visuals/domain/visual_slot.dart';
 
 /// الخلفية الثابتة لشاشة البداية كما في مرجع التصميم.
 ///
@@ -10,7 +11,8 @@ import '../../../../core/design_system/tokens/app_colors.dart';
 ///   المشفّرة حرفياً ولا يبدّلها مع السمة الداكنة).
 /// - هالتان لونيتان: وردية أعلى الجهة اليمنى الفيزيائية، وبنفسجية أسفل
 ///   الجهة اليسرى الفيزيائية.
-/// - رسمان أنمي خافتان (مخفّضا التشبّع) في الزاويتين المقابلتين.
+/// - رسم أنمي خافت (مخفّض التشبّع) أسفل الجهة اليسرى الفيزيائية. كان معه رسمٌ
+///   صغير في الزاوية المقابلة (الصورة 4) أُزيل مع الصورة (2026-09-28).
 ///
 /// مواضع الرسوم في المصدر فيزيائية (left/right) ولا تنعكس مع اتجاه النص،
 /// لذا: `right` ← `start` و`left` ← `end` في واجهة عربية.
@@ -85,20 +87,13 @@ class SplashBackdrop extends StatelessWidget {
             bottom: -30,
             end: -56,
             child: _FadedArt(
-              asset: 'assets/art/opt/gojo-l.png',
+              asset: CharacterArt.splashBackdrop,
               width: 250,
               opacity: 0.17,
             ),
           ),
-          PositionedDirectional(
-            top: 64,
-            start: -38,
-            child: _FadedArt(
-              asset: 'assets/art/opt/a-i0.png',
-              width: 132,
-              opacity: 0.15,
-            ),
-          ),
+          // والرسم الصغير أعلى جهة البداية (الصورة 4) أُزيل مع الصورة
+          // (2026-09-28).
         ],
       ),
     );

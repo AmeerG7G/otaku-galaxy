@@ -11,13 +11,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otaku_galaxy/core/design_system/design_system.dart';
 import 'package:otaku_galaxy/features/visuals/domain/visual_slot.dart';
-import 'package:otaku_galaxy/features/visuals/presentation/managed_artwork.dart';
+import 'package:otaku_galaxy/features/visuals/presentation/character_artwork.dart';
 
-/// هل يقع أي `ManagedArtwork` تحت مُخفٍّ (شفافية، مرشِّح لوني، قناع)؟
+/// هل يقع أي `CharacterArtwork` تحت مُخفٍّ (شفافية، مرشِّح لوني، قناع)؟
 List<String> _fadedArtworks(WidgetTester tester) {
   final faded = <String>[];
-  for (final element in find.byType(ManagedArtwork).evaluate()) {
-    final artwork = element.widget as ManagedArtwork;
+  for (final element in find.byType(CharacterArtwork).evaluate()) {
+    final artwork = element.widget as CharacterArtwork;
     Widget? offender;
     element.visitAncestorElements((ancestor) {
       final w = ancestor.widget;
@@ -52,12 +52,11 @@ void main() {
           dark: dark,
           OtakuScreenHeader(
             title: 'الطلبات',
-            artwork: 'assets/art/opt/a-i4.png',
             artworkSlot: VisualSlots.ordersHeader,
           ),
         ),
       );
-      expect(find.byType(ManagedArtwork), findsOneWidget);
+      expect(find.byType(CharacterArtwork), findsOneWidget);
       expect(_fadedArtworks(tester), isEmpty);
     });
 
@@ -70,14 +69,12 @@ void main() {
               OtakuEditorialPanel(
                 title: 'عنوان',
                 body: 'نصّ',
-                artwork: 'assets/art/opt/a-i5.png',
                 artworkSlot: VisualSlots.points,
               ),
               SizedBox(
                 height: 300,
                 child: AnimeEmptyState(
                   title: 'فارغ',
-                  artwork: 'assets/art/opt/a-i2.png',
                   artworkSlot: VisualSlots.emptyCart,
                   centered: true,
                 ),
@@ -86,7 +83,6 @@ void main() {
                 height: 300,
                 child: AnimeEmptyState(
                   title: 'فارغ جانبي',
-                  artwork: 'assets/art/opt/a-i1.png',
                   artworkSlot: VisualSlots.emptySearch,
                 ),
               ),
@@ -94,18 +90,18 @@ void main() {
           ),
         ),
       );
-      expect(find.byType(ManagedArtwork), findsNWidgets(3));
+      expect(find.byType(CharacterArtwork), findsNWidgets(3));
       expect(_fadedArtworks(tester), isEmpty);
     });
   }
 
-  test('[TRIPWIRE] لا `Opacity` ولا `opacity:` حول أي ManagedArtwork في lib/', () {
+  test('[TRIPWIRE] لا `Opacity` ولا `opacity:` حول أي CharacterArtwork في lib/', () {
     final offenders = <String>[];
     for (final file in Directory('lib').listSync(recursive: true)) {
       if (file is! File || !file.path.endsWith('.dart')) continue;
       final lines = file.readAsLinesSync();
       for (var i = 0; i < lines.length; i++) {
-        if (!lines[i].contains('ManagedArtwork(')) continue;
+        if (!lines[i].contains('CharacterArtwork(')) continue;
         final start = (i - 6).clamp(0, lines.length);
         final end = (i + 8).clamp(0, lines.length);
         final window = lines.sublist(start, end).where((l) => !l.trimLeft().startsWith('//')).join('\n');
@@ -116,7 +112,7 @@ void main() {
     }
     expect(offenders, isEmpty, reason: 'رسمٌ مُدار تحت شفافية:\n${offenders.join('\n')}');
     // والمكوّن نفسه لا يعرض معاملاً للشفافية.
-    final source = File('lib/features/visuals/presentation/managed_artwork.dart').readAsStringSync();
+    final source = File('lib/features/visuals/presentation/character_artwork.dart').readAsStringSync();
     expect(source.contains('this.opacity'), isFalse);
   });
 }

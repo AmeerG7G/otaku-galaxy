@@ -1,9 +1,21 @@
 import type pg from 'pg';
 import type { OrderRow, OrderStatus, Paginated } from '../types/index.js';
+import { priceOrder } from '../domain/orderPricing.js';
 
 export interface OrderItemSnapshot {
   productId: string;
+  /**
+   * لقطة الاسم العربي وقت الطلب — الحقل القديم، باقٍ بمعناه لعملاءٍ أقدم
+   * وللوحة التحكم.
+   */
   productName: string;
+  /** لقطة الاسم بالعربية صراحةً (= `productName`) — 066. */
+  productNameAr: string;
+  /**
+   * لقطة الاسم بالكردية وقت الطلب؛ `null` = لم تكن للمنتج كردية حينها، أو
+   * طلبٌ أقدم من 066 (لا تُختلق لقطةٌ لتاريخٍ مضى). التطبيق يختار بلغة واجهته.
+   */
+  productNameCkb: string | null;
   imageUrl: string | null;
   optionValue: string | null;
   price: number;
@@ -103,6 +115,8 @@ const ORDER_WITH_CUSTOMER = `
            (SELECT json_agg(json_build_object(
               'productId', oi.product_id,
               'productName', oi.product_name,
+              'productNameAr', oi.product_name,
+              'productNameCkb', oi.product_name_ckb,
               'imageUrl', oi.image_url,
               'optionValue', oi.option_value,
               'price', oi.price,
@@ -285,29 +299,22 @@ export const orderRepo = {
     );
     const orderNumber = numRows[0]!.number;
 
-    const productsTotal = input.items.reduce((sum, item) => sum + item.lineTotal, 0);
-    const discount = Math.min(input.discount ?? 0, productsTotal);
-    // الجزء لا يتجاوز الكل: لو قُصّ الخصم الكلي عند مجموع المنتجات وجب أن
-    // يُقصّ معه تفصيلُه، وإلا رفض القيدُ `loyalty_discount <= discount` الصفَّ.
-    const loyaltyDiscount = Math.min(Math.max(input.loyaltyDiscount ?? 0, 0), discount);
-    // ═══ قسمة ترويج التوصيل ═══
-    //
-    // الخام يُقسم قسمين لا ثالث لهما، ومجموعهما يساوي الخام دائماً:
-    //   • ما يناله الزبون  = min(الخام، الرسوم)      → `delivery_discount`
-    //   • ما يُقيَّد للمتجر = max(0, الخام − الرسوم) → `delivery_discount_excess`
-    //
-    // [CRITICAL] الفائض لا يمسّ `productsTotal` ولا `discount` ولا `total`.
-    // نقلُه إلى أيٍّ منها يحوّل مبلغاً محتفَظاً به للمتجر إلى خصمٍ إضافي
-    // للزبون — وهو عكس المطلوب تماماً.
-    const deliveryPromoRaw = Math.max(input.deliveryPromoRaw ?? 0, 0);
-    const deliveryDiscount = Math.min(deliveryPromoRaw, input.deliveryFee);
-    const deliveryDiscountExcess = Math.max(
-      0,
-      deliveryPromoRaw - input.deliveryFee,
-    );
-    const payableDelivery = input.deliveryFee - deliveryDiscount;
-    // لا يُسمح بإجمالي سالب مهما بلغ الخصم.
-    const total = Math.max(0, productsTotal + payableDelivery - discount);
+    // المبالغ كلها من `priceOrder` — الدالة نفسها التي تعاين بها شاشة الدفع
+    // (`orderService.checkoutQuote`)، فما يراه الزبون قبل التأكيد هو ما يُحفظ.
+    const {
+      productsTotal,
+      discount,
+      loyaltyDiscount,
+      deliveryDiscount,
+      deliveryDiscountExcess,
+      total,
+    } = priceOrder({
+      productsTotal: input.items.reduce((sum, item) => sum + item.lineTotal, 0),
+      deliveryFee: input.deliveryFee,
+      deliveryPromoRaw: input.deliveryPromoRaw ?? 0,
+      discount: input.discount ?? 0,
+      loyaltyDiscount: input.loyaltyDiscount ?? 0,
+    });
 
     const { rows } = await db.query<Record<string, unknown>>(
       `INSERT INTO orders (
@@ -341,9 +348,20 @@ export const orderRepo = {
     for (const item of input.items) {
       await db.query(
         `INSERT INTO order_items (
-           order_id, product_id, product_name, image_url, option_value, price, quantity, line_total
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [order.id, item.productId, item.productName, item.imageUrl, item.optionValue, item.price, item.quantity, item.lineTotal],
+           order_id, product_id, product_name, product_name_ckb, image_url, option_value,
+           price, quantity, line_total
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [
+          order.id,
+          item.productId,
+          item.productNameAr,
+          item.productNameCkb,
+          item.imageUrl,
+          item.optionValue,
+          item.price,
+          item.quantity,
+          item.lineTotal,
+        ],
       );
     }
 

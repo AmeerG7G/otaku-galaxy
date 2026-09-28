@@ -6,7 +6,7 @@ import '../../../../core/design_system/design_system.dart';
 import '../../../../core/router/app_router.dart';
 import '../widgets/star_rating.dart';
 import '../../../visuals/domain/visual_slot.dart';
-import '../../../visuals/presentation/managed_artwork.dart';
+import '../../../visuals/presentation/character_artwork.dart';
 
 /// تأكيد إرسال التقييم — «بانتظار المراجعة».
 ///
@@ -67,9 +67,8 @@ class ReviewSubmittedScreen extends StatelessWidget {
                     padding: const EdgeInsets.fromLTRB(22, 34, 22, 12),
                     child: Column(
                       children: [
-                        const ManagedArtwork(
+                        const CharacterArtwork(
                           slot: VisualSlots.reviewSubmitted,
-                          fallbackAsset: 'assets/art/opt/a-i4.png',
                           width: 172,
                           fit: BoxFit.contain,
                         ),

@@ -1,11 +1,18 @@
 import type pg from 'pg';
 import { userRepo } from '../repositories/userRepo.js';
 import { renderNotification } from '../domain/notificationTemplates.js';
-import { DEFAULT_LOCALE, isAppLocale, type AppLocale } from '../utils/locale.js';
+import {
+  DEFAULT_LOCALE,
+  isAppLocale,
+  kurdishOrNull,
+  pickLocalized,
+  type AppLocale,
+} from '../utils/locale.js';
 import { config } from '../config/index.js';
 import { sendRatingReminderNow } from '../jobs/ratingReminderJob.js';
 import { db, withTransaction } from '../database/pool.js';
 import { birthdayDiscountAmount } from '../domain/birthday.js';
+import { fitProductDiscounts, priceOrder } from '../domain/orderPricing.js';
 import {
   eligiblePurchaseValue,
   purchasePointsFor,
@@ -118,13 +125,17 @@ async function releaseStockOnRejection(tx: pg.PoolClient, order: OrderWithItems)
     released.set(item.productId, (released.get(item.productId) ?? 0) + item.quantity);
   }
   for (const productId of [...released.keys()].sort()) {
-    const { rows } = await tx.query<{ name: string; previous: number }>(
-      'UPDATE products SET stock = stock + $2 WHERE id = $1 RETURNING name, stock - $2 AS previous',
+    const { rows } = await tx.query<{ name: string; name_ckb: string | null; previous: number }>(
+      `UPDATE products SET stock = stock + $2 WHERE id = $1
+       RETURNING name, name_ckb, stock - $2 AS previous`,
       [productId, released.get(productId)],
     );
     const product = rows[0];
     if (product && Number(product.previous) === 0) {
-      await restockService.stockReturned(tx, productId, product.name);
+      await restockService.stockReturned(tx, productId, {
+        ar: product.name,
+        ckb: kurdishOrNull(product.name_ckb),
+      });
     }
   }
 }
@@ -139,6 +150,51 @@ function reviewReminderDelayHours(): number {
   return config.orders.reviewReminderDelayHours;
 }
 
+
+/**
+ * خصما الطلب على المنتجات كما يقرّرهما الخادم — مصدرٌ واحد للإنشاء والمعاينة.
+ *
+ * - **الميلاد**: نسبة ثابتة (`domain/birthday.ts`)، مرة واحدة سنوياً، بتقويم
+ *   المتجر — التقويم نفسه الذي يرى به المسؤول «عيد اليوم».
+ * - **مزيّة المستوى**: الخصم المطالَب به الأقدم، من مجموع المنتجات الفعلي
+ *   ومسقوفاً بسقفه المالي.
+ *
+ * `reserve` (إنشاء الطلب) يقفل صفّ المزيّة ليستهلكه بعد إنشاء الطلب؛
+ * `preview` (شاشة الدفع) يقرأ المرشّح نفسه بلا قفل ولا استهلاك. لا مبلغ
+ * يُقرأ من العميل في الحالتين.
+ *
+ * كلا المبلغين مقرَّب بقاعدة الخصم الواحدة (`domain/discountRounding.ts`)
+ * داخل دالته، ثم يتّسعان في مجموع المنتجات (`fitProductDiscounts`). ما يعود من
+ * هنا هو ما يُحفظ ويُستهلك بعينه: مزيّةٌ لم يبقَ لها شيء تعود `null` فلا
+ * تُستهلك، وخصم ميلادٍ صفريّ لا يُسجَّل.
+ */
+async function orderDiscounts(
+  client: pg.Pool | pg.PoolClient,
+  userId: string,
+  productsTotal: number,
+  mode: 'reserve' | 'preview',
+) {
+  const birthday = await birthdayRepo.status(client, userId, config.storeTimezone);
+  const candidate =
+    mode === 'reserve'
+      ? await loyaltyRewardsService.reserveDiscountForOrder(
+          client as pg.PoolClient,
+          userId,
+          productsTotal,
+        )
+      : await loyaltyRewardsService.previewDiscountForOrder(client, userId, productsTotal);
+  const fitted = fitProductDiscounts(productsTotal, {
+    birthday: birthday.rewardAvailable ? birthdayDiscountAmount(productsTotal) : 0,
+    loyalty: candidate?.amount ?? 0,
+  });
+  const loyaltyReward =
+    candidate && fitted.loyalty > 0 ? { ...candidate, amount: fitted.loyalty } : null;
+  return {
+    birthdayDiscount: fitted.birthday,
+    loyaltyReward,
+    discount: fitted.birthday + fitted.loyalty,
+  };
+}
 
 export const orderService = {
   /**
@@ -158,6 +214,12 @@ export const orderService = {
       zoneId?: string | null;
       expectedPrices?: ReadonlyArray<{ productId: string; unitPrice: number }>;
     },
+    /**
+     * لغة الطلب — تسمّي المنتج في رسائل الرفض أدناه بلغة الزبون (066).
+     * الإطار العربي تترجمه طبقة الأخطاء (`errorMessages.ts`)، والاسم داخله
+     * يجب أن يكون بلغة الواجهة نفسها لا عربياً وسط جملة كردية.
+     */
+    locale: AppLocale = DEFAULT_LOCALE,
   ) {
     return withTransaction(async (tx) => {
       const governorate = await governorateRepo.listActive(tx);
@@ -202,9 +264,11 @@ export const orderService = {
         const product = products.get(item.productId);
         // [CRITICAL] شبكة الأمان (CA-14): سطرٌ عُطِّل منتجه بعد آخر مزامنة يرفض
         // الإرسال كله. كان يُسقط من الطلب بصمت فيخرج طلبٌ غير الذي رآه الزبون.
+        // الاسم في رسائل الرفض بلغة الزبون — سطر العربة يحمل اللغتين.
+        const shownName = pickLocalized(item.productNameAr, item.productNameCkb, locale);
         if (!product || !product.isActive) {
           throw Errors.conflict(
-            `«${item.productName}» لم يعد متاحاً — أزله من العربة`,
+            `«${shownName}» لم يعد متاحاً — أزله من العربة`,
             'PRODUCT_UNAVAILABLE',
           );
         }
@@ -219,7 +283,7 @@ export const orderService = {
           )
         ) {
           throw Errors.conflict(
-            `تغيّر سعر «${product.name}» — راجع سلتك قبل الإرسال`,
+            `تغيّر سعر «${shownName}» — راجع سلتك قبل الإرسال`,
             'PRODUCT_PRICE_CHANGED',
           );
         }
@@ -237,7 +301,7 @@ export const orderService = {
           .reduce((sum, line) => sum + line.quantity, 0);
         if (maxQty < orderedFromProduct) {
           throw Errors.conflict(
-            `مخزون «${item.productName}» غير كافٍ (المتاح: ${maxQty})`,
+            `مخزون «${shownName}» غير كافٍ (المتاح: ${maxQty})`,
             'INSUFFICIENT_STOCK',
           );
         }
@@ -246,7 +310,11 @@ export const orderService = {
         }
         snapshots.push({
           productId: product.id,
-          productName: product.name,
+          // اللقطة باللغتين تُجمَّد الآن (066): تعديل اسم المنتج لاحقاً لا يغيّر
+          // طلباً قائماً، والزبون يرى طلبه بلغة واجهته.
+          productName: product.nameAr,
+          productNameAr: product.nameAr,
+          productNameCkb: product.nameCkb,
           imageUrl: product.images[0] ?? null,
           optionValue: item.optionValue,
           price: product.price,
@@ -258,29 +326,17 @@ export const orderService = {
       // القسمة (سقفُ الزبون وفائضُ المتجر) تقع في `orderRepo.create` من
       // القيمة الخام وحدها، فلا موضعان يحسبانها وقد يتباعدان.
 
-      // خصم عيد الميلاد: يُحتسب على الخادم فقط، ويُستهلك مرة واحدة سنوياً.
-      // النسبة تُقرأ لحظة إنشاء الطلب، فتغييرها لاحقاً لا يمسّ طلباً مضى.
-      // خصم عيد الميلاد: نسبة **ثابتة** في `domain/birthday.ts` لا إعداد.
-      // الأهلية والاستهلاك مرة واحدة سنوياً كما كانا — تغيّر مصدر النسبة
-      // وحده.
-      // الأهلية بتقويم المتجر — التقويم نفسه الذي يرى به المسؤول «عيد اليوم».
-      const birthday = await birthdayRepo.status(tx, userId, config.storeTimezone);
+      // الخصمان (الميلاد ومزيّة المستوى) من المسار نفسه الذي تعاين به شاشة
+      // الدفع (`checkoutQuote`) — هنا بحجز المزيّة تحت القفل. الاستهلاك داخل
+      // هذه المعاملة، فسقوط الطلب لاحقاً يُرجع المزيّة. يسبق إنشاء الطلب لأن
+      // `discount` جزءٌ من الصفّ المُنشأ؛ الربط بالطلب يقع بعد وجود معرّفه.
       const productsTotal = snapshots.reduce((sum, item) => sum + item.lineTotal, 0);
-      const birthdayDiscount = birthday.rewardAvailable
-        ? birthdayDiscountAmount(productsTotal)
-        : 0;
-
-      // خصم مزيّة المستوى: يُحجز بالمطالبة ويُستهلك هنا. القيمة تُحسب على
-      // الخادم من مجموع المنتجات ولا تتجاوز سقفها المالي؛ لا مبلغ يُقرأ من
-      // العميل. الاستهلاك داخل هذه المعاملة، فسقوط الطلب لاحقاً يُرجع المزيّة.
-      // يسبق إنشاء الطلب لأن `discount` جزءٌ من الصفّ المُنشأ؛ الربط بالطلب
-      // يقع بعد وجود معرّفه.
-      const loyaltyReward = await loyaltyRewardsService.reserveDiscountForOrder(
+      const { birthdayDiscount, loyaltyReward, discount } = await orderDiscounts(
         tx,
         userId,
         productsTotal,
+        'reserve',
       );
-      const discount = birthdayDiscount + (loyaltyReward?.amount ?? 0);
 
       const order = await orderRepo.create(tx, {
         userId,
@@ -330,6 +386,91 @@ export const orderService = {
       const created = await orderRepo.findById(tx, order.id);
       return created;
     });
+  },
+
+  /**
+   * ملخّص الدفع قبل التأكيد — المبالغ التي سيحفظها [create] لو أُرسل الطلب الآن.
+   *
+   * [CRITICAL] العطل الذي يعالجه (2026-09-27): الزبون يطالب بمزيّة الخصم ثم
+   * يملأ عربته ويصل إلى المراجعة فلا يجد الخصم — الشاشتان كانتا تعاينان خصم
+   * الميلاد على العميل وحده، ولا تعرفان المزيّة أصلاً، بينما كان الإنشاء
+   * يطبّقها. الآن تُعرض على الزبون أرقام الخادم نفسها:
+   *   • العربة المحفوظة على الخادم (ما سيُنشأ منه الطلب) بأسعار المنتجات الحالية.
+   *   • الخصمان من `orderDiscounts` بوضع `preview` — المرشّح نفسه بلا قفل،
+   *     فالمعاينة لا تحجز المزيّة ولا تستهلكها أبداً.
+   *   • المبالغ من `priceOrder` — الدالة نفسها التي يحفظ بها `orderRepo.create`.
+   * رسوم التوصيل تُحسب متى عُرفت المحافظة (والمنطقة إن كانت مقسّمة)؛ قبل
+   * ذلك تكون `null` ويبقى الإجمالي `null` — لا رقمَ نعرف أنه قد يتغيّر.
+   *
+   * المعاينة ليست وعداً: الإنشاء يعيد الحساب كله تحت الأقفال، وهو الحكم.
+   */
+  async checkoutQuote(
+    userId: string,
+    input: { governorateId?: string | null; zoneId?: string | null },
+  ) {
+    const lines = await cartRepo.listItems(db, userId);
+    const products = await productRepo.findByIds(db, [...new Set(lines.map((l) => l.productId))]);
+
+    let productsTotal = 0;
+    let deliveryPromoRaw = 0;
+    for (const line of lines) {
+      const product = products.get(line.productId);
+      // سطرٌ عُطِّل منتجه سيرفضه الإنشاء كله (`PRODUCT_UNAVAILABLE`)؛ لا يُحسب هنا.
+      if (!product || !product.isActive) continue;
+      productsTotal += product.price * line.quantity;
+      if (product.hasDeliveryPromo && product.deliveryPromoAmount > 0) {
+        deliveryPromoRaw += product.deliveryPromoAmount * line.quantity;
+      }
+    }
+
+    let deliveryFee: number | null = null;
+    if (input.governorateId) {
+      const governorates = await governorateRepo.listActive(db);
+      const selected = governorates.find((g) => g.id === input.governorateId);
+      if (!selected) throw Errors.badRequest('المحافظة غير موجودة أو غير نشطة');
+      const zones = await zoneRepo.listForGovernorate(db, selected.id);
+      if (zones.length === 0) {
+        if (input.zoneId) {
+          throw Errors.badRequest('هذه المحافظة بلا مناطق توصيل', 'ZONE_NOT_SUPPORTED');
+        }
+        deliveryFee = selected.deliveryFee;
+      } else if (input.zoneId) {
+        const zone = zones.find((entry) => entry.id === input.zoneId);
+        if (!zone) throw Errors.badRequest('منطقة التوصيل غير صالحة', 'ZONE_INVALID');
+        deliveryFee = zone.deliveryFee;
+      }
+    }
+
+    const { birthdayDiscount, loyaltyReward, discount } = await orderDiscounts(
+      db,
+      userId,
+      productsTotal,
+      'preview',
+    );
+    const priced = priceOrder({
+      productsTotal,
+      deliveryFee: deliveryFee ?? 0,
+      deliveryPromoRaw,
+      discount,
+      loyaltyDiscount: loyaltyReward?.amount ?? 0,
+    });
+
+    return {
+      productsTotal: priced.productsTotal,
+      birthdayDiscount: priced.discount - priced.loyaltyDiscount,
+      loyaltyDiscount: priced.loyaltyDiscount,
+      loyaltyReward: loyaltyReward
+        ? {
+            levelKey: loyaltyReward.levelKey,
+            percent: loyaltyReward.percent,
+            capAmount: loyaltyReward.capAmount,
+          }
+        : null,
+      discount: priced.discount,
+      deliveryFee,
+      deliveryDiscount: deliveryFee === null ? 0 : priced.deliveryDiscount,
+      total: deliveryFee === null ? null : priced.total,
+    };
   },
 
   async listMyOrders(userId: string, page: number, limit: number, status?: OrderStatus) {

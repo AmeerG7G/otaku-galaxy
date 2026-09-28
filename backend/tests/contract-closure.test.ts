@@ -580,8 +580,8 @@ describe('Pre-staging contract closure (STEP 57)', () => {
       await api.patch(`/api/admin/products/${scarce}`).set(bearer(adminToken)).send({ stock: 1 }).expect(200);
       const placed = await submit();
       expect(placed.status).toBe(201);
-      // ميلاد 5% = 1 000، مستكشف 3% = 600 — الخصمان سليمان للطلب التالي.
-      expect(placed.body.data).toMatchObject({ discount: 1_600, loyaltyDiscount: 600 });
+      // ميلاد 5% = 1 000، مستكشف 3% = 600 ← 500 (أقرب ٢٥٠) — الخصمان سليمان للطلب التالي.
+      expect(placed.body.data).toMatchObject({ discount: 1_500, loyaltyDiscount: 500 });
     });
 
     it('[CA-12 contract] a pending order rejected by the admin keeps both discounts consumed; the next order gets neither', async () => {
@@ -751,8 +751,12 @@ describe('Pre-staging contract closure (STEP 57)', () => {
       const loaded = (await api.get(`/api/catalog/products/${item}`).expect(200)).body.data;
       // ما تبنيه `ProductEditPage.handleSubmit` من النموذج المحمَّل.
       const form = {
-        name: loaded.name,
-        description: loaded.description,
+        // المحتوى بلغتيه صريحاً (066) — كما يبنيه النموذج من `nameAr`… لا من
+        // `name` المحسوم بلغة الطلب.
+        nameAr: loaded.nameAr,
+        descriptionAr: loaded.descriptionAr,
+        ...(loaded.nameCkb !== null ? { nameCkb: loaded.nameCkb } : {}),
+        ...(loaded.descriptionCkb !== null ? { descriptionCkb: loaded.descriptionCkb } : {}),
         price: loaded.price,
         categoryId: loaded.categoryId,
         subcategoryId: loaded.subcategoryId ?? null,
@@ -777,7 +781,7 @@ describe('Pre-staging contract closure (STEP 57)', () => {
 
       // (أ) يصحّح الوصف ويحفظ النموذج كما حمّله — ما أرسله هو ما يُكتب.
       await api.patch(`/api/admin/products/${item}`).set(bearer(adminToken))
-        .send({ ...form, description: 'وصف مصحَّح' }).expect(200);
+        .send({ ...form, descriptionAr: 'وصف مصحَّح' }).expect(200);
 
       expect(await stockOf(item)).toBe(5);
       expect(Number((await one<{ price: string }>('SELECT price FROM products WHERE id = $1', [item])).price))
@@ -798,7 +802,7 @@ describe('Pre-staging contract closure (STEP 57)', () => {
 
       // حفظٌ لاحق لا يعرف إلا الوصف.
       await api.patch(`/api/admin/products/${item}`).set(bearer(adminToken))
-        .send({ description: 'وصف فقط' }).expect(200);
+        .send({ descriptionAr: 'وصف فقط' }).expect(200);
 
       const row = await one<{ restock_at: Date | null; is_active: boolean; description: string }>(
         'SELECT restock_at, is_active, description FROM products WHERE id = $1',

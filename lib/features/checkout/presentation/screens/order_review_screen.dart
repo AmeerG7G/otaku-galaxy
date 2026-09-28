@@ -11,6 +11,7 @@ import '../../../cart/presentation/cubit/cart_cubit.dart';
 import '../../../main_navigation/presentation/screens/main_navigation_screen.dart';
 import '../../../orders/domain/entities/order_data.dart';
 import '../../../orders/domain/usecases/place_order_usecase.dart';
+import '../../../products/domain/entities/product.dart';
 import '../widgets/order_success_view.dart';
 
 /// مراجعة الطلب بتصميم Otaku Galaxy v2.
@@ -337,7 +338,7 @@ class _OrderReviewScreenState extends State<OrderReviewScreen>
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      data.items[i].product.name,
+                      localizedProductName(data.items[i].product, context.language),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodyMedium?.copyWith(
@@ -410,11 +411,21 @@ class _OrderReviewScreenState extends State<OrderReviewScreen>
             color: AppColors.success,
           ),
         ],
-        if (data.discount > 0) ...[
+        // الخصمان من ملخّص الخادم، كلٌّ بسطره — الزبون يرى المزيّة التي
+        // طالب بها باسمها قبل التأكيد، لا رقماً مدموجاً بلا تفسير.
+        if (data.birthdayDiscount > 0) ...[
           const SizedBox(height: 10),
           _priceRow(
-            context.strings('discount'),
-            '-${formatPrice(data.discount)}',
+            context.strings('birthdayDiscount'),
+            '-${formatPrice(data.birthdayDiscount)}',
+            color: AppColors.success,
+          ),
+        ],
+        if (data.loyaltyDiscount > 0) ...[
+          const SizedBox(height: 10),
+          _priceRow(
+            context.strings('loyaltyRewardDiscount'),
+            '-${formatPrice(data.loyaltyDiscount)}',
             color: AppColors.success,
           ),
         ],

@@ -11,16 +11,19 @@
  * هذا الملف يستبدل **مصدر النسبة** لا شيئاً غيره.
  */
 
+import { roundDiscountIqd } from './discountRounding.js';
+
 /** نسبة خصم عيد الميلاد من مجموع المنتجات. */
 export const BIRTHDAY_DISCOUNT_PERCENT = 5;
 
 /**
  * قيمة خصم الميلاد على مجموع منتجات.
  *
- * التقريب `round` كما كان قبل التثبيت حرفياً: تغيير قاعدة التقريب مع تثبيت
- * النسبة كان سيغيّر مبالغ الطلبات بلا أن يطلب أحد ذلك.
+ * التقريب بقاعدة الخصم الواحدة (`roundDiscountIqd`: أقرب ٢٥٠، وأدناه ٢٥٠) على
+ * النسبة الخام مباشرة. كان `Math.round` إلى دينار؛ قاعدة الـ٢٥٠ قرار المالك
+ * (2026-09-27)، وتقريبٌ إلى دينار قبلها كان سيغيّر النتيجة عند الحدود.
  */
 export function birthdayDiscountAmount(productsTotal: number): number {
   if (!Number.isFinite(productsTotal) || productsTotal <= 0) return 0;
-  return Math.round((productsTotal * BIRTHDAY_DISCOUNT_PERCENT) / 100);
+  return roundDiscountIqd((productsTotal * BIRTHDAY_DISCOUNT_PERCENT) / 100);
 }

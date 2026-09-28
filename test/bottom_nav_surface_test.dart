@@ -286,10 +286,17 @@ void main() {
     ) async {
       await _pumpShell(tester, tab: const CategoriesScreen(), dark: false);
       final screenHeight = tester.view.physicalSize.height;
+      // الأقسام بلا `SafeArea` على مستوى الشاشة منذ 2026-09-28 (تمتدّ إلى
+      // منطقة شريط الحالة بطلب المالك)، فالمقيس عمودُها الجذر: يصل إلى القاع
+      // خلف الشريط ولا يستهلك الحشوة السفلية.
       final content = tester.getRect(
-        find.descendant(of: find.byType(SafeArea), matching: find.byType(Column)).first,
+        find.descendant(of: find.byType(CategoriesScreen), matching: find.byType(Column)).first,
       );
       expect(content.bottom, closeTo(screenHeight, 0.5));
+      expect(
+        find.ancestor(of: find.byType(OtakuScreenHeader), matching: find.byType(SafeArea)),
+        findsNothing,
+      );
     });
 
     testWidgets('[CRITICAL] التبويبات الخمسة كلها تمرّر bottom: false', (
@@ -311,6 +318,9 @@ void main() {
       for (final entry in tabs.entries) {
         final source = File(entry.value).readAsStringSync();
         final firstSafeArea = source.indexOf('SafeArea(');
+        // الأقسام وحدها بلا `SafeArea` إطلاقاً (2026-09-28) — فلا تستهلك
+        // الحشوة السفلية أصلاً. أيّ `SafeArea` يعود إليها يمرّ بالفحص نفسه.
+        if (entry.key == 'categories' && firstSafeArea == -1) continue;
         expect(firstSafeArea, greaterThan(-1), reason: entry.key);
         final window = source.substring(
           firstSafeArea,

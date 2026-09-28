@@ -58,23 +58,35 @@ class _CategoriesScreenState extends State<CategoriesScreen> with LocaleRefetch 
     }
   }
 
+  // [PRODUCT] بلا `SafeArea` على مستوى الشاشة (2026-09-28، لهذه الشاشة
+  // وحدها). كانت تدفع الشاشة كلّها تحت شريط الحالة، فيبقى شريطٌ فارغ بارتفاعه
+  // فوق الترويسة. الآن تمتدّ الترويسة ورسمها إلى منطقة شريط الحالة كما طلب
+  // المالك، والمحتوى التفاعلي محميّ من مكانين:
+  // - `OtakuScreenHeader` يحمل `SafeArea` داخلياً حول العنوان وسطره الوصفي،
+  //   فلا نصَّ تحت أيقونات البطارية والشبكة.
+  // - الجسم تحت الترويسة يُنزَع عنه الهامش العلوي (`removeTop`): الترويسة
+  //   استهلكته، فلا تضيفه قائمةٌ أو حالةٌ فارغة مرّة ثانية.
+  // لا يمسّ هذا وضع واجهة النظام العام (`edgeToEdge` في `bootstrap.dart`) ولا
+  // أيّ شاشةٍ أخرى.
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      bottom: false,
-      child: Column(
-        children: [
-          OtakuScreenHeader.tab(
-            title: context.strings('navCategories'),
-            subtitle: context.strings('categoriesSubtitle'),
-            artwork: 'assets/art/opt/a-i2.png',
-            artworkSlot: VisualSlots.categoriesHeader,
-            artworkWidth: 110,
-            artworkEnd: -10,
+    return Column(
+      children: [
+        OtakuScreenHeader.tab(
+          title: context.strings('navCategories'),
+          subtitle: context.strings('categoriesSubtitle'),
+          artworkSlot: VisualSlots.categoriesHeader,
+          artworkWidth: 110,
+          artworkEnd: -10,
+        ),
+        Expanded(
+          child: MediaQuery.removePadding(
+            context: context,
+            removeTop: true,
+            child: _buildBody(),
           ),
-          Expanded(child: _buildBody()),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -92,10 +104,10 @@ class _CategoriesScreenState extends State<CategoriesScreen> with LocaleRefetch 
       return AnimeErrorState(message: _error!, onAction: _load);
     }
     if (_categories.isEmpty) {
+      // بلا رسم: الصورة 37 حُذفت (2026-09-28).
       return AnimeEmptyState(
         title: context.strings('noCategoriesTitle'),
         subtitle: context.strings('noCategoriesBody'),
-        artwork: 'assets/art/opt/a-i2.png',
       );
     }
 

@@ -47,8 +47,14 @@ export default function ProductEditPage() {
     // نافذة تأكيد تبرّر المسح بخللٍ في الخادم زال منذ زمن. الآن لا يُرسَل
     // الحقل أصلاً، فتبقى الخيارات كما هي في القاعدة.
     const payload = {
-      name: values.name,
-      description: values.description,
+      // [CRITICAL] كل لغة في حقليها وحدهما — لا نسخ بين اللغتين. حقلٌ فارغ
+      // (نصٌّ ناقص في منتجٍ قديم لم يُكمَل) لا يُرسَل: الحقل الغائب لا يُمسّ
+      // على الخادم، فيبقى «ناقصاً» صراحةً بدل أن يُكتب فراغاً (والخادم يرفض
+      // الفراغ أصلاً). ما كان مكتوباً إلزاميٌّ في النموذج فيُرسَل دائماً.
+      ...(values.nameAr ? { nameAr: values.nameAr } : {}),
+      ...(values.descriptionAr ? { descriptionAr: values.descriptionAr } : {}),
+      ...(values.nameCkb ? { nameCkb: values.nameCkb } : {}),
+      ...(values.descriptionCkb ? { descriptionCkb: values.descriptionCkb } : {}),
       price: values.price,
       categoryId: values.categoryId,
       subcategoryId: values.subcategoryId ?? null,

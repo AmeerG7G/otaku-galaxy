@@ -114,7 +114,6 @@ class _CollectionsTabState extends State<CollectionsTab> {
               AnimeEmptyState(
                 title: context.strings('firstCollectionTitle'),
                 subtitle: context.strings('firstCollectionBody'),
-                artwork: 'assets/art/opt/a-luffy-kid.png',
                 artworkSlot: VisualSlots.collectionsTab,
                 centered: true,
               )

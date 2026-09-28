@@ -13,6 +13,7 @@ import '../../../birthday/presentation/birthday_prompt.dart';
 import '../../../points/presentation/cubit/points_cubit.dart';
 import '../../../../core/errors/app_exception.dart';
 import '../../../../core/utils/formatters.dart';
+import '../../../products/domain/entities/product.dart';
 import '../../domain/entities/order.dart';
 import '../../domain/repositories/order_repository.dart';
 import '../../domain/usecases/fetch_order_details_usecase.dart';
@@ -586,7 +587,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with LocaleRefetc
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            item.product.name,
+                            // لقطة الطلب باللغتين — تُعرض بلغة الواجهة الآن.
+                            localizedProductName(item.product, context.language),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: Theme.of(context).textTheme.bodyMedium
@@ -664,10 +666,17 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with LocaleRefetc
               context.strings('freeDelivery'),
               valueColor: context.themeColors.success,
             ),
-          if (order.discount > 0)
+          if (order.otherDiscount > 0)
             _buildPriceRow(
               context.strings('discount'),
-              '-${formatPrice(order.discount)}',
+              '-${formatPrice(order.otherDiscount)}',
+              valueColor: context.themeColors.success,
+            ),
+          // خصم مزيّة المستوى المحفوظ مع الطلب — بسطره واسمه.
+          if (order.loyaltyDiscount > 0)
+            _buildPriceRow(
+              context.strings('loyaltyRewardDiscount'),
+              '-${formatPrice(order.loyaltyDiscount)}',
               valueColor: context.themeColors.success,
             ),
           Divider(

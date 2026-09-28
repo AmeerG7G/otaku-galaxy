@@ -11,11 +11,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:otaku_galaxy/core/design_system/design_system.dart';
 import 'package:otaku_galaxy/core/l10n/app_strings.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:otaku_galaxy/core/di/injection_container.dart';
 import 'package:otaku_galaxy/features/connectivity/presentation/offline_gate.dart';
-import 'package:otaku_galaxy/features/visuals/data/visuals_repository.dart';
 import 'package:otaku_galaxy/features/visuals/domain/visual_slot.dart';
-import 'package:otaku_galaxy/features/visuals/presentation/managed_artwork.dart';
+import 'package:otaku_galaxy/features/visuals/presentation/character_artwork.dart';
 
 import 'support/render_harness.dart';
 
@@ -97,42 +95,22 @@ void main() {
     expect(find.text('تحقّق من اتصالك وحاول مرة أخرى.'), findsOneWidget);
     expect(find.text('غير متصل بالإنترنت'), findsOneWidget);
     expect(find.textContaining('يحتاج المتجر'), findsNothing);
-    // الرسم فتحةٌ لهذه الشاشة وحدها (٠٥٥)؛ بلا إعدادٍ معروف يُعرض أصلها المضمَّن.
-    final artwork = tester.widget<ManagedArtwork>(find.byType(ManagedArtwork));
+    // الرسم موضعٌ لهذه الشاشة وحدها (٠٥٥) بملفّه المرقَّم الثابت.
+    final artwork = tester.widget<CharacterArtwork>(find.byType(CharacterArtwork));
     expect(artwork.slot, VisualSlots.offlineGate);
-    expect(artwork.fallbackAsset, 'assets/art/opt/a-i17.png');
     expect(_art, findsOneWidget);
-    expect((tester.widget<Image>(_art).image as AssetImage).assetName, 'assets/art/opt/a-i17.png');
+    expect((tester.widget<Image>(_art).image as AssetImage).assetName, 'assets/art/characters/35.png');
     expect(find.byType(Opacity), findsNothing);
   });
 
-  testWidgets('[CRITICAL] بصورةٍ من اللوحة: تُعرض صورة هذه الفتحة بمفتاحها، والمضمَّن بديلُ التحميل — الشاشة لا تفرغ', (tester) async {
-    final repository = VisualsRepository();
-    if (sl.isRegistered<VisualsRepository>()) sl.unregister<VisualsRepository>();
-    sl.registerSingleton<VisualsRepository>(repository);
-    addTearDown(() {
-      repository.dispose();
-      sl.unregister<VisualsRepository>();
-    });
-    repository.seed({
-      VisualSlots.offlineGate: const VisualSlot(
-        slotKey: VisualSlots.offlineGate,
-        currentUrl: '/uploads/slot/offline.png',
-      ),
-      // فتحةٌ أخرى بصورةٍ أخرى — لا تتسرّب إلى هذه الشاشة.
-      VisualSlots.emptyCart: const VisualSlot(
-        slotKey: VisualSlots.emptyCart,
-        currentUrl: '/uploads/slot/cart.png',
-      ),
-    });
-
+  testWidgets('[CRITICAL] الرسم أصلٌ ثابت بلا شبكة — الصورة التي كانت مختارةً في اللوحة نفسها', (tester) async {
+    // اختيار اللوحة لهذا الموضع نُسخ بايتاً ببايت إلى `35.png` — سطرُه في
+    // `CharacterArt`، لا `CachedNetworkImage` ولا انتظار شبكة.
     await tester.pumpWidget(_app(dark: false, onRetry: () {}));
     await tester.pump();
-    final remote = tester.widget<CachedNetworkImage>(find.byType(CachedNetworkImage));
-    expect(remote.imageUrl, endsWith('/uploads/slot/offline.png'));
-    expect(remote.key, const ValueKey<String>('managed-artwork:${VisualSlots.offlineGate}'));
-    // بلا شبكة في الاختبار: بديل التحميل هو المضمَّن نفسه، فلا فراغ أبداً.
-    expect(_art, findsOneWidget);
+    expect(CharacterArt.forSlot(VisualSlots.offlineGate), 'assets/art/characters/35.png');
+    expect(find.byType(CachedNetworkImage), findsNothing);
+    expect((tester.widget<Image>(_art).image as AssetImage).assetName, 'assets/art/characters/35.png');
   });
 
   testWidgets('زرّ إعادة المحاولة يستدعي المعاود — منطق الكشف كما هو', (tester) async {

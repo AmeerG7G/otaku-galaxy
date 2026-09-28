@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { activeMenuKey, navTitleFor } from './nav'
+import { activeMenuKey, NAV_ITEMS, navTitleFor } from './nav'
 
 describe('activeMenuKey', () => {
   it('الرئيسية تُحافَظ كسطر مباشر', () => {
@@ -21,5 +21,19 @@ describe('navTitleFor', () => {
 
   it('يعطي عنواناً عاماً للطرق غير المعروفة', () => {
     expect(navTitleFor('/nope')).toBe('لوحة التحكم')
+  })
+})
+/**
+ * [PRODUCT] «رسوم الشخصيات» أُزيلت من اللوحة (2026-09-27): الشخصيات أصولٌ
+ * ثابتة في التطبيق. لا بند قائمة ولا عنوان ولا مسار يعود.
+ */
+describe('لا «رسوم الشخصيات» في اللوحة', () => {
+  it('لا بند قائمة ولا عنوان قسم', () => {
+    const labels = JSON.stringify(NAV_ITEMS, (_key, value) =>
+      typeof value === 'object' && value !== null && '$$typeof' in value ? undefined : value,
+    )
+    expect(labels).not.toContain('رسوم الشخصيات')
+    expect(labels).not.toContain('/visuals')
+    expect(navTitleFor('/visuals')).toBe('لوحة التحكم')
   })
 })

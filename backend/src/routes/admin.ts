@@ -2,7 +2,6 @@ import { Router } from 'express';
 import { adminController } from '../controllers/adminController.js';
 import { adminExtrasController } from '../controllers/adminExtrasController.js';
 import { mediaController } from '../controllers/mediaController.js';
-import { adminVisualsController } from '../controllers/visualsController.js';
 import { config } from '../config/index.js';
 import { uploadRateLimiter } from '../middleware/error-handler.js';
 import { uploadSingleImage } from '../middleware/upload.js';
@@ -116,13 +115,8 @@ adminRoutes.post('/notifications', adminExtrasController.createNotification);
 adminRoutes.post('/notifications/broadcast', adminExtrasController.broadcastNotification);
 adminRoutes.post('/notifications/audience', adminExtrasController.audiencePreview);
 
-// ── الرسوم المُدارة (فتحات الشخصيات): صورة دائمة واحدة لكل موضع، ومؤقّتة واحدة فوقها ──
-// لا إنشاء فتحات ولا حذفها من اللوحة (تُعرَّف بالهجرات)، ولا قوائم صور.
-adminRoutes.get('/visual-slots', adminVisualsController.list);
-adminRoutes.put('/visual-slots/:id/image', adminVisualsController.setImage);
-adminRoutes.delete('/visual-slots/:id/image', adminVisualsController.clearImage);
-adminRoutes.put('/visual-slots/:id/temporary-image', adminVisualsController.setTemporaryImage);
-adminRoutes.delete('/visual-slots/:id/temporary-image', adminVisualsController.clearTemporaryImage);
+// [PRODUCT] لا «رسوم شخصيات» في اللوحة (2026-09-27، الهجرة 065): الشخصيات
+// أصولٌ ثابتة في التطبيق يحدّدها الكود. لا تُعِد مسارات `/visual-slots`.
 
 // ── رفع صور المنتجات والبنرات والأنمي ──
 adminRoutes.post(

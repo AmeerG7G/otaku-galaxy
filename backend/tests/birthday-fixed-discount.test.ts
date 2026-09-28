@@ -90,7 +90,7 @@ describe('نسبة خصم الميلاد ثابتة', () => {
   it('الحساب يطبّق النسبة على مجموع المنتجات', () => {
     expect(birthdayDiscountAmount(100_000)).toBe(5_000);
     expect(birthdayDiscountAmount(30_000)).toBe(1_500);
-    // التقريب كما كان قبل التثبيت حرفياً — لا تتغيّر مبالغ الطلبات.
+    // ٤٩٩٫٩٥ ← ٥٠٠: قاعدة الخصم الواحدة (أقرب ٢٥٠) — `discount-rounding.test.ts`.
     expect(birthdayDiscountAmount(9_999)).toBe(500);
     expect(birthdayDiscountAmount(0)).toBe(0);
     expect(birthdayDiscountAmount(-5_000)).toBe(0);

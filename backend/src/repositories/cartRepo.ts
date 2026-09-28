@@ -1,11 +1,16 @@
 import type pg from 'pg';
 import type { CartAdjustment, CartSyncLine } from '../domain/cartSync.js';
 import type { CartItemRow } from '../types/index.js';
+import { kurdishOrNull } from '../utils/locale.js';
 
 export interface CartLine {
   id: string;
   productId: string;
+  /** اسم المنتج بالعربية — الحقل القديم، باقٍ بمعناه لعملاءٍ أقدم. */
   productName: string;
+  /** الاسم باللغتين صراحةً (066) — التطبيق يختار بلغة واجهته، `null` = ناقص. */
+  productNameAr: string;
+  productNameCkb: string | null;
   productImage: string | null;
   optionValue: string | null;
   quantity: number;
@@ -32,7 +37,8 @@ async function ensureCart(db: pg.Pool | pg.PoolClient, userId: string): Promise<
 const LINE_FROM = `
   SELECT ci.id, ci.product_id AS "productId", ci.option_value AS "optionValue",
          ci.quantity, ci.created_at AS "createdAt",
-         p.name AS "productName", p.stock, p.price AS "unitPrice",
+         p.name AS "productName", p.name_ckb AS "productNameCkb",
+         p.stock, p.price AS "unitPrice",
          p.has_delivery_promo AS "hasDeliveryPromo",
          p.delivery_promo_amount AS "deliveryPromoAmount",
          (SELECT pi.url FROM product_images pi
@@ -48,6 +54,8 @@ function mapLine(row: Record<string, unknown>): CartLine {
     id: row.id as string,
     productId: row.productId as string,
     productName: row.productName as string,
+    productNameAr: row.productName as string,
+    productNameCkb: kurdishOrNull(row.productNameCkb as string | null),
     productImage: (row.productImage as string | null) ?? null,
     optionValue: (row.optionValue as string | null) ?? null,
     quantity: Number(row.quantity),
@@ -106,12 +114,14 @@ export const cartRepo = {
       id: string;
       product_id: string;
       name: string;
+      name_ckb: string | null;
       option_value: string | null;
       quantity: number;
       stock: number;
       is_active: boolean;
     }>(
-      `SELECT ci.id, ci.product_id, p.name, ci.option_value, ci.quantity, p.stock, p.is_active
+      `SELECT ci.id, ci.product_id, p.name, p.name_ckb, ci.option_value, ci.quantity,
+              p.stock, p.is_active
          FROM cart_items ci
          JOIN products p ON p.id = ci.product_id
         WHERE ci.cart_id = $1
@@ -122,6 +132,7 @@ export const cartRepo = {
       id: row.id,
       productId: row.product_id,
       productName: row.name,
+      productNameCkb: kurdishOrNull(row.name_ckb),
       optionValue: row.option_value,
       quantity: Number(row.quantity),
       stock: Number(row.stock),

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/design_system/design_system.dart';
+import '../../../visuals/domain/visual_slot.dart';
 import '../../../../core/l10n/gender.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../products/domain/entities/product.dart';
@@ -97,7 +98,7 @@ class _CollectionDetailScreenState extends State<CollectionDetailScreen> {
       return AnimeEmptyState(
         title: context.strings('collectionEmpty'),
         subtitle: context.g(GenderedStrings.addProductsToCollection),
-        artwork: 'assets/art/opt/a-i5.png',
+        artwork: CharacterArt.emptyCollection,
         // نمط السلة الفارغة: الرسم فوق، ثم النصّ، ثم زرّ «تصفّح الأقسام» —
         // كلٌّ في وسط اللوحة. المجموعة تُملأ من الأقسام، فالزرّ يذهب إليها
         // (كما في البحث بلا نتائج) لا إلى شاشةٍ لا تضيف شيئاً.
@@ -132,7 +133,7 @@ class _CollectionDetailScreenState extends State<CollectionDetailScreen> {
       title: context.strings('removeFromCollection'),
       message:
           context.strings.p('removeFromCollectionConfirm', {
-            'name': product.name,
+            'name': localizedProductName(product, context.language),
           }),
       confirmLabel: context.strings('remove'),
       cancelLabel: context.strings('cancel'),

@@ -72,50 +72,70 @@ void main() {
     expect(normalizeDigits('abc ٠١٢ ۳ x'), 'abc 012 3 x');
   });
 
-  group('حقل الهاتف ببادئة 07 ثابتة', () {
-    // البادئة تُعرض في الحقل ولا يكتبها المستخدم؛ كل ما يُكتب أو يُلصق يُحوَّل
-    // إلى الأرقام التسعة التي تليها — بأي صيغةٍ جاء.
-    test('[CRITICAL] كل الصيغ تعطي الأرقام التسعة نفسها بعد 07', () {
+  // [PRODUCT] (2026-09-27) لا بادئة `07` ثابتة في الحقل: الزبون يكتب الرقم
+  // كاملاً بنفسه. القاعدة نفسها لم تتغيّر — موبايل عراقي 075–079 — ولم
+  // تتّسع لأرضيٍّ ولا لأجنبي.
+  group('[CRITICAL] حقل الهاتف: الرقم كاملاً بصيغته المحلية، بلا بادئة مُدرَجة', () {
+    test('07701234567 وأمثاله من كل الشبكات صالحة', () {
+      for (final prefix in ['075', '076', '077', '078', '079']) {
+        expect(isValidIraqiLocalPhone('${prefix}01234567'), isTrue, reason: prefix);
+      }
+      expect(isValidIraqiLocalPhone('07701234567'), isTrue);
+      expect(isValidIraqiLocalPhone('٠٧٧٠١٢٣٤٥٦٧'), isTrue, reason: 'أرقام شرقية');
+      expect(isValidIraqiLocalPhone('0770 123 4567'), isTrue, reason: 'فواصل مألوفة');
+    });
+
+    test('[CRITICAL] ما لا يبدأ بـ07 أو ليس موبايلاً عراقياً مرفوض — لا توسيع للقاعدة', () {
       for (final raw in [
-        '701234567',
-        '07701234567',
-        '+9647701234567',
-        '009647701234567',
-        '9647701234567',
-        '٠٧٧٠١٢٣٤٥٦٧',
-        '0770 123 4567',
-        '(077) 012-3456-7',
+        '7701234567', // بلا 07 — على الزبون أن يكتبها.
+        '0770123456', // عشرة أرقام.
+        '077012345678', // اثنا عشر.
+        '07001234567', // 070 ليست شبكة.
+        '07401234567', // 074 ليست شبكة.
+        '0662251234', // أرضي.
+        '016225123', // أرضي بغداد.
+        '+9647701234567', // الحقل للصيغة المحلية.
+        '+447700900123', // أجنبي.
+        '00989121234567', // أجنبي.
+        '',
+        'abcdefghijk',
       ]) {
-        expect(iraqiLocalDigits(raw), '701234567', reason: raw);
+        expect(isValidIraqiLocalPhone(raw), isFalse, reason: raw);
       }
     });
 
-    test('لا حروف ولا أكثر من تسعة أرقام — والرقم العاشر يُقصّ ولا يُزيح ما قبله', () {
-      expect(iraqiLocalDigits('7a0b1c'), '701');
-      expect(iraqiLocalDigits('7012345671234'), '701234567');
-      expect(iraqiLocalDigits('7012345678'), '701234567', reason: 'ضغطة زائدة لا تغيّر التسعة');
-      expect(iraqiLocalDigits(''), '');
-      expect(iraqiLocalDigits('abc'), '');
+    test('ما يصلح في الحقل يطابق قاعدة الخادم نفسها بعد التطبيع', () {
+      expect(normalizeIraqiPhone('07701234567'), '+9647701234567');
+      for (final raw in ['07501234567', '07991234567']) {
+        expect(isValidIraqiLocalPhone(raw), isTrue, reason: raw);
+        expect(isValidIraqiPhone(raw), isTrue, reason: raw);
+      }
     });
 
-    test('الرقم الكامل من الأرقام التسعة يجتاز قاعدة الخادم نفسها', () {
-      expect(iraqiPhoneFromLocalDigits('701234567'), '07701234567');
-      expect(normalizeIraqiPhone(iraqiPhoneFromLocalDigits('701234567')), '+9647701234567');
-      // ٠٧٠–٠٧٤ مرفوضة كما في الخادم، ولو كانت تسعة أرقام.
-      expect(isValidIraqiPhone(iraqiPhoneFromLocalDigits('001234567')), isFalse);
-      expect(isValidIraqiPhone(iraqiPhoneFromLocalDigits('70123456')), isFalse, reason: 'ثمانية أرقام');
+    test('[CRITICAL] لا بادئة تُضاف ولا تُحذف: ما يكتبه الزبون يبقى أرقامَه', () {
+      expect(iraqiPhoneInputText('7'), '7');
+      expect(iraqiPhoneInputText('0'), '0');
+      expect(iraqiPhoneInputText('07'), '07');
+      expect(iraqiPhoneInputText('07701234567'), '07701234567');
+      expect(iraqiPhoneInputText('7701234567'), '7701234567');
+      expect(iraqiPhoneInputText('٠٧٧٠ ١٢٣ ٤٥٦٧'), '07701234567');
+      expect(iraqiPhoneInputText('(077) 012-3456-7'), '07701234567');
+      expect(iraqiPhoneInputText('7a0b1c'), '701');
+      expect(iraqiPhoneInputText('077012345678'), '07701234567', reason: 'أحد عشر رقماً حدّاً');
+      expect(iraqiPhoneInputText(''), '');
+      expect(iraqiPhoneInputText('abc'), '');
     });
 
-    test('المُنسّق يطبّق التحويل على ما يُكتب ويضع المؤشّر في النهاية', () {
-      const formatter = IraqiLocalDigitsFormatter();
+    test('المُنسّق يطبّق ذلك على ما يُكتب ويضع المؤشّر في النهاية', () {
+      const formatter = IraqiPhoneInputFormatter();
       final out = formatter.formatEditUpdate(
         TextEditingValue.empty,
-        const TextEditingValue(text: '+964 770 123 4567 x'),
+        const TextEditingValue(text: '٠٧٧٠ ١٢٣ ٤٥٦٧ x'),
       );
-      expect(out.text, '701234567');
-      expect(out.selection.baseOffset, 9);
+      expect(out.text, '07701234567');
+      expect(out.selection.baseOffset, 11);
       // ما هو صالحٌ أصلاً يمرّ كما هو بمؤشّره.
-      const fine = TextEditingValue(text: '7012', selection: TextSelection.collapsed(offset: 2));
+      const fine = TextEditingValue(text: '0770', selection: TextSelection.collapsed(offset: 2));
       expect(identical(formatter.formatEditUpdate(TextEditingValue.empty, fine), fine), isTrue);
     });
   });

@@ -1,14 +1,18 @@
-// عقد الفتحات البصرية: موضعٌ واحد = فتحةٌ واحدة = صورةٌ فعّالة واحدة.
+// عقد مواضع الرسوم: موضعٌ واحد = مفتاحٌ واحد = صورةٌ واحدة.
 //
-// [CRITICAL] الفتحة موضعٌ لا شخصية. مفتاحٌ يستهلكه ملفان هو موضعان تحت
-// مفتاحٍ واحد: يبدّل المسؤول شخصية شاشةٍ فتتبدّل في أخرى. هكذا كانت
+// [PRODUCT] منذ 2026-09-27 لا تُدار الرسوم من اللوحة: الصورة لكل موضع أصلٌ
+// ثابت في `CharacterArt` (يحرس أصولها `character_art_test.dart`). العقد هنا
+// باقٍ لأن المفتاح ما زال هويّة الموضع التي يُقرأ بها أصله.
+//
+// [CRITICAL] المفتاح موضعٌ لا شخصية. مفتاحٌ يستهلكه ملفان هو موضعان تحت
+// مفتاحٍ واحد: تُبدَّل شخصية شاشةٍ فتتبدّل في أخرى. هكذا كانت
 // `register_character` (إنشاء الحساب + شاشة الانتظار) و`auth_cta_character`
 // (ثلاث شاشات) و`guest_prompt_character` (السلة + المفضلة) قبل الهجرة ٠٥٤.
 // هذا الملف يمنع عودة الاشتراك من أي باب: مكوّنٌ مشترك بمفتاحٍ افتراضي، مفتاحٌ
 // حرفيٌّ خارج الثوابت، ثابتٌ يذكره أكثر من ملف، أو مفتاحٌ متقاعد يعود.
 //
-// الضلع الخادمي (الثوابت == صفوف القاعدة == اللوحة) في
-// `backend/tests/visual-catalogue.test.ts`.
+// (كان للعقد ضلعٌ خادمي — الثوابت == صفوف القاعدة == اللوحة — أُزيل مع
+// جدول `visual_slots` في الهجرة 065.)
 
 import 'dart:io';
 
@@ -44,23 +48,24 @@ Map<String, String> _libSources() {
 }
 
 /// ثوابت يُبنى موضعُها الواحد من سطرين في الملف نفسه — مع السبب.
+//
+// `homeHero` و`homePromoPrimary` خرجا منها (2026-09-28): رسم البنر صار
+// مكوّناً واحداً (`_BannerArt`) يأخذ الفتحة مرّة، والبطاقة الترويجية الأولى
+// المضمَّنة — السطر الثاني لـ`homePromoPrimary` — أُزيلت.
 const _twoSitesOneLocation = <String, String>{
-  'homeHero': 'اللوحة الرئيسية: بديلُ فشل صورة البنر + حين لا بنر — موضعٌ واحد',
-  'homePromoPrimary': 'البطاقة الترويجية الأولى: بنر مُدار أو بطاقة افتراضية',
-  'homePromoSecondary': 'البطاقات من الثانية فصاعداً: بنرات مُدارة أو بطاقة افتراضية',
+  'homePromoSecondary': 'البطاقات من الثانية فصاعداً: بنرات مُدارة أو بطاقة «خصومات فعّالة»',
 };
 
 /// من يستهلك فتحات التجزئة — كل مفتاحٍ ملفُه هو.
+//
+// فتحات زاوية بطاقة النموذج (`loginCta`، `registerCta`، `forgotPasswordCta`)
+// ودعوة الزائر (`cartGuestPrompt`، `favoritesGuestPrompt`) خرجت (2026-09-28):
+// أُزيلت رسومها مع كل رسمٍ مجاورٍ للأزرار، فصارت مفاتيح متقاعدة أدناه.
 const _splitOwners = <String, String>{
-  'loginCta': 'login_screen.dart',
   'registerHeader': 'register_screen.dart',
-  'registerCta': 'register_screen.dart',
   'registerPending': 'account_pending_screen.dart',
   'forgotPasswordHeader': 'forgot_password_screen.dart',
-  'forgotPasswordCta': 'forgot_password_screen.dart',
   'forgotPasswordPending': 'account_pending_screen.dart',
-  'cartGuestPrompt': 'cart_screen.dart',
-  'favoritesGuestPrompt': 'favorites_screen.dart',
 };
 
 const _retiredKeys = [
@@ -74,6 +79,19 @@ const _retiredKeys = [
   'auth_cta_character',
   'guest_prompt_character',
   'account_character',
+  // زاوية زرّ الدفع في السلة: أُزيل رسمها (2026-09-27) فلا موضع له.
+  'cart_checkout_character',
+  // رسومٌ بجوار الأزرار — أُزيلت (2026-09-28).
+  'login_cta_character',
+  'register_cta_character',
+  'forgot_password_cta_character',
+  'cart_guest_prompt_character',
+  'favorites_guest_prompt_character',
+  // صورٌ حذفها المالك (2026-09-28): 4 (البطاقة الترويجية الأولى)، 22 (تأكيد
+  // الاستلام)، 27 («قيّم المنتج»).
+  'home_promo_primary_character',
+  'delivery_confirmation_character',
+  'write_review_character',
 ];
 
 void main() {
@@ -87,7 +105,7 @@ void main() {
       expect(VisualSlots.all.toSet().length, VisualSlots.all.length);
     });
 
-    test('كل مفتاح بصيغة يقبلها الخادم وينتهي بـ`_character` — فتحاتُ شخصيات لا غير', () {
+    test('كل مفتاح بصيغة موحّدة وينتهي بـ`_character` — مواضعُ شخصيات لا غير', () {
       final pattern = RegExp(r'^[a-z][a-z0-9_]{2,48}$');
       for (final key in VisualSlots.all) {
         expect(pattern.hasMatch(key), isTrue, reason: 'مفتاح غير صالح: $key');
@@ -104,11 +122,6 @@ void main() {
         'register_pending_character',
         'forgot_password_header_character',
         'forgot_password_pending_character',
-        'login_cta_character',
-        'register_cta_character',
-        'forgot_password_cta_character',
-        'cart_guest_prompt_character',
-        'favorites_guest_prompt_character',
       ];
       for (final key in splitKeys) {
         expect(VisualSlots.all, contains(key), reason: key);
@@ -188,7 +201,7 @@ void main() {
 
   group('الأصول المضمَّنة', () {
     test('كل أصل رسمٍ مذكور في lib/ موجودٌ في الحزمة — لا بديلَ يترك فراغاً', () {
-      final asset = RegExp(r"'(assets/art/[^']+\.png)'");
+      final asset = RegExp(r"'(assets/art/[^']+\.(?:png|jpg|webp))'");
       final missing = <String>{};
       for (final code in sources.values) {
         for (final m in asset.allMatches(code)) {
@@ -206,8 +219,12 @@ void main() {
       ]) {
         final code = sources[path];
         expect(code, isNotNull, reason: path);
-        expect(code, isNot(contains('ManagedArtwork')), reason: path);
+        expect(code, isNot(contains('CharacterArtwork')), reason: path);
         expect(code, isNot(contains('VisualSlots.')), reason: path);
+        // [PRODUCT] شاشة التحديث الإلزامي نصٌّ وواجهة فقط — لا رسم شخصية أصلاً.
+        if (path.contains('force_update')) {
+          expect(code, isNot(contains('assets/art/')), reason: path);
+        }
       }
       for (final key in VisualSlots.all) {
         for (final word in ['splash', 'logo', 'brand', 'update', 'social']) {
@@ -216,13 +233,13 @@ void main() {
       }
     });
 
-    test('شاشة انقطاع الاتصال فتحةٌ (٠٥٥) بأصلٍ مضمَّن إلزامي — تُقرأ من القرص ولا تفرغ', () {
-      // [PRODUCT] كانت مستبعَدة؛ صارت فتحةً لأن `ManagedArtwork` يعرض ما
-      // على القرص بلا شبكة ويعود إلى المضمَّن في كل مسار فشل.
+    test('شاشة انقطاع الاتصال موضعٌ (٠٥٥) بأصلٍ مضمَّن — لا شبكة ولا فراغ', () {
       final code = sources['lib/features/connectivity/presentation/offline_gate.dart'];
       expect(code, isNotNull);
       expect(code, contains('VisualSlots.offlineGate'));
-      expect(code, contains('fallbackAsset: artwork'));
+      // الموضع وحده يحدّد الصورة (`CharacterArt`) — لا أصلَ احتياطياً ثانياً.
+      expect(code, isNot(contains('fallbackAsset')));
+      expect(CharacterArt.forSlot(VisualSlots.offlineGate), isNotNull);
       expect(VisualSlots.all, contains(VisualSlots.offlineGate));
     });
   });

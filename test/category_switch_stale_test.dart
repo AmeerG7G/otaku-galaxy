@@ -14,6 +14,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:otaku_galaxy/core/l10n/bilingual_text.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -46,9 +47,9 @@ import 'support/render_harness.dart';
 
 Product _product(String id, String name, {String? subcategoryId}) => Product(
   id: id,
-  name: name,
+  nameAr: name,
   price: 1000,
-  description: '',
+  descriptionAr: '',
   images: const [],
   categoryId: 'c1',
   subcategoryId: subcategoryId,
@@ -138,7 +139,7 @@ class _Reviews implements ReviewRepository {
 Review _photo(String id, String product) => Review(
   id: id,
   productId: 'p-$id',
-  productName: product,
+  productNames: BilingualText(ar: product),
   orderId: 'o1',
   rating: 5,
   comment: 'رائع',

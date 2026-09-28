@@ -12,7 +12,6 @@ import {
   SafetyCertificateOutlined,
   SettingOutlined,
   ShoppingCartOutlined,
-  SmileOutlined,
   StarOutlined,
   TagsOutlined,
   TeamOutlined,
@@ -67,7 +66,6 @@ export const NAV_ITEMS: MenuProps['items'] = [
     children: [
       { key: '/notifications', icon: <BellOutlined />, label: 'الإشعارات' },
       { key: '/banners', icon: <PictureOutlined />, label: 'البنرات' },
-      { key: '/visuals', icon: <SmileOutlined />, label: 'رسوم الشخصيات' },
     ],
   },
   {
@@ -99,7 +97,6 @@ export function navTitleFor(key: string): string {
     '/reviews': 'التقييمات',
     '/notifications': 'الإشعارات',
     '/banners': 'البنرات',
-    '/visuals': 'رسوم الشخصيات',
     '/settings': 'إعدادات المتجر',
   }
   return index[key] ?? 'لوحة التحكم'

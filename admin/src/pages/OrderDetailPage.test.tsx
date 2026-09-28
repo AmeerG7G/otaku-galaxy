@@ -186,3 +186,33 @@ describe('الكمية المطلوبة والمخزون الحالي في تف�
     expect(row).not.toHaveTextContent('غير كافٍ')
   })
 })
+
+/**
+ * [CRITICAL REGRESSION] خصم مزيّة المستوى في تفاصيل الطلب (2026-09-27).
+ *
+ * الخادم يحفظ `loyalty_discount` ويرسله `loyaltyDiscount`، واللوحة كانت تعرض
+ * «الخصم» مجموعاً بلا تفصيل — فلا يعرف المسؤول أن الزبون استعمل مزيّته.
+ */
+describe('خصم مزيّة المستوى في تفاصيل الطلب', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('[CRITICAL] يظهر بقيمته المحفوظة، والباقي خصم الميلاد', async () => {
+    vi.mocked(getOrder).mockResolvedValue(
+      order({ productsTotal: 100000, discount: 8000, loyaltyDiscount: 3000, total: 97000 }),
+    )
+    renderPage()
+    await waitFor(() => expect(screen.getByText('منه خصم مزيّة المستوى')).toBeTruthy())
+    const loyaltyRow = screen.getByText('منه خصم مزيّة المستوى').closest('tr')!
+    expect(loyaltyRow.textContent).toContain('3,000')
+    const birthdayRow = screen.getByText('منه خصم عيد الميلاد').closest('tr')!
+    expect(birthdayRow.textContent).toContain('5,000')
+  })
+
+  it('طلبٌ بلا مزيّة لا يعرض سطرها — ولا خادمٌ أقدم بلا الحقل', async () => {
+    vi.mocked(getOrder).mockResolvedValue(order({ discount: 5000 }))
+    renderPage()
+    await waitFor(() => expect(screen.getByText('الإجماليات')).toBeTruthy())
+    expect(screen.queryByText('منه خصم مزيّة المستوى')).toBeNull()
+    expect(screen.queryByText('منه خصم عيد الميلاد')).toBeNull()
+  })
+})

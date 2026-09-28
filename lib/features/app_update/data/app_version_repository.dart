@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/constants/api_endpoints.dart';
@@ -29,7 +31,13 @@ class AppVersionCheck {
 
 /// يقرأ إعدادات النسخة من الخادم ويقرّر إن كان التحديث إجبارياً.
 class AppVersionRepository {
-  AppVersionRepository(this._api, this._installed, this._prefs);
+  AppVersionRepository(this._api, this._installed, this._prefs) {
+    _api.onUpdateRequired = () => serverRejections.value++;
+  }
+
+  /// يرتفع كلما ردّ الخادم طلباً بـ426 `APP_UPDATE_REQUIRED` — يسمعه
+  /// `ForceUpdateGate` فيعيد الفحص فوراً بدل انتظار الاستئناف التالي.
+  final ValueNotifier<int> serverRejections = ValueNotifier<int>(0);
 
   final ApiClient _api;
   final InstalledVersionSource _installed;

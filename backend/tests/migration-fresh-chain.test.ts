@@ -27,7 +27,7 @@ describe('سلسلة الهجرات على قاعدة فارغة', () => {
     await db.query(`DROP SCHEMA IF EXISTS ${SCHEMA} CASCADE`);
   });
 
-  it('[CRITICAL] كل ملف يُطبَّق بالترتيب بلا خطأ، وفهرس الرسوم يصل إلى صورته الحالية', async () => {
+  it('[CRITICAL] كل ملف يُطبَّق بالترتيب بلا خطأ، وتنتهي السلسلة بلا جدول رسوم الشخصيات (065)', async () => {
     await db.query(`DROP SCHEMA IF EXISTS ${SCHEMA} CASCADE`);
     await db.query(`CREATE SCHEMA ${SCHEMA}`);
     const url = new URL(config.testDatabaseUrl);
@@ -37,7 +37,8 @@ describe('سلسلة الهجرات على قاعدة فارغة', () => {
 
     const files = (await readdir(MIGRATIONS_DIR)).filter((f) => f.endsWith('.sql')).sort();
     expect(applied).toEqual(files);
-    const slots = await db.query(`SELECT count(*)::int AS n FROM ${SCHEMA}.visual_slots`);
-    expect(slots.rows[0]).toEqual({ n: 43 });
+    // الهجرة 065 أسقطت «رسوم الشخصيات»: الجدول لا يبقى بعد السلسلة كاملة.
+    const slots = await db.query(`SELECT to_regclass('${SCHEMA}.visual_slots')::text AS t`);
+    expect(slots.rows[0]).toEqual({ t: null });
   }, 120_000);
 });

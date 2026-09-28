@@ -23,7 +23,10 @@ class AnimeProductCard extends StatelessWidget {
     this.compact = false,
   });
 
-  final dynamic product;
+  /// [CRITICAL] `Product` لا `dynamic`: كان `product.name as String` يمرّ
+  /// المُحلِّل فلا يكشف حقلاً أُزيل إلا وقت التشغيل. الاسم بلغة الواجهة من
+  /// [localizedProductName] وحدها.
+  final Product product;
   final VoidCallback? onTap;
   final VoidCallback? onFavoriteToggle;
   final bool isFavorite;
@@ -36,11 +39,11 @@ class AnimeProductCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.themeColors;
-    final inStock = product.inStock as bool;
+    final inStock = product.inStock;
     // [CRITICAL] الحالة لا الثنائية: «قريباً يتوفر» و«نفد المخزون» كلاهما
     // غير متوفر، لكن قولَ «نفد» فوق صورةِ منتجٍ تعلن شارتُه «قريباً يتوفر»
     // تناقضٌ يقرؤه الزبون في بطاقةٍ واحدة.
-    final availability = (product as Product).availability;
+    final availability = product.availability;
     final comingSoon = availability == ProductAvailability.comingSoon;
 
     final card = Container(
@@ -83,8 +86,8 @@ class AnimeProductCard extends StatelessWidget {
                         child: _Badge(
                           label: _badgeLabel(context)!,
                           highlighted:
-                              (product.isOffer as bool) ||
-                              (product.discountPercent as int? ?? 0) > 0,
+                              product.isOffer ||
+                              (product.discountPercent ?? 0) > 0,
                         ),
                       ),
                     // زر المفضلة — دائري أعلى جهة النهاية.
@@ -120,7 +123,7 @@ class AnimeProductCard extends StatelessWidget {
                     SizedBox(
                       height: 36,
                       child: Text(
-                        product.name as String,
+                        localizedProductName(product, context.language),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -136,7 +139,7 @@ class AnimeProductCard extends StatelessWidget {
                       children: [
                         Flexible(
                           child: Text(
-                            context.strings.p('priceIqd', {'amount': (product.price as double).toStringAsFixed(0)}),
+                            context.strings.p('priceIqd', {'amount': product.price.toStringAsFixed(0)}),
                             textDirection: TextDirection.ltr,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -150,11 +153,11 @@ class AnimeProductCard extends StatelessWidget {
                           ),
                         ),
                         // السعر السابق يظهر فقط حين يرسله الخادم فعلاً.
-                        if (product.hasDiscount as bool) ...[
+                        if (product.hasDiscount) ...[
                           const SizedBox(width: 7),
                           Flexible(
                             child: Text(
-                              (product.previousPrice as double).toStringAsFixed(
+                              product.previousPrice!.toStringAsFixed(
                                 0,
                               ),
                               textDirection: TextDirection.ltr,
@@ -181,9 +184,7 @@ class AnimeProductCard extends StatelessWidget {
                             // `product` هنا `dynamic` (البطاقة تخدم أكثر من
                             // نوع)، والمصنع يقرأ الحالة من المنتج نفسه فلا
                             // يُعاد اشتقاقها هنا.
-                            child: ProductStockPill.forProduct(
-                              product as Product,
-                            ),
+                            child: ProductStockPill.forProduct(product),
                           ),
                           if (product.rating != null) ...[
                             Icon(
@@ -193,7 +194,7 @@ class AnimeProductCard extends StatelessWidget {
                             ),
                             const SizedBox(width: 2),
                             Text(
-                              (product.rating as double).toStringAsFixed(1),
+                              product.rating!.toStringAsFixed(1),
                               textDirection: TextDirection.ltr,
                               style: Theme.of(context).textTheme.labelSmall
                                   ?.copyWith(
@@ -243,8 +244,8 @@ class AnimeProductCard extends StatelessWidget {
 
   String? get _firstImage {
     final images = product.images;
-    if (images is List && images.isNotEmpty) {
-      final first = images.first as String;
+    if (images.isNotEmpty) {
+      final first = images.first;
       return first.isEmpty ? null : first;
     }
     return null;
@@ -255,8 +256,8 @@ class AnimeProductCard extends StatelessWidget {
   /// لا يُعرض ما لم يوجد مبلغ فعلي — الشارة يجب أن تُترجم دائماً إلى خصم
   /// حقيقي يطبّقه الخادم عند إنشاء الطلب.
   String? _deliveryPromoLabel(BuildContext context) {
-    if (product.hasDeliveryPromo as bool != true) return null;
-    final amount = (product.deliveryPromoAmount as num?)?.toDouble() ?? 0;
+    if (!product.hasDeliveryPromo) return null;
+    final amount = product.deliveryPromoAmount;
     if (amount <= 0) return null;
     return context.strings.p('deliveryDiscountPerItem', {
       'amount': amount.toStringAsFixed(0),
@@ -266,12 +267,12 @@ class AnimeProductCard extends StatelessWidget {
   /// شارة البطاقة: نسبة الخصم الحقيقية أولاً (لا تظهر إلا بوجود سعر سابق
   /// أعلى من الحالي)، ثم «عرض»، ثم «مختار». لا نخترع قيمة عند غياب البيانات.
   String? _badgeLabel(BuildContext context) {
-    final percent = product.discountPercent as int?;
+    final percent = product.discountPercent;
     if (percent != null && percent > 0) {
       return context.strings.p('discountPercentBadge', {'percent': '$percent'});
     }
-    if (product.isOffer as bool) return context.strings('promoBadge');
-    if (product.isSelected as bool) return context.strings('selectedBadge');
+    if (product.isOffer) return context.strings('promoBadge');
+    if (product.isSelected) return context.strings('selectedBadge');
     return null;
   }
 }

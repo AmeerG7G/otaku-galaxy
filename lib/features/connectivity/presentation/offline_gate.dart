@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/design_system/design_system.dart';
 import '../../visuals/domain/visual_slot.dart';
-import '../../visuals/presentation/managed_artwork.dart';
+import '../../visuals/presentation/character_artwork.dart';
 
 /// يغلّف التطبيق كاملاً؛ عند انقطاع الاتصال يُعرض حاجز بلا وصول لأي محتوى
 /// — للزائر والمسجّل والعائد على حدٍّ سواء (لا شاشة رئيسية فارغة أوفلاين).
@@ -201,15 +201,6 @@ class _OfflineGateScreenState extends State<OfflineGateScreen>
 class _OfflineCard extends StatelessWidget {
   const _OfflineCard();
 
-  /// الأصل المضمَّن — بديلُ الفتحة حين لا صورة على القرص (أول تشغيلٍ على
-  /// الإطلاق، أو صورةٌ بدّلها المسؤول ولم تُنزَّل بعد).
-  ///
-  /// [PRODUCT] كانت الشاشة مستبعَدة من الفتحات («تُعرض حين لا شبكة»).
-  /// صارت فتحةً (الهجرة ٠٥٥) لأن `ManagedArtwork` لا يحتاج الشبكة ليعرض
-  /// صورةً نزّلها الإقلاع إلى القرص، وكل مسار فشلٍ ينتهي إلى هذا الأصل —
-  /// فالشاشة لا تفرغ في أي حال.
-  static const String artwork = 'assets/art/opt/a-i17.png';
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -229,9 +220,8 @@ class _OfflineCard extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            const ManagedArtwork(
+            const CharacterArtwork(
               slot: VisualSlots.offlineGate,
-              fallbackAsset: artwork,
               height: 132,
             ),
             const SizedBox(height: 18),

@@ -26,9 +26,11 @@ import 'package:otaku_galaxy/features/cart/domain/entities/cart_sync.dart';
 import 'package:otaku_galaxy/features/cart/domain/repositories/cart_repository.dart';
 import 'package:otaku_galaxy/features/cart/presentation/cubit/cart_cubit.dart';
 import 'package:otaku_galaxy/features/checkout/presentation/screens/order_review_screen.dart';
+import 'package:otaku_galaxy/features/orders/domain/entities/checkout_quote.dart';
 import 'package:otaku_galaxy/features/orders/domain/entities/order.dart';
 import 'package:otaku_galaxy/features/orders/domain/entities/order_data.dart';
 import 'package:otaku_galaxy/features/orders/domain/repositories/order_repository.dart';
+import 'package:otaku_galaxy/features/orders/domain/usecases/fetch_checkout_quote_usecase.dart';
 import 'package:otaku_galaxy/features/orders/domain/usecases/place_order_usecase.dart';
 import 'package:otaku_galaxy/features/products/domain/entities/governorate.dart';
 import 'package:otaku_galaxy/features/products/domain/entities/product.dart';
@@ -42,8 +44,8 @@ import 'support/render_harness.dart';
 
 Product _product({String id = 'p1', double price = 15000}) => Product(
   id: id,
-  name: 'منتج اختبار',
-  description: 'وصف',
+  nameAr: 'منتج اختبار',
+  descriptionAr: 'وصف',
   price: price,
   categoryId: 'c1',
   stock: 10,
@@ -55,7 +57,15 @@ CartItem _item({int quantity = 2}) =>
 
 /// مستودع طلبات يتحكّم الاختبار بنتيجته وتوقيتها.
 class _StubOrderRepository implements OrderRepository {
-  _StubOrderRepository({this.error, this.gate});
+  _StubOrderRepository({this.error, this.gate, this.quote, this.quoteError});
+
+  /// ملخّص الخادم الذي تعيده `fetchCheckoutQuote` — افتراضياً بلا خصومات.
+  final CheckoutQuote? quote;
+
+  /// إن وُجد رُمي من `fetchCheckoutQuote` بدل الملخّص.
+  final Object? quoteError;
+
+  final quoteRequests = <({String? governorateId, String? zoneId})>[];
 
   /// إن وُجد رُمي بدل النجاح.
   final Object? error;
@@ -84,6 +94,23 @@ class _StubOrderRepository implements OrderRepository {
     );
   }
 
+  @override
+  Future<CheckoutQuote> fetchCheckoutQuote({String? governorateId, String? zoneId}) async {
+    quoteRequests.add((governorateId: governorateId, zoneId: zoneId));
+    if (quoteError != null) throw quoteError!;
+    final base = quote ?? const CheckoutQuote(productsTotal: 30000);
+    if (governorateId == null) return base;
+    // بالمحافظة: رسوم بغداد في البديل (٥٬٠٠٠) والإجمالي بأرقام الخادم.
+    return CheckoutQuote(
+      productsTotal: base.productsTotal,
+      birthdayDiscount: base.birthdayDiscount,
+      loyaltyDiscount: base.loyaltyDiscount,
+      loyaltyRewardLevelKey: base.loyaltyRewardLevelKey,
+      loyaltyRewardPercent: base.loyaltyRewardPercent,
+      deliveryFee: 5000,
+      total: base.productsTotal + 5000 - base.discount,
+    );
+  }
   @override
   Future<List<Order>> fetchMyOrders() async => const [];
   @override
@@ -135,6 +162,9 @@ OrderData _orderData({double discount = 0, double deliveryDiscount = 0}) =>
       discount: discount,
       deliveryDiscount: deliveryDiscount,
     );
+
+/// السعر كما تعرضه الشاشتان (`priceIqd` بالعربية).
+String _price(num value) => '${value.toStringAsFixed(0)} د.ع';
 
 // ═══════════════════════ حوامل العرض ═══════════════════════
 
@@ -218,7 +248,10 @@ Future<void> _pumpReview(
 }
 
 /// «بيانات الطلب» داخل رواتر حقيقي كي تُقاس الانتقالة عند نجاح التحقق.
-Future<_CheckoutRouter> _pumpData(WidgetTester tester) async {
+Future<_CheckoutRouter> _pumpData(
+  WidgetTester tester, {
+  _StubOrderRepository? orders,
+}) async {
   tester.view.physicalSize = const Size(390, 1800);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
@@ -234,7 +267,10 @@ Future<_CheckoutRouter> _pumpData(WidgetTester tester) async {
           value: FetchGovernoratesUsecase(_StubGovernorates()),
         ),
         RepositoryProvider.value(
-          value: PlaceOrderUsecase(_StubOrderRepository()),
+          value: PlaceOrderUsecase(orders ?? _StubOrderRepository()),
+        ),
+        RepositoryProvider.value(
+          value: FetchCheckoutQuoteUsecase(orders ?? _StubOrderRepository()),
         ),
       ],
       child: _wrap(
@@ -343,6 +379,94 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(OrderReviewScreen), findsOneWidget);
+    });
+  });
+
+  // ═══════════════ خصم مزيّة المستوى — من الخادم إلى المراجعة ═══════════════
+
+  // [CRITICAL REGRESSION] الزبون يطالب بمزيّة الخصم ثم لا يجدها في ملخّص
+  // طلبه (2026-09-27): الشاشتان كانتا تعاينان خصم الميلاد وحده على العميل.
+  group('[CRITICAL] المزيّة المطالَب بها تظهر قبل التأكيد', () {
+    const rewardQuote = CheckoutQuote(
+      productsTotal: 30000,
+      loyaltyDiscount: 1500,
+      loyaltyRewardLevelKey: 'warrior',
+      loyaltyRewardPercent: 5,
+    );
+
+    Future<void> fillAndContinue(WidgetTester tester) async {
+      await tester.enterText(find.byType(TextFormField).first, '07701234567');
+      await tester.enterText(
+        find.byType(TextFormField).last,
+        'بغداد، الكرادة، قرب الجادرية',
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('اختر المحافظة'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('بغداد').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(AnimePrimaryButton, 'مراجعة الطلب'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('بيانات الطلب: سطر خصم المزيّة بقيمة الخادم، والإجمالي بعده', (tester) async {
+      final orders = _StubOrderRepository(quote: rewardQuote);
+      await _pumpData(tester, orders: orders);
+
+      expect(orders.quoteRequests, isNotEmpty, reason: 'الملخّص يُطلب من الخادم عند الفتح');
+      expect(find.text('خصم مزيّة المستوى'), findsOneWidget);
+      expect(find.text('-${_price(1500)}'), findsOneWidget);
+      // ٣٠٬٠٠٠ − ١٬٥٠٠ (لا محافظة بعد، فلا رسوم).
+      expect(find.text(_price(28500)), findsWidgets);
+    });
+
+    testWidgets('«متابعة» تطلب ملخّصاً بالمحافظة وتنقل أرقامه إلى المراجعة', (tester) async {
+      final orders = _StubOrderRepository(quote: rewardQuote);
+      await _pumpData(tester, orders: orders);
+      await fillAndContinue(tester);
+
+      expect(find.byType(OrderReviewScreen), findsOneWidget);
+      expect(orders.quoteRequests.last.governorateId, 'g1');
+      final review = tester.widget<OrderReviewScreen>(find.byType(OrderReviewScreen));
+      expect(review.orderData.loyaltyDiscount, 1500);
+      expect(review.orderData.discount, 1500);
+      expect(review.orderData.quotedTotal, 30000 + 5000 - 1500);
+      expect(review.orderData.total, 33500);
+      expect(find.text('خصم مزيّة المستوى'), findsOneWidget);
+      expect(find.text('-${_price(1500)}'), findsOneWidget);
+    });
+
+    testWidgets('تعذّر الملخّص عند «متابعة» يُبقي الزبون ويُبلغه — لا مراجعة بلا أرقام الخادم', (tester) async {
+      final orders = _StubOrderRepository(quoteError: Exception('network'));
+      await _pumpData(tester, orders: orders);
+      await fillAndContinue(tester);
+
+      expect(find.byType(OrderReviewScreen), findsNothing);
+      expect(find.text('تعذّر تحميل ملخّص الطلب. حاول مرة أخرى.'), findsOneWidget);
+    });
+
+    testWidgets('المراجعة: خصم الميلاد وخصم المزيّة كلٌّ بسطره', (tester) async {
+      final orders = _StubOrderRepository();
+      await _pumpReview(
+        tester,
+        orders: orders,
+        data: OrderData(
+          governorateId: 'g1',
+          province: 'بغداد',
+          deliveryCost: 5000,
+          fullAddress: 'بغداد، الكرادة، قرب الجادرية',
+          phone: '07701234567',
+          items: [_item()],
+          discount: 2500,
+          loyaltyDiscount: 1500,
+          quotedTotal: 32500,
+        ),
+      );
+      expect(find.text('خصم عيد الميلاد'), findsOneWidget);
+      expect(find.text('-${_price(1000)}'), findsOneWidget);
+      expect(find.text('خصم مزيّة المستوى'), findsOneWidget);
+      expect(find.text('-${_price(1500)}'), findsOneWidget);
+      expect(find.text(_price(32500)), findsWidgets);
     });
   });
 
@@ -482,7 +606,9 @@ void main() {
       // منتجات ٣٠٬٠٠٠ + توصيل ٥٬٠٠٠ − خصم ٣٬٠٠٠ = ٣٢٬٠٠٠.
       expect(find.text('سعر المنتجات'), findsOneWidget);
       expect(find.text('رسوم التوصيل'), findsOneWidget);
-      expect(find.text('الخصم'), findsOneWidget);
+      // الخصم مسمّى بمصدره من ملخّص الخادم (لا مزيّة هنا ⇒ خصم الميلاد).
+      expect(find.text('خصم عيد الميلاد'), findsOneWidget);
+      expect(find.text('خصم مزيّة المستوى'), findsNothing);
       expect(find.text('المجموع النهائي'), findsOneWidget);
       expect(find.textContaining('32'), findsWidgets);
     });

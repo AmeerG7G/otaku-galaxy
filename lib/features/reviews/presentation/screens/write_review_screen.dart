@@ -17,7 +17,6 @@ import '../../../../core/errors/app_exception.dart';
 import '../../../../core/di/injection_container.dart';
 import '../../../../core/constants/api_endpoints.dart';
 import 'package:image_picker/image_picker.dart';
-import '../../../visuals/domain/visual_slot.dart';
 
 /// كتابة تقييم جديد أو تعديل تقييم مرفوض وإعادة إرساله.
 ///
@@ -261,8 +260,8 @@ class _WriteReviewScreenState extends State<WriteReviewScreen> {
                   ? context.strings('editReview')
                   : context.g(GenderedStrings.rateProduct),
               subtitle: widget.productName,
-              artwork: 'assets/art/opt/a-i6.png',
-              artworkSlot: VisualSlots.writeReview,
+              // بلا رسم شخصية: الرسم أعلى اليسار (الصورة 27) أُزيل مع الصورة
+              // (2026-09-28).
               onBack: () => context.router.maybePop(),
             ),
             Expanded(

@@ -148,6 +148,7 @@ function AppVersionCard() {
       app_android_store_url: query.data.androidStoreUrl,
       app_ios_store_url: query.data.iosStoreUrl,
       app_update_message: query.data.updateMessage,
+      app_update_message_ckb: query.data.updateMessageCkb ?? '',
     })
   }, [query.data, form])
 
@@ -244,6 +245,19 @@ function AppVersionCard() {
           rules={[{ max: 300 }]}
         >
           <Input.TextArea rows={2} showCount maxLength={300} />
+        </Form.Item>
+
+        {/*
+          الرسالة نفسها لواجهة التطبيق الكردية. فارغةً يعرض التطبيق نصّه
+          الكردي الافتراضي — لا الرسالة العربية أعلاه.
+        */}
+        <Form.Item
+          name="app_update_message_ckb"
+          label="رسالة التحديث (كردي)"
+          extra="تظهر لمن واجهته كردية. اتركها فارغة لاستعمال الرسالة الكردية الافتراضية."
+          rules={[{ max: 300 }]}
+        >
+          <Input.TextArea rows={2} showCount maxLength={300} dir="rtl" />
         </Form.Item>
 
         <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={save.isPending}>

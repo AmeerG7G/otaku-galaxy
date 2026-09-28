@@ -19,7 +19,10 @@
 export interface CartSyncLine {
   id: string;
   productId: string;
+  /** الاسم العربي. */
   productName: string;
+  /** الاسم الكردي؛ `null` = ناقص (066). */
+  productNameCkb: string | null;
   optionValue: string | null;
   quantity: number;
   stock: number;
@@ -31,7 +34,11 @@ export type CartAdjustmentReason = 'unavailable' | 'reduced';
 export interface CartAdjustment {
   lineId: string;
   productId: string;
+  /** الاسم العربي — الحقل القديم، باقٍ بمعناه. */
   productName: string;
+  /** الاسم باللغتين صراحةً (066) — التطبيق يسمّي المنتج بلغة واجهته. */
+  productNameAr: string;
+  productNameCkb: string | null;
   optionValue: string | null;
   /** `unavailable`: المنتج معطَّل أو نفد — أُزيل السطر. `reduced`: خُفِّضت الكمية (إلى صفر = أُزيل). */
   reason: CartAdjustmentReason;
@@ -52,6 +59,8 @@ export function planCartSync(lines: readonly CartSyncLine[]): CartAdjustment[] {
       lineId: line.id,
       productId: line.productId,
       productName: line.productName,
+      productNameAr: line.productName,
+      productNameCkb: line.productNameCkb,
       optionValue: line.optionValue,
       previousQuantity: line.quantity,
     };

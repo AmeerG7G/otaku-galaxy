@@ -105,10 +105,7 @@ class _RegisterScreenState extends State<RegisterScreen>
       await context.read<AuthCubit>().register(
         username: _usernameController.text.trim(),
         phone:
-            normalizeIraqiPhone(
-              iraqiPhoneFromLocalDigits(_phoneController.text.trim()),
-            ) ??
-            iraqiPhoneFromLocalDigits(_phoneController.text.trim()),
+            normalizeIraqiPhone(_phoneController.text) ?? _phoneController.text.trim(),
         password: _passwordController.text,
         gender: gender.value!,
       );
@@ -151,10 +148,7 @@ class _RegisterScreenState extends State<RegisterScreen>
             AppGender.unknown,
             context.language,
           ),
-          artwork: 'assets/art/opt/a-i0.png',
           artworkSlot: VisualSlots.registerHeader,
-          ctaSlot: VisualSlots.registerCta,
-          ctaArtwork: 'assets/art/opt/a-i0.png',
           artworkHeight: 178,
           artworkWidth: 150,
           artworkBottom: -8,
@@ -190,19 +184,16 @@ class _RegisterScreenState extends State<RegisterScreen>
                   prefixIcon: Icons.phone_outlined,
                   textDirection: TextDirection.ltr,
                   keyboardType: TextInputType.phone,
-                  // §49.2: البادئة `07` ثابتة في الحقل والمستخدم يكتب التسعة التي تليها؛
-                  // المُنسّق يُسقط `+964`/`00964`/`07` مما يُلصق بدل أن يقصّه.
-                  prefixText: kIraqiLocalPrefix,
-                  inputFormatters: const [IraqiLocalDigitsFormatter()],
+                  // الرقم كاملاً كما يكتبه الزبون (`07701234567`) — لا بادئة `07` ثابتة ولا مُدرَجة؛
+                  // المُنسّق يُبقي الأرقام وحدها، والحكم لقاعدة الموبايل العراقي ثم للخادم.
+                  inputFormatters: const [IraqiPhoneInputFormatter()],
                   textInputAction: TextInputAction.next,
-                  maxLength: kIraqiLocalDigits,
+                  maxLength: kIraqiLocalPhoneLength,
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
                       return context.strings('phoneRequiredShort');
                     }
-                    if (!isValidIraqiPhone(
-                      iraqiPhoneFromLocalDigits(value.trim()),
-                    )) {
+                    if (!isValidIraqiLocalPhone(value)) {
                       return context.strings('phoneInvalid');
                     }
                     return null;

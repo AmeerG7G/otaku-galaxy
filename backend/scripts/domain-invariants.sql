@@ -54,6 +54,6 @@ UNION ALL SELECT 'I26 unverified customer has a registration request', count(*) 
     AND NOT EXISTS (SELECT 1 FROM account_requests a WHERE a.kind = 'registration' AND a.submitted_phone = u.phone)
 UNION ALL SELECT 'I27 order dispatched_at ⇒ left pending (not pending)', count(*) FROM orders WHERE dispatched_at IS NOT NULL AND status = 'PENDING_ADMIN_CONFIRMATION'
 UNION ALL SELECT 'I28 reminder sent ⇒ COMPLETED', count(*) FROM orders WHERE rating_reminder_sent_at IS NOT NULL AND status <> 'COMPLETED'
-UNION ALL SELECT 'I29 gift fulfilled ⇒ claimed', count(*) FROM loyalty_reward_redemptions WHERE fulfilled_at IS NOT NULL AND fulfilled_at < claimed_at
-UNION ALL SELECT 'I30 temporary slot pair', count(*) FROM visual_slots WHERE (temporary_image_url IS NULL) <> (temporary_until IS NULL);
+UNION ALL SELECT 'I29 gift fulfilled ⇒ claimed', count(*) FROM loyalty_reward_redemptions WHERE fulfilled_at IS NOT NULL AND fulfilled_at < claimed_at;
+-- (I30 «temporary slot pair» أُزيل مع جدول visual_slots — الهجرة 065.)
 ROLLBACK;

@@ -63,7 +63,6 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                         body:
                             context.g(GenderedStrings.loginToFollow),
                         icon: Icons.favorite_outline,
-                        artworkSlot: VisualSlots.favoritesGuestPrompt,
                         onLogin: () => context.router.push(const LoginRoute()),
                       ),
                     )
@@ -96,7 +95,6 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
       return AnimeEmptyState(
         title: context.strings('favoritesEmptyTitle'),
         subtitle: context.g(GenderedStrings.tapHeartToSave),
-        artwork: 'assets/art/opt/a-i2.png',
         artworkSlot: VisualSlots.emptyFavorites,
         actionLabel: context.strings('discover'),
         onAction: () {

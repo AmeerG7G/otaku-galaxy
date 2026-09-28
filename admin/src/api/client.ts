@@ -25,10 +25,20 @@ function fallbackMessage(status: number): string {
   return 'تعذر إكمال الطلب'
 }
 
+/**
+ * [CRITICAL] `Accept-Language: ar` صريحة على كل طلب.
+ *
+ * مسارات `/admin` مثبَّتة على العربية في الخادم، لكن صفحة التعديل تقرأ خيارات
+ * المنتج من المسار العام `/catalog/products/:id` الذي يحسم لغته من الترويسة —
+ * والمتصفّح يرسل لغة نظامه (أو يسقط الخادم إلى تفضيل المسؤول المحفوظ، وقد
+ * يكون كردياً). خيارٌ كرديٌّ محسوم كان سيُحفظ في العمود العربي. اللوحة عربيةٌ
+ * كلّها، فتقول ذلك في كل طلب. محتوى المنتج نفسه يُقرأ من الحقول الصريحة
+ * (`nameAr`…`descriptionCkb`) مهما كانت اللغة.
+ */
 const client = axios.create({
   baseURL: API_BASE_URL,
   timeout: 15000,
-  headers: { 'Content-Type': 'application/json' },
+  headers: { 'Content-Type': 'application/json', 'Accept-Language': 'ar' },
 })
 
 export { client }

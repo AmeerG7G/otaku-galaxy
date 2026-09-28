@@ -6,6 +6,7 @@ import {
   App,
   Button,
   Card,
+  Checkbox,
   Input,
   Space,
   Table,
@@ -44,6 +45,8 @@ export default function ProductsPage() {
   // للمشاركة والرجوع إليه بزرّ المتصفح.
   const categoryId = value('categoryId')
   const subcategoryId = value('subcategoryId')
+  // «أكمل الكردية»: المنتجات التي ينقصها اسمٌ أو وصفٌ كردي — ترشيحٌ على الخادم.
+  const missingKurdish = value('missingKurdish') === 'true'
 
   // البحث بالاسم: يُكتب محلياً، ويُدفع إلى الرابط (`q`) بعد سكون الكتابة،
   // ويعود بالقائمة إلى صفحتها الأولى — البقاء على الصفحة الخامسة بعد تضييق
@@ -85,7 +88,7 @@ export default function ProductsPage() {
   }, [searchInput, search, setSearchParams])
 
   const productsQuery = useQuery({
-    queryKey: ['products', { page, categoryId, subcategoryId, q: search }],
+    queryKey: ['products', { page, categoryId, subcategoryId, q: search, missingKurdish }],
     queryFn: () =>
       listProducts({
         page,
@@ -93,6 +96,7 @@ export default function ProductsPage() {
         ...(search ? { q: search } : {}),
         ...(categoryId ? { categoryId } : {}),
         ...(subcategoryId ? { subcategoryId } : {}),
+        ...(missingKurdish ? { missingKurdish: 'true' as const } : {}),
       }),
   })
 
@@ -136,7 +140,7 @@ export default function ProductsPage() {
   function confirmDeactivate(product: Product) {
     modal.confirm({
       title: 'هل أنت متأكد من تعطيل المنتج؟',
-      content: `«${product.name}» — لن يظهر المنتج للزبائن، ولن يتم حذفه من قاعدة البيانات.`,
+      content: `«${product.nameAr}» — لن يظهر المنتج للزبائن، ولن يتم حذفه من قاعدة البيانات.`,
       okText: 'تعطيل المنتج',
       okButtonProps: { danger: true },
       cancelText: 'إلغاء',
@@ -155,9 +159,21 @@ export default function ProductsPage() {
     },
     {
       title: 'المنتج',
-      dataIndex: 'name',
       key: 'name',
-      render: (value: string) => <Typography.Text strong>{value}</Typography.Text>,
+      // الاسمان صريحان: العربي أولاً ثم الكردي — أو إعلان نقصه. لا يُقرأ `name`.
+      render: (_: unknown, product: Product) => (
+        <Space direction="vertical" size={2}>
+          <Typography.Text strong lang="ar">
+            {product.nameAr}
+          </Typography.Text>
+          {product.nameCkb && (
+            <Typography.Text type="secondary" lang="ckb">
+              {product.nameCkb}
+            </Typography.Text>
+          )}
+          {product.kurdishMissing && <Tag color="orange">الكردية ناقصة</Tag>}
+        </Space>
+      ),
     },
     {
       title: 'القسم',
@@ -292,15 +308,31 @@ export default function ProductsPage() {
       />
 
       <Card>
-        <Input
-          allowClear
-          prefix={<SearchOutlined />}
-          placeholder="ابحث باسم المنتج"
-          aria-label="بحث المنتجات بالاسم"
-          value={searchInput}
-          onChange={(event) => setSearchInput(event.target.value)}
-          style={{ maxWidth: 360, marginBottom: 16 }}
-        />
+        <Space wrap size={16} style={{ marginBottom: 16 }}>
+          <Input
+            allowClear
+            prefix={<SearchOutlined />}
+            placeholder="ابحث باسم المنتج (عربي أو كردي)"
+            aria-label="بحث المنتجات بالاسم"
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
+            style={{ width: 360, maxWidth: '100%' }}
+          />
+          <Checkbox
+            checked={missingKurdish}
+            onChange={(event) =>
+              setSearchParams((current) => {
+                const nextParams = new URLSearchParams(current)
+                if (event.target.checked) nextParams.set('missingKurdish', 'true')
+                else nextParams.delete('missingKurdish')
+                nextParams.set('page', '1')
+                return nextParams
+              })
+            }
+          >
+            الكردية ناقصة فقط
+          </Checkbox>
+        </Space>
         {productsQuery.isError ? (
           <Alert
             type="error"

@@ -259,7 +259,7 @@ describe('Domain integrity audit (#6)', () => {
       });
 
       await api.patch(`/api/admin/products/${id}`).set(bearer(adminToken))
-        .send({ price: 50_000, name: `${PREFIX} renamed`, hasDeliveryPromo: false }).expect(200);
+        .send({ price: 50_000, nameAr: `${PREFIX} renamed`, hasDeliveryPromo: false }).expect(200);
       await api.patch(`/api/admin/governorates/${governorateId}`).set(bearer(adminToken))
         .send({ name: `${PREFIX} renamed gov ${Date.now()}`, deliveryFee: 9_000 }).expect(200);
 
@@ -461,8 +461,8 @@ describe('Domain integrity audit (#6)', () => {
       const small = await product('ca12-small', 5, 20_000);
       const discounted = await placeOrder(c.token, [{ productId: small, quantity: 1 }]);
       const order = (await api.get(`/api/orders/${discounted}`).set(bearer(c.token)).expect(200)).body.data;
-      // ميلاد 5% = 1 000، مستكشف 3% = 600.
-      expect(order).toMatchObject({ discount: 1_600, loyaltyDiscount: 600 });
+      // ميلاد 5% = 1 000، مستكشف 3% = 600 ← 500 (أقرب ٢٥٠).
+      expect(order).toMatchObject({ discount: 1_500, loyaltyDiscount: 500 });
 
       expect((await setStatus(discounted, 'REJECTED', 'نفد المخزون')).status).toBe(200);
 
@@ -514,7 +514,7 @@ describe('Domain integrity audit (#6)', () => {
       const small = await product('ca13-next', 5, 20_000);
       const next = await placeOrder(c.token, [{ productId: small, quantity: 1 }]);
       const nextOrder = (await api.get(`/api/orders/${next}`).set(bearer(c.token)).expect(200)).body.data;
-      expect(nextOrder.loyaltyDiscount).toBe(600);
+      expect(nextOrder.loyaltyDiscount).toBe(500); // ٣٪ من ٢٠٬٠٠٠ = ٦٠٠ ← ٥٠٠
     });
 
     /**

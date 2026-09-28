@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../tokens/app_colors.dart';
 import '../../tokens/app_dimens.dart';
 import '../../tokens/app_theme_colors.dart';
-import '../../../../features/visuals/presentation/managed_artwork.dart';
+import '../../../../features/visuals/presentation/character_artwork.dart';
 
 /// عنوان قسم داخل الشاشة — Tajawal ثقيل بحجم ١٧.
 class OtakuSectionTitle extends StatelessWidget {
@@ -120,11 +120,14 @@ class OtakuEditorialPanel extends StatelessWidget {
   final String? body;
   final String? artwork;
 
-  /// مفتاح الفتحة البصرية التي يديرها المسؤول من لوحة التحكم.
+  /// مفتاح موضع الرسم (`VisualSlots`) — صورته الثابتة في `CharacterArt`.
   ///
-  /// حين يُمرَّر، يصير [artwork] هو الأصل الاحتياطي: يُعرض كما هو ما دامت
-  /// الفتحة غير مضبوطة أو تعذّر تحميل صورتها. المقاس والموضع لا يتغيّران.
+  /// حين يُمرَّر يحدّد الموضعُ صورته ولا يلزم [artwork] (المسار المباشر لرسمٍ
+  /// ليس موضعاً). المقاس والموضع كما هما.
   final String? artworkSlot;
+
+  /// رسمٌ يُعرض: موضعٌ بصورته الثابتة، أو مسارٌ مباشر.
+  bool get _hasArtwork => artworkSlot != null || artwork != null;
 
   final Widget? action;
   final EdgeInsetsGeometry margin;
@@ -149,16 +152,15 @@ class OtakuEditorialPanel extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: Stack(
           children: [
-            if (artwork != null)
+            if (_hasArtwork)
               PositionedDirectional(
                 bottom: -12,
                 end: -10,
                 child: IgnorePointer(
                   child: artworkSlot == null
                       ? Image.asset(artwork!, height: artHeight)
-                      : ManagedArtwork(
+                      : CharacterArtwork(
                           slot: artworkSlot!,
-                          fallbackAsset: artwork!,
                           height: artHeight,
                         ),
                 ),
@@ -168,7 +170,7 @@ class OtakuEditorialPanel extends StatelessWidget {
               child: Align(
                 alignment: AlignmentDirectional.centerStart,
                 child: FractionallySizedBox(
-                  widthFactor: artwork == null ? 1.0 : contentWidthFactor,
+                  widthFactor: _hasArtwork ? contentWidthFactor : 1.0,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,

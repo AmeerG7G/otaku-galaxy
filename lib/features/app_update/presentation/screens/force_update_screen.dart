@@ -3,6 +3,7 @@ import '../../../../core/l10n/app_strings.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/design_system/design_system.dart';
+import '../../../settings/presentation/cubit/locale_cubit.dart';
 import '../../domain/app_version_config.dart';
 
 /// شاشة إجبار التحديث — حاجزٌ كامل بلا مخرج سوى المتجر.
@@ -11,9 +12,16 @@ import '../../domain/app_version_config.dart';
 /// معنى الإجبار: الحجب يقع لأن النسخة القديمة لم تعد تعمل مع الخادم، فـ
 /// «لاحقاً» تعني شاشةً مكسورة لا تجربةً مؤجَّلة.
 ///
-/// التصميم يتبع حاجز الاتصال (`OfflineGate`) نفسه: صفّ الهوية أعلى الشاشة،
-/// ثم لوحة تحريرية برسم شخصية يكسر الحافة، ثم زرّ التدرّج — فيقع الحاجزان
-/// في لغةٍ بصرية واحدة بدل شاشتَي حجبٍ لا تشبه إحداهما الأخرى.
+/// التصميم يتبع حاجز الاتصال (`OfflineGate`) في بنيته: صفّ الهوية أعلى
+/// الشاشة، ثم لوحة الرسالة، ثم زرّ التدرّج.
+///
+/// [PRODUCT] **نصٌّ وواجهة فقط — بلا رسم شخصية** (قرار 2026-09-27). كانت
+/// اللوحة تحمل رسم شخصيةٍ يكسر حافتها؛ أُزيل ولا يعود. يحرسه
+/// `test/force_update_test.dart` («بلا رسم شخصية»).
+///
+/// الرسالة بلغة الواجهة: رسالة المسؤول لتلك اللغة إن ضبطها (`updateMessage`
+/// للعربية، `updateMessageCkb` للكردية)، وإلا النصّ الافتراضي المترجَم — فلا
+/// تظهر رسالةٌ عربية في واجهةٍ كردية.
 class ForceUpdateScreen extends StatelessWidget {
   const ForceUpdateScreen({
     super.key,
@@ -63,8 +71,11 @@ class ForceUpdateScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = context.themeColors;
-    final message = config.updateMessage.isNotEmpty
-        ? config.updateMessage
+    final custom = context.language == AppLanguage.kurdish
+        ? config.updateMessageCkb
+        : config.updateMessage;
+    final message = custom.isNotEmpty
+        ? custom
         : context.strings(defaultMessageKey);
 
     return PopScope(
@@ -163,7 +174,7 @@ class ForceUpdateScreen extends StatelessWidget {
   }
 }
 
-/// لوحة الرسالة — سطح عائم برسم شخصية يكسر الحافة السفلية.
+/// لوحة الرسالة — سطح عائم: أيقونة، عنوان، رسالة. لا رسم شخصية.
 class _UpdateCard extends StatelessWidget {
   const _UpdateCard({required this.message});
 
@@ -175,59 +186,40 @@ class _UpdateCard extends StatelessWidget {
     final colors = context.themeColors;
 
     return Container(
+      key: const Key('force_update_card'),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(AppDimens.radiusXl),
         border: Border.all(color: theme.colorScheme.outlineVariant),
         boxShadow: colors.shadowFloating,
       ),
-      clipBehavior: Clip.antiAlias,
-      child: Stack(
+      padding: const EdgeInsets.fromLTRB(22, 30, 22, 26),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          PositionedDirectional(
-            bottom: -16,
-            end: -14,
-            child: IgnorePointer(
-              child: Image.asset('assets/art/opt/a-i5.png', width: 126),
+          Icon(
+            Icons.system_update_rounded,
+            size: 54,
+            color: AppColors.secondary,
+          ),
+          const SizedBox(height: 20),
+          Text(
+            context.strings('updateRequiredTitle'),
+            style: theme.textTheme.headlineSmall?.copyWith(
+              fontFamily: 'Tajawal',
+              fontSize: 23,
+              height: 1.35,
+              fontWeight: AppDimens.weightBlack,
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(22, 30, 22, 26),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.system_update_rounded,
-                  size: 54,
-                  color: AppColors.secondary,
-                ),
-                const SizedBox(height: 20),
-                FractionallySizedBox(
-                  widthFactor: 0.78,
-                  child: Text(
-                    context.strings('updateRequiredTitle'),
-                    style: theme.textTheme.headlineSmall?.copyWith(
-                      fontFamily: 'Tajawal',
-                      fontSize: 23,
-                      height: 1.35,
-                      fontWeight: AppDimens.weightBlack,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                FractionallySizedBox(
-                  widthFactor: 0.82,
-                  child: Text(
-                    message,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontSize: 14,
-                      height: 1.85,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ],
+          const SizedBox(height: 10),
+          Text(
+            message,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontSize: 14,
+              height: 1.85,
+              color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
         ],

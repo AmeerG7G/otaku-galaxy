@@ -36,7 +36,14 @@ export interface AdminOrder {
   fullAddress: string
   phone: string
   productsTotal: number
+  /** الخصم على المنتجات كلّه (الميلاد + مزيّة المستوى) كما حُفظ مع الطلب. */
   discount: number
+  /**
+   * الجزء الآتي من مزيّة مستوى داخل `discount` — `orders.loyalty_discount`.
+   *
+   * اختياري لأن خادماً أقدم لا يرسله؛ غيابه يعني صفراً.
+   */
+  loyaltyDiscount?: number
   total: number
   customer: OrderCustomer | null
   createdAt: string

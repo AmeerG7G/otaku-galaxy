@@ -82,8 +82,10 @@ flutter:
 
   assets:
     - assets/branding/otaku-square-mark.png
-    - assets/art/a-l-detective.png
-    - assets/art/opt/
+    # رسوم الشخصيات كلها: `N.png`، صورةٌ فريدة لكل رقم؛ الأرقام عناوين ثابتة،
+    # والمحذوف منها (2 4 9 10 14 22 27 36 37 — STEP 63) فجواتٌ مقصودة لا تُملأ.
+    # الجدول موضع ← رقم في `CharacterArt`. استبدال `N.png` يغيّر مواضعه.
+    - assets/art/characters/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

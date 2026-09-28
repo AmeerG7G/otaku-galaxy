@@ -75,12 +75,14 @@ export const mediaRepo = {
    * الأعمدة التي قد تحمل مرجعاً إلى ملف مرفوع.
    *
    * [CRITICAL] هذه القائمة **اصطلاح لا قيد**: لا مفتاح أجنبي يربط أياً منها
-   * بـ`media_files` (عدا `visual_slots.media_id` و`temporary_media_id`، وهما
-   * `ON DELETE SET NULL` فلا يمنعان الحذف أصلاً). عمودٌ جديد يُضاف ولا يُدرَج
+   * بـ`media_files`. عمودٌ جديد يُضاف ولا يُدرَج
    * هنا يجعل ملفاته الحيّة تبدو يتيمة. يحرس ذلك اختبارُ التغطية في
    * `media.test.ts` الذي يقارن هذه القائمة بمخطّط القاعدة الفعلي — والقائمة
    * وحدها لا تكفي: استعلام [findUnreferenced] أدناه يجب أن يفحص كل عمودٍ
-   * منها فعلاً، وهو ما يحرسه اختبار صورة الفتحة هناك.
+   * منها فعلاً.
+   *
+   * (كانت `visual_slots` هنا بأعمدتها الأربعة؛ أُسقط الجدول مع ميزة «رسوم
+   * الشخصيات» في الهجرة 065 — الشخصيات أصولٌ ثابتة في التطبيق الآن.)
    */
   MEDIA_REFERENCE_COLUMNS: [
     ['banners', 'image_url'],
@@ -88,8 +90,6 @@ export const mediaRepo = {
     ['franchises', 'image_url'],
     ['product_images', 'url'],
     ['users', 'avatar_url'],
-    ['visual_slots', 'image_url'],
-    ['visual_slots', 'temporary_image_url'],
     ['reviews', 'photo_urls'],
     // لقطة صورة المنتج وقت الطلب — يبقى تاريخ الطلبات صحيحاً ولو حُذف
     // المنتج. اكتشفه اختبارُ التغطية بعد أن أغفلَته المراجعة اليدوية، وهو
@@ -121,9 +121,6 @@ export const mediaRepo = {
           AND NOT EXISTS (SELECT 1 FROM franchises         f WHERE f.image_url  = m.url)
           AND NOT EXISTS (SELECT 1 FROM product_images     p WHERE p.url        = m.url)
           AND NOT EXISTS (SELECT 1 FROM users             us WHERE us.avatar_url = m.url)
-          AND NOT EXISTS (SELECT 1 FROM visual_slots        v
-                           WHERE v.image_url = m.url OR v.media_id = m.id
-                              OR v.temporary_image_url = m.url OR v.temporary_media_id = m.id)
           AND NOT EXISTS (SELECT 1 FROM reviews            r WHERE m.url = ANY(r.photo_urls))
           AND NOT EXISTS (SELECT 1 FROM order_items         o WHERE o.image_url  = m.url)
         ORDER BY m.created_at`,

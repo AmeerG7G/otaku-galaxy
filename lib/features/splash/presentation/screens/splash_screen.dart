@@ -11,7 +11,6 @@ import '../../../../core/router/app_router.dart';
 import '../../../auth/presentation/cubit/auth_cubit.dart';
 import '../../../onboarding/data/onboarding_storage.dart';
 import '../../../settings/data/store_settings_repository.dart';
-import '../../../visuals/data/visuals_repository.dart';
 import '../../domain/startup_progress.dart';
 import '../widgets/splash_animations.dart';
 import '../widgets/splash_backdrop.dart';
@@ -22,7 +21,7 @@ import '../widgets/splash_loader.dart';
 ///
 /// التركيب (كلُّه من المرجع):
 /// - خلفية متدرّجة ثابتة فاتحة تعمل بالهوية نفسها في الوضعين الفاتح والداكن
-///   (+ هالتان لونيتان ورسمان خافتان).
+///   (+ هالتان لونيتان ورسمٌ خافت).
 /// - الشعار داخل هالة نابضة ثم الاسم والشعار النصّي، بدخول `og-pop`.
 /// - شريط تحميل مثبّت أسفل الشاشة يتعبّد بـ `og-load`.
 ///
@@ -113,11 +112,6 @@ class _SplashScreenState extends State<SplashScreen>
     // إعدادات المتجر عامة — تُحمَّل للزائر والمسجّل على حدٍّ سواء.
     sl<StoreSettingsRepository>().refresh();
 
-    // رسوم الشخصيات المُدارة. **لا يُنتظر** عمداً: الشاشات ترسم أصولها
-    // المضمَّنة فوراً، وحين يصل الإعداد تُبدَّل الصور من تلقائها. إقلاعٌ
-    // يتوقف على نداء شبكة هو إقلاعٌ يفشل مع الشبكة.
-    unawaited(_loadManagedVisuals());
-
     unawaited(_runStartup());
   }
 
@@ -164,39 +158,13 @@ class _SplashScreenState extends State<SplashScreen>
 
   /// إعادة المحاولة تُعيد **كل** الخطوات المطلوبة، لا استعادة الجلسة وحدها.
   ///
-  /// [CRITICAL] `reset()` يمسح الخطوات الأربع، وخطوة الرسوم كانت تُسجَّل مرةً
-  /// واحدة من `initState` فلا يعيدها أحد: يبقى الإقلاع عند ٧٥٪ إلى الأبد.
-  /// تُعاد هنا الخطوةُ نفسها (قراءة القرص، بلا شبكة) لا الجلب والتنزيل
-  /// المسبق — هذان يعملان في الخلفية أصلاً ولا يُكرَّران.
+  /// [CRITICAL] `reset()` يمسح كل الخطوات، و`_runStartup` يسجّلها كلها من
+  /// جديد — لا خطوةَ تُسجَّل مرةً واحدة من `initState` فيبقى الشريط عالقاً.
   Future<void> _retry() async {
     _startup.reset();
     _loadController.value = 0;
     setState(() {});
-    unawaited(_warmManagedVisuals());
     await _runStartup();
-  }
-
-  /// يدفّئ رسوم الإعداد المحفوظ من القرص (خطوة إقلاع)، ثم يجلب الإعداد
-  /// الحالي وينزّل صوره إلى ذاكرة القرص المؤقتة (بلا انتظار).
-  ///
-  /// [CRITICAL] الترتيب مقصود: التدفئة أولاً لأنها ما يجعل أول إطارٍ بعد
-  /// الانتقال يحمل الشخصية الصحيحة؛ وهي مقيَّدة بميزانية ولا تلمس الشبكة،
-  /// فتتمّ الخطوة دائماً — وجودُ إعدادٍ محفوظ أو لا. الجلب والتنزيل المسبق
-  /// بعدها بلا انتظار كما كانا: إقلاعٌ يتوقف على نداء شبكة يفشل مع الشبكة.
-  Future<void> _loadManagedVisuals() async {
-    await _warmManagedVisuals();
-    final visuals = sl<VisualsRepository>();
-    await visuals.refresh();
-    await visuals.prefetch();
-  }
-
-  /// خطوة الرسوم وحدها — تُعاد مع كل محاولة إقلاع.
-  Future<void> _warmManagedVisuals() async {
-    try {
-      await sl<VisualsRepository>().warmRestored();
-    } finally {
-      if (mounted) _startup.complete(StartupStep.visuals);
-    }
   }
 
   /// الانتقال — لا يقع إلا من [_onLoadStatus]، أي بعد بلوغ الشريط نهايته

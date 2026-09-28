@@ -29,8 +29,8 @@ import 'support/auth_stub.dart';
 
 const _product = Product(
   id: 'p1',
-  name: 'مجسّم لوفي',
-  description: 'وصف',
+  nameAr: 'مجسّم لوفي',
+  descriptionAr: 'وصف',
   images: [],
   price: 25000,
 );
@@ -52,7 +52,7 @@ final _order = Order(
 Review _review(ReviewStatus status) => Review(
   id: 'r1',
   productId: _product.id,
-  productName: _product.name,
+  productNames: _product.names,
   orderId: _order.id,
   rating: 5,
   comment: 'ممتاز',

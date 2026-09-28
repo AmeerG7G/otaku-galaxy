@@ -23,6 +23,7 @@ import 'package:otaku_galaxy/core/design_system/themes/app_theme.dart';
 import 'package:otaku_galaxy/core/di/injection_container.dart';
 import 'package:otaku_galaxy/core/l10n/app_strings.dart';
 import 'package:otaku_galaxy/core/router/app_router.dart';
+import 'package:otaku_galaxy/core/utils/iraqi_phone.dart';
 import 'package:otaku_galaxy/features/auth/data/datasources/auth_local_storage.dart';
 import 'package:otaku_galaxy/features/auth/domain/entities/account_request.dart';
 import 'package:otaku_galaxy/features/auth/domain/usecases/change_password_usecase.dart';
@@ -315,20 +316,20 @@ void main() {
     });
   });
 
-  // [CRITICAL REGRESSION GUARD] §49.2 — بادئة `07` ثابتة والمستخدم يكتب التسعة.
+  // [CRITICAL REGRESSION GUARD] (2026-09-27) لا بادئة `07` ثابتة في الحقل.
   //
-  // مُنسّقٌ للرقم الكامل (١١ رقماً) كان يقصّ قبل أن يُسقط رمز الدولة: لصقُ
-  // `+9647701234567` صار `96477012345` فرفضه التحقق، ولم يعد الحقل يعرض
-  // البادئة. هنا الشاشتان الحقيقيتان: ما يظهر في الحقل وما يصل إلى الخادم.
-  group('[CRITICAL] حقل الهاتف: بادئة 07 ثابتة، ولا يضيع رقمٌ من أي صيغة', () {
-    const pasted = [
-      '+9647701234567',
-      '009647701234567',
-      '9647701234567',
-      '07701234567',
-      '٠٧٧٠١٢٣٤٥٦٧',
-      '0770 123 4567',
-    ];
+  // كان الحقل يعرض `07` ثابتةً (§49.2) ويأخذ التسعة التي تليها. الآن يكتب
+  // الزبون رقمه كاملاً — `07` ضمناً — والقاعدة كما هي: موبايل عراقي 075–079،
+  // يصل الخادمَ مطبَّعاً `+9647XXXXXXXXX`. هنا الشاشتان الحقيقيتان: ما يظهر
+  // في الحقل وما يصل إلى الخادم.
+  group('[CRITICAL] حقل الهاتف: الرقم كاملاً بلا بادئة ثابتة، والقاعدة العراقية كما هي', () {
+    const accepted = <String, String>{
+      '07701234567': '+9647701234567',
+      '07501234567': '+9647501234567',
+      '07991234567': '+9647991234567',
+      '٠٧٧٠١٢٣٤٥٦٧': '+9647701234567',
+      '0770 123 4567': '+9647701234567',
+    };
 
     TextField phoneField(WidgetTester tester, String label) => tester.widget<TextField>(
       find.descendant(
@@ -337,30 +338,48 @@ void main() {
       ),
     );
 
-    for (final raw in pasted) {
-      testWidgets('التسجيل: «$raw» ← يُعرض 701234567 بعد 07 ويُرسل +9647701234567', (tester) async {
+    testWidgets('[CRITICAL] الحقل فارغ بلا بادئة، و«7» لا تصير «07»', (tester) async {
+      await _pump(tester, route: const RegisterRoute());
+      final s = AppStrings.arabic;
+      var field = phoneField(tester, s('phoneNumber'));
+      expect(field.controller!.text, isEmpty);
+      expect(field.decoration!.prefixText, isNull);
+      expect(field.decoration!.prefix, isNull);
+      expect(field.decoration!.hintText, 'أدخل رقم الهاتف');
+      expect(field.keyboardType, TextInputType.phone);
+      await _type(tester, s('phoneNumber'), '7');
+      await tester.pump();
+      field = phoneField(tester, s('phoneNumber'));
+      expect(field.controller!.text, '7');
+    });
+
+    for (final entry in accepted.entries) {
+      testWidgets('التسجيل: «${entry.key}» ← يُرسل ${entry.value}', (tester) async {
         final h = await _pump(tester, route: const RegisterRoute());
         final s = AppStrings.arabic;
-        await _type(tester, s('phoneNumber'), raw);
+        await _type(tester, s('phoneNumber'), entry.key);
         await tester.pump();
         final field = phoneField(tester, s('phoneNumber'));
-        expect(field.controller!.text, '701234567', reason: raw);
-        expect(field.decoration!.prefixText, '07');
-        expect(field.decoration!.hintText, s('phoneHintExample'));
+        // الحقل يعرض الرقم كاملاً كما كُتب (أرقاماً غربية بلا فواصل).
+        expect(field.controller!.text, iraqiPhoneInputText(entry.key), reason: entry.key);
+        expect(field.controller!.text, startsWith('07'), reason: entry.key);
 
         await _type(tester, s('username'), 'زبون جديد');
         await _type(tester, s('password'), 'secret123');
         await tester.tap(find.text(s('genderMale')));
         await tester.pump();
         await _tapButton(tester, s('submitRequest'));
-        expect(h.repo.registrations.single['phone'], '+9647701234567', reason: raw);
+        expect(h.repo.registrations.single['phone'], entry.value, reason: entry.key);
       });
     }
 
-    testWidgets('نسيت كلمة المرور: اللصق الدولي يصل كاملاً', (tester) async {
+    testWidgets('نسيت كلمة المرور: الحقل نفسه بلا بادئة، والرقم الكامل يصل مطبَّعاً', (tester) async {
       final h = await _pump(tester, route: const ForgotPasswordRoute());
       final s = AppStrings.arabic;
-      await _type(tester, s('phoneNumber'), '+9647801234567');
+      final field = phoneField(tester, s('phoneNumber'));
+      expect(field.decoration!.prefixText, isNull);
+      expect(field.decoration!.hintText, 'أدخل رقم الهاتف');
+      await _type(tester, s('phoneNumber'), '07801234567');
       await _type(tester, s('username'), 'مختبر');
       await tester.tap(find.text(s('genderMale')));
       await tester.pump();
@@ -375,14 +394,22 @@ void main() {
       expect(h.repo.resets.single['phone'], '+9647801234567');
     });
 
-    testWidgets('رقمٌ ناقص أو ببادئة مرفوضة (070) لا يُرسل', (tester) async {
+    testWidgets('[CRITICAL] بلا 07، ناقص، 070، أرضي، أو أجنبي — لا يُرسل', (tester) async {
       final h = await _pump(tester, route: const RegisterRoute());
       final s = AppStrings.arabic;
       await _type(tester, s('username'), 'زبون جديد');
       await _type(tester, s('password'), 'secret123');
       await tester.tap(find.text(s('genderMale')));
       await tester.pump();
-      for (final bad in ['7701234', '07001234567']) {
+      for (final bad in [
+        '7701234567', // الرقم بلا 07 — لا تُضاف عنه.
+        '7701234',
+        '0770123456',
+        '07001234567',
+        '0662251234', // أرضي.
+        '+447700900123', // أجنبي.
+        '+9647701234567', // الحقل للصيغة المحلية 07…
+      ]) {
         await _type(tester, s('phoneNumber'), bad);
         await _tapButton(tester, s('submitRequest'));
         expect(h.repo.registrations, isEmpty, reason: bad);

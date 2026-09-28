@@ -1,3 +1,4 @@
+import '../../../../core/l10n/bilingual_text.dart';
 import '../../../../core/network/media_url.dart';
 import '../../../../core/constants/api_endpoints.dart';
 import '../../../../core/network/api_client.dart';
@@ -78,10 +79,18 @@ class CartRepositoryImpl implements CartRepository {
   /// يبني [CartItem] من سطرٍ واحد من الخادم.
   CartItem _mapLine(Map<String, dynamic> line) {
     final image = resolveMediaUrl(line['productImage'] as String?);
+    // الاسم بلغتيه (066) — السلة تتبدّل مع لغة الواجهة بلا جلبٍ ثانٍ، والناقص
+    // كردياً يبقى `null` صريحاً. `productName` (العربي) لردٍّ أقدم وحده.
+    final names = BilingualText.fromJson(
+      line,
+      arKey: 'productNameAr',
+      ckbKey: 'productNameCkb',
+      legacyKey: 'productName',
+    );
     final product = Product(
       id: line['productId']?.toString() ?? '',
-      name: line['productName'] as String? ?? '',
-      description: '',
+      nameAr: names.ar,
+      nameCkb: names.ckb,
       price: (line['unitPrice'] as num?)?.toDouble() ?? 0,
       images: image != null && image.isNotEmpty ? [image] : const [],
       stock: line['stock'] as int? ?? 0,

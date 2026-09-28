@@ -218,7 +218,6 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen>
       return AnimeEmptyState(
         title: context.strings('noProductsInCategoryTitle'),
         subtitle: context.strings('noProductsInCategoryBody'),
-        artwork: 'assets/art/a-l-detective.png',
         artworkSlot: VisualSlots.categoryProductsHeader,
         actionLabel: context.strings('backToCategories'),
         onAction: () => context.router.maybePop(),
@@ -325,20 +324,18 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen>
   /// شبكة المنتجات (تُستخدم داخل صفحة المتصفح أو في القسم بلا أقسام فرعية).
   Widget _buildProductsScroll(List<Product> products) {
     if (products.isEmpty) {
-      return LayoutBuilder(
-        builder: (context, constraints) => RefreshIndicator(
-          onRefresh: _load,
-          child: SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            child: SizedBox(
-              height: constraints.maxHeight,
-              child: AnimeEmptyState(
-                title: context.strings('noProductsHereTitle'),
-                subtitle: context.strings('noProductsHereBody'),
-                artwork: 'assets/art/a-l-detective.png',
-                artworkSlot: VisualSlots.emptyCategoryProducts,
-              ),
-            ),
+      // موسَّطة ومضغوطة كنمط السلة — لا لوحة تمتدّ على ارتفاع الشاشة كاملاً
+      // فيتبقّى فراغٌ كبير أسفل رسمٍ ونصٍّ أصغر منها بكثير.
+      return RefreshIndicator(
+        onRefresh: _load,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: AnimeEmptyState(
+            title: context.strings('noProductsHereTitle'),
+            subtitle: context.strings('noProductsHereBody'),
+            artworkSlot: VisualSlots.emptyCategoryProducts,
+            centered: true,
+            artworkHeight: 210,
           ),
         ),
       );
