@@ -41,6 +41,10 @@ class _ForceUpdateGateState extends State<ForceUpdateGate>
   /// يمنع فحصين متوازيين (استئناف أثناء فحص الإقلاع مثلاً).
   bool _checking = false;
 
+  /// رفضٌ وصل أثناء فحصٍ جارٍ. ذلك الفحص ربما قرأ الإعداد قبل رفع الحدّ، فلو
+  /// أُسقط الرفض لقال الردّ القديم «مدعومة» ولم يُحجب إلا عند 426 التالي.
+  bool _recheckAfterCurrent = false;
+
   @override
   void initState() {
     super.initState();
@@ -58,7 +62,13 @@ class _ForceUpdateGateState extends State<ForceUpdateGate>
 
   /// الخادم رفض طلباً بسبب النسخة: الفحص يُعاد من الخادم نفسه — لا يُحجب
   /// على الإشارة وحدها، فالإعداد المقروء هو الحكم كما في كل مسار آخر.
-  void _onServerRejection() => unawaited(_refresh());
+  void _onServerRejection() {
+    if (_checking) {
+      _recheckAfterCurrent = true;
+      return;
+    }
+    unawaited(_refresh());
+  }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -87,6 +97,10 @@ class _ForceUpdateGateState extends State<ForceUpdateGate>
       // انظر سياسة «لا حجب عند الشكّ» في `AppVersionRepository.check`.
     } finally {
       _checking = false;
+    }
+    if (_recheckAfterCurrent && mounted) {
+      _recheckAfterCurrent = false;
+      await _refresh();
     }
   }
 

@@ -5,6 +5,7 @@
 // الوجه الثاني هو الخطِر: خطأٌ فيه يُقفل التطبيق على كل مستخدميه دفعةً
 // واحدة لحظةَ تعطُّل الخادم.
 
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
@@ -31,6 +32,10 @@ class _ConfigAdapter implements HttpClientAdapter {
   /// الخادم يرفض كل طلبٍ غير إعداد النسخة بـ426 — كما يفعل وسيط النسخة.
   bool rejectOthers = false;
 
+  /// يحبس ردّ إعداد النسخة حتى يكتمل: فحصٌ «في الطريق». الإعداد يُقرأ لحظةَ
+  /// وصول الطلب كما يفعل الخادم، فالردّ المحبوس يحمل ما كان قبل أي تغيير.
+  Completer<void>? holdVersionReply;
+
   @override
   Future<ResponseBody> fetch(
     RequestOptions options,
@@ -54,6 +59,10 @@ class _ConfigAdapter implements HttpClientAdapter {
         },
       );
     }
+    final minimum = this.minimum;
+    final latest = this.latest;
+    final hold = holdVersionReply;
+    if (hold != null) await hold.future;
     return ResponseBody.fromString(
       '{"success":true,"data":{"minimumSupportedVersion":"$minimum",'
       '"latestVersion":"$latest","androidStoreUrl":"https://play.example/x",'
@@ -104,6 +113,27 @@ Widget _gate(AppVersionRepository repository, {String runId = 'run'}) =>
     ),
   ),
 );
+
+/// يرسل طلباً عادياً يرفضه الخادم بـ426، ثم يضخّ حتى يستقرّ حكم الحاجز.
+///
+/// [CRITICAL] الطلب يُرسَل على ساعة الاختبار الوهمية لا داخل `runAsync`.
+/// المستمع يطلق إعادة الفحص متزامناً من داخل معالج الخطأ، فترث منطقةَ الطلب.
+/// كانت منطقةً حقيقية، وقفزات Dio بين المعترِضات `Future(() …)` هي مؤقّتات
+/// حقيقية، ولم ينتظرها الاختبار إلا بـ50ms من الزمن الفعلي. تحت حمل المجموعة
+/// الكاملة كانت المهلة تنقضي قبل وصول الحكم فيفشل التأكيد. على الساعة
+/// الوهمية تُطلَق تلك المؤقّتات ضمن `pumpAndSettle` نفسه، فتكتمل السلسلة
+/// (426 ← `serverRejections` ← إعادة الفحص ← `setState`) قبل الإطار الذي
+/// يُبنى فيه الحكم، أيّاً كان حمل المعالج.
+///
+/// التوقّع يُعلَّق قبل الضخّ: خطأٌ يكتمل بلا مستمع يُبلَّغ خطأً غير ملتقَط.
+Future<void> _rejectAndSettle(WidgetTester tester) async {
+  final rejected = expectLater(
+    _lastClient.get('/cart'),
+    throwsA(isA<AppException>()),
+  );
+  await tester.pumpAndSettle();
+  await rejected;
+}
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
@@ -201,11 +231,32 @@ void main() {
     adapter
       ..minimum = '1.2.0'
       ..rejectOthers = true;
-    await tester.runAsync(() async {
-      await expectLater(_lastClient.get('/cart'), throwsA(isA<AppException>()));
-    });
-    await tester.pumpAndSettle();
-    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+    await _rejectAndSettle(tester);
+
+    expect(find.byType(ForceUpdateScreen), findsOneWidget);
+    expect(find.text('محتوى التطبيق'), findsNothing);
+  });
+
+  testWidgets('[CRITICAL] 426 يصل وفحصٌ أقدم في الطريق: لا يضيع — يُعاد الفحص بعده', (
+    tester,
+  ) async {
+    // فحص الإقلاع قرأ الإعداد قبل رفع الحدّ وردّه لم يصل بعد. كان الرفض يُسقَط
+    // لأن فحصاً جارياً، ثم يقول الردّ القديم «مدعومة» فلا حجب حتى 426 التالي
+    // أو الاستئناف — أي أن أول 426 لم يحجب.
+    final adapter = _ConfigAdapter();
+    final staleReply = Completer<void>();
+    adapter.holdVersionReply = staleReply;
+    await tester.pumpWidget(_gate(await _repo(adapter, installed: '1.1.0')));
+    // صفرٌ من الزمن الوهمي يُطلق قفزة Dio فيصل فحص الإقلاع إلى الخادم ويُحبس.
+    await tester.pump(Duration.zero);
+    expect(adapter.calls, 1);
+
+    adapter
+      ..minimum = '1.2.0'
+      ..rejectOthers = true
+      ..holdVersionReply = null;
+    await _rejectAndSettle(tester);
+    staleReply.complete();
     await tester.pumpAndSettle();
 
     expect(find.byType(ForceUpdateScreen), findsOneWidget);
@@ -217,12 +268,11 @@ void main() {
     final adapter = _ConfigAdapter(minimum: '1.0.0')..rejectOthers = true;
     await tester.pumpWidget(_gate(await _repo(adapter, installed: '1.1.0')));
     await tester.pumpAndSettle();
-    await tester.runAsync(() async {
-      await expectLater(_lastClient.get('/cart'), throwsA(isA<AppException>()));
-    });
-    await tester.pumpAndSettle();
-    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
-    await tester.pumpAndSettle();
+    final callsBefore = adapter.calls;
+    await _rejectAndSettle(tester);
+    // طلب السلة المرفوض + إعادة الفحص التي أطلقها: بدونها يمرّ هذا الاختبار
+    // السلبيّ دون أن يكون الفحص قد جرى أصلاً.
+    expect(adapter.calls - callsBefore, 2);
     expect(find.text('محتوى التطبيق'), findsOneWidget);
   });
 
