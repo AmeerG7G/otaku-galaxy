@@ -142,7 +142,7 @@ class AppStrings {
     'chooseOptionsFirst': 'اختر الخيارات أولاً',
     'product': 'المنتج',
     'productLoadFailed': 'تعذّر تحميل هذا المنتج. تأكد من اتصالك وحاول مرة أخرى.',
-    'shareProductText': '{name}\n{price} د.ع — مجرة الأوتاكو',
+    'shareProductText': '{name}\n{url}',
     'listSeparator': '، ',
     'loginRequiredForCollections': 'المجموعات تحتاج تسجيل الدخول لحسابك في مجرة الأوتاكو.',
     'addToYourCollection': 'أضف إلى مجموعتك',
@@ -792,7 +792,7 @@ class AppStrings {
     'chooseOptionsFirst': 'سەرەتا هەڵبژاردنەکان دیاری بکە',
     'product': 'بەرهەم',
     'productLoadFailed': 'بارکردنی ئەم بەرهەمە سەرکەوتوو نەبوو. لە پەیوەندییەکەت دڵنیابەرەوە و دووبارە هەوڵ بدەوە.',
-    'shareProductText': '{name}\n{price} د.ع — گەلاکسی ئۆتاکو',
+    'shareProductText': '{name}\n{url}',
     'listSeparator': '، ',
     'loginRequiredForCollections': 'کۆمەڵەکان پێویستیان بە چوونەژوورەوەیە بۆ هەژمارەکەت لە گەلاکسی ئۆتاکو.',
     'addToYourCollection': 'بیخە کۆمەڵەکەتەوە',
@@ -1174,6 +1174,7 @@ class AppStrings {
     'discountPercentBadge', // «−{percent}٪» — رموز فقط
     'listSeparator', // «، » — الفاصلة نفسها في اللغتين
     'countWithUnit', // «{count} {unit}» — تركيبٌ من متغيّرين بلا كلمة واحدة
+    'shareProductText', // «{name}⏎{url}» — الاسم والرابط بلا كلمة (STEP 64)
   };
 
   static Iterable<String> get pendingKeys =>

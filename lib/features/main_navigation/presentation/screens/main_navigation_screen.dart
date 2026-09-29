@@ -14,6 +14,7 @@ import '../../../orders/domain/repositories/order_repository.dart';
 import '../../../auth/presentation/cubit/auth_cubit.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../../core/di/injection_container.dart';
+import '../../../notifications/push/push_tap_router.dart';
 import '../../../account/presentation/screens/account_screen.dart';
 import '../../../cart/presentation/screens/cart_screen.dart';
 import '../../../cart/presentation/cart_auto_sync.dart';
@@ -88,9 +89,12 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     mainNavIndex.addListener(_onExternalIndexChanged);
     WidgetsBinding.instance.addObserver(this);
     // بعد أول إطار، حتى يكون هناك سياق صالح لعرض ورقة.
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => _checkPendingConfirmation(),
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkPendingConfirmation();
+      // وجهة إشعارٍ فوري لُمس قبل أن تجهز الواجهة (إطلاقٌ من العدم) تُفتح
+      // الآن فوقها — لا فوق شاشة البداية التي تستبدل نفسها.
+      if (sl.isRegistered<PushTapRouter>()) sl<PushTapRouter>().markReady();
+    });
   }
 
   @override

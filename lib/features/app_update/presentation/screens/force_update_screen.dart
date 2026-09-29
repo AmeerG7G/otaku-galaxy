@@ -3,7 +3,6 @@ import '../../../../core/l10n/app_strings.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/design_system/design_system.dart';
-import '../../../settings/presentation/cubit/locale_cubit.dart';
 import '../../domain/app_version_config.dart';
 
 /// شاشة إجبار التحديث — حاجزٌ كامل بلا مخرج سوى المتجر.
@@ -19,9 +18,8 @@ import '../../domain/app_version_config.dart';
 /// اللوحة تحمل رسم شخصيةٍ يكسر حافتها؛ أُزيل ولا يعود. يحرسه
 /// `test/force_update_test.dart` («بلا رسم شخصية»).
 ///
-/// الرسالة بلغة الواجهة: رسالة المسؤول لتلك اللغة إن ضبطها (`updateMessage`
-/// للعربية، `updateMessageCkb` للكردية)، وإلا النصّ الافتراضي المترجَم — فلا
-/// تظهر رسالةٌ عربية في واجهةٍ كردية.
+/// [STEP 64 §16] النصّ المترجَم الافتراضي وحده بلغة الواجهة — لا رسالة
+/// مسؤول ولا «أحدث نسخة». سطر النسخ: المثبَّتة والحدّ الأدنى المطلوب.
 class ForceUpdateScreen extends StatelessWidget {
   const ForceUpdateScreen({
     super.key,
@@ -41,7 +39,7 @@ class ForceUpdateScreen extends StatelessWidget {
   static const defaultMessageKey = 'updateRequiredMessage';
 
   Future<void> _openStore(BuildContext context) async {
-    final url = config.storeUrlFor();
+    final url = config.updateUrl;
     if (url.isEmpty) {
       // رابط غير مضبوط: نقول ذلك بدل أن نصمت على زرّ لا يفعل شيئاً.
       _notify(
@@ -71,12 +69,7 @@ class ForceUpdateScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = context.themeColors;
-    final custom = context.language == AppLanguage.kurdish
-        ? config.updateMessageCkb
-        : config.updateMessage;
-    final message = custom.isNotEmpty
-        ? custom
-        : context.strings(defaultMessageKey);
+    final message = context.strings(defaultMessageKey);
 
     return PopScope(
       // [CRITICAL] زرّ الرجوع لا يُخرج من الحاجز. بدونه يخرج المستخدم بضغطة
@@ -148,9 +141,7 @@ class ForceUpdateScreen extends StatelessWidget {
                             const SizedBox(height: 20),
                             _VersionLine(
                               installedVersion: installedVersion,
-                              requiredVersion: config.latestVersion.isNotEmpty
-                                  ? config.latestVersion
-                                  : config.minimumSupportedVersion,
+                              requiredVersion: config.minimumSupportedVersion,
                             ),
                             const SizedBox(height: 22),
                             AnimePrimaryButton(

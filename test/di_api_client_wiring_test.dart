@@ -15,6 +15,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:otaku_galaxy/core/config/app_config.dart';
 import 'package:otaku_galaxy/core/di/injection_container.dart' as di;
 import 'package:otaku_galaxy/core/network/api_client.dart';
+import 'package:otaku_galaxy/features/notifications/data/push_token_repository.dart';
+import 'package:otaku_galaxy/features/notifications/push/firebase_push.dart';
+import 'package:otaku_galaxy/features/notifications/push/push_tap_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// المستودعات التي تُجري طلبات مصادَقة عبر الشبكة.
@@ -92,6 +95,20 @@ void main() {
     });
 
     await di.init(config: AppConfig.development);
+  });
+
+  // [STEP 64 §13] مصدر رمز الإشعارات يتبع التهيئة: بلا Firebase (كل بناءٍ
+  // بلا defines) غير مضبوط، ومعه FCM — يُحلّ كسولاً بعد `initPushNotifications`.
+  test('push token source follows initPushNotifications', () async {
+    expect(di.sl<PushTokenSource>(), isA<UnconfiguredPushTokenSource>());
+    expect(di.sl.isRegistered<PushTapRouter>(), isTrue);
+    pushNotificationsReady = true;
+    addTearDown(() => pushNotificationsReady = false);
+    await di.sl.resetLazySingleton<PushTokenSource>();
+    expect(di.sl<PushTokenSource>(), isA<FirebasePushTokenSource>());
+    pushNotificationsReady = false;
+    await di.sl.resetLazySingleton<PushTokenSource>();
+    expect(di.sl<PushTokenSource>(), isA<UnconfiguredPushTokenSource>());
   });
 
   test('the shared ApiClient carries a tokenProvider', () {

@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../../../core/auth/require_auth.dart';
 import '../../../../core/design_system/design_system.dart';
+import '../../../../core/di/injection_container.dart' show sl;
 import '../../../../core/l10n/gender.dart';
 import '../../../cart/presentation/cart_actions.dart';
 import '../../../collections/presentation/widgets/add_to_collection_sheet.dart';
@@ -19,6 +20,8 @@ import '../../../reviews/presentation/widgets/product_reviews_section.dart';
 import '../../../visuals/domain/visual_slot.dart';
 import '../../../visuals/presentation/character_artwork.dart';
 import '../../../restock/presentation/restock_notify_button.dart';
+import '../../../settings/data/store_settings_repository.dart';
+import '../utils/product_share.dart';
 
 /// تفاصيل المنتج بتصميم Otaku Galaxy v2.
 ///
@@ -28,6 +31,15 @@ import '../../../restock/presentation/restock_notify_button.dart';
 /// ما يتدلّى من صندوق رسم التفاصيل (الصورة 16) خلف حافة الشاشة اليسرى —
 /// من هامش الصورة الشفّاف وحده (انظر `_buildDetails`).
 const double _productArtOverhang = 23;
+
+/// «قليلاً إلى اليسار» (STEP 64 §18، طلب المالك): كان أوّل بكسلٍ مرئي على
+/// بُعد ~٤ من الحافة؛ الإزاحة تستهلك هذه المسافة كلّها فتلامس الشخصيةُ الحافة
+/// دون أن تُقصّ (قيد «لا يعبر الحافة» باقٍ). الموضع لا الصورة: 16.png لا تُمسّ،
+/// والشخصيات الأخرى لا تتحرّك.
+const double _productArtShiftLeft = 4;
+
+/// أقصى انتظارٍ لرابط المتجر عند المشاركة إن لم يكن مخبّأً.
+const Duration _shareUrlRefreshTimeout = Duration(seconds: 3);
 
 @RoutePage()
 class ProductDetailScreen extends StatefulWidget {
@@ -241,7 +253,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
             // شيء. يحرسه `test/character_art_placement_test.dart` بقياس
             // بكسلات الصورة الفعلية: صورةٌ بديلة بهامشٍ أضيق تُفشله قبل أن
             // تُقصّ عند الزبون.
-            end: -18 - _productArtOverhang,
+            end: -18 - _productArtOverhang - _productArtShiftLeft,
             child: IgnorePointer(
               // بلا شفافية — الشخصية كما صورتها (قرار 2026-09-15).
               child: const CharacterArtwork(
@@ -710,13 +722,24 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
 
   /// مشاركة المنتج عبر طبقة المشاركة الأصلية لنظام التشغيل (واتساب،
   /// تيليغرام، نسخ، المزيد...) — بلا شبكة مشاركة داخلية خاصة بالتطبيق.
-  void _shareProduct(Product product) {
-    SharePlus.instance.share(
+  ///
+  /// النصّ من [productShareText]: الاسم ورابط المتجر، بلا سعر. الرابط مخبّأ
+  /// منذ شاشة البداية؛ إن فشل ذلك الجلب تُعاد محاولةٌ واحدة قصيرة هنا، ثم
+  /// يُشارَك الاسم وحده بدل أن يتأخّر الزرّ.
+  Future<void> _shareProduct(Product product) async {
+    final strings = context.strings;
+    final name = localizedProductName(product, context.language);
+    final settings = sl<StoreSettingsRepository>();
+    var storeUrl = settings.links.shareUrl;
+    if (storeUrl.isEmpty) {
+      storeUrl = (await settings.refresh().timeout(
+        _shareUrlRefreshTimeout,
+        onTimeout: () => settings.links,
+      )).shareUrl;
+    }
+    await SharePlus.instance.share(
       ShareParams(
-        text: context.strings.p('shareProductText', {
-          'name': localizedProductName(product, context.language),
-          'price': product.price.toStringAsFixed(0),
-        }),
+        text: productShareText(strings, name: name, storeUrl: storeUrl),
       ),
     );
   }

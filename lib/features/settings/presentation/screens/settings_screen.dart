@@ -12,6 +12,8 @@ import '../../../auth/presentation/cubit/auth_cubit.dart';
 import '../../../auth/presentation/cubit/auth_state.dart';
 import '../../../../core/auth/require_auth.dart';
 import '../../../../core/constants/validation_rules.dart';
+import '../../../../core/config/app_config.dart';
+import '../../../app_update/data/installed_version.dart';
 import '../../data/notification_prefs_repository.dart';
 import '../../data/notification_prefs_storage.dart';
 import '../cubit/theme_cubit.dart';
@@ -195,6 +197,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ),
                   ],
+                  const SizedBox(height: 26),
+                  const BuildInfoLine(),
                 ],
               ),
             ),
@@ -510,6 +514,41 @@ class _ChangePasswordFormState extends State<_ChangePasswordForm> {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// سطر النسخة والبيئة في آخر الإعدادات — `v1.0.0 · staging`.
+///
+/// [STEP 64] نسخة الاختبار كانت تعمل بإعدادات التطوير دون أن يظهر ذلك في أي
+/// مكان. السطر يقرأ البيئة من [AppConfig] المسجَّل في الحقن — ما يستعمله
+/// `ApiClient` فعلاً — فيقول الحقيقة لا ما يُفترض. الإنتاج لا يُظهر اسم
+/// البيئة. نصٌّ تقني لاتيني بلا ترجمة (رقم نسخة واسم بيئة).
+class BuildInfoLine extends StatelessWidget {
+  const BuildInfoLine({super.key});
+
+  static const Key lineKey = Key('settings_build_info');
+
+  @override
+  Widget build(BuildContext context) {
+    final config = sl.isRegistered<AppConfig>() ? sl<AppConfig>() : null;
+    final version = sl.isRegistered<InstalledVersionSource>()
+        ? sl<InstalledVersionSource>().cached
+        : '';
+    final parts = [
+      if (version.isNotEmpty) 'v$version',
+      if (config != null && !config.environment.isProduction) config.envName,
+    ];
+    if (parts.isEmpty) return const SizedBox.shrink();
+    return Center(
+      child: Text(
+        parts.join(' · '),
+        key: lineKey,
+        textDirection: TextDirection.ltr,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
         ),
       ),
     );

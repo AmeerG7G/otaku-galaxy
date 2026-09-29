@@ -3123,25 +3123,25 @@
   "human_notes": ""
  },
  "shareProductText": {
-  "ar": "{name}\n{price} د.ع — مجرة الأوتاكو",
-  "ckb": "{name}\n{price} د.ع — گەلاکسی ئۆتاکو",
+  "ar": "{name}\n{url}",
+  "ckb": "{name}\n{url}",
   "feature": "product",
-  "context": "زر المشاركة — نصّ يُرسل خارج التطبيق",
+  "context": "زر المشاركة — نصّ يُرسل خارج التطبيق: اسم المنتج ثم رابط المتجر (من لوحة التحكم)، بلا سعر",
   "risk": "HIGH",
   "placeholders": [
    "name",
-   "price"
+   "url"
   ],
   "gender": "n/a",
   "glossary": [],
   "self_review": "SELF_REVIEWED",
   "native_review": "NEEDS_NATIVE_REVIEW",
-  "notes": "سطرٌ حقيقي بين الاسم والسعر؛ اسم المتجر بالحروف الكردية — القيمة هنا هي المعروضة فعلاً (سطرٌ حقيقي) لا صيغة المصدر",
+  "notes": "STEP 64: السعر واسم المتجر أُزيلا بطلب المالك؛ لم يبقَ نصٌّ يُترجَم — القالب متطابق في اللغتين. الرابط غير المضبوط = الاسم وحده (في الكود)",
   "issues": "",
   "ai_pre_review": "GOOD",
   "ai_issue": "",
   "proposed_ckb": "",
-  "ai_explanation": "السطر الحقيقي محفوظ والمتغيّران سليمان.",
+  "ai_explanation": "قالبٌ بلا كلمات: سطرٌ حقيقي بين المتغيّرين، ولا شيء يُترجَم.",
   "human_decision": "PENDING",
   "human_reviewer": "",
   "human_notes": ""

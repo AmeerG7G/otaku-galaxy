@@ -52,6 +52,11 @@ dependencies:
   # ساعة قابلة للتزييف في الاختبارات (عدّاد تأكيد الطلب) — `clock.now()` لا `DateTime.now()`.
   clock: ^1.1.1
   flutter_cache_manager: ^3.4.2
+  # الإشعارات الفورية (STEP 64 §13). الإعداد من `--dart-define` لا من
+  # `google-services.json` — البناء يعمل بلاه، والإشعارات معطّلة حينها.
+  firebase_core: ^4.12.1
+  firebase_messaging: ^16.4.3
+  flutter_local_notifications: ^22.0.1
 
 dev_dependencies:
   flutter_test:

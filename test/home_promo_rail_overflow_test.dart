@@ -376,12 +376,12 @@ void main() {
             ),
           );
           expect(art.width, greaterThan(0), reason: 'الرسم لم يُفكّ');
-          // الطلب: يمين وأعلى من موضعه القديم (`end: -18`, `bottom: -8`)،
-          // أي داخل البطاقة من اليسار ومن الأسفل.
+          // داخل البطاقة من اليسار، وموسَّطٌ عمودياً (STEP 64 §17: كان مثبَّتاً
+          // في القاع فيبدو «نازلاً» كلما طالت البطاقة).
           expect(art.left, greaterThanOrEqualTo(card.left));
           expect(art.bottom, lessThanOrEqualTo(card.bottom));
           expect(art.left, closeTo(card.left + inset, 0.5));
-          expect(art.bottom, closeTo(card.bottom - inset, 0.5));
+          expect(art.top - card.top, closeTo(card.bottom - art.bottom, 0.5));
           _expectInsideRoundedCard(art, card, AppDimens.radiusLg);
         }
         expect(tester.takeException(), isNull);

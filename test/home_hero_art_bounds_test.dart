@@ -151,25 +151,58 @@ void main() {
     }
   });
 
-  group('الموضع المطلوب: يميناً وأعلى، والتكوين نفسه', () {
+  group('الموضع: جهة اليسار، وموسَّطٌ عمودياً (STEP 64 §17)', () {
     for (final entry in _phones.entries) {
-      testWidgets('${entry.key} — مثبَّت في الزاوية السفلية اليسرى', (
-        tester,
-      ) async {
-        await _pump(tester, size: entry.value, banner: _devHero);
-        final card = _card(tester);
-        final art = _art(tester);
+      testWidgets(
+        '${entry.key} — يسار البطاقة، والفراغ فوقه يساوي الفراغ تحته',
+        (tester) async {
+          await _pump(tester, size: entry.value, banner: _devHero);
+          final card = _card(tester);
+          final art = _art(tester);
 
-        // القديم: يسار الرسم عند card.left − 34 وأسفله عند card.bottom + 12.
-        // الجديد: داخلهما بإزاحة الزاوية — أي أيمن بـ٣٤ + ١١٫١ وأعلى بـ١٢ + ١١٫١.
-        expect(art.left, closeTo(card.left + _inset, 0.5));
-        expect(art.bottom, closeTo(card.bottom - _inset, 0.5));
-        expect(art.left - (card.left - 34), greaterThan(0), reason: 'لم يتحرّك يميناً');
-        expect((card.bottom + 12) - art.bottom, greaterThan(0), reason: 'لم يتحرّك أعلى');
+          // أفقياً كما كان منذ 2026-09-28: داخل اليسار بإزاحة الزاوية.
+          expect(art.left, closeTo(card.left + _inset, 0.5));
+          // [STEP 64] عمودياً: موسَّط — كان مثبَّتاً في القاع فيبقى فوقه شريطٌ
+          // فارغ يكبر مع ارتفاع البطاقة («الشخصية نازلة»).
+          expect(art.top - card.top, closeTo(card.bottom - art.bottom, 0.5));
+          // التكوين محفوظ: البطاقة تتّسع للرسم بارتفاعه الأصلي فلا يُصغَّر.
+          expect(art.height, closeTo(168, 0.5));
+        },
+      );
+    }
 
-        // التكوين محفوظ: البطاقة تتّسع للرسم بارتفاعه الأصلي فلا يُصغَّر.
-        expect(art.height, closeTo(168, 0.5));
-      });
+    for (final language in AppLanguage.values) {
+      for (final scale in const [1.15, 1.3]) {
+        testWidgets(
+          '[regression] ${language.name} — خطّ ${scale}x: البطاقة أطول والرسم ما يزال في وسطها لا في قاعها',
+          (tester) async {
+            // مقيس قبل الإصلاح: بطاقة ٢١٠–٢٨٠ والرسم في القاع بفراغ ٣١–١٠١ فوقه.
+            await _pump(
+              tester,
+              size: const Size(393, 852),
+              banner: const model.Banner(
+                id: 'hero',
+                titleAr: 'اكتشف، اجمع، واستمتع!',
+                titleCkb: 'بدۆزەرەوە، کۆبکەرەوە و چێژ وەربگرە!',
+                placement: 'hero',
+              ),
+              textScale: scale,
+              language: language,
+            );
+            final card = _card(tester);
+            final art = _art(tester);
+            expect(card.height, greaterThan(200));
+            final top = art.top - card.top;
+            final bottom = card.bottom - art.bottom;
+            expect(
+              top,
+              closeTo(bottom, 0.5),
+              reason: 'فوقه $top وتحته $bottom',
+            );
+            _expectInsideRoundedCard(art, card);
+          },
+        );
+      }
     }
   });
 
@@ -233,7 +266,7 @@ void main() {
       final card = _card(tester);
       final art = _art(tester);
       expect(art.left, closeTo(card.left + _inset, 0.5));
-      expect(art.bottom, closeTo(card.bottom - _inset, 0.5));
+      expect(art.top - card.top, closeTo(card.bottom - art.bottom, 0.5));
       _expectInsideRoundedCard(art, card);
       expect(tester.takeException(), isNull);
     });

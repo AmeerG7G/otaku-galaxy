@@ -394,7 +394,8 @@ void main() {
       'errSessionExpired': 'انتهت الجلسة — سجّل الدخول مجدداً',
       'unitMinuteTwo': 'دقيقتان',
       'monthSeptember': 'سبتمبر',
-      'shareProductText': '{name}\n{price} د.ع — مجرة الأوتاكو',
+      // [STEP 64 §19] تغييرٌ مقصود بطلب المالك: الاسم ورابط المتجر، بلا سعر.
+      'shareProductText': '{name}\n{url}',
       'register': 'إنشاء حساب',
       'phoneNumber': 'رقم الهاتف',
       'password': 'كلمة المرور',

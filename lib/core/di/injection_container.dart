@@ -62,6 +62,8 @@ import '../../features/settings/presentation/cubit/theme_cubit.dart';
 import '../../features/settings/data/store_settings_repository.dart';
 import '../../features/notifications/data/push_registrar.dart';
 import '../../features/notifications/data/push_token_repository.dart';
+import '../../features/notifications/push/firebase_push.dart';
+import '../../features/notifications/push/push_tap_router.dart';
 import '../../features/restock/data/restock_repository.dart';
 import '../../features/settings/data/notification_prefs_repository.dart';
 import '../../features/settings/data/notification_prefs_storage.dart';
@@ -244,10 +246,16 @@ void _initEngagementFeatures() {
     ..registerLazySingleton<NotificationPrefsStorage>(
       () => NotificationPrefsStorage(sl<SharedPreferences>()),
     )
-    // الإشعارات الفورية: المصدر غير مضبوط ما دام Firebase غير مربوط، وبقية
-    // المنظومة تعمل حوله بلا عطل (انظر `PushTokenSource`).
+    // الإشعارات الفورية: FCM إن هيّأه `initPushNotifications` (إعداد
+    // `--dart-define`)، وإلا مصدرٌ غير مضبوط تعمل بقية المنظومة حوله بلا
+    // عطل (انظر `PushTokenSource`). يُحلّ عند أوّل دخول — بعد التهيئة.
     ..registerLazySingleton<PushTokenSource>(
-      () => const UnconfiguredPushTokenSource(),
+      () => pushNotificationsReady
+          ? FirebasePushTokenSource()
+          : const UnconfiguredPushTokenSource(),
+    )
+    ..registerLazySingleton<PushTapRouter>(
+      () => PushTapRouter((route) => sl<AppRouter>().push(route)),
     )
     ..registerLazySingleton<PushTokenRepository>(
       () => PushTokenRepository(sl<ApiClient>()),

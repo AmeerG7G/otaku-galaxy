@@ -21,6 +21,10 @@ class OrdersScreen extends StatefulWidget {
   /// مقياس رسم الترويسة من مقاسه الافتراضي — أصغر ٢٠٪.
   static const double artScale = 0.8;
 
+  /// شخصية «لا طلبات بعد» — أكبر بـ٣٠٪ من رسم الحالة الفارغة الافتراضي
+  /// (١٥٠ ← ١٩٥، STEP 64 §22).
+  static const double emptyArtworkHeight = 150 * 1.3;
+
   @override
   State<OrdersScreen> createState() => _OrdersScreenState();
 }
@@ -99,10 +103,16 @@ class _OrdersScreenState extends State<OrdersScreen> with LocaleRefetch {
       return AnimeErrorState(message: _error!, onAction: _load);
     }
     if (_orders.isEmpty) {
+      // [PRODUCT] (STEP 64 §22) موسَّطة كالسلة: الشخصية ← العنوان ← الوصف
+      // ← الزرّ، والشخصية أكبر بـ٣٠٪ (١٥٠ ← ١٩٥)، واللوحة بارتفاع محتواها
+      // فلا فراغ ميت — والرسم يصغر على الهواتف القصيرة بدل أن يفيض.
       return AnimeEmptyState(
         title: context.strings('noOrdersTitle'),
         subtitle: context.strings('noOrdersBody'),
         artworkSlot: VisualSlots.emptyOrders,
+        artworkHeight: OrdersScreen.emptyArtworkHeight,
+        centered: true,
+        fitContent: true,
         actionLabel: context.strings('startShopping'),
         onAction: () => context.router.maybePop(),
       );

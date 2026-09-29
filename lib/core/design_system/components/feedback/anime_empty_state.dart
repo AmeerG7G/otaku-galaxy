@@ -21,6 +21,8 @@ class AnimeEmptyState extends StatelessWidget {
     this.artworkSlot,
     this.centered = false,
     this.artworkHeight = 150,
+    this.fitContent = false,
+    this.bottomClearance = 18,
   });
 
   final String title;
@@ -53,6 +55,24 @@ class AnimeEmptyState extends StatelessWidget {
   /// ارتفاع الرسم التزييني (الشخصية). الافتراضي 150.
   final double artworkHeight;
 
+  /// اللوحة بارتفاع محتواها لا بالارتفاع الثابت (~٣٨٠) — للتركيب الموسَّط
+  /// وحده ([centered]).
+  ///
+  /// اللوحة الثابتة تترك فراغاً ميتاً فوق المحتوى وتحته، وتقلّص الرسم حين
+  /// يكبر (`Flexible`) — فلا يصير الرسم الأكبر أكبر. هنا يأخذ الرسم
+  /// [artworkHeight] كاملاً ما اتّسعت المساحة، ولا يتجاوز
+  /// [_fitArtworkShare] من ارتفاعها المتاح على الهواتف القصيرة (لا أقلّ من
+  /// [_fitArtworkMin])، وما زاد بعد ذلك يُمرَّر لا يفيض. خيارٌ اختياري:
+  /// «طلباتي» وحدها تطلبه اليوم (STEP 64 §22).
+  final bool fitContent;
+
+  /// الحشوة أسفل المُمرِّر. شاشات التبويب تحت الشريط العائم (`extendBody`)
+  /// تمرّر ارتفاعه (١٠٤ كقوائمها) كي يُمرَّر الزرّ فوقه على الهاتف القصير.
+  final double bottomClearance;
+
+  static const double _fitArtworkShare = 0.4;
+  static const double _fitArtworkMin = 110;
+
   @override
   Widget build(BuildContext context) {
     final colors = context.themeColors;
@@ -61,11 +81,23 @@ class AnimeEmptyState extends StatelessWidget {
     // يوسّطها عمودياً. على الشاشات القصيرة تتقلّص حتى ٢٦٠ بدل أن تفيض.
     return LayoutBuilder(
       builder: (context, constraints) {
-        final panelHeight = constraints.hasBoundedHeight
+        final fit = centered && fitContent;
+        final panelHeight = fit
+            ? null
+            : constraints.hasBoundedHeight
             ? (constraints.maxHeight - 36).clamp(260.0, 380.0)
             : 380.0;
+        final fitArtworkHeight = constraints.hasBoundedHeight
+            ? artworkHeight.clamp(
+                0.0,
+                (constraints.maxHeight * _fitArtworkShare).clamp(
+                  _fitArtworkMin,
+                  double.infinity,
+                ),
+              )
+            : artworkHeight;
         return SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+          padding: EdgeInsets.fromLTRB(18, 14, 18, bottomClearance),
           child: Container(
             width: double.infinity,
             height: panelHeight,
@@ -78,7 +110,11 @@ class AnimeEmptyState extends StatelessWidget {
             ),
             clipBehavior: Clip.antiAlias,
             child: centered
-                ? _buildCentered(context, colors)
+                ? _buildCentered(
+                    context,
+                    colors,
+                    fitArtworkHeight: fit ? fitArtworkHeight : null,
+                  )
                 : Stack(
                     children: [
                       // المصدر: الهالة أعلى اليمين الفيزيائي (right) والرسم أسفل
@@ -216,9 +252,78 @@ class AnimeEmptyState extends StatelessWidget {
   /// الهالة تبقى كما هي في التخطيط الجانبي (عنصر هوية لا تخطيط)، ويبقى كل
   /// شيء داخل اللوحة نفسها بمقاسها وحدودها ونصف قطرها — لا إعادة تصميم،
   /// إعادةُ ترتيبٍ فقط.
-  Widget _buildCentered(BuildContext context, AppThemeColors colors) {
+  ///
+  /// [fitArtworkHeight] غير فارغ = [fitContent]: العمود بارتفاعه الطبيعي
+  /// (`StackFit.passthrough` يمرّر عرض اللوحة المحكَم إليه فيبقى المركز
+  /// مركزها)، والرسم بارتفاعه المحسوب. `Flexible` الرخو في عمودٍ `min` بلا
+  /// حدٍّ علوي يُبنى كطفلٍ عادي، فيبقى هو نفسه في الوضعين.
+  Widget _buildCentered(
+    BuildContext context,
+    AppThemeColors colors, {
+    double? fitArtworkHeight,
+  }) {
     final theme = Theme.of(context);
+    final fit = fitArtworkHeight != null;
+    final art = !_hasArtwork
+        ? null
+        : artworkSlot == null
+        ? Image.asset(
+            artwork!,
+            height: fitArtworkHeight ?? artworkHeight,
+            fit: BoxFit.contain,
+          )
+        : CharacterArtwork(
+            slot: artworkSlot!,
+            height: fitArtworkHeight ?? artworkHeight,
+          );
+    final column = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        mainAxisSize: fit ? MainAxisSize.min : MainAxisSize.max,
+        children: [
+          // الرسم **فوق** الإجراء — وهو جوهر الطلب.
+          if (art != null) Flexible(child: art),
+          const SizedBox(height: AppDimens.space4),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontSize: 20,
+              height: 1.4,
+              fontWeight: AppDimens.weightBlack,
+            ),
+          ),
+          if (subtitle != null) ...[
+            const SizedBox(height: AppDimens.space3),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 280),
+              child: Text(
+                subtitle!,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  height: 1.8,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ],
+          if (actionLabel != null && onAction != null) ...[
+            const SizedBox(height: AppDimens.space5),
+            AnimePrimaryButton(
+              label: actionLabel!,
+              onPressed: onAction,
+              expanded: false,
+              borderRadius: AppDimens.radiusFull,
+              gradient: AppColors.ctaGradient,
+            ),
+          ],
+        ],
+      ),
+    );
     return Stack(
+      fit: fit ? StackFit.passthrough : StackFit.loose,
       children: [
         PositionedDirectional(
           top: -40,
@@ -247,65 +352,9 @@ class AnimeEmptyState extends StatelessWidget {
         // العمود «الموسّط» كان يلتصق بالحافة اليمنى: توسيطٌ داخل صندوقٍ
         // ملتصقٍ بالحافة ليس توسيطاً في اللوحة. المِلء يجعل العمود يمتدّ على
         // عرض اللوحة كاملاً فيصير مركزه مركزها. (رُصد بالقياس لا بالقراءة.)
-        Positioned.fill(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                // الرسم **فوق** الإجراء — وهو جوهر الطلب.
-                if (_hasArtwork)
-                  Flexible(
-                    child: artworkSlot == null
-                        ? Image.asset(
-                            artwork!,
-                            height: artworkHeight,
-                            fit: BoxFit.contain,
-                          )
-                        : CharacterArtwork(
-                            slot: artworkSlot!,
-                            height: artworkHeight,
-                          ),
-                  ),
-                const SizedBox(height: AppDimens.space4),
-                Text(
-                  title,
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontSize: 20,
-                    height: 1.4,
-                    fontWeight: AppDimens.weightBlack,
-                  ),
-                ),
-                if (subtitle != null) ...[
-                  const SizedBox(height: AppDimens.space3),
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 280),
-                    child: Text(
-                      subtitle!,
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        height: 1.8,
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                ],
-                if (actionLabel != null && onAction != null) ...[
-                  const SizedBox(height: AppDimens.space5),
-                  AnimePrimaryButton(
-                    label: actionLabel!,
-                    onPressed: onAction,
-                    expanded: false,
-                    borderRadius: AppDimens.radiusFull,
-                    gradient: AppColors.ctaGradient,
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
+        // [fitContent] وحده يترك العمود حرّاً — لأن اللوحة تأخذ ارتفاعها منه —
+        // و`StackFit.passthrough` هو ما يعطيه عرض اللوحة المحكَم هناك.
+        if (fit) column else Positioned.fill(child: column),
       ],
     );
   }

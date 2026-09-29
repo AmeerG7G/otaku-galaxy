@@ -56,7 +56,9 @@ enum AppConfig {
   // لا رسالة خطأ، فقط بياناتُ عملاء حقيقيين تتغيّر من بناءٍ تجريبي.
   staging._(
     environment: Environment.staging,
-    apiBaseUrl: 'https://staging-api.otaku-galaxy.example/api',
+    // المضيف الحقيقي (STEP 64): `--dart-define=API_BASE_URL` يبقى تجاوزاً
+    // صريحاً، لكن نسخة الاختبار لا تحتاجه بعد اليوم.
+    apiBaseUrl: 'https://staging-api.otakugalaxystore.com/api',
     appName: 'مجرة الأوتاكو (اختبار)',
     enableLogging: true,
   ),

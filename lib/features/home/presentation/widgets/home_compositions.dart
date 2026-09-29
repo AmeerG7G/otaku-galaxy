@@ -51,7 +51,7 @@ class SectionHeader extends StatelessWidget {
 }
 
 /// رسم البنر — صورة المسؤول، أو شخصية الموضع حين لا صورة أو فشل تحميلها —
-/// محصوراً داخل البطاقة ومثبَّتاً في زاويتها السفلية الطرفية (اليسرى في RTL).
+/// محصوراً داخل البطاقة، على جهة النهاية (اليسار في RTL) وموسَّطاً عمودياً.
 ///
 /// [CRITICAL] كان الرسم `PositionedDirectional(bottom: سالب، end: سالب)` بلا
 /// عرضٍ أقصى، فيخرج من يسار البطاقة ومن أسفلها ويقصّه `clipBehavior` — جزءٌ
@@ -96,14 +96,21 @@ class _BannerArt extends StatelessWidget {
       end: inset,
       // `Align` يمرّر قيوداً فضفاضة: الارتفاع المطلوب يُقصر على المتاح،
       // والعرض المشتقّ من نسبة الصورة يُقصر على عرض البطاقة.
+      //
+      // [STEP 64 §17] موسَّطٌ عمودياً لا مثبَّتٌ في القاع. ارتفاع البطاقة يتبع
+      // نصّها: ١٩٧ بالعربية بخطٍّ عادي، ٢١٠–٢٦٣ بخطّ الهاتف المكبَّر (١٫١٥–١٫٣)،
+      // و٢٣٩–٢٨٠ بالكردية. التثبيت في القاع كان يترك فوق الشخصية شريطاً فارغاً
+      // حتى ١٠١ بكسل (مقيس) — «الشخصية نازلة». التوسيط يوزّع الفراغ بالتساوي
+      // فوقها وتحتها في كل بنرٍ يستعمل هذا المكوّن الآن ولاحقاً، ويبقى الرسم
+      // داخل الصندوق المُزاح من الزوايا فلا يُقصّ.
       child: Align(
-        alignment: AlignmentDirectional.bottomEnd,
+        alignment: AlignmentDirectional.centerEnd,
         child: imageUrl != null
             ? Image.network(
                 imageUrl!,
                 height: height,
                 fit: BoxFit.contain,
-                alignment: AlignmentDirectional.bottomEnd,
+                alignment: AlignmentDirectional.centerEnd,
                 // فشل تحميل صورة البنر يعود للشخصية المضمَّنة بدل ترك فجوة.
                 errorBuilder: (_, _, _) => fallback,
               )

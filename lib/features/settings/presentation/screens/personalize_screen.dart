@@ -23,7 +23,7 @@ import '../../../visuals/presentation/character_artwork.dart';
 class PersonalizeScreen extends StatelessWidget {
   const PersonalizeScreen({super.key});
 
-  /// الفاصل تحت العنوان — الرسم ملاصقٌ له من تحته (تحرسه الاختبارات).
+  /// الفاصل تحت العنوان والشخصية — قاعُ الرسم عليه تماماً (تحرسه الاختبارات).
   static const Key dividerKey = Key('personalize_divider');
 
   @override
@@ -55,33 +55,64 @@ class PersonalizeScreen extends StatelessWidget {
               ),
             ),
           ),
-          // [PRODUCT] التسلسل (2026-09-28): العنوان ← الفاصل ← الشخصية ←
-          // «اختر لغتك…» ← الاختيارات. كانت الشخصية تطفو أعلى اليسار فوق
-          // الترويسة (`top: 60`) والنصّ الوصفي تحت العنوان فوق الفاصل؛ الآن
-          // تقف الشخصية تحت الفاصل ملاصقةً له، والنصّ تحتها. كلّها داخل
-          // `SafeArea`، فلا شيء تحت شريط الحالة.
+          // [PRODUCT] (STEP 64 §21، طلب المالك) الشخصية فوق الخطّ والخطّ تحتها
+          // مباشرة: صفٌّ واحد — الشعار والعنوان جهة البداية، والشخصية جهة
+          // النهاية قاعُها على الفاصل — ثم الوصف فالاختيارات. كانت الشخصية
+          // تحت الفاصل في مجرى القائمة (2026-09-28)، فتضيف ارتفاعها كاملاً
+          // فوق المحتوى. كلّها داخل `SafeArea`، فلا شيء تحت شريط الحالة.
           SafeArea(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // ── الترويسة: الشعار ثم العنوان فوق فاصلٍ بعرض الترويسة ──
+                // ── الترويسة: [الشعار/العنوان | الشخصية] فوق فاصلٍ بعرضها ──
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(22, 26, 22, 0),
+                  padding: const EdgeInsets.fromLTRB(22, 16, 22, 0),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const OtakuStoreLogoSimple(size: 42),
-                      const SizedBox(height: 14),
-                      Text(
-                        context.strings('personalizeTitle'),
-                        style: theme.textTheme.headlineSmall?.copyWith(
-                          fontFamily: 'Tajawal',
-                          fontSize: 25,
-                          letterSpacing: -0.5,
-                          fontWeight: AppDimens.weightBlack,
-                        ),
+                      Row(
+                        // القاع مشترك: الشخصية على الفاصل، والعنوان فوقه
+                        // بمسافته — مهما التفّ العنوان (الكردية، خطٌّ مكبَّر).
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const OtakuStoreLogoSimple(size: 42),
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    context.strings('personalizeTitle'),
+                                    style: theme.textTheme.headlineSmall
+                                        ?.copyWith(
+                                          fontFamily: 'Tajawal',
+                                          fontSize: 25,
+                                          letterSpacing: -0.5,
+                                          fontWeight: AppDimens.weightBlack,
+                                        ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          // جهة النهاية (اليسار الفيزيائي) مقابل الهالة أعلى
+                          // اليمين. صندوقٌ ثابت: ١٢٦×١٢٩ شكلُ الصورة 34، وصورةٌ
+                          // بديلة بشكلٍ آخر تُحتوى داخله قاعُها على الفاصل
+                          // (`bottomCenter`).
+                          const IgnorePointer(
+                            child: CharacterArtwork(
+                              slot: VisualSlots.personalize,
+                              width: 126,
+                              height: 129,
+                              alignment: Alignment.bottomCenter,
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 16),
                       Container(
                         key: dividerKey,
                         height: 1.5,
@@ -91,30 +122,11 @@ class PersonalizeScreen extends StatelessWidget {
                   ),
                 ),
 
-                // ── الشخصية ثم الوصف ثم الاختيارات ──
+                // ── الوصف ثم الاختيارات ──
                 Expanded(
-                  // بلا حشوة علوية: أوّل ما في القائمة الشخصيةُ ملاصقةً للفاصل.
                   child: ListView(
-                    padding: const EdgeInsets.fromLTRB(22, 0, 22, 8),
+                    padding: const EdgeInsets.fromLTRB(22, 14, 22, 8),
                     children: [
-                      // جهة النهاية (اليسار الفيزيائي) كما كانت، مقابل
-                      // الهالة أعلى اليمين. صندوقٌ ثابت لا عرضٌ وحده: الصورة
-                      // في مجرى القائمة، وبلا ارتفاعٍ معلوم تبدأ بارتفاع صفر
-                      // حتى تُفكّ فيقفز النصّ تحتها. ١٢٦×١٢٩ شكلُ الصورة 34؛
-                      // صورةٌ بديلة بشكلٍ آخر تُحتوى داخله ملاصقةً للفاصل
-                      // (`topCenter`).
-                      const Align(
-                        alignment: AlignmentDirectional.centerEnd,
-                        child: IgnorePointer(
-                          child: CharacterArtwork(
-                            slot: VisualSlots.personalize,
-                            width: 126,
-                            height: 129,
-                            alignment: Alignment.topCenter,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
                       Text(
                         context.strings('personalizeBody'),
                         style: theme.textTheme.bodyMedium?.copyWith(
@@ -123,7 +135,7 @@ class PersonalizeScreen extends StatelessWidget {
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
                       ),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 20),
                       OtakuGroupLabel(
                         label: context.strings('language'),
                         padding: EdgeInsets.only(bottom: 11),

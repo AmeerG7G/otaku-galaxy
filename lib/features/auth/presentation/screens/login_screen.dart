@@ -16,6 +16,9 @@ import '../../../settings/data/personalize_storage.dart';
 import '../../../../core/di/injection_container.dart' show sl;
 import '../../../visuals/domain/visual_slot.dart';
 
+/// مقياس رسم الدخول (الصورة 1) — طلب المالك: أكبر بـ٢٠٪ (STEP 64).
+const double _loginArtScale = 1.2;
+
 @RoutePage()
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -138,13 +141,13 @@ class _LoginScreenState extends State<LoginScreen>
           title: context.strings('login'),
           subtitle: context.g(GenderedStrings.enterPhoneAndPassword),
           artworkSlot: VisualSlots.login,
-          artworkHeight: 196,
-          artworkWidth: 138,
-          // أنزل قليلاً (كان -18، 2026-09-28): الصورة 1 مربّعة، فتُرسم داخل
-          // صندوق ١٣٨×١٩٦ (`contain`، موسَّطة) بارتفاع ١٣٨ وتطفو ٢٩ فوق قاعه —
-          // فكان صدرها ينتهي ١١ بكسل فوق حافة الرأس. -29 يُجلسها على الحافة
-          // نفسها؛ العرض والارتفاع والموضع الأفقي كما هي.
-          artworkBottom: -29,
+          // [STEP 64 §20] أكبر بـ٢٠٪: الصندوق ١٣٨×١٩٦ ← ١٦٥٫٦×٢٣٥٫٢ (المقياس لا
+          // الصورة — 1.png لا تُمسّ). الصورة مربّعة تُرسم `contain` موسَّطة
+          // فتطفو (٢٣٥٫٢ − ١٦٥٫٦) ÷ ٢ = ٣٤٫٨ فوق قاع الصندوق؛ `artworkBottom`
+          // يُنزلها بالقدر نفسه فيبقى صدرها على حافة الرأس كما كان (2026-09-28).
+          artworkHeight: 196 * _loginArtScale,
+          artworkWidth: 138 * _loginArtScale,
+          artworkBottom: -29 * _loginArtScale,
           form: Form(
             key: _formKey,
             child: Column(

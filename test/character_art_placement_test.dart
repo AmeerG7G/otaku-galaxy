@@ -108,6 +108,8 @@ Widget _app({
   required Widget home,
   List<RepositoryProvider<Object?>> repos = const [],
   List<BlocProvider<StateStreamableSource<Object?>>> blocs = const [],
+  AppLanguage language = AppLanguage.arabic,
+  double textScale = 1.0,
 }) {
   final app = MaterialApp(
     theme: AppTheme.light,
@@ -119,8 +121,13 @@ Widget _app({
       GlobalCupertinoLocalizations.delegate,
     ],
     builder: (context, child) => LocaleScope(
-      language: AppLanguage.arabic,
-      child: child ?? const SizedBox.shrink(),
+      language: language,
+      child: MediaQuery(
+        data: MediaQuery.of(
+          context,
+        ).copyWith(textScaler: TextScaler.linear(textScale)),
+        child: child ?? const SizedBox.shrink(),
+      ),
     ),
     home: home,
   );
@@ -243,19 +250,24 @@ void main() {
   });
 
   group('image 1 — login header', () {
-    testWidgets('moved slightly down: the bust now sits on the header bottom edge; box and x unchanged', (tester) async {
-      await _pumpAuth(tester, const LoginRoute());
-      final art = _art(VisualSlots.login);
-      expect(art, findsOneWidget);
-      final box = tester.getRect(art);
-      final header = tester.getRect(find.ancestor(of: art, matching: find.byType(ClipRRect)).first);
+    testWidgets(
+      '20% larger (STEP 64): the bust still sits on the header bottom edge, x unchanged',
+      (tester) async {
+        await _pumpAuth(tester, const LoginRoute());
+        final art = _art(VisualSlots.login);
+        expect(art, findsOneWidget);
+        final box = tester.getRect(art);
+        final header = tester.getRect(
+          find.ancestor(of: art, matching: find.byType(ClipRRect)).first,
+        );
 
-      // الصندوق والموضع الأفقي كما كانا: ١٣٨×١٩٦، وجهة النهاية -٣٤.
-      expect(box.size, const Size(138, 196));
-      expect(box.left, closeTo(header.left - 34, 0.01));
+        // [STEP 64 §20] أكبر بـ٢٠٪: ١٣٨×١٩٦ ← ١٦٥٫٦×٢٣٥٫٢، والموضع الأفقي كما كان.
+        expect(box.width, closeTo(138 * 1.2, 0.01));
+        expect(box.height, closeTo(196 * 1.2, 0.01));
+        expect(box.left, closeTo(header.left - 34, 0.01));
 
-      // الصندوق تحت حافة الرأس بـ٢٩ (كان ١٨) — أي أنزل بـ١١.
-      expect(box.bottom - header.bottom, closeTo(29, 0.01));
+        // إزاحة القاع تكبر بالنسبة نفسها (٢٩ ← ٣٤٫٨) فيبقى القاع المرسوم على الحافة.
+        expect(box.bottom - header.bottom, closeTo(29 * 1.2, 0.01));
 
       // الصورة `contain` موسَّطة في الصندوق: قاعُها المرسوم على حافة الرأس
       // تماماً (كان يطفو ١١ فوقها).
@@ -442,44 +454,78 @@ void main() {
     });
   });
 
-  group('«لنهيئ تجربتك» — title → divider → character → «اختر لغتك» → controls', () {
-    testWidgets('vertical hierarchy, the character touching the divider, nothing under the status bar', (tester) async {
-      _phone(tester);
-      SharedPreferences.setMockInitialValues({});
-      final prefs = await SharedPreferences.getInstance();
-      await tester.pumpWidget(
-        _app(
-          blocs: [
-            BlocProvider<LocaleCubit>(create: (_) => LocaleCubit(prefs)),
-            BlocProvider<ThemeCubit>(create: (_) => ThemeCubit(prefs)),
-          ],
-          home: const PersonalizeScreen(),
-        ),
-      );
-      await tester.pump(const Duration(milliseconds: 300));
-      expect(tester.takeException(), isNull);
+  group(
+    '«لنهيئ تجربتك» — [logo/title | character] → divider → «اختر لغتك» → controls (STEP 64 §21)',
+    () {
+      for (final (name, size, language, scale) in const [
+        ('ar 412×892', _phoneSize, AppLanguage.arabic, 1.0),
+        ('ckb 320×568 ×1.3', Size(320, 568), AppLanguage.kurdish, 1.3),
+      ]) {
+        testWidgets(
+          '$name: the character stands ON the divider beside the title; nothing under the status bar',
+          (tester) async {
+            _phone(tester);
+            tester.view.physicalSize = size;
+            SharedPreferences.setMockInitialValues({});
+            final prefs = await SharedPreferences.getInstance();
+            await tester.pumpWidget(
+              _app(
+                language: language,
+                textScale: scale,
+                blocs: [
+                  BlocProvider<LocaleCubit>(create: (_) => LocaleCubit(prefs)),
+                  BlocProvider<ThemeCubit>(create: (_) => ThemeCubit(prefs)),
+                ],
+                home: const PersonalizeScreen(),
+              ),
+            );
+            await tester.pump(const Duration(milliseconds: 300));
+            expect(tester.takeException(), isNull);
 
-      final title = tester.getRect(find.text(AppStrings.arabic('personalizeTitle')));
-      final divider = tester.getRect(find.byKey(PersonalizeScreen.dividerKey));
-      final art = tester.getRect(_art(VisualSlots.personalize));
-      final body = tester.getRect(find.text(AppStrings.arabic('personalizeBody')));
-      final language = tester.getRect(find.text(AppStrings.arabic('language')));
+            final strings = AppStrings.of(language);
+            final title = tester.getRect(
+              find.text(strings('personalizeTitle')),
+            );
+            final divider = tester.getRect(
+              find.byKey(PersonalizeScreen.dividerKey),
+            );
+            final art = tester.getRect(_art(VisualSlots.personalize));
+            final body = tester.getRect(find.text(strings('personalizeBody')));
+            final languageLabel = tester.getRect(
+              find.text(strings('language')),
+            );
 
-      expect(AppStrings.arabic('personalizeBody'), startsWith('اختر لغتك'));
-      expect(title.bottom, lessThanOrEqualTo(divider.top));
-      // ملاصقٌ للفاصل من تحته، والصورة مثبّتةٌ أعلى صندوقها.
-      expect(art.top, closeTo(divider.bottom, 0.01));
-      expect(tester.widget<CharacterArtwork>(_art(VisualSlots.personalize)).alignment, Alignment.topCenter);
-      expect(body.top, greaterThanOrEqualTo(art.bottom));
-      expect(language.top, greaterThan(body.bottom));
-      // لا تداخل مع شريط الحالة.
-      expect(art.top, greaterThan(_statusBar));
-      expect(title.top, greaterThanOrEqualTo(_statusBar));
-      // داخل الشاشة أفقياً.
-      expect(art.left, greaterThanOrEqualTo(0));
-      expect(art.right, lessThanOrEqualTo(_phoneSize.width));
-    });
-  });
+            // الشخصية فوق الخطّ، والخطّ تحتها مباشرة: قاع الصندوق على
+            // الفاصل، والصورة مثبّتةٌ في قاع صندوقها (قاع 34.png مُعتِم).
+            expect(art.bottom, closeTo(divider.top, 0.01));
+            expect(
+              tester
+                  .widget<CharacterArtwork>(_art(VisualSlots.personalize))
+                  .alignment,
+              Alignment.bottomCenter,
+            );
+            // بجانب العنوان: هو جهة البداية (اليمين) وهي جهة النهاية، بلا تداخل.
+            expect(title.bottom, lessThanOrEqualTo(divider.top));
+            expect(
+              title.bottom,
+              greaterThan(art.top),
+              reason: 'the title and the character share one row',
+            );
+            expect(art.right, lessThanOrEqualTo(title.left));
+            // تحت الفاصل: الوصف فوراً ثم الاختيارات — لا فراغ ميت.
+            expect(body.top, greaterThanOrEqualTo(divider.bottom));
+            expect(body.top - divider.bottom, lessThanOrEqualTo(16));
+            expect(languageLabel.top, greaterThan(body.bottom));
+            // لا تداخل مع شريط الحالة، وداخل الشاشة أفقياً.
+            expect(art.top, greaterThan(_statusBar));
+            expect(title.top, greaterThanOrEqualTo(_statusBar));
+            expect(art.left, greaterThanOrEqualTo(0));
+            expect(art.right, lessThanOrEqualTo(size.width));
+          },
+        );
+      }
+    },
+  );
 
   group('«الأقسام» — status-bar area used by this screen only', () {
     Future<void> pumpCategories(WidgetTester tester) async {
@@ -540,24 +586,30 @@ void main() {
     });
   });
 
-  group('image 16 — product detail, closer to the left edge, never crossing it', () {
-    testWidgets('the drawn character starts within a few px of the edge and is not clipped', (tester) async {
-      _phone(tester);
-      await tester.pumpWidget(
-        _app(
-          repos: [
-            RepositoryProvider<FetchProductDetailsUsecase>.value(value: FetchProductDetailsUsecase(_Products())),
-            RepositoryProvider<ReviewRepository>.value(value: _Reviews()),
-          ],
-          blocs: [
-            BlocProvider<FavoritesCubit>(create: (_) => FavoritesCubit()),
-            BlocProvider<AuthCubit>(create: (_) => stubAuthCubit(gender: 'male')),
-          ],
-          home: const ProductDetailScreen(productId: 'p1'),
-        ),
-      );
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 50));
+  group('image 16 — product detail, touching the left edge, never crossing it', () {
+    testWidgets(
+      'the drawn character starts within a few px of the edge and is not clipped',
+      (tester) async {
+        _phone(tester);
+        await tester.pumpWidget(
+          _app(
+            repos: [
+              RepositoryProvider<FetchProductDetailsUsecase>.value(
+                value: FetchProductDetailsUsecase(_Products()),
+              ),
+              RepositoryProvider<ReviewRepository>.value(value: _Reviews()),
+            ],
+            blocs: [
+              BlocProvider<FavoritesCubit>(create: (_) => FavoritesCubit()),
+              BlocProvider<AuthCubit>(
+                create: (_) => stubAuthCubit(gender: 'male'),
+              ),
+            ],
+            home: const ProductDetailScreen(productId: 'p1'),
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 50));
 
       final finder = _art(VisualSlots.productDetail);
       final box = tester.getRect(finder);
@@ -570,14 +622,22 @@ void main() {
       final margin = await _firstOpaqueColumn(tester, path) * (box.width / image.width);
       final drawnLeft = box.left + margin;
 
-      // [CRITICAL] لا يُقصّ: أوّل بكسلٍ مرئي داخل الشاشة.
-      expect(drawnLeft, greaterThanOrEqualTo(0), reason: 'character crosses the left edge — replacement 16.png has a narrower transparent margin; reduce _productArtOverhang');
-      // أقرب من قبل: كان يبدأ على بعد ~٢٧ من الحافة؛ الآن بضع بكسلات.
-      expect(drawnLeft, lessThanOrEqualTo(8));
-      // وما خرج من الصندوق خلف الحافة شفّافٌ كلّه.
-      expect(box.left, lessThan(0));
-      expect(-box.left, lessThanOrEqualTo(margin));
-      expect(tester.takeException(), isNull);
-    });
+        // [CRITICAL] لا يُقصّ: أوّل بكسلٍ مرئي داخل الشاشة.
+        expect(
+          drawnLeft,
+          greaterThanOrEqualTo(0),
+          reason:
+              'character crosses the left edge — replacement 16.png has a narrower transparent margin; reduce _productArtOverhang',
+        );
+        // [STEP 64 §18] «قليلاً إلى اليسار»: كان يبدأ على بعد ~٤ من الحافة
+        // (الصندوق عند −٢٣)؛ الآن الصندوق أبعد بـ٤ والشخصية تلامس الحافة.
+        expect(box.left, closeTo(-23 - 4, 0.01));
+        expect(drawnLeft, lessThanOrEqualTo(1));
+        // وما خرج من الصندوق خلف الحافة شفّافٌ كلّه.
+        expect(box.left, lessThan(0));
+        expect(-box.left, lessThanOrEqualTo(margin));
+        expect(tester.takeException(), isNull);
+      },
+    );
   });
 }

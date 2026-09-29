@@ -20,6 +20,10 @@ import '../../../products/domain/usecases/fetch_categories_usecase.dart';
 import '../../../visuals/domain/visual_slot.dart';
 import '../../../visuals/presentation/character_artwork.dart';
 
+/// ما تحت الشريط العائم (`extendBody`) — حشوة المعرض السفلية نفسها، كي
+/// يُمرَّر آخر المحتوى فوقه.
+const double _navClearance = 104;
+
 /// المجتمع بتصميم Otaku Galaxy v2.
 ///
 /// ترويسة تحريرية بهالة بنفسجية ورسم باهت وكبسولة عدد معتمدة، ثم معرض
@@ -258,12 +262,23 @@ class _CommunityScreenState extends State<CommunityScreen> with LocaleRefetch {
     }
     if (_photos.isEmpty) {
       // فلتر مفعّل بلا نتائج ≠ مجتمع فارغ — الرسالة تختلف والإجراء كذلك.
+      //
+      // [PRODUCT] (STEP 64 §24) الحالتان بمكوّن الحالات الفارغة نفسه — اللوحة
+      // بإطارها وهالتها، موسَّطةً كالسلة و«طلباتي». كانت حالة القسم الفارغ
+      // عموداً عارياً بلا لوحة (نسخةٌ ثانية من التصميم).
       if (_categoryId != null) {
-        return _EmptyCategoryState(
+        return AnimeEmptyState(
+          title: context.strings('noPhotosInCategoryTitle'),
+          subtitle: context.strings('noPhotosInCategoryBody'),
+          artworkSlot: VisualSlots.communityHeader,
+          actionLabel: context.strings('allCategories'),
           onAction: () {
             setState(() => _categoryId = null);
             _load();
           },
+          centered: true,
+          fitContent: true,
+          bottomClearance: _navClearance,
         );
       }
       // المجتمع شاشة تصفّح حرّة: زرّ «شارك تجربتك» يفتح «طلباتي» المحمية،
@@ -280,6 +295,9 @@ class _CommunityScreenState extends State<CommunityScreen> with LocaleRefetch {
         onAction: isLoggedIn
             ? () => context.router.push(const OrdersRoute())
             : null,
+        centered: true,
+        fitContent: true,
+        bottomClearance: _navClearance,
       );
     }
 
@@ -294,7 +312,7 @@ class _CommunityScreenState extends State<CommunityScreen> with LocaleRefetch {
       onRefresh: _load,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 104),
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, _navClearance),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -548,7 +566,7 @@ class _CommunitySkeleton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 104),
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, _navClearance),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -640,61 +658,6 @@ class _PhotoTile extends StatelessWidget {
                   ),
                 ),
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// حالة فارغة مخصّصة للمجتمع عند خلو قسم من الصور — تخطيط موسّط:
-/// نصّ ← نص ثانوي ← شخصية ← زرّ «كل الأقسام».
-class _EmptyCategoryState extends StatelessWidget {
-  const _EmptyCategoryState({required this.onAction});
-
-  final VoidCallback onAction;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Text(
-              context.strings('noPhotosInCategoryTitle'),
-              textAlign: TextAlign.center,
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontSize: 20,
-                height: 1.4,
-                fontWeight: AppDimens.weightBlack,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              context.strings('noPhotosInCategoryBody'),
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                height: 1.8,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 16),
-            CharacterArtwork(
-              slot: VisualSlots.communityHeader,
-              height: 150,
-            ),
-            const SizedBox(height: 16),
-            AnimePrimaryButton(
-              label: context.strings('allCategories'),
-              onPressed: onAction,
-              expanded: false,
-              borderRadius: AppDimens.radiusFull,
-              gradient: AppColors.ctaGradient,
             ),
           ],
         ),
