@@ -10927,3 +10927,214 @@ the next number after the highest.
   (needs the backend on `:4000`; `LateInitializationError`, same as STEP 62). Nothing else fails.
 - `flutter build apk --flavor dev -t lib/main_dev.dart`: built `app-dev-release.apk` (73.7 MB, was 75.5);
   the bundle holds exactly the 29 character files listed in §63.1.
+
+# STEP 64 — DASHBOARD + FLUTTER IMPROVEMENTS · HIERARCHICAL ADMINS · AUDIT LOG · PUSH OUTBOX/FCM · STAGING (2026-09-30)
+
+Owner request in 31 items, executed as one gated run (Gates 0–10). Migrations **068–070**. Unrelated
+working-tree changes (`android/gradle.properties`, `assets/art/characters/11.png`, `17.png`) were never
+staged. `force_update_gate.dart` and its test are untouched; the unpushed Force-Update race fix
+`ceda7bc` was re-applied on top of STEP 64 in a throwaway worktree and its tests pass (§64.9).
+
+## 64.1 Admin hierarchy and permissions (items 7–10, 28)
+
+- **Model** (068): `users.is_super_admin`, `users.admin_permissions TEXT[]`, `users.admin_created_by`.
+  Every admin that existed before 068 is backfilled to **Super Admin** (nobody loses access; the
+  default for new rows fails closed). CHECKs: super ⇒ admin; permissions ⊆ the 17 known sections;
+  permissions only on admins; a super admin carries no list.
+- **Sections** (`backend/src/domain/adminPermissions.ts`, mirrored in `admin/src/types/adminPermissions.ts`):
+  dashboard, orders, delivery, products, categories, franchises, offers, restock, customers,
+  account_requests, points, birthdays, reviews, notifications, banners, settings, admins.
+- **Enforcement is server-side.** `requirePermission(...sections)` / `requireSuperAdmin` /
+  `requireAnyAdmin` on **every** one of the 77 `adminRoutes` lines; a source-scan test fails on any
+  unguarded route, and a pinned route→guard map fails on any silent widening. Permission state is
+  read from the DB on every request (revocation is immediate). Denial = 403
+  `ADMIN_PERMISSION_DENIED` «لا تملك صلاحية هذا القسم».
+- **Narrow endpoints instead of widening:** `PATCH /admin/restock/:id/schedule` (restock|products),
+  `PATCH /admin/offers/:id` (offers|products); account-request password reset without the Customers
+  section requires a pending `requestId` for that customer.
+- **Role scoping fix:** customer endpoints (`setUserActive`, `customerDetail`, `customerPoints`)
+  return 404 unless `role='customer'` — a sub-admin with Customers cannot read, suspend or reset an admin.
+- **Management API:** `GET/PATCH /admin/me` (own name/phone/password; phone and password need the
+  current password; password change bumps `token_version` and returns a new token; any
+  `permissions`/`isSuperAdmin` key → 400), `GET/POST/PATCH/DELETE /admin/admins` (super only; targets
+  are sub-admins only — the super row and customers are 404), `GET /admin/audit` (super only).
+  The admin-set password is permanent (no temp state), consistent with admin-managed accounts.
+- **Audit log** (`admin_audit_log`): semantic rows written inside the action's transaction (admin
+  created/updated/deleted with a permission diff, password changed as an event only, anime deleted,
+  settings/app-version before→after); every other successful admin mutation is recorded by
+  `auditAdminMutations` with route, id and **field names only** — secret-looking keys are dropped. A
+  test proves no audit row ever contains a submitted plaintext password.
+- **Dashboard:** new «المسؤولون» section — «ملفّي» (everyone with Admins), «المسؤولون» and «سجلّ النشاط»
+  (super only); the menu and routes are filtered by the profile (`/admin/me`); a direct URL to a
+  forbidden section shows a 403 page; home falls to the first permitted page.
+
+## 64.2 Anime (franchises) — item 6
+
+- Images removed from the dashboard (upload field and column); the nullable column stays.
+- Delete is always allowed: one transaction locks the franchise, deletes its `product_franchises`
+  links, deletes the franchise and writes an audit row with `unlinkedProducts`. Products, their
+  images, categories and other franchises' links are untouched (tested, incl. fault injection).
+  `GET /admin/franchises/:id/usage` feeds the confirm dialog («سيُزال هذا الأنمي من N منتج…»).
+
+## 64.3 Forced update — item 16 (069)
+
+Three settings: enabled, minimum version (semver), update URL. The public endpoint returns the
+**effective** minimum (empty when disabled) plus legacy fields for installed 1.0.0 apps; the 426
+middleware uses the same effective minimum; malformed/unset data never blocks. The app reads
+`updateUrl` (falling back to the legacy per-platform store URLs of cached/old responses), honours an
+explicit `forceUpdateEnabled: false`, and shows only its localized default text plus installed/minimum
+versions — no admin message, no «latest version». Semver cases 1.9.9 < 1.10.0 < 2.0.0, malformed,
+missing URL («رابط التحديث غير متوفر») and server-down (last successful verdict persists; never a
+first-run block) are tested.
+
+## 64.4 Product sharing — item 19
+
+`share.storeUrl` (setting `store_share_url`, dashboard «رابط المتجر للمشاركة», validated http(s)) is
+served by `/catalog/settings`. The app's only share entry point (product detail) sends
+`{name}\n{storeUrl}` — the name alone when the URL is unset — and never the price. A source scan pins
+that every share call in `lib/` goes through `productShareText`. `shareProductText` became a
+placeholder-only template (added to `AppStrings.localeInvariantKeys`; review-queue entry updated).
+
+## 64.5 Push notifications — items 13, 14
+
+- **Outbox** (070): an `AFTER INSERT ON notifications` trigger enqueues every customer notification
+  into `push_outbox`; admin events (new order → Orders, account request → Account Requests, restock
+  subscription → Restock) are enqueued in the business transaction for each admin holding the section
+  with a device and the event enabled. `pushOutboxJob` claims rows with `FOR UPDATE SKIP LOCKED` and a
+  lease, retries at 30 s/2 min/10 min (3 attempts), deactivates rejected tokens, checks customer prefs
+  at send time (`promotion` → `offers`, off by default), and marks rows `skipped: push_not_configured`
+  when FCM is not configured. Requests no longer push in-line.
+- **FCM HTTP v1** without new dependencies: RS256 service-account assertion → OAuth token, cached to
+  60 s before expiry; 401 clears it.
+- **Admins' phones = dashboard web push** (owner's choice): Firebase JS SDK loaded lazily, service
+  worker `/admin-push-sw.js`, manifest for iPhone Home-Screen install (iOS 16.4+); per-admin device
+  registration and event preferences (bell → «إشعارات هذا الجهاز»).
+- **Flutter:** `firebase_core`, `firebase_messaging`, `flutter_local_notifications`; configuration only
+  from `--dart-define` (`FIREBASE_API_KEY/APP_ID/PROJECT_ID/MESSAGING_SENDER_ID`) — no
+  `google-services.json`, no Gradle plugin, builds work without it (`UnconfiguredPushTokenSource`).
+  `FirebasePushTokenSource` (permission incl. Android 13 `POST_NOTIFICATIONS`, token, refresh),
+  foreground display on channel `otaku_default` (also the manifest default and the server's
+  `channel_id`), background handler, taps routed like the in-app list (order → product), a cold-start
+  tap deferred until the main shell is ready. Core-library desugaring enabled.
+- **Device revocation (from the security review):** an admin's push devices are a data channel
+  independent of the session (bodies carry customer names/phones), so every `token_version` bump for
+  an admin — own password change, super-admin reset, disable — deactivates their devices in the same
+  transaction; dashboard logout unregisters the browser **before** clearing the session (as the app's
+  `PushRegistrar.onLogout` already did), and each session re-links the browser's saved token.
+- **Not claimed:** real delivery. No Firebase project/credentials exist in this environment; code paths
+  are proven with stubbed `fetch` (backend) and fakes (Flutter/dashboard). Staging reports push
+  «not configured» until the owner adds the variables (deploy/README.md §11).
+
+## 64.6 Dashboard (items 1–5, 11, 12, 15, 23, 25)
+
+- **Shared building blocks** (`admin/src/components/ui/`): `ResponsiveTable` (antd table from `md`,
+  card list with `data-row-key` below it), `SearchField` (one search control, full width on phones),
+  `ProductLink` (image/name → `/products/:id/edit`, plain text without the Products section),
+  `WhatsAppButton` (`whatsappUrl` normalizes Iraqi `07…`/`+9647…`, disabled with a tooltip for
+  missing/masked/invalid numbers).
+- **Responsive:** Account Requests (cards, short mobile segment labels), Restock (cards, explicit
+  Save, narrow endpoint), Birthdays (§64.7), Products search toolbar (`Flex` wrap instead of a fixed
+  360 px input). Found live at 375 px and fixed: the Account Requests segment label was truncated, a
+  long Restock product name pushed its tag out of the card.
+- **Pagination / selected states (items 5, 25):** the active page number was purple on purple in the
+  dark theme. `selectionTokens` gives Pagination and Segmented a white label on `primaryActive`
+  (#6A47F5, contrast ≈ 5.5:1; the old #7C5CFF was 4.36:1) in both themes; `theme/contrast.test.ts`
+  computes WCAG contrast for every active pair (≥ 4.5).
+- **Clickable products (item 3):** `ProductLink` in Products, Offers, Order detail, Dashboard home,
+  Restock, Reviews, Customer detail and Banners (product destination).
+- **Orders WhatsApp (item 23):** list row and order detail; the customer's phone, falling back to the
+  order's contact phone for a deleted account.
+- **Customers gender (item 12):** filter «الكل / ذكور / إناث»; «غير محدد» removed from the UI; legacy
+  `NULL` rows show «—». Registration already requires male/female; the column stays nullable (no
+  destructive migration). Dev DB at execution time: **125 of 184 customers have NULL gender**.
+- **Info boxes removed (item 2):** Delivery (the no-zones state keeps «أضف منطقة» as a compact row),
+  Birthdays, Offers, Banners, Categories, New product, Product form, Galaxy rules, Gift claims,
+  Broadcast composer, and Settings' permanent update warning (now a confirm). Kept, as operational:
+  errors, the WhatsApp-verification step of the password modal, status-transition confirms, the
+  customer pending-reset warning, the delivery-discount excess on order detail, live form validation.
+- **Anime (item 6):** no image field/column; delete always enabled with a usage-aware confirm.
+- **Settings:** three-field update card with a confirm when enabling or raising the minimum;
+  «رابط المتجر للمشاركة».
+- **Admins section, permission-aware shell, device notifications** (§64.1, §64.5): logout unregisters
+  this browser **before** clearing the session; each session re-links the browser's saved token.
+
+## 64.7 Birthdays «last option not saved» — reproduced (item 15)
+
+Owner: "not sure — reproduce it". Traced UI → state → request → validator → DB → response → reload
+on the running dev stack (built-in browser at 375 px and desktop) for three candidates:
+
+| Candidate | Result |
+|---|---|
+| (a) Dashboard Birthdays — the **last** tab «الكل» / window options | **FAILS.** At 375 px the tab `Segmented` (497 px) sat in a 309 px row inside `.ant-layout-content { overflow-x: hidden }`: «المسجَّلون» and «الكل» were clipped and untappable; and any choice reset on reload (component state only). |
+| (b) App birthday at day 31 / month 12 | persists end to end (`POST /api/birthday` → `users.birth_day/month` → status + admin list) |
+| (c) App pref «عيد الميلاد», the last of six | persists end to end (PATCH → `user_notification_prefs` → GET after reload) |
+
+Fix at the failing layer: tab, window and page live in the URL (`useTableState`, like Products/Orders,
+so they survive reload and back/forward), and below `md` the tabs are a full-width `Select`. Regression
+tests in `BirthdaysPage.test.tsx`; (b)/(c) are pinned by `backend/tests/birthday-last-option.test.ts`.
+
+## 64.8 Flutter visuals and screens (items 17, 18, 20, 21, 22, 24; staging config)
+
+| Request | Change |
+|---|---|
+| Staging build reported `dev` | `bootstrap()` passes the flavor `AppConfig` into `di.init(config:)`; staging API `https://staging-api.otakugalaxystore.com/api`; Settings shows `v<version> · <env>` (env hidden in prod) |
+| Banner «اكتشف، اجمع، واستمتع!» art too low (17) | Root cause measured: the art was bottom-anchored in a card that grows with text (197/210/263 px for ar ×1/1.15/1.3; 239–280 ckb), leaving up to 101 px empty above it. The shared `_BannerArt` now centres vertically (`centerEnd`) inside the same r·(1−1/√2) inset box — every hero/promo banner inherits it; never cropped, never outside the card |
+| Character 16 slightly left (18) | Layout, not asset. The first visible pixel was 4.1 px from the screen edge; the requested ~8 px would have clipped 3.9 px of the character and broken the existing "never crosses the edge" invariant, so it moves the full 4 px available (`_productArtShiftLeft = 4`, box −23 → −27): it now touches the edge, unclipped. Only 16 moves |
+| Character 1 +20% (20) | Login art box 138×196 → ×1.2 (165.6×235.2) and its bottom offset −29 → −34.8, so the painted bust still sits on the header's bottom edge; painted top stays below the status bar. PNG untouched |
+| Language & Appearance (21) | [logo + title \| character] share one row whose bottom is the divider: the character stands **on** the line (`bottomCenter`), the line is directly under it, the description starts 14 px below. Removes the character's full height from under the divider. Reverses STEP 63's order at the owner's request |
+| My Orders empty (22) | `AnimeEmptyState(centered: true, fitContent: true, artworkHeight: 195)` — character → title → body → button on one axis, character +30 % (150 → 195). New `fitContent`: the panel hugs its content (no dead space) and the art is capped at 40 % of the available height (min 110) so short phones shrink it instead of overflowing |
+| Community empty (24) | The frameless `_EmptyCategoryState` (a second empty-state design) is deleted; both empty states use `AnimeEmptyState(centered, fitContent)` with the framed panel, and scroll clear of the floating nav bar (`bottomClearance: 104`) |
+| Sharing (19), forced update (16), FCM (13) | §64.4, §64.3, §64.5 |
+
+## 64.9 Verification
+
+Every number below was observed in this run (the host rebooted twice mid-run; `/tmp` evidence was
+rebuilt and the Gate 1 dev-DB `pg_dump` backup was lost — the dev DB itself was migrated 058→070
+through `npm run db:migrate` and is intact).
+
+| Stack | Check | Result |
+|---|---|---|
+| Backend | `npm run typecheck` | clean |
+| Backend | full `vitest` on an **empty** `postgres:16-alpine` (CI conditions, migrations only, no seed) | 88 files / 1665 tests passed |
+| Backend | migration chain 001→070 on an empty DB | 70 files applied |
+| Dashboard | `npx tsc -b` · `vitest` · `build:staging` | clean · 30 files / 208 tests · built |
+| Flutter | `flutter analyze` | no issues |
+| Flutter | `flutter test --exclude-tags integration` | 1438 passed, 0 failed |
+| Flutter | `flutter build apk --flavor staging -t lib/main_staging.dart` | `app-staging-release.apk` 74.7 MB; package `…otaku_galaxy.staging`, `1.0.0-staging`, `POST_NOTIFICATIONS`, default channel `otaku_default`; binary contains the staging API host |
+| ceda7bc | cherry-picked onto the STEP 64 HEAD in a throwaway worktree; `force_update_test` + `force_update_gate_test` | applied without conflict onto `83b02a9`; 41/41 pass; the gate test repeated 3× — 13/13 each |
+
+**Mutation checks** (fix reverted → its test must fail → source restored byte-for-byte, sha256-checked):
+backend authz/audit M1–M11, features MB1–MB10, dashboard MA1–MA9, Flutter MF1–MF10, device revocation
+MS1–MS2 and MD1–MD2 — all killed. MF11 survived as an **equivalent** mutant (a loose `Flexible` in a
+`min` column with unbounded height lays out as a plain child) — the branch it targeted was removed.
+
+**Reviews:** code review (medium) — no findings. Security review — no finding at the reporting bar;
+the one candidate (admin push devices outliving revoked sessions, filtered to 4/10 because it needs a
+valid admin token) was hardened anyway (§64.5) with tests and mutation checks. `git diff --check`
+clean; secret scan: only test-fixture passwords in test files, no keys, no service-account or
+`google-services.json`, no real `.env`.
+
+**Regressions** covered by the full suites: bilingual banners (backend 41 + Flutter 20 tests), offline
+Retry (`home_offline_retry_test`), character #38 categories (`character_art_placement_test`).
+
+**Not verified:** real push delivery (no Firebase project); installing the staging APK on a device
+(none attached — `adb devices` empty); anything on the VPS beyond what the owner's pasted output shows.
+
+## 64.10 Deployment and blockers
+
+- **Staging** is deployed by the owner (no SSH from the session): first read-only VPS facts, then one
+  pinned `set -euo pipefail` block — fetch → verify the pushed SHA → clean tree → detached checkout →
+  `docker compose build` → `migrate` (068–070) → `up -d api` on host port 4001 → `ps` → `/health`
+  (deploy/README.md §2, §11). No source is edited on the VPS; **Production is untouched**. The
+  deployed SHA and the HTTPS smoke results are recorded from the owner's pasted output in the STEP 64
+  report, not asserted here.
+- **Push on staging stays «not configured»** until the owner provides a Firebase project: `FCM_*` in
+  `backend/.env.staging` (server only), `VITE_FIREBASE_*` for the dashboard build, the four
+  `--dart-define`s for the app (deploy/README.md §11).
+- **Dev DB only:** two test admins were created for live checks — Super Admin `+9647800009990`
+  «مسؤول اختبار STEP64» and sub-admin `+9647800009991` «مشرف طلبات اختبار» (orders + admins).
+  Disable or delete them from «المسؤولون» when no longer needed.
+- **Open for the owner:** a real device for the staging APK (none was attached), and whether a
+  sub-admin holding only «طلبات الحساب» should be able to reset any customer's password once that
+  customer files a forgot-password request (today: yes, after the manual WhatsApp check — the role's
+  purpose; flagged by the security review as a design question, not a code defect).
