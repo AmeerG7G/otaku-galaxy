@@ -7,9 +7,13 @@ import 'package:flutter/material.dart';
 import '../../../core/design_system/design_system.dart';
 import '../../visuals/domain/visual_slot.dart';
 import '../../visuals/presentation/character_artwork.dart';
+import 'reconnect_refetch.dart';
 
 /// يغلّف التطبيق كاملاً؛ عند انقطاع الاتصال يُعرض حاجز بلا وصول لأي محتوى
 /// — للزائر والمسجّل والعائد على حدٍّ سواء (لا شاشة رئيسية فارغة أوفلاين).
+///
+/// وعند عودة الاتصال يُبلغ الشاشات تحته ([ReconnectScope]) لتعيد الجلب — انظر
+/// [ReconnectRefetch].
 class OfflineGate extends StatefulWidget {
   const OfflineGate({super.key, required this.child});
 
@@ -23,35 +27,53 @@ class _OfflineGateState extends State<OfflineGate> {
   bool _offline = false;
   StreamSubscription<List<ConnectivityResult>>? _sub;
 
+  /// عدد مرّات عودة الاتصال — تشترك فيه الشاشات عبر [ReconnectScope].
+  final ValueNotifier<int> _reconnections = ValueNotifier<int>(0);
+
   @override
   void initState() {
     super.initState();
     _check();
-    _sub = Connectivity().onConnectivityChanged.listen((results) {
-      final offline = results.every((r) => r == ConnectivityResult.none);
-      if (mounted) setState(() => _offline = offline);
-    });
+    _sub = Connectivity().onConnectivityChanged.listen(_apply);
   }
 
+  /// فحص الاتصال — عند الإقلاع وعند «إعادة المحاولة».
   Future<void> _check() async {
-    final results = await Connectivity().checkConnectivity();
+    _apply(await Connectivity().checkConnectivity());
+  }
+
+  /// المسار الوحيد لتغيير حالة الاتصال: الفحص وحدث النظام معاً.
+  ///
+  /// [CRITICAL] العودة تُعلَن عند **الانتقال** من «غير متصل» إلى «متصل» وحده.
+  /// كانت «إعادة المحاولة» تُخفي الحاجز فقط، فتنكشف الشاشات بما صنعته أثناء
+  /// الانقطاع ولا يُعاد جلب شيء. والانتقال لا الضغطة هو الحدث: ضغطاتٌ سريعة
+  /// متتالية، أو ضغطةٌ يسبقها حدث النظام بالعودة نفسها، تبقى عودةً واحدة —
+  /// وضغطةٌ والشبكة ما تزال مقطوعة لا شيء.
+  void _apply(List<ConnectivityResult> results) {
+    if (!mounted) return;
     final offline = results.every((r) => r == ConnectivityResult.none);
-    if (mounted) setState(() => _offline = offline);
+    final reconnected = _offline && !offline;
+    setState(() => _offline = offline);
+    if (reconnected) _reconnections.value++;
   }
 
   @override
   void dispose() {
     _sub?.cancel();
+    _reconnections.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        widget.child,
-        if (_offline) OfflineGateScreen(onRetry: _check),
-      ],
+    return ReconnectScope(
+      reconnections: _reconnections,
+      child: Stack(
+        children: [
+          widget.child,
+          if (_offline) OfflineGateScreen(onRetry: _check),
+        ],
+      ),
     );
   }
 }

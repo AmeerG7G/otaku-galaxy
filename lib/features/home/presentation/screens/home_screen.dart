@@ -7,8 +7,11 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/auth/require_auth.dart';
 import '../../../../core/design_system/design_system.dart';
+import '../../../../core/errors/app_exception.dart';
 import '../../../../core/router/app_router.dart';
+import '../../../../core/utils/request_sequence.dart';
 import '../../../auth/presentation/cubit/auth_cubit.dart';
+import '../../../connectivity/presentation/reconnect_refetch.dart';
 import '../../../main_navigation/presentation/screens/main_navigation_screen.dart';
 import '../../../notifications/presentation/cubit/notifications_cubit.dart';
 import '../../../products/domain/entities/home_data.dart';
@@ -29,7 +32,8 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with LocaleRefetch {
+class _HomeScreenState extends State<HomeScreen>
+    with LocaleRefetch, ReconnectRefetch {
   late Future<HomeData> _future;
 
   // اكتشف المنتجات: تغذية مستمرة بمنتجات عشوائية عند التمرير.
@@ -37,6 +41,9 @@ class _HomeScreenState extends State<HomeScreen> with LocaleRefetch {
   int _explorePage = 0;
   bool _loadingMore = false;
   bool _hasMore = true;
+
+  /// طلبات «تحميل المزيد» — كلّ إعادة جلبٍ للرئيسية تتجاوز الجاري منها.
+  final _exploreRequests = RequestSequence();
 
   @override
   void initState() {
@@ -47,17 +54,47 @@ class _HomeScreenState extends State<HomeScreen> with LocaleRefetch {
   /// الرئيسية كلها محتوى خادمي مصرَّف (أقسام، بانرات، أسماء منتجات) —
   /// تُعاد بلغة الواجهة الجديدة بنفس مسار السحب للتحديث.
   @override
-  void onLanguageChanged() {
-    setState(() => _future = context.read<FetchHomeUsecase>()());
+  void onLanguageChanged() => _reload();
+
+  /// عاد الاتصال بعد انقطاع: ما على الشاشة صُنع قبله أو أثناءه (طلبٌ فشل،
+  /// صورٌ بقي مكانها البديل) — جيلٌ جديد يستبدله كلّه.
+  @override
+  void onReconnected() => _reload();
+
+  /// يبدأ جيلاً جديداً من الرئيسية: طلبٌ جديد، وتغذية «اكتشف» من الصفر.
+  ///
+  /// [CRITICAL] المسار الوحيد لإعادة الجلب — السحب للتحديث، تبديل اللغة،
+  /// «إعادة المحاولة»، عودة الاتصال. كانت صفحات «اكتشف» المحمَّلة وعدّادها
+  /// تعيش خارج الطلب الذي يملكها: لا تُصفَّر، فتُعرض نماذج منتجاتٍ من الجلب
+  /// السابق (بصورها وأسعارها وأسمائها القديمة) بجانب الجديد — أو وحدها بعد
+  /// فشل — و«تحميل المزيد» الجاري يُلحِق صفحةً من الجيل السابق بعد وصول
+  /// الجديد. `_exploreRequests.next()` يُسقط ذلك الردّ حين يصل.
+  ///
+  /// و`setState` بجسمٍ لا بسهم: السهم كان يعيد الـ`Future` المُسنَد، فيرمي
+  /// `setState` تأكيداً في التطوير قبل أن يُعلِّم الشاشة للبناء — فلا تُعاد
+  /// الرئيسية بعد تبديل اللغة.
+  Future<HomeData> _reload() {
+    _exploreRequests.next();
+    final future = context.read<FetchHomeUsecase>()();
+    setState(() {
+      _future = future;
+      _explore.clear();
+      _explorePage = 0;
+      _hasMore = true;
+      _loadingMore = false;
+    });
+    return future;
   }
 
   Future<void> _loadMoreExplore() async {
     if (_loadingMore || !_hasMore) return;
+    // رقم هذا الطلب قبل أي `await`؛ إعادة جلبٍ أثناءه تجعله متجاوَزاً.
+    final token = _exploreRequests.next();
     setState(() => _loadingMore = true);
     try {
       final fetchProducts = context.read<FetchProductsUsecase>();
       final page = await fetchProducts(page: _explorePage + 1, limit: 6);
-      if (!mounted) return;
+      if (!mounted || !_exploreRequests.isCurrent(token)) return;
       setState(() {
         _explore.addAll(page.items);
         _explorePage++;
@@ -65,7 +102,7 @@ class _HomeScreenState extends State<HomeScreen> with LocaleRefetch {
         _loadingMore = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_exploreRequests.isCurrent(token)) return;
       setState(() => _loadingMore = false);
     }
   }
@@ -116,16 +153,25 @@ class _HomeScreenState extends State<HomeScreen> with LocaleRefetch {
             child: FutureBuilder<HomeData>(
               future: _future,
               builder: (context, snapshot) {
+                // [CRITICAL] الانتظار أولاً: `FutureBuilder` يُبقي بيانات
+                // الطلب السابق **وخطأه** ما دام الجديد معلّقاً
+                // (`AsyncSnapshot.inState`)، فأيّ ترتيبٍ آخر يعرض أثناء
+                // إعادة المحاولة الخطأَ القديم أو البيانات القديمة.
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return _buildLoadingState();
                 }
-                final data = snapshot.data ?? const HomeData();
+                if (snapshot.hasError) {
+                  return _buildErrorState(snapshot.error!);
+                }
+                final data = snapshot.requireData;
                 return RefreshIndicator(
                   onRefresh: () async {
-                    setState(() {
-                      _future = context.read<FetchHomeUsecase>()();
-                    });
-                    await _future;
+                    try {
+                      await _reload();
+                    } catch (_) {
+                      // الفشل تعرضه حالة الخطأ أعلاه؛ المؤشّر يكتفي بانتهاء
+                      // الطلب.
+                    }
                   },
                   child: NotificationListener<ScrollNotification>(
                     onNotification: _onScrollNotification,
@@ -366,6 +412,22 @@ class _HomeScreenState extends State<HomeScreen> with LocaleRefetch {
       case model.BannerDestination.none:
         mainNavIndex.value = MainTab.categories;
     }
+  }
+
+  /// فشل جلب الرئيسية — حالة خطأ ظاهرة بزرّ «إعادة المحاولة».
+  ///
+  /// [CRITICAL] كان الفشل يُعرض نجاحاً فارغاً (`snapshot.data ?? HomeData()`):
+  /// البطل المضمَّن برسم شخصيته ونصّه الافتراضي مكان بنر المسؤول، بلا عروض
+  /// ولا مختارات — شاشةٌ تبدو بيانات وليست كذلك، ولا زرّ يعيد المحاولة. كل
+  /// شاشة محتوى أخرى تفصل الفشل عن «لا بيانات»؛ الرئيسية كانت الشاذّة.
+  Widget _buildErrorState(Object error) {
+    final message = error is AppException
+        ? error.localizedMessage(context).trim()
+        : '';
+    return AnimeErrorState(
+      message: message.isNotEmpty ? message : context.strings('unexpectedError'),
+      onAction: _reload,
+    );
   }
 
   /// حالة تحميل الرئيسية — هياكل متلألئة بنفس إيقاع الأقسام الحقيقية.
