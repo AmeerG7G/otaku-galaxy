@@ -19,6 +19,7 @@ import { listAdminReviews, moderateReview } from '../api/communityApi'
 import type { AdminReview, ReviewStatus } from '../types/community'
 import { formatDateTime } from '../utils/format'
 import { PageHeader } from '../components/ui/PageHeader'
+import { ProductLink } from '../components/ui/ProductLink'
 import { MediaThumb } from '../components/ui/MediaThumb'
 import { ErrorState } from '../components/ui/States'
 
@@ -82,12 +83,7 @@ export default function ReviewsPage() {
       dataIndex: 'productName',
       key: 'productName',
       render: (value: string, review: AdminReview) => (
-        <Space direction="vertical" size={2}>
-          <Typography.Text strong>{value}</Typography.Text>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            {review.customerName}
-          </Typography.Text>
-        </Space>
+        <ProductLink productId={review.productId} name={value} secondary={review.customerName} />
       ),
     },
     {

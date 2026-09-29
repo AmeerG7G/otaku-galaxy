@@ -8,21 +8,19 @@ import {
   Card,
   Descriptions,
   Flex,
+  Grid,
   Input,
   Segmented,
   Select,
   Space,
-  Table,
   Tag,
   Typography,
 } from 'antd'
-import type { TablePaginationConfig } from 'antd'
 import {
   CheckOutlined,
   CloseOutlined,
   KeyOutlined,
   ReloadOutlined,
-  WhatsAppOutlined,
 } from '@ant-design/icons'
 import {
   approveAccountRequest,
@@ -33,6 +31,9 @@ import { ApiError } from '../api/client'
 import EmptyState from '../components/EmptyState'
 import SetCustomerPasswordModal from '../components/SetCustomerPasswordModal'
 import { PageHeader } from '../components/ui/PageHeader'
+import { ResponsiveTable } from '../components/ui/ResponsiveTable'
+import { SearchField } from '../components/ui/SearchField'
+import { WhatsAppButton } from '../components/ui/WhatsAppButton'
 import {
   ACCOUNT_REQUEST_KIND_LABELS,
   ACCOUNT_REQUEST_STATUS_LABELS,
@@ -42,7 +43,6 @@ import {
 } from '../types/accountRequests'
 import { customerGenderLabel } from '../types/customers'
 import { formatDateTime } from '../utils/format'
-import { whatsappUrl } from '../utils/phone'
 
 const PAGE_SIZE = 20
 const SEARCH_DEBOUNCE_MS = 350
@@ -70,6 +70,7 @@ function MatchTag({ ok, label }: { ok: boolean; label: string }) {
  */
 export default function AccountRequestsPage() {
   const { message, modal } = AntApp.useApp()
+  const screens = Grid.useBreakpoint()
   const queryClient = useQueryClient()
   const [kind, setKind] = useState<AccountRequestKind | 'all'>('all')
   const [status, setStatus] = useState<AccountRequestStatus | 'all'>('pending')
@@ -173,6 +174,130 @@ export default function AccountRequestsPage() {
     })
   }
 
+  /** إجراءات الطلب — المعالجات نفسها في الجدول والبطاقة. */
+  function renderActions(r: AccountRequest, block = false) {
+    const pending = r.status === 'pending'
+    const buttonProps = block ? { block: true, size: 'middle' as const } : { size: 'small' as const }
+    return (
+      <Flex gap={6} wrap vertical={block}>
+        {/* يفتح المحادثة فقط ولا يرسل شيئاً — التحقّق فعلٌ يدوي من المسؤول. */}
+        <WhatsAppButton phone={r.submitted.phone} {...buttonProps} />
+        {pending && r.kind === 'registration' && (
+          <Button
+            {...buttonProps}
+            type="primary"
+            icon={<CheckOutlined />}
+            disabled={!r.account}
+            loading={approveMutation.isPending && approveMutation.variables?.id === r.id}
+            onClick={() => confirmApprove(r)}
+          >
+            موافقة
+          </Button>
+        )}
+        {pending && r.kind === 'password_reset' && (
+          <Button
+            {...buttonProps}
+            type="primary"
+            icon={<KeyOutlined />}
+            disabled={!r.account}
+            onClick={() => setPasswordFor(r)}
+          >
+            تغيير كلمة المرور
+          </Button>
+        )}
+        {pending && (
+          <Button
+            {...buttonProps}
+            danger
+            icon={<CloseOutlined />}
+            loading={rejectMutation.isPending && rejectMutation.variables?.id === r.id}
+            onClick={() => confirmReject(r)}
+          >
+            رفض
+          </Button>
+        )}
+      </Flex>
+    )
+  }
+
+  function renderSubmitted(r: AccountRequest) {
+    return (
+      <Space direction="vertical" size={0}>
+        <Typography.Text strong>{r.submitted.username}</Typography.Text>
+        <Typography.Text dir="ltr" copyable>
+          {r.submitted.phone}
+        </Typography.Text>
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          {customerGenderLabel(r.submitted.gender)}
+          {r.submitted.levelKey ? ` · المستوى: ${r.submitted.levelKey}` : ''}
+        </Typography.Text>
+      </Space>
+    )
+  }
+
+  function renderAccount(r: AccountRequest) {
+    return r.account ? (
+      <Space direction="vertical" size={2}>
+        <Link to={`/customers/${r.account.id}`}>{r.account.username}</Link>
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          {customerGenderLabel(r.account.gender)}
+          {r.account.levelKey ? ` · المستوى: ${r.account.levelKey} (${r.account.points ?? 0} نقطة)` : ''}
+          {r.account.isVerified ? ' · مفعَّل' : ' · غير مفعَّل'}
+          {r.account.isActive ? '' : ' · محظور'}
+        </Typography.Text>
+        {r.kind === 'password_reset' && r.match && (
+          <Space size={4} wrap>
+            <MatchTag ok={r.match.username} label="الاسم" />
+            <MatchTag ok={r.match.gender} label="الجنس" />
+            <MatchTag ok={r.match.level} label="المستوى" />
+          </Space>
+        )}
+      </Space>
+    ) : (
+      <Tag color="volcano">لا حساب بهذا الرقم</Tag>
+    )
+  }
+
+  function renderStatus(r: AccountRequest) {
+    return (
+      <Space direction="vertical" size={0}>
+        <Tag color={STATUS_COLORS[r.status]}>{ACCOUNT_REQUEST_STATUS_LABELS[r.status]}</Tag>
+        {r.resolvedAt && (
+          <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+            {formatDateTime(r.resolvedAt)}
+          </Typography.Text>
+        )}
+        {r.adminNote && (
+          <Typography.Text type="secondary" style={{ fontSize: 11 }} ellipsis={{ tooltip: r.adminNote }}>
+            {r.adminNote}
+          </Typography.Text>
+        )}
+      </Space>
+    )
+  }
+
+  /** بطاقة الهاتف: كل ما في الصفّ، والإجراءات بعرض البطاقة. */
+  function renderCard(r: AccountRequest) {
+    return (
+      <Space direction="vertical" size={12} style={{ width: '100%' }}>
+        <Flex justify="space-between" align="flex-start" gap={8} wrap>
+          <Tag color="purple" style={{ marginInlineEnd: 0 }}>{ACCOUNT_REQUEST_KIND_LABELS[r.kind]}</Tag>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>{formatDateTime(r.createdAt)}</Typography.Text>
+        </Flex>
+        <div>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>ما أرسله الزبون</Typography.Text>
+          {renderSubmitted(r)}
+        </div>
+        <div>
+          <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block' }}>الحساب المخزَّن</Typography.Text>
+          {renderAccount(r)}
+        </div>
+        {renderStatus(r)}
+        {renderActions(r, true)}
+      </Space>
+    )
+  }
+
   const columns = [
     {
       title: 'النوع',
@@ -184,64 +309,19 @@ export default function AccountRequestsPage() {
     {
       title: 'ما أرسله الزبون',
       key: 'submitted',
-      render: (_: unknown, r: AccountRequest) => (
-        <Space direction="vertical" size={0}>
-          <Typography.Text strong>{r.submitted.username}</Typography.Text>
-          <Typography.Text dir="ltr" copyable>
-            {r.submitted.phone}
-          </Typography.Text>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            {customerGenderLabel(r.submitted.gender)}
-            {r.submitted.levelKey ? ` · المستوى: ${r.submitted.levelKey}` : ''}
-          </Typography.Text>
-        </Space>
-      ),
+      render: (_: unknown, r: AccountRequest) => renderSubmitted(r),
     },
     {
       title: 'الحساب المخزَّن',
       key: 'account',
-      render: (_: unknown, r: AccountRequest) =>
-        r.account ? (
-          <Space direction="vertical" size={2}>
-            <Link to={`/customers/${r.account.id}`}>{r.account.username}</Link>
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              {customerGenderLabel(r.account.gender)}
-              {r.account.levelKey ? ` · المستوى: ${r.account.levelKey} (${r.account.points ?? 0} نقطة)` : ''}
-              {r.account.isVerified ? ' · مفعَّل' : ' · غير مفعَّل'}
-              {r.account.isActive ? '' : ' · محظور'}
-            </Typography.Text>
-            {r.kind === 'password_reset' && r.match && (
-              <Space size={4} wrap>
-                <MatchTag ok={r.match.username} label="الاسم" />
-                <MatchTag ok={r.match.gender} label="الجنس" />
-                <MatchTag ok={r.match.level} label="المستوى" />
-              </Space>
-            )}
-          </Space>
-        ) : (
-          <Tag color="volcano">لا حساب بهذا الرقم</Tag>
-        ),
+      render: (_: unknown, r: AccountRequest) => renderAccount(r),
     },
     {
       title: 'الحالة',
       dataIndex: 'status',
       key: 'status',
       width: 130,
-      render: (value: AccountRequestStatus, r: AccountRequest) => (
-        <Space direction="vertical" size={0}>
-          <Tag color={STATUS_COLORS[value]}>{ACCOUNT_REQUEST_STATUS_LABELS[value]}</Tag>
-          {r.resolvedAt && (
-            <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-              {formatDateTime(r.resolvedAt)}
-            </Typography.Text>
-          )}
-          {r.adminNote && (
-            <Typography.Text type="secondary" style={{ fontSize: 11 }} ellipsis={{ tooltip: r.adminNote }}>
-              {r.adminNote}
-            </Typography.Text>
-          )}
-        </Space>
-      ),
+      render: (_: AccountRequestStatus, r: AccountRequest) => renderStatus(r),
     },
     {
       title: 'وقت الطلب',
@@ -254,68 +334,12 @@ export default function AccountRequestsPage() {
       title: 'الإجراءات',
       key: 'actions',
       width: 300,
-      render: (_: unknown, r: AccountRequest) => {
-        const chat = whatsappUrl(r.submitted.phone)
-        const pending = r.status === 'pending'
-        return (
-          <Space size={6} wrap>
-            {/* يفتح المحادثة فقط ولا يرسل شيئاً — التحقّق فعلٌ يدوي من المسؤول. */}
-            <Button
-              size="small"
-              icon={<WhatsAppOutlined />}
-              disabled={!chat}
-              href={chat ?? undefined}
-              target="_blank"
-              rel="noreferrer noopener"
-            >
-              واتساب
-            </Button>
-            {pending && r.kind === 'registration' && (
-              <Button
-                size="small"
-                type="primary"
-                icon={<CheckOutlined />}
-                disabled={!r.account}
-                loading={approveMutation.isPending && approveMutation.variables?.id === r.id}
-                onClick={() => confirmApprove(r)}
-              >
-                موافقة
-              </Button>
-            )}
-            {pending && r.kind === 'password_reset' && (
-              <Button
-                size="small"
-                type="primary"
-                icon={<KeyOutlined />}
-                disabled={!r.account}
-                onClick={() => setPasswordFor(r)}
-              >
-                تغيير كلمة المرور
-              </Button>
-            )}
-            {pending && (
-              <Button
-                size="small"
-                danger
-                icon={<CloseOutlined />}
-                loading={rejectMutation.isPending && rejectMutation.variables?.id === r.id}
-                onClick={() => confirmReject(r)}
-              >
-                رفض
-              </Button>
-            )}
-          </Space>
-        )
-      },
+      render: (_: unknown, r: AccountRequest) => renderActions(r),
     },
   ]
 
   const data = requestsQuery.data
   const pendingCounts = data?.pending
-
-  const handleTableChange = (pagination: TablePaginationConfig) => {
-    setPage(pagination.current ?? 1)
-  }
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
@@ -332,6 +356,8 @@ export default function AccountRequestsPage() {
       <Card variant="outlined">
         <Flex gap={12} wrap align="center">
           <Segmented<AccountRequestKind | 'all'>
+            block={!screens.md}
+            style={screens.md ? undefined : { width: '100%' }}
             value={kind}
             onChange={(value) => {
               setKind(value)
@@ -343,7 +369,7 @@ export default function AccountRequestsPage() {
                 value: 'registration',
                 label: (
                   <Badge count={pendingCounts?.registration ?? 0} size="small" offset={[-6, 0]}>
-                    <span style={{ paddingInlineEnd: 10 }}>إنشاء حساب</span>
+                    <span style={{ paddingInlineEnd: 10 }}>{screens.md ? 'إنشاء حساب' : 'حساب جديد'}</span>
                   </Badge>
                 ),
               },
@@ -351,7 +377,7 @@ export default function AccountRequestsPage() {
                 value: 'password_reset',
                 label: (
                   <Badge count={pendingCounts?.password_reset ?? 0} size="small" offset={[-6, 0]}>
-                    <span style={{ paddingInlineEnd: 10 }}>إعادة تعيين كلمة المرور</span>
+                    <span style={{ paddingInlineEnd: 10 }}>{screens.md ? 'إعادة تعيين كلمة المرور' : 'كلمة المرور'}</span>
                   </Badge>
                 ),
               },
@@ -359,7 +385,7 @@ export default function AccountRequestsPage() {
           />
           <Select<AccountRequestStatus | 'all'>
             value={status}
-            style={{ width: 160 }}
+            style={{ width: 160, flex: '0 0 auto' }}
             onChange={(value) => {
               setStatus(value)
               setPage(1)
@@ -371,12 +397,11 @@ export default function AccountRequestsPage() {
               { value: 'all', label: 'كل الحالات' },
             ]}
           />
-          <Input.Search
-            allowClear
+          <SearchField
             placeholder="بحث بالرقم أو الاسم المرسَل"
+            aria-label="بحث طلبات الحساب"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            style={{ width: 260 }}
           />
         </Flex>
       </Card>
@@ -389,17 +414,18 @@ export default function AccountRequestsPage() {
             onAction={() => requestsQuery.refetch()}
           />
         ) : (
-          <Table<AccountRequest>
+          <ResponsiveTable<AccountRequest>
             rowKey="id"
             loading={requestsQuery.isLoading}
             dataSource={data?.items ?? []}
             columns={columns}
-            onChange={handleTableChange}
+            renderCard={renderCard}
             pagination={{
               current: page,
               pageSize: PAGE_SIZE,
               total: data?.total ?? 0,
               showSizeChanger: false,
+              onChange: setPage,
             }}
             locale={{ emptyText: <EmptyState description="لا طلبات مطابقة" /> }}
             expandable={{

@@ -114,11 +114,6 @@ export default function GalaxyRulesCard() {
           scroll={{ x: 720 }}
         />
 
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          الباقي دون العتبة يُهمَل ولا يُرحَّل: طلبٌ بـ
-          {formatCurrency(19_999)} يمنح {rules?.purchase.pointsPerStep ?? 5} نقاط لا أكثر.
-          ولكل منتج تقييم واحد من كل زبون مهما تكرّر شراؤه.
-        </Typography.Text>
       </Space>
     </Card>
   )

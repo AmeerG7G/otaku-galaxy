@@ -341,16 +341,10 @@ export default function ProductForm({
       </Card>
 
       <Card title="الصور" variant="outlined" style={{ marginTop: 16 }}>
-        <Typography.Paragraph type="secondary">
-          ارفع صورة من جهازك أو ألصق رابطاً. الصورة الأولى هي صورة الغلاف.
-        </Typography.Paragraph>
         <ImagesEditor purpose="product" />
       </Card>
 
       <Card title="الأنمي المرتبط" variant="outlined" style={{ marginTop: 16 }}>
-        <Typography.Paragraph type="secondary">
-          بُعد تصنيف مستقل عن الأقسام — يسمح للعميل بتصفّح «ون بيس» عبر كل الأقسام.
-        </Typography.Paragraph>
         <Form.Item name="franchiseIds" style={{ marginBottom: 0 }}>
           <Select
             mode="multiple"
@@ -366,12 +360,6 @@ export default function ProductForm({
       </Card>
 
       <Card title="العرض والخصم" variant="outlined" style={{ marginTop: 16 }}>
-        <Alert
-          type="info"
-          showIcon
-          style={{ marginBottom: 16 }}
-          message="نسبة الخصم تُحسب تلقائياً من السعر السابق — لا تُدخل يدوياً. اترك السعر السابق فارغاً إن لم يكن هناك خصم حقيقي."
-        />
         <Space size="large" wrap align="start">
           <Form.Item
             name="previousPrice"

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { App as AntApp, ConfigProvider } from 'antd'
@@ -11,7 +11,8 @@ vi.mock('../api/restockApi', () => ({
   setRestockAt: vi.fn(),
 }))
 
-import { listRestockDemand, type RestockDemandRow } from '../api/restockApi'
+import { listRestockDemand, setRestockAt, type RestockDemandRow } from '../api/restockApi'
+import { DESKTOP, PHONE, setViewportWidth } from '../test/viewport'
 import RestockPage from './RestockPage'
 
 /**
@@ -58,8 +59,12 @@ async function expandFirstRow() {
 describe('هاتف مشترك إعادة التوفر في اللوحة', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // الجدول بصفوفه القابلة للتوسيع — على الشاشة العريضة.
+    setViewportWidth(DESKTOP)
     vi.mocked(listRestockDemand).mockResolvedValue([row()])
   })
+
+  afterEach(() => setViewportWidth(PHONE))
 
   it('[CRITICAL] يعرض الرقم كاملاً بلا تقنيع', async () => {
     renderPage()
@@ -122,5 +127,61 @@ describe('هاتف مشترك إعادة التوفر في اللوحة', () => 
     await screen.findByText('حقيبة أنمي')
     await waitFor(() => expect(listRestockDemand).toHaveBeenCalled())
     expect(document.body.textContent).not.toContain('+964')
+  })
+})
+
+/**
+ * STEP 64 §11 — على الهاتف: بطاقة لكل منتج بلا تمرير جانبي، المنتظرون ظاهرون
+ * بلا توسيع، والموعد يُحفظ بزرٍّ صريح (الاختيار وحده لا يُرسل شيئاً).
+ */
+describe('طلبات التوفر على الهاتف', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    setViewportWidth(PHONE)
+    vi.mocked(setRestockAt).mockResolvedValue(undefined as never)
+  })
+
+  it('بطاقةٌ لا جدول: المنتج والعدد والمنتظرون وواتساب ظاهرون بلا توسيع', async () => {
+    vi.mocked(listRestockDemand).mockResolvedValue([row()])
+    const { container } = renderPage()
+    const card = (await screen.findByText('حقيبة أنمي')).closest('[data-row-key]')! as HTMLElement
+    expect(container.querySelector('.ant-table')).toBeNull()
+    expect(card.textContent).toContain('1 ينتظرون')
+    expect(card.textContent).toContain('+9647701234567')
+    expect(card.querySelector('a[href="https://wa.me/9647701234567"]')).not.toBeNull()
+  })
+
+  it('«حفظ» يرسل الموعد عبر المسار الضيّق؛ «تراجع» لا يرسل شيئاً', async () => {
+    const at = '2026-12-01T09:00:00.000Z'
+    vi.mocked(listRestockDemand).mockResolvedValue([row({ restockAt: at })])
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByText('حقيبة أنمي')
+
+    await user.click(screen.getByText('تعديل'))
+    await user.click(screen.getByText('تراجع'))
+    expect(setRestockAt).not.toHaveBeenCalled()
+
+    await user.click(screen.getByText('تعديل'))
+    await user.click(screen.getByText('حفظ'))
+    await waitFor(() => expect(setRestockAt).toHaveBeenCalledWith('p1', at))
+  })
+
+  it('«إلغاء الموعد» يرسل null صراحةً', async () => {
+    vi.mocked(listRestockDemand).mockResolvedValue([row({ restockAt: '2026-12-01T09:00:00.000Z' })])
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByText('حقيبة أنمي')
+    await user.click(screen.getByText('إلغاء الموعد'))
+    await waitFor(() => expect(setRestockAt).toHaveBeenCalledWith('p1', null))
+  })
+
+  it('«حفظ» معطَّل بلا موعدٍ مختار', async () => {
+    vi.mocked(listRestockDemand).mockResolvedValue([row()])
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByText('حقيبة أنمي')
+    await user.click(screen.getByText('تحديد'))
+    expect(screen.getByText('حفظ').closest('button')).toBeDisabled()
   })
 })

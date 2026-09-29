@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
@@ -18,6 +18,7 @@ import { approveAccountRequest, listAccountRequests, rejectAccountRequest } from
 import { setCustomerPassword } from '../api/customersApi'
 import AccountRequestsPage from './AccountRequestsPage'
 import type { AccountRequest, AccountRequestListResponse } from '../types/accountRequests'
+import { DESKTOP, PHONE, setViewportWidth } from '../test/viewport'
 
 /**
  * طلبات الحساب في اللوحة.
@@ -94,7 +95,7 @@ describe('طلب إنشاء الحساب', () => {
 
   it('يظهر معلَّقاً بما أُرسل، وبأزرار موافقة/رفض/واتساب — ولا زرّ كلمة مرور', async () => {
     renderPage()
-    const row = (await screen.findByText('+9647701234567')).closest('tr')!
+    const row = (await screen.findByText('+9647701234567')).closest('[data-row-key]')! as HTMLElement
     expect(within(row).getByText('قيد المراجعة')).toBeInTheDocument()
     expect(within(row).getByText('موافقة')).toBeInTheDocument()
     expect(within(row).getByText('رفض')).toBeInTheDocument()
@@ -105,7 +106,7 @@ describe('طلب إنشاء الحساب', () => {
   it('[CRITICAL] الموافقة تمرّ بتأكيدٍ يذكّر بتحقّق واتساب ثم تستدعي المسار الإداري', async () => {
     const user = userEvent.setup()
     renderPage()
-    const row = (await screen.findByText('+9647701234567')).closest('tr')!
+    const row = (await screen.findByText('+9647701234567')).closest('[data-row-key]')! as HTMLElement
     await user.click(within(row).getByText('موافقة'))
     expect(await screen.findByText(/هل تحقّقت من زبون جديد/)).toBeInTheDocument()
     await user.click(screen.getByText('موافقة وتفعيل'))
@@ -115,7 +116,7 @@ describe('طلب إنشاء الحساب', () => {
   it('الرفض يمرّ بتأكيدٍ ويُرسل الملاحظة', async () => {
     const user = userEvent.setup()
     renderPage()
-    const row = (await screen.findByText('+9647701234567')).closest('tr')!
+    const row = (await screen.findByText('+9647701234567')).closest('[data-row-key]')! as HTMLElement
     await user.click(within(row).getByText('رفض'))
     await user.type(await screen.findByPlaceholderText(/سبب الرفض/), 'لم يردّ')
     // زرّ التأكيد في الحوار (الثاني: الأول زرّ الصفّ).
@@ -151,7 +152,7 @@ describe('طلب إعادة تعيين كلمة المرور', () => {
 
   it('[CRITICAL] يُعرض المرسَل بجانب المخزَّن مع إشارات مطابقة — ولا موافقة بلا كلمة مرور', async () => {
     renderPage()
-    const row = (await screen.findByText('اسم آخر')).closest('tr')!
+    const row = (await screen.findByText('اسم آخر')).closest('[data-row-key]')! as HTMLElement
     expect(within(row).getByText('أمير')).toBeInTheDocument()
     expect(within(row).getByText('✗ الاسم')).toBeInTheDocument()
     expect(within(row).getByText('✗ الجنس')).toBeInTheDocument()
@@ -163,7 +164,7 @@ describe('طلب إعادة تعيين كلمة المرور', () => {
   it('[CRITICAL] وضع الكلمة يرسلها مرّةً مع معرّف الطلب — ولا يعرضها بعد الحفظ ولا يسمّيها مؤقّتة', async () => {
     const user = userEvent.setup()
     renderPage()
-    const row = (await screen.findByText('اسم آخر')).closest('tr')!
+    const row = (await screen.findByText('اسم آخر')).closest('[data-row-key]')! as HTMLElement
     await user.click(within(row).getByText('تغيير كلمة المرور'))
     const dialog = (await screen.findByText(/تحقّق من هوية الزبون عبر واتساب/)).closest('.ant-modal') as HTMLElement
     // النصّ التفسيري يقول «لا كلمة مؤقّتة» — الحوار لا يطلب ولا يعد بمؤقّتة.
@@ -182,7 +183,7 @@ describe('طلب إعادة تعيين كلمة المرور', () => {
   it('كلمتان غير متطابقتين لا تُرسلان', async () => {
     const user = userEvent.setup()
     renderPage()
-    const row = (await screen.findByText('اسم آخر')).closest('tr')!
+    const row = (await screen.findByText('اسم آخر')).closest('[data-row-key]')! as HTMLElement
     await user.click(within(row).getByText('تغيير كلمة المرور'))
     const dialog = (await screen.findByText(/تحقّق من هوية الزبون عبر واتساب/)).closest('.ant-modal') as HTMLElement
     await user.type(within(dialog).getByTestId('new-password'), 'admin-set-pass-9')
@@ -195,8 +196,46 @@ describe('طلب إعادة تعيين كلمة المرور', () => {
   it('رقمٌ بلا حساب: لا زرّ كلمة مرور، وإشارة «لا حساب بهذا الرقم»', async () => {
     vi.mocked(listAccountRequests).mockResolvedValue(listOf([{ ...reset, id: 'req-3', account: null, match: null }]))
     renderPage()
-    const row = (await screen.findByText('اسم آخر')).closest('tr')!
+    const row = (await screen.findByText('اسم آخر')).closest('[data-row-key]')! as HTMLElement
     expect(within(row).getByText('لا حساب بهذا الرقم')).toBeInTheDocument()
     expect(within(row).getByText('تغيير كلمة المرور').closest('button')).toBeDisabled()
+  })
+})
+
+/**
+ * STEP 64 §1 — على الهاتف كان الجدول بعرضٍ ثابت (عمود إجراءات 300) بلا تمرير،
+ * فتُقصّ الأزرار ولا تُضغط. الآن بطاقةٌ لكل طلب بكل معلوماته وإجراءاته.
+ */
+describe('طلبات الحساب على الهاتف والشاشة العريضة', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(listAccountRequests).mockResolvedValue(listOf([request()]))
+    vi.mocked(approveAccountRequest).mockResolvedValue({ row: request({ status: 'approved' }), message: 'تمت الموافقة' })
+  })
+
+  afterEach(() => setViewportWidth(PHONE))
+
+  it('الهاتف: بطاقة لا جدول — المرسَل والمخزَّن والحالة والإجراءات كلها ظاهرة، والموافقة تعمل', async () => {
+    setViewportWidth(PHONE)
+    const user = userEvent.setup()
+    const { container } = renderPage()
+    const card = (await screen.findByText('+9647701234567')).closest('[data-row-key]')! as HTMLElement
+    expect(container.querySelector('.ant-table')).toBeNull()
+    expect(card.closest('.ant-card')).not.toBeNull()
+    expect(within(card).getByText('ما أرسله الزبون')).toBeInTheDocument()
+    expect(within(card).getByText('الحساب المخزَّن')).toBeInTheDocument()
+    expect(within(card).getByText('قيد المراجعة')).toBeInTheDocument()
+    expect(within(card).getByText('واتساب').closest('a')).toHaveAttribute('href', 'https://wa.me/9647701234567')
+    await user.click(within(card).getByText('موافقة'))
+    await user.click(await screen.findByText('موافقة وتفعيل'))
+    await waitFor(() => expect(approveAccountRequest).toHaveBeenCalledWith('req-1', undefined))
+  })
+
+  it('الشاشة العريضة: الجدول نفسه كما كان', async () => {
+    setViewportWidth(DESKTOP)
+    const { container } = renderPage()
+    const row = (await screen.findByText('+9647701234567')).closest('[data-row-key]')! as HTMLElement
+    expect(row.tagName).toBe('TR')
+    expect(container.querySelector('.ant-table')).not.toBeNull()
   })
 })

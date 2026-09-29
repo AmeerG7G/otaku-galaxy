@@ -21,6 +21,7 @@ import { formatCurrency, formatDateTime } from '../utils/format'
 import StatusBadge from '../components/StatusBadge'
 import EmptyState from '../components/EmptyState'
 import { PageHeader } from '../components/ui/PageHeader'
+import { WhatsAppButton } from '../components/ui/WhatsAppButton'
 import { ErrorState } from '../components/ui/States'
 import { useTableState } from '../hooks/useTableState'
 
@@ -126,9 +127,13 @@ export default function OrdersPage() {
     {
       title: 'الإجراءات',
       key: 'actions',
-      width: 100,
-      render: (_: unknown, order: { id: string }) => (
-        <Link to={`/orders/${order.id}`}>عرض</Link>
+      width: 170,
+      render: (_: unknown, order: { id: string; phone: string; customer: { phone: string } | null }) => (
+        <Space size={8}>
+          <Link to={`/orders/${order.id}`}>عرض</Link>
+          {/* زبون الطلب: رقم حسابه، أو رقم التواصل في الطلب لحسابٍ حُذف. */}
+          <WhatsAppButton phone={order.customer?.phone ?? order.phone} />
+        </Space>
       ),
     },
   ]

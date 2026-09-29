@@ -7,7 +7,7 @@ import {
   Button,
   Card,
   Checkbox,
-  Input,
+  Flex,
   Space,
   Table,
   Tag,
@@ -17,7 +17,6 @@ import {
   EditOutlined,
   PlusOutlined,
   ReloadOutlined,
-  SearchOutlined,
   StarFilled,
 } from '@ant-design/icons'
 import { deleteProduct, listProducts } from '../api/productsApi'
@@ -26,7 +25,8 @@ import { ApiError } from '../api/client'
 import type { Product } from '../types/products'
 import { formatCurrency } from '../utils/format'
 import EmptyState from '../components/EmptyState'
-import { MediaThumb } from '../components/ui/MediaThumb'
+import { ProductLink } from '../components/ui/ProductLink'
+import { SearchField } from '../components/ui/SearchField'
 import { PageHeader } from '../components/ui/PageHeader'
 import { useTableState } from '../hooks/useTableState'
 
@@ -150,27 +150,19 @@ export default function ProductsPage() {
 
   const columns = [
     {
-      title: 'الصورة',
-      key: 'image',
-      width: 80,
-      render: (_: unknown, product: Product) => (
-        <MediaThumb reference={product.images[0]} size={52} />
-      ),
-    },
-    {
       title: 'المنتج',
       key: 'name',
-      // الاسمان صريحان: العربي أولاً ثم الكردي — أو إعلان نقصه. لا يُقرأ `name`.
+      // الصورة والاسم رابطٌ إلى صفحة المنتج (STEP 64 §3). الاسمان صريحان:
+      // العربي أولاً ثم الكردي — أو إعلان نقصه. لا يُقرأ `name`.
       render: (_: unknown, product: Product) => (
-        <Space direction="vertical" size={2}>
-          <Typography.Text strong lang="ar">
-            {product.nameAr}
-          </Typography.Text>
-          {product.nameCkb && (
-            <Typography.Text type="secondary" lang="ckb">
-              {product.nameCkb}
-            </Typography.Text>
-          )}
+        <Space direction="vertical" size={4}>
+          <ProductLink
+            productId={product.id}
+            image={product.images[0] ?? null}
+            imageSize={52}
+            name={<span lang="ar">{product.nameAr}</span>}
+            secondary={product.nameCkb ? <span lang="ckb">{product.nameCkb}</span> : undefined}
+          />
           {product.kurdishMissing && <Tag color="orange">الكردية ناقصة</Tag>}
         </Space>
       ),
@@ -308,17 +300,21 @@ export default function ProductsPage() {
       />
 
       <Card>
-        <Space wrap size={16} style={{ marginBottom: 16 }}>
-          <Input
-            allowClear
-            prefix={<SearchOutlined />}
+        {/*
+          [STEP 64 §4] كان `Space wrap` يلفّ كل عنصر في صندوقه فلا يتشاركان
+          خطّ الوسط، والحقل بعرض 360 ثابت. الآن صفّ أدوات واحد: حقل البحث
+          الموحّد يتمدّد (سطرٌ كامل على الهاتف)، والمربّع بارتفاع عناصر التحكّم
+          نفسه ومحاذىً إلى وسطها.
+        */}
+        <Flex wrap gap={12} align="center" style={{ marginBottom: 16 }}>
+          <SearchField
             placeholder="ابحث باسم المنتج (عربي أو كردي)"
             aria-label="بحث المنتجات بالاسم"
             value={searchInput}
             onChange={(event) => setSearchInput(event.target.value)}
-            style={{ width: 360, maxWidth: '100%' }}
           />
           <Checkbox
+            style={{ minHeight: 'var(--ant-control-height, 38px)', display: 'inline-flex', alignItems: 'center' }}
             checked={missingKurdish}
             onChange={(event) =>
               setSearchParams((current) => {
@@ -332,7 +328,7 @@ export default function ProductsPage() {
           >
             الكردية ناقصة فقط
           </Checkbox>
-        </Space>
+        </Flex>
         {productsQuery.isError ? (
           <Alert
             type="error"

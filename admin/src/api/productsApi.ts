@@ -167,9 +167,12 @@ export interface ProductFlags {
  * على المنتج المعطّل — لأن المسار العام يعيد له 404، فتحوّل إلى رسالة
  * «لا يمكن تغيير حالاته» تصف قيداً لا وجود له على الخادم.
  */
-export function patchProductFlags(
+export async function patchProductFlags(
   id: string,
   flags: ProductFlags,
 ): Promise<ProductMutationResult> {
-  return updateProduct(id, flags)
+  // [SECURITY] STEP 64: مسار «العروض» الضيّق — علَما العرض/الاختيار وحدهما.
+  // صلاحية «العروض» لا تفتح تعديل المنتج الكامل (السعر، المخزون، الصور).
+  const response = await client.patch<ApiEnvelope<Product>>(`/admin/offers/${id}`, flags)
+  return { product: response.data.data!, message: response.data.message ?? '' }
 }

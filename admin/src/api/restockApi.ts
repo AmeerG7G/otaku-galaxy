@@ -31,12 +31,13 @@ export async function listRestockDemand() {
 /**
  * ضبط موعد التوفر المتوقَّع لمنتج.
  *
- * لا نقطة نهاية جديدة: `restock_at` عمودٌ في `products` ومسار تعديل المنتج
- * القائم يقبله سلفاً. إضافة مسار ثانٍ لنفس الحقل كانت ستعني مصدرين للتحقق
- * ولقواعد الصلاحية.
+ * [SECURITY] مسارٌ ضيّق (STEP 64): `PATCH /admin/restock/:id/schedule` يقبل
+ * `restockAt` وحده ويُفتح لصلاحية «طلبات التوفر». كان يمرّ عبر تعديل المنتج
+ * الكامل، فمن يدير طلبات التوفر كان يستطيع تعديل السعر والمخزون أيضاً. التحقق
+ * والإشعار واحدٌ في الخادم (`adminService.updateProduct`) للمسارين.
  *
  * `null` يمسح الموعد.
  */
 export async function setRestockAt(productId: string, restockAt: string | null) {
-  return patch(`/admin/products/${productId}`, { restockAt })
+  return patch(`/admin/restock/${productId}/schedule`, { restockAt })
 }

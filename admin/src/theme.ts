@@ -117,7 +117,41 @@ export const themeConfig: ThemeConfig = {
     Result: {
       iconFontSize: 56,
     },
+    ...selectionTokens(brand.textSecondary, 'rgba(24, 15, 48, 0.06)'),
   },
+}
+
+/**
+ * حالة الاختيار — واحدةٌ في الثيمين ولكل عنصر اختيار (STEP 64).
+ *
+ * [CRITICAL] كان رقم الصفحة النشطة في الوضع الداكن بنفسجياً على خلفية
+ * بنفسجية فيختفي: أنتديب يلوّن النصّ النشط بـ`colorPrimary` افتراضاً، والثيم
+ * الداكن جعل الخلفية النشطة `colorPrimary` أيضاً. ومقاطع الاختيار (`Segmented`:
+ * الجنس، التبويبات) كانت تميّز المختار بدرجة رمادي لا تكاد تُرى على الخلفية
+ * الداكنة. الآن: المختار خلفيةٌ أساسية ونصٌّ أبيض صريحان (تباين ≥ 4.5)، وغير
+ * المختار نصٌّ ثانوي على مسارٍ خافت — في الصفحات كلها لأنها توكنات الثيم لا
+ * تعديلاتٌ لكل صفحة. `theme/contrast.test.ts` يقيس التباين.
+ */
+export function selectionTokens(itemColor: string, trackBg: string): ThemeConfig['components'] {
+  return {
+    Pagination: {
+      // `primaryActive` لا `primary`: الأبيض على #7C5CFF تباينه 4.36 فقط (دون
+      // 4.5 لنصٍّ بحجم 14)، وعلى #6A47F5 ‏5.5.
+      itemActiveBg: brand.primaryActive,
+      itemActiveColor: '#FFFFFF',
+      itemActiveColorHover: '#FFFFFF',
+      itemActiveBgDisabled: 'rgba(124, 92, 255, 0.35)',
+      itemActiveColorDisabled: '#FFFFFF',
+    },
+    Segmented: {
+      trackBg,
+      itemColor,
+      itemHoverColor: brand.primary,
+      itemHoverBg: 'rgba(124, 92, 255, 0.10)',
+      itemSelectedBg: brand.primaryActive,
+      itemSelectedColor: '#FFFFFF',
+    },
+  }
 }
 
 export { themeConfig as lightThemeConfig }

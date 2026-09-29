@@ -51,16 +51,22 @@ export interface AdminCustomerListResponse {
   genderCounts: CustomerGenderCounts
 }
 
-/** ترشيح الجنس في اللوحة — `unknown` تعني الحسابات التي لم تُسأل. */
-export type CustomerGenderFilter = 'all' | CustomerGender | 'unknown'
+/**
+ * ترشيح الجنس في اللوحة: الكل / ذكور / إناث (STEP 64 §12).
+ *
+ * لا خيار «غير محدد»: الجنس إلزامي في التسجيل (`registerSchema`) وفي طلب
+ * إعادة التعيين، فكل حسابٍ جديد ذكرٌ أو أنثى. الحسابات القديمة التي لم تُسأل
+ * (`NULL`) باقيةٌ كما هي في القاعدة — لا ترحيل ولا تخمين — وتظهر «—».
+ */
+export type CustomerGenderFilter = 'all' | CustomerGender
 
-/** نصّ الجنس في اللوحة — `null` تُعرض «غير محدد» لا تُخمَّن. */
 export const CUSTOMER_GENDER_LABELS: Record<CustomerGender, string> = {
   male: 'ذكر',
   female: 'أنثى',
 }
 
-export const UNKNOWN_GENDER_LABEL = 'غير محدد'
+/** حسابٌ قديم بلا جنس — شرطةٌ لا «غير محدد» ولا «ذكر». */
+export const UNKNOWN_GENDER_LABEL = '—'
 
 export function customerGenderLabel(gender: CustomerGender | null): string {
   return gender ? CUSTOMER_GENDER_LABELS[gender] : UNKNOWN_GENDER_LABEL
@@ -95,7 +101,7 @@ export interface AdminCustomerOrderSummary {
   status: string
   total: number
   createdAt: string
-  items?: Array<{ productName: string; quantity: number }>
+  items?: Array<{ productId?: string | null; productName: string; quantity: number }>
 }
 
 /**

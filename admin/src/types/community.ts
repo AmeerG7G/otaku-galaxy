@@ -83,6 +83,8 @@ export interface StoreSettings {
   social_instagram: string
   social_whatsapp: string
   social_description: string
+  /** رابط المتجر في رسالة مشاركة المنتج من التطبيق (STEP 64 §19). */
+  store_share_url: string
 }
 
 export type OrderStatusKey =

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Alert,
   App,
   Card,
   Form,
@@ -252,12 +251,6 @@ export default function BroadcastComposer({
           />
         </Card>
 
-        <Alert
-          type="warning"
-          showIcon
-          message="سجلّ داخل التطبيق — لا إشعار دفع"
-          description="الإشعار يُكتب في صندوق الزبون داخل التطبيق ويقرؤه عند فتحه. لا مزوّد إشعارات دفع (Push) مربوطاً بالمنظومة بعد، فلا يرنّ هاتف أحد."
-        />
       </Space>
     </Modal>
   )

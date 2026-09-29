@@ -7,11 +7,12 @@ import {
   Card,
   Col,
   Flex,
+  Grid,
   Row,
   Segmented,
+  Select,
   Space,
   Statistic,
-  Table,
   Tag,
   Typography,
 } from 'antd'
@@ -28,6 +29,9 @@ import EmptyState from '../components/EmptyState'
 import { resolveMediaUrl } from '../utils/media'
 import { formatDateTime } from '../utils/format'
 import { PageHeader } from '../components/ui/PageHeader'
+import { ResponsiveTable } from '../components/ui/ResponsiveTable'
+import { useCan } from '../hooks/useAdminProfile'
+import { useTableState } from '../hooks/useTableState'
 
 const PAGE_SIZE = 20
 
@@ -69,11 +73,36 @@ const SUGGESTED: Partial<Record<BirthdayFilter, { title: string; body: string }>
  * هي تذكير التقييم، وهي مربوطة بحالة الطلب لا بالتقويم). ادّعاء تهنئة
  * تلقائية هنا كان سيعني وعداً لا ينفّذه شيء.
  */
+/** نوافذ «قادمة/مؤخّراً» — والقيمة في الرابط تُقبل منها وحدها. */
+const WINDOWS = [7, 14, 30] as const
+
+function readTab(raw: string | undefined): BirthdayFilter {
+  return TABS.includes(raw as BirthdayFilter) ? (raw as BirthdayFilter) : 'today'
+}
+
+function readWindow(raw: string | undefined): number {
+  const value = Number(raw)
+  return (WINDOWS as readonly number[]).includes(value) ? value : 7
+}
+
 export default function BirthdaysPage() {
-  const [filter, setFilter] = useState<BirthdayFilter>('today')
-  const [windowDays, setWindowDays] = useState(7)
-  const [page, setPage] = useState(1)
+  // [STEP 64 §15] التبويب والنافذة والصفحة في الرابط لا في حالة المكوّن: كانت
+  // إعادة التحميل تُرجع كل اختيار إلى «أعياد اليوم / ٧ أيام» — «الخيار لا يُحفظ».
+  const table = useTableState()
+  const filter = readTab(table.value('tab'))
+  const windowDays = readWindow(table.value('window'))
+  const page = table.page
   const [composer, setComposer] = useState<BroadcastAudience | null>(null)
+  const screens = Grid.useBreakpoint()
+  const canNotify = useCan('notifications')
+
+  function update(next: { tab?: BirthdayFilter; window?: number; page?: number }) {
+    const params = new URLSearchParams(table.searchParams)
+    if (next.tab !== undefined) params.set('tab', next.tab)
+    if (next.window !== undefined) params.set('window', String(next.window))
+    params.set('page', String(next.page ?? 1))
+    table.setSearchParams(params)
+  }
 
   const query = useQuery({
     queryKey: ['admin-birthdays', filter, windowDays, page],
@@ -104,54 +133,59 @@ export default function BirthdaysPage() {
   const tabAudience = audienceForTab()
   const suggestion = SUGGESTED[filter]
 
+  const renderWho = (customer: BirthdayCustomer) => (
+    <Flex align="center" gap={10}>
+      <Avatar src={resolveMediaUrl(customer.avatarUrl)} size={34}>
+        {customer.username.charAt(0)}
+      </Avatar>
+      <Space direction="vertical" size={0}>
+        <Typography.Text strong>{customer.username}</Typography.Text>
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          {customer.phone}
+        </Typography.Text>
+      </Space>
+    </Flex>
+  )
+  const renderBirthday = (customer: BirthdayCustomer) =>
+    customer.isRegistered ? (
+      <Tag color="magenta" style={{ marginInlineEnd: 0 }}>
+        {customer.birthDay}/{customer.birthMonth}
+      </Tag>
+    ) : (
+      <Tag style={{ marginInlineEnd: 0 }}>لم يسجّل</Tag>
+    )
+  const renderDays = (customer: BirthdayCustomer) => {
+    if (customer.daysUntilBirthday === null) return '—'
+    if (customer.daysUntilBirthday === 0) return <Tag color="gold">اليوم 🎂</Tag>
+    return `${customer.daysUntilBirthday} يوم`
+  }
+  const renderDiscount = (used: boolean) =>
+    used ? <Tag color="default">مستهلَك</Tag> : <Tag color="green">متاح</Tag>
+
   const columns = [
     {
       title: 'الزبون',
       key: 'user',
-      render: (_: unknown, customer: BirthdayCustomer) => (
-        <Flex align="center" gap={10}>
-          <Avatar src={resolveMediaUrl(customer.avatarUrl)} size={34}>
-            {customer.username.charAt(0)}
-          </Avatar>
-          <Space direction="vertical" size={0}>
-            <Typography.Text strong>{customer.username}</Typography.Text>
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              {customer.phone}
-            </Typography.Text>
-          </Space>
-        </Flex>
-      ),
+      render: (_: unknown, customer: BirthdayCustomer) => renderWho(customer),
     },
     {
       title: 'الميلاد',
       key: 'birthday',
       width: 120,
-      render: (_: unknown, customer: BirthdayCustomer) =>
-        customer.isRegistered ? (
-          <Tag color="magenta">
-            {customer.birthDay}/{customer.birthMonth}
-          </Tag>
-        ) : (
-          <Tag>لم يسجّل</Tag>
-        ),
+      render: (_: unknown, customer: BirthdayCustomer) => renderBirthday(customer),
     },
     {
       title: 'المتبقّي',
       key: 'daysUntil',
       width: 140,
-      render: (_: unknown, customer: BirthdayCustomer) => {
-        if (customer.daysUntilBirthday === null) return '—'
-        if (customer.daysUntilBirthday === 0) return <Tag color="gold">اليوم 🎂</Tag>
-        return `${customer.daysUntilBirthday} يوم`
-      },
+      render: (_: unknown, customer: BirthdayCustomer) => renderDays(customer),
     },
     {
       title: 'خصم هذه السنة',
       dataIndex: 'discountUsedThisYear',
       key: 'discountUsedThisYear',
       width: 140,
-      render: (value: boolean) =>
-        value ? <Tag color="default">مستهلَك</Tag> : <Tag color="green">متاح</Tag>,
+      render: (value: boolean) => renderDiscount(value),
     },
     {
       title: 'طلبات مكتملة',
@@ -167,6 +201,27 @@ export default function BirthdaysPage() {
     },
   ]
 
+  /** بطاقة الهاتف — كل أعمدة الجدول، بلا عرضٍ ثابت ولا تمرير جانبي. */
+  function renderCard(customer: BirthdayCustomer) {
+    return (
+      <Space direction="vertical" size={10} style={{ width: '100%' }}>
+        <Flex justify="space-between" align="center" gap={8}>
+          {renderWho(customer)}
+          {renderBirthday(customer)}
+        </Flex>
+        <Flex wrap gap={8} align="center">
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>المتبقّي:</Typography.Text>
+          {renderDays(customer)}
+          {renderDiscount(customer.discountUsedThisYear)}
+        </Flex>
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          طلبات مكتملة: {customer.completedOrders} · سجّل في:{' '}
+          {customer.birthdaySetAt ? formatDateTime(customer.birthdaySetAt) : '—'}
+        </Typography.Text>
+      </Space>
+    )
+  }
+
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <PageHeader
@@ -181,14 +236,16 @@ export default function BirthdaysPage() {
             >
               تحديث
             </Button>
-            <Button
-              type="primary"
-              icon={<SendOutlined />}
-              disabled={!tabAudience || (query.data?.total ?? 0) === 0}
-              onClick={() => setComposer(tabAudience)}
-            >
-              إشعار لهذه المجموعة
-            </Button>
+            {canNotify && (
+              <Button
+                type="primary"
+                icon={<SendOutlined />}
+                disabled={!tabAudience || (query.data?.total ?? 0) === 0}
+                onClick={() => setComposer(tabAudience)}
+              >
+                إشعار لهذه المجموعة
+              </Button>
+            )}
           </Space>
         }
       />
@@ -219,33 +276,35 @@ export default function BirthdaysPage() {
         </Col>
       </Row>
 
-      <Alert
-        type="info"
-        showIcon
-        message={`«اليوم» محسوب بتوقيت ${query.data?.timezone ?? 'المتجر'}`}
-        description="لا إرسال تلقائي: التهنئة تُرسَل بضغطة من هنا. المنظومة لا تملك جدولة إشعارات تقويمية، ولن ندّعي تهنئة تنطلق وحدها بينما لا شيء يطلقها."
-      />
-
       <Card variant="outlined">
-        <Flex wrap gap={12} align="center" style={{ marginBottom: 16 }}>
-          <Segmented
-            value={filter}
-            onChange={(value) => {
-              setFilter(value as BirthdayFilter)
-              setPage(1)
-            }}
-            options={TABS.map((value) => ({
-              label: BIRTHDAY_FILTER_LABELS[value],
-              value,
-            }))}
-          />
+        {/*
+          [STEP 64 §15] على الهاتف كان شريط التبويبات الستّة (497px) في صندوقٍ
+          بعرض 309 داخل محتوى يقصّ الفائض أفقياً: «المسجَّلون» و«الكل» خارج
+          الشاشة فلا يُضغطان — «الخيار الأخير لا يُحفظ». دون `md` صار قائمةً
+          منسدلة بعرض السطر، والنافذة شريطاً بعرض السطر؛ كل خيار في المتناول.
+        */}
+        <Flex wrap gap={12} align="center" vertical={!screens.md} style={{ marginBottom: 16 }}>
+          {screens.md ? (
+            <Segmented
+              value={filter}
+              onChange={(value) => update({ tab: value as BirthdayFilter })}
+              options={TABS.map((value) => ({ label: BIRTHDAY_FILTER_LABELS[value], value }))}
+            />
+          ) : (
+            <Select
+              aria-label="مجموعة أعياد الميلاد"
+              value={filter}
+              style={{ width: '100%' }}
+              onChange={(value: BirthdayFilter) => update({ tab: value })}
+              options={TABS.map((value) => ({ label: BIRTHDAY_FILTER_LABELS[value], value }))}
+            />
+          )}
           {windowed && (
             <Segmented
+              block={!screens.md}
+              style={screens.md ? undefined : { width: '100%' }}
               value={windowDays}
-              onChange={(value) => {
-                setWindowDays(Number(value))
-                setPage(1)
-              }}
+              onChange={(value) => update({ window: Number(value) })}
               options={[
                 { label: '٧ أيام', value: 7 },
                 { label: '١٤ يوماً', value: 14 },
@@ -268,20 +327,20 @@ export default function BirthdaysPage() {
             }
           />
         ) : (
-          <Table
+          <ResponsiveTable<BirthdayCustomer>
             rowKey="id"
             columns={columns}
             dataSource={query.data?.items ?? []}
             loading={query.isPending || query.isFetching}
-            scroll={{ x: 900 }}
             pagination={{
               current: page,
               pageSize: PAGE_SIZE,
               total: query.data?.total ?? 0,
               showSizeChanger: false,
               showTotal: (total) => `${total} زبون`,
-              onChange: setPage,
+              onChange: (next) => update({ page: next }),
             }}
+            renderCard={renderCard}
             locale={{
               emptyText: (
                 <EmptyState

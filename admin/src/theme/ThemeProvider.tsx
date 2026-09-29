@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { ThemeConfig } from 'antd'
-import { brand, themeConfig as lightThemeConfig } from '../theme'
+import { brand, selectionTokens, themeConfig as lightThemeConfig } from '../theme'
 
 const THEME_STORAGE_KEY = 'otaku-galaxy-admin-theme'
 
@@ -104,6 +104,16 @@ const darkThemeConfig: ThemeConfig = {
     },
     Alert: {
       borderRadiusLG: 12,
+      // الثيم الداكن لا يستعمل خوارزمية أنتديب الداكنة، فكانت خلفيات التنبيه
+      // فاتحةً (أزرق/وردي باهت) كبقعة ضوء في لوحة داكنة. درجاتٌ شفّافة بدلها.
+      colorInfoBg: 'rgba(78, 168, 255, 0.10)',
+      colorInfoBorder: 'rgba(78, 168, 255, 0.35)',
+      colorWarningBg: 'rgba(255, 176, 46, 0.10)',
+      colorWarningBorder: 'rgba(255, 176, 46, 0.35)',
+      colorErrorBg: 'rgba(255, 90, 122, 0.10)',
+      colorErrorBorder: 'rgba(255, 90, 122, 0.40)',
+      colorSuccessBg: 'rgba(62, 224, 159, 0.10)',
+      colorSuccessBorder: 'rgba(62, 224, 159, 0.35)',
     },
     Result: {
       iconFontSize: 56,
@@ -129,10 +139,11 @@ const darkThemeConfig: ThemeConfig = {
       colorTextLightSolid: '#EDEAF6',
     },
     Pagination: {
+      ...selectionTokens('#B9B2DA', 'rgba(255,255,255,0.06)')!.Pagination,
       colorBorder: 'rgba(255,255,255,0.12)',
       itemBg: 'transparent',
-      itemActiveBg: brand.primary,
     },
+    Segmented: selectionTokens('#B9B2DA', 'rgba(255,255,255,0.06)')!.Segmented,
     Tabs: {
       colorBorderSecondary: 'rgba(255,255,255,0.12)',
       inkBarColor: brand.primary,

@@ -22,7 +22,8 @@ import { formatCurrency, formatDateTime } from '../utils/format'
 import StatusBadge from '../components/StatusBadge'
 import StatusTransitionButtons from '../components/StatusTransitionButtons'
 import { STATUS_LABELS } from '../constants/orders'
-import { MediaThumb } from '../components/ui/MediaThumb'
+import { ProductLink } from '../components/ui/ProductLink'
+import { WhatsAppButton } from '../components/ui/WhatsAppButton'
 import { ReminderControls } from '../components/ui/ReminderControls'
 import { LoadingState, ErrorState } from '../components/ui/States'
 
@@ -72,14 +73,14 @@ export default function OrderDetailPage() {
 
   const itemColumns = [
     {
-      title: '',
-      key: 'image',
-      width: 64,
+      // الصورة والاسم رابطٌ إلى صفحة المنتج (STEP 64 §3) — منتجٌ حُذف لاحقاً
+      // (`productId` فارغ في اللقطة) يبقى نصاً.
+      title: 'المنتج',
+      key: 'product',
       render: (_: unknown, item: OrderItem) => (
-        <MediaThumb reference={item.imageUrl} size={44} radius={6} />
+        <ProductLink productId={item.productId} name={item.productName} image={item.imageUrl} />
       ),
     },
-    { title: 'المنتج', dataIndex: 'productName', key: 'productName' },
     {
       title: 'الخيار',
       dataIndex: 'optionValue',
@@ -175,6 +176,8 @@ export default function OrderDetailPage() {
               {order.customer?.phone ?? 'غير متوفر'}
             </Descriptions.Item>
           </Descriptions>
+          {/* رقم الحساب أولاً، ورقم التواصل في الطلب لحسابٍ حُذف. */}
+          <WhatsAppButton phone={order.customer?.phone ?? order.phone} style={{ marginTop: 8 }} />
         </Card>
         <Card title="التوصيل" style={{ flex: 1, minWidth: 280 }}>
           <Descriptions column={1} size="small">

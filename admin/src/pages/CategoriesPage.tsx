@@ -281,12 +281,6 @@ export default function CategoriesPage() {
         </Space>
       </Flex>
 
-      <Alert
-        type="info"
-        showIcon
-        message="الحذف محميّ بالتبعيات"
-        description="يُرفض حذف القسم أو القسم الفرعي ما دام شيء يعتمد عليه، ولا يُحذف أي منتج تبعاً لذلك. إن كان القسم مستعملاً فعطّله بدل حذفه."
-      />
 
       <Card>
         {categoriesQuery.isError ? (

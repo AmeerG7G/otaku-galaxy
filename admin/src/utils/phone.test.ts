@@ -19,6 +19,21 @@ describe('رابط واتساب', () => {
   it('يعيد null لرقم قصير أو فارغ بدل فتح رابط معطوب', () => {
     expect(whatsappUrl('')).toBeNull()
     expect(whatsappUrl('12345')).toBeNull()
+    expect(whatsappUrl(null)).toBeNull()
+    expect(whatsappUrl(undefined)).toBeNull()
+  })
+
+  it('[STEP 64] يطبّع الرقم العراقي المحلي — wa.me لا يقبل 07…', () => {
+    for (const raw of ['07701234567', '0770 123 4567', '7701234567', '9647701234567', '009647701234567', '+964 770 123 4567']) {
+      expect(whatsappUrl(raw), raw).toBe('https://wa.me/9647701234567')
+    }
+  })
+
+  it('[STEP 64] رقمٌ مقنَّع أو عراقيٌّ غير صالح لا رابط له', () => {
+    expect(whatsappUrl('0770****567')).toBeNull()
+    expect(whatsappUrl('07401234567')).toBeNull()
+    expect(whatsappUrl('0770123456')).toBeNull()
+    expect(whatsappUrl('+96477012345678')).toBeNull()
   })
 })
 

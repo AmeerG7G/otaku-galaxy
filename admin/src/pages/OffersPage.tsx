@@ -10,7 +10,6 @@ import {
   Switch,
   Table,
   Tag,
-  Typography,
 } from 'antd'
 import { ReloadOutlined } from '@ant-design/icons'
 import type { TablePaginationConfig } from 'antd'
@@ -19,7 +18,7 @@ import { ApiError } from '../api/client'
 import type { Product } from '../types/products'
 import { formatCurrency } from '../utils/format'
 import EmptyState from '../components/EmptyState'
-import { MediaThumb } from '../components/ui/MediaThumb'
+import { ProductLink } from '../components/ui/ProductLink'
 import { PageHeader } from '../components/ui/PageHeader'
 
 const PAGE_LIMIT = 12
@@ -91,18 +90,13 @@ export default function OffersPage() {
 
   const columns = [
     {
-      title: 'الصورة',
-      key: 'image',
-      width: 80,
-      render: (_: unknown, product: Product) => (
-        <MediaThumb reference={product.images[0]} />
-      ),
-    },
-    {
       title: 'المنتج',
       dataIndex: 'name',
       key: 'name',
-      render: (value: string) => <Typography.Text strong>{value}</Typography.Text>,
+      // الصورة والاسم رابطٌ إلى صفحة المنتج (STEP 64 §3).
+      render: (value: string, product: Product) => (
+        <ProductLink productId={product.id} name={value} image={product.images[0] ?? null} imageSize={52} />
+      ),
     },
     {
       title: 'السعر',
@@ -214,12 +208,6 @@ export default function OffersPage() {
         }
       />
 
-      <Alert
-        type="info"
-        showIcon
-        message="المنتجات غير النشطة تظهر هنا أيضاً."
-        description="الأقسام الثلاثة تقرأ من قائمة الإدارة، فيظهر المنتج المعطّل المرفوع كعرض ويمكن إزالته منه. الزبائن لا يرون المنتجات غير النشطة في المتجر."
-      />
 
       <Card>
         <Segmented

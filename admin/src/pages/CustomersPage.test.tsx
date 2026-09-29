@@ -97,11 +97,20 @@ describe('عمود الجنس', () => {
     expect(screen.getByText('أنثى')).toBeInTheDocument()
   })
 
-  it('[CRITICAL] الحساب بلا جنس يُعرض «غير محدد» لا «ذكر»', async () => {
+  it('[CRITICAL] الحساب القديم بلا جنس يُعرض «—» — لا «ذكر» (تخمين) ولا «غير محدد» (خيارٌ أُزيل)', async () => {
     renderPage()
     const row = (await screen.findByText('حساب قديم')).closest('tr')!
-    expect(within(row).getByText('غير محدد')).toBeInTheDocument()
+    expect(within(row).getAllByText('—').length).toBeGreaterThan(0)
     expect(within(row).queryByText('ذكر')).not.toBeInTheDocument()
+    expect(within(row).queryByText('غير محدد')).not.toBeInTheDocument()
+  })
+
+  it('[STEP 64 §12] لا «غير محدد» في الواجهة: لا خيار ترشيح ولا عدّاد', async () => {
+    renderPage()
+    await screen.findByText('حساب قديم')
+    expect(screen.queryByText('غير محدد')).not.toBeInTheDocument()
+    const options = [...document.querySelectorAll('[aria-label="الجنس"] .ant-segmented-item')].map((el) => el.textContent)
+    expect(options).toEqual(['الكل', 'ذكور', 'إناث'])
   })
 })
 
@@ -180,16 +189,16 @@ describe('ترشيح الجنس', () => {
     vi.mocked(listCustomers).mockResolvedValue(listOf([customer()]))
   })
 
-  it('«جميع المستخدمين» لا يرسل ترشيحاً', async () => {
+  it('«الكل» لا يرسل ترشيحاً', async () => {
     renderPage()
     await waitFor(() => expect(listCustomers).toHaveBeenCalled())
     expect(vi.mocked(listCustomers).mock.calls[0]![0]).not.toHaveProperty('gender')
   })
 
-  it('«الذكور» يرسل gender=male إلى الخادم', async () => {
+  it('«ذكور» يرسل gender=male إلى الخادم', async () => {
     renderPage()
     await waitFor(() => expect(listCustomers).toHaveBeenCalled())
-    await userEvent.click(screen.getByText('الذكور'))
+    await userEvent.click(screen.getByText('ذكور'))
     await waitFor(() =>
       expect(listCustomers).toHaveBeenCalledWith(
         expect.objectContaining({ gender: 'male', page: 1 }),
@@ -197,10 +206,10 @@ describe('ترشيح الجنس', () => {
     )
   })
 
-  it('«الإناث» يرسل gender=female إلى الخادم', async () => {
+  it('«إناث» يرسل gender=female إلى الخادم', async () => {
     renderPage()
     await waitFor(() => expect(listCustomers).toHaveBeenCalled())
-    await userEvent.click(screen.getByText('الإناث'))
+    await userEvent.click(screen.getByText('إناث'))
     await waitFor(() =>
       expect(listCustomers).toHaveBeenCalledWith(
         expect.objectContaining({ gender: 'female' }),
@@ -212,7 +221,7 @@ describe('ترشيح الجنس', () => {
     renderPage()
     await waitFor(() => expect(listCustomers).toHaveBeenCalled())
     const callsBefore = vi.mocked(listCustomers).mock.calls.length
-    await userEvent.click(screen.getByText('الإناث'))
+    await userEvent.click(screen.getByText('إناث'))
     // تغيير الترشيح يُطلق طلباً جديداً؛ لو رُشِّح محلياً لما تغيّر عدد الطلبات.
     await waitFor(() =>
       expect(vi.mocked(listCustomers).mock.calls.length).toBeGreaterThan(callsBefore),
@@ -228,14 +237,13 @@ describe('تعداد الزبائن', () => {
 
   it('[CRITICAL] الأعداد المعروضة هي أعداد الخادم لا طول الصفحة', async () => {
     renderPage()
-    // صفحةٌ فيها زبون واحد، والعدّادات من الخادم: ١٢٠٠ / ٧٠٠ / ٤٨٠ / ٢٠.
-    // انتظار وصول البيانات: «جميع المستخدمين» عنوانٌ للمرشِّح أيضاً فيوجد قبلها.
+    // صفحةٌ فيها زبون واحد، والعدّادات من الخادم: ١٢٠٠ / ٧٠٠ / ٤٨٠ (عدّاد
+    // «غير محدد» أُزيل من الواجهة في STEP 64 — الحسابات القديمة داخل المجموع).
     await screen.findAllByText('أمير')
     const digits = document.body.textContent!.replace(/[\s,\u066C]/g, '')
     expect(digits).toContain('1200')
     expect(digits).toContain('700')
     expect(digits).toContain('480')
-    expect(digits).toContain('20')
   })
 })
 

@@ -1,22 +1,12 @@
-/** إعدادات نسخة التطبيق كما يقرؤها المسؤول ويكتبها. */
-export interface AppVersionConfig {
-  minimumSupportedVersion: string
-  latestVersion: string
-  androidStoreUrl: string
-  iosStoreUrl: string
-  updateMessage: string
-  /** الرسالة بالكردية — فارغةً يعرض التطبيق نصّه الكردي الافتراضي. */
-  updateMessageCkb?: string
-}
-
-/** حمولة الحفظ — بمفاتيح `store_settings` نفسها التي يتحقق منها الخادم. */
-export interface AppVersionSettingsPayload {
-  app_min_supported_version?: string
-  app_latest_version?: string
-  app_android_store_url?: string
-  app_ios_store_url?: string
-  app_update_message?: string
-  app_update_message_ckb?: string
+/**
+ * إجبار التحديث كما يقرؤه المسؤول ويكتبه — ثلاثة حقول (STEP 64 §16):
+ * مفعَّل؟ الحدّ الأدنى، رابط التحديث. الخادم يرفض التفعيل بلا حدٍّ صالح أو
+ * بلا رابط، ويُسقط الحجب في كل حالة شكّ.
+ */
+export interface AppVersionSettings {
+  enabled: boolean
+  minimumVersion: string
+  updateUrl: string
 }
 
 /**

@@ -25,7 +25,7 @@ import { formatCurrency, formatDateTime } from '../utils/format'
 import { PageHeader } from '../components/ui/PageHeader'
 import { SectionHeader } from '../components/ui/SectionHeader'
 import { StatCard } from '../components/ui/StatCard'
-import { MediaThumb } from '../components/ui/MediaThumb'
+import { ProductLink } from '../components/ui/ProductLink'
 
 function KpiCard({
   title,
@@ -119,18 +119,12 @@ export default function DashboardHome() {
 
   const lowStockColumns = [
     {
-      title: '',
-      key: 'image',
-      width: 60,
-      render: (_: unknown, product: { imageUrl: string | null }) => (
-        <MediaThumb reference={product.imageUrl} size={40} radius={6} />
-      ),
-    },
-    {
       title: 'المنتج',
       dataIndex: 'name',
       key: 'name',
-      render: (value: string) => <Typography.Text strong>{value}</Typography.Text>,
+      render: (value: string, product: { id: string; imageUrl: string | null }) => (
+        <ProductLink productId={product.id} name={value} image={product.imageUrl} imageSize={40} />
+      ),
     },
     {
       title: 'السعر',

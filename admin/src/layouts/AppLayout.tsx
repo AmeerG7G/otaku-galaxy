@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
+  App,
   Avatar,
   Button,
   Drawer,
@@ -14,8 +15,11 @@ import {
   Tooltip,
   Typography,
 } from 'antd'
-import { LogoutOutlined, MenuOutlined, SunOutlined, MoonOutlined } from '@ant-design/icons'
-import { NAV_ITEMS, activeMenuKey, navTitleFor } from './nav'
+import { BellOutlined, LogoutOutlined, MenuOutlined, SunOutlined, MoonOutlined } from '@ant-design/icons'
+import { activeMenuKey, navItemsFor, navTitleFor } from './nav'
+import { useAdminProfile } from '../hooks/useAdminProfile'
+import AdminPushDrawer from '../components/AdminPushDrawer'
+import { disableWebPush, onForegroundPush, resyncWebPush } from '../push/webPush'
 import { useAuthStore } from '../stores/authStore'
 import { ENV_BADGE } from '../config/env'
 import { useTheme } from '../theme/ThemeProvider'
@@ -68,10 +72,38 @@ export default function AppLayout() {
   const location = useLocation()
   const navigate = useNavigate()
   const screens = Grid.useBreakpoint()
-  const username = useAuthStore((state) => state.user?.username)
+  const { data: profile } = useAdminProfile()
+  const storedName = useAuthStore((state) => state.user?.username)
+  const username = profile?.username ?? storedName
   const clear = useAuthStore((state) => state.clear)
   const { theme, toggleTheme } = useTheme()
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [pushOpen, setPushOpen] = useState(false)
+  const { notification } = App.useApp()
+
+  // جلسةٌ جديدة: رمز هذا المتصفّح (إن فُعّل سابقاً) يُربط بها من جديد.
+  useEffect(() => {
+    void resyncWebPush()
+  }, [])
+
+  // اللوحة مفتوحة ومرئية: عامل الخدمة يسلّم التنبيه هنا بدل إشعار النظام.
+  useEffect(
+    () =>
+      onForegroundPush((data) => {
+        const url = typeof data.url === 'string' && data.url.startsWith('/') ? data.url : null
+        notification.info({
+          message: data.title ?? 'تنبيه',
+          description: data.body,
+          placement: 'topLeft',
+          btn: url ? (
+            <Button size="small" type="primary" onClick={() => navigate(url)}>
+              فتح
+            </Button>
+          ) : undefined,
+        })
+      }),
+    [navigate, notification],
+  )
 
   const isDesktop = Boolean(screens.lg)
   const selectedKey = activeMenuKey(location.pathname)
@@ -91,7 +123,11 @@ export default function AppLayout() {
       cancelText: 'إلغاء',
       centered: true,
       direction: 'rtl',
-      onOk() {
+      async onOk() {
+        // [SECURITY] الإلغاء **قبل** مسح التوكن — المسار محميّ، وبعد الخروج
+        // يرتدّ بـ401 فيبقى المتصفّح يستقبل إشعارات اللوحة لمن يستعمله بعدك
+        // (القاعدة نفسها في `PushRegistrar.onLogout` بالتطبيق).
+        await disableWebPush().catch(() => undefined)
         clear()
         navigate('/login', { replace: true })
       },
@@ -103,7 +139,7 @@ export default function AppLayout() {
       theme="dark"
       mode="inline"
       selectedKeys={[selectedKey]}
-      items={NAV_ITEMS}
+      items={navItemsFor(profile)}
       onClick={handleMenuClick}
       style={{ borderInlineEnd: 'none' }}
     />
@@ -134,7 +170,7 @@ export default function AppLayout() {
           {username ?? '…'}
         </Typography.Text>
         <Typography.Text style={{ color: 'var(--og-sidebar-text-muted)', fontSize: 12 }}>
-          مدير المتجر
+          {profile?.isSuperAdmin ? 'المسؤول الأعلى' : 'مسؤول'}
         </Typography.Text>
       </div>
       <Tooltip title="تسجيل الخروج">
@@ -243,6 +279,15 @@ export default function AppLayout() {
             </Tag>
           )}
           <div style={{ flex: 1 }} />
+          <Tooltip title="إشعارات هذا الجهاز">
+            <Button
+              type="text"
+              icon={<BellOutlined />}
+              aria-label="إشعارات هذا الجهاز"
+              onClick={() => setPushOpen(true)}
+              style={{ color: 'var(--og-text)' }}
+            />
+          </Tooltip>
           <Tooltip title={theme === 'light' ? 'الوضع الداكن' : 'الوضع الفاتح'}>
             <Button
               type="text"
@@ -258,7 +303,7 @@ export default function AppLayout() {
                 {username}
               </Typography.Text>
               <Tag color="gold" style={{ marginInlineEnd: 0 }}>
-                مشرف
+                {profile?.isSuperAdmin ? 'المسؤول الأعلى' : 'مسؤول'}
               </Tag>
             </Space>
           ) : null}
@@ -272,6 +317,7 @@ export default function AppLayout() {
         >
           <Outlet />
         </Content>
+        <AdminPushDrawer open={pushOpen} onClose={() => setPushOpen(false)} />
       </Layout>
     </Layout>
   )

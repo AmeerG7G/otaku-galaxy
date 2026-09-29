@@ -15,8 +15,10 @@ import {
   StarOutlined,
   TagsOutlined,
   TeamOutlined,
+  UserSwitchOutlined,
   VideoCameraOutlined,
 } from '@ant-design/icons'
+import { canAccess, type AdminProfile, type AdminSection } from '../types/adminPermissions'
 
 /**
  * القائمة مجمَّعة بحسب ما يفعله المسؤول لا بحسب جداول القاعدة.
@@ -72,9 +74,67 @@ export const NAV_ITEMS: MenuProps['items'] = [
     key: 'group-settings',
     type: 'group',
     label: 'الإعدادات',
-    children: [{ key: '/settings', icon: <SettingOutlined />, label: 'إعدادات المتجر' }],
+    children: [
+      { key: '/settings', icon: <SettingOutlined />, label: 'إعدادات المتجر' },
+      { key: '/admins', icon: <UserSwitchOutlined />, label: 'المسؤولون' },
+    ],
   },
 ]
+
+/**
+ * القسم الذي يحكم كل صفحة — القائمة وحاجز الصفحة يقرآن منه.
+ *
+ * [SECURITY] هذا لبناء الواجهة فقط؛ الخادم يفرض الصلاحية نفسها على كل مسار
+ * (`backend/src/routes/admin.ts`). صفحةٌ تظهر هنا خطأً تُرفض طلباتها هناك.
+ */
+export const SECTION_FOR_PATH: Record<string, AdminSection> = {
+  '/': 'dashboard',
+  '/orders': 'orders',
+  '/delivery': 'delivery',
+  '/products': 'products',
+  '/categories': 'categories',
+  '/franchises': 'franchises',
+  '/offers': 'offers',
+  '/restock': 'restock',
+  '/customers': 'customers',
+  '/account-requests': 'account_requests',
+  '/points': 'points',
+  '/birthdays': 'birthdays',
+  '/reviews': 'reviews',
+  '/notifications': 'notifications',
+  '/banners': 'banners',
+  '/settings': 'settings',
+  '/admins': 'admins',
+}
+
+type NavItem = NonNullable<MenuProps['items']>[number]
+
+/** القائمة كما يراها هذا المسؤول: بنود أقسامه فقط، والمجموعة الفارغة تختفي. */
+export function navItemsFor(profile: Pick<AdminProfile, 'isSuperAdmin' | 'permissions'> | null | undefined): NavItem[] {
+  const allowed = (key: unknown) => {
+    const section = SECTION_FOR_PATH[String(key)]
+    return section !== undefined && canAccess(profile, section)
+  }
+  const result: NavItem[] = []
+  for (const item of NAV_ITEMS ?? []) {
+    if (!item) continue
+    if ('type' in item && item.type === 'group') {
+      const children = (item.children ?? []).filter((child) => child && allowed(child.key))
+      if (children.length > 0) result.push({ ...item, children })
+    } else if (allowed(item.key)) {
+      result.push(item)
+    }
+  }
+  return result
+}
+
+/** أول صفحةٍ يملكها المسؤول — وجهة الرئيسية حين لا يملك «الرئيسية». */
+export function firstAllowedPath(profile: Pick<AdminProfile, 'isSuperAdmin' | 'permissions'> | null | undefined): string | null {
+  for (const [path, section] of Object.entries(SECTION_FOR_PATH)) {
+    if (canAccess(profile, section)) return path
+  }
+  return null
+}
 
 export function activeMenuKey(pathname: string): string {
   if (pathname === '/') return '/'
@@ -92,6 +152,9 @@ export function navTitleFor(key: string): string {
     '/franchises': 'الأنمي',
     '/offers': 'العروض',
     '/customers': 'الزبائن',
+    '/account-requests': 'طلبات الحساب',
+    '/restock': 'طلبات التوفر',
+    '/admins': 'المسؤولون',
     '/points': 'نقاط المجرّة',
     '/birthdays': 'أعياد الميلاد',
     '/reviews': 'التقييمات',

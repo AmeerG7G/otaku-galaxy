@@ -7,7 +7,7 @@ import {
   Button,
   Card,
   Flex,
-  Input,
+  Grid,
   Modal,
   Segmented,
   Select,
@@ -17,7 +17,7 @@ import {
   Tag,
   Typography,
 } from 'antd'
-import { ReloadOutlined, SearchOutlined, StarOutlined, WhatsAppOutlined } from '@ant-design/icons'
+import { ReloadOutlined, StarOutlined } from '@ant-design/icons'
 import type { TablePaginationConfig } from 'antd'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -32,10 +32,11 @@ import type {
 } from '../types/customers'
 import { CUSTOMER_SORT_LABELS, customerGenderLabel } from '../types/customers'
 import { formatDateTime } from '../utils/format'
-import { whatsappUrl } from '../utils/phone'
 import { POINTS_REASON_LABELS } from '../constants/points'
 import EmptyState from '../components/EmptyState'
 import { PageHeader } from '../components/ui/PageHeader'
+import { SearchField } from '../components/ui/SearchField'
+import { WhatsAppButton } from '../components/ui/WhatsAppButton'
 
 const PAGE_SIZE = 12
 
@@ -68,6 +69,7 @@ export default function CustomersPage() {
   const queryClient = useQueryClient()
   const [page, setPage] = useState(1)
   const [pointsFor, setPointsFor] = useState<AdminCustomer | null>(null)
+  const screens = Grid.useBreakpoint()
 
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
@@ -277,23 +279,13 @@ export default function CustomersPage() {
       key: 'actions',
       width: 210,
       render: (_: unknown, customer: AdminCustomer) => {
-        const chat = whatsappUrl(customer.phone)
         return (
           <Space size={6}>
             {/*
               يفتح المحادثة فقط ولا يرسل شيئاً: التواصل يبقى فعلاً صريحاً من
               المسؤول، ولا خادم مراسلة جديد خلفه.
             */}
-            <Button
-              size="small"
-              icon={<WhatsAppOutlined />}
-              disabled={!chat}
-              href={chat ?? undefined}
-              target="_blank"
-              rel="noreferrer noopener"
-            >
-              واتساب
-            </Button>
+            <WhatsAppButton phone={customer.phone} />
             <Button
               size="small"
               danger={customer.isActive}
@@ -337,13 +329,12 @@ export default function CustomersPage() {
 
       <Card variant="outlined">
         <Flex wrap gap={12} align="center">
-          <Input
-            allowClear
-            prefix={<SearchOutlined />}
+          <SearchField
             placeholder="ابحث بالاسم أو رقم الهاتف أو معرّف الحساب"
+            aria-label="بحث الزبائن"
             value={searchInput}
             onChange={(event) => setSearchInput(event.target.value)}
-            style={{ maxWidth: 280, flex: '1 1 220px' }}
+            style={screens.md ? undefined : { maxWidth: 'none', flexBasis: '100%' }}
           />
           <Segmented
             value={activity}
@@ -389,11 +380,13 @@ export default function CustomersPage() {
               setGender(value as CustomerGenderFilter)
               setPage(1)
             }}
+            aria-label="الجنس"
+            block={!screens.md}
+            style={screens.md ? undefined : { width: '100%' }}
             options={[
-              { label: 'جميع المستخدمين', value: 'all' },
-              { label: 'الذكور', value: 'male' },
-              { label: 'الإناث', value: 'female' },
-              { label: 'غير محدد', value: 'unknown' },
+              { label: 'الكل', value: 'all' },
+              { label: 'ذكور', value: 'male' },
+              { label: 'إناث', value: 'female' },
             ]}
           />
           {/* المستوى مشتقٌّ من الرصيد على الخادم — الترشيح هناك لا هنا. */}
@@ -430,7 +423,6 @@ export default function CustomersPage() {
             <Statistic title="جميع المستخدمين" value={genderCounts.total} />
             <Statistic title="الذكور" value={genderCounts.male} />
             <Statistic title="الإناث" value={genderCounts.female} />
-            <Statistic title="غير محدد" value={genderCounts.unknown} />
           </Flex>
         </Card>
       )}

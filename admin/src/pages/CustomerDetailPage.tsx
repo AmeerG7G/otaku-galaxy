@@ -23,6 +23,7 @@ import PageLoader from '../components/PageLoader'
 import SetCustomerPasswordModal from '../components/SetCustomerPasswordModal'
 import StatusBadge from '../components/StatusBadge'
 import { PageHeader } from '../components/ui/PageHeader'
+import { ProductLink } from '../components/ui/ProductLink'
 import {
   ACCOUNT_REQUEST_KIND_LABELS,
   ACCOUNT_REQUEST_STATUS_LABELS,
@@ -105,10 +106,17 @@ export default function CustomerDetailPage() {
     {
       title: 'المنتجات',
       key: 'items',
+      // كل منتج رابطٌ إلى صفحته (STEP 64 §3)؛ المحذوف من الكتالوج يبقى نصاً.
       render: (_: unknown, order: AdminCustomerOrderSummary) =>
-        order.items?.length
-          ? order.items.map((i) => `${i.productName} ×${i.quantity}`).join('، ')
-          : '—',
+        order.items?.length ? (
+          <Flex vertical gap={4}>
+            {order.items.map((i, index) => (
+              <ProductLink key={`${order.id}-${index}`} productId={i.productId} name={`${i.productName} ×${i.quantity}`} />
+            ))}
+          </Flex>
+        ) : (
+          '—'
+        ),
     },
   ]
 

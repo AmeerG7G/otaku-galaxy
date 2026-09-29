@@ -45,6 +45,7 @@ import EmptyState from '../components/EmptyState'
 import ImageUploadField from '../components/ImageUploadField'
 import { MediaThumb } from '../components/ui/MediaThumb'
 import { PageHeader } from '../components/ui/PageHeader'
+import { ProductLink } from '../components/ui/ProductLink'
 import { ConfirmDangerButton } from '../components/ui/ConfirmDangerButton'
 import { SectionHeader } from '../components/ui/SectionHeader'
 
@@ -144,6 +145,8 @@ export default function BannersPage() {
     queryKey: ['banner-products'],
     queryFn: () => listProducts({ page: 1, limit: 50 }),
   })
+  // أسماء المنتجات لعمود «الوجهة» — من القائمة المحمّلة للنموذج أصلاً.
+  const productNames = new Map((productsQuery.data?.items ?? []).map((p) => [p.id, p.name]))
 
   const invalidateBanners = () => {
     queryClient.invalidateQueries({ queryKey: ['banners'] })
@@ -261,9 +264,17 @@ export default function BannersPage() {
       title: 'الوجهة',
       key: 'destination',
       render: (_: unknown, banner: AdminBanner) =>
-        banner.destinationType === 'none'
-          ? DESTINATION_LABELS.none
-          : `${DESTINATION_LABELS[banner.destinationType]} (${banner.destinationValue ?? '—'})`,
+        banner.destinationType === 'none' ? (
+          DESTINATION_LABELS.none
+        ) : banner.destinationType === 'product' && banner.destinationValue ? (
+          // وجهةٌ منتج ⇒ رابطٌ إلى صفحته (STEP 64 §3)، باسمه إن عُرف.
+          <ProductLink
+            productId={banner.destinationValue}
+            name={productNames.get(banner.destinationValue) ?? `${DESTINATION_LABELS.product} (${banner.destinationValue})`}
+          />
+        ) : (
+          `${DESTINATION_LABELS[banner.destinationType]} (${banner.destinationValue ?? '—'})`
+        ),
     },
     {
       title: 'الترتيب',
@@ -342,12 +353,6 @@ export default function BannersPage() {
         }
       />
 
-      <Alert
-        type="info"
-        showIcon
-        message="موضعان في الرئيسية"
-        description="«اللوحة الكبيرة» أعلى الرئيسية وتُعرض منها واحدة فقط — الأولى ترتيباً بين المفعّلة. «الشريط الترويجي» تحتها ويقبل عدداً مفتوحاً بترتيبك. البنر الموقوف يبقى هنا ولا يظهر في التطبيق."
-      />
 
       <Card>
         {bannersQuery.isError ? (

@@ -1,6 +1,6 @@
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Alert, App, Breadcrumb, Button, Flex, Typography } from 'antd'
+import { App, Breadcrumb, Button, Flex, Typography } from 'antd'
 import { ArrowRightOutlined } from '@ant-design/icons'
 import ProductForm, { type ProductFormValues } from '../components/ProductForm'
 import { createProduct } from '../api/productsApi'
@@ -32,12 +32,6 @@ export default function ProductNewPage() {
   const presetCategory = (categoriesQuery.data?.items ?? []).find(
     (category) => category.id === presetCategoryId,
   )
-  const presetSubcategory = presetCategory?.subcategories.find(
-    (subcategory) => subcategory.id === presetSubcategoryId,
-  )
-  const presetLabel = presetCategory
-    ? [presetCategory.name, presetSubcategory?.name].filter(Boolean).join(' ← ')
-    : null
 
   /** الرجوع إلى حيث بدأ المسؤول، بالترشيح نفسه. */
   const backSearch = searchParams.toString()
@@ -102,17 +96,6 @@ export default function ProductNewPage() {
         </Button>
       </Flex>
       <div style={{ height: 16 }} />
-      {presetLabel && (
-        <>
-          <Alert
-            type="info"
-            showIcon
-            message={`القسم مختار مسبقاً: ${presetLabel}`}
-            description="يمكنك تغييره من النموذج إن أردت."
-          />
-          <div style={{ height: 16 }} />
-        </>
-      )}
       <ProductForm
         // النموذج يُبنى بعد وصول الأقسام حتى تصل القيم المبدئية معه —
         // ضبطها بعد التركيب يتركها فارغة في الحقل الذي يراه المسؤول.

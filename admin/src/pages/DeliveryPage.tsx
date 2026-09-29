@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Alert,
+  Flex,
   App,
   Button,
   Card,
@@ -291,18 +291,16 @@ export default function DeliveryPage() {
   function zoneTable(governorate: AdminGovernorate) {
     const zones = zonesByGovernorate.get(governorate.id) ?? []
     if (zones.length === 0) {
+      // سطرٌ عملي لا بطاقة شرح (STEP 64 §2): الرسوم النافذة وزرّ الإضافة.
       return (
-        <Alert
-          type="info"
-          showIcon
-          message={`«${governorate.name}» بلا مناطق — كل الزبائن يدفعون ${formatCurrency(governorate.deliveryFee)}.`}
-          description="أضف منطقتين أو أكثر إن اختلفت الرسوم داخل المحافظة (داخل القضاء / خارجه)."
-          action={
-            <Button size="small" onClick={() => openZone(governorate)}>
-              أضف منطقة
-            </Button>
-          }
-        />
+        <Flex align="center" gap={8} wrap>
+          <Typography.Text type="secondary">
+            بلا مناطق — {formatCurrency(governorate.deliveryFee)} لكل الزبائن
+          </Typography.Text>
+          <Button size="small" onClick={() => openZone(governorate)}>
+            أضف منطقة
+          </Button>
+        </Flex>
       )
     }
     return (
@@ -385,13 +383,6 @@ export default function DeliveryPage() {
             </Button>
           </Space>
         }
-      />
-
-      <Alert
-        type="info"
-        showIcon
-        message="كيف تُحتسب رسوم التوصيل"
-        description="بلا مناطق: يدفع الزبون رسوم المحافظة. مع منطقة نشطة واحدة أو أكثر: يختار الزبون منطقته إجبارياً في الدفع، وتُحتسب رسومها. الحساب يجري على الخادم دائماً — التطبيق يعرض ولا يحسب."
       />
 
       <Card variant="outlined">

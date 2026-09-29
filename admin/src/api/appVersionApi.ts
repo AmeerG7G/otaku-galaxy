@@ -1,10 +1,11 @@
 import { get, patch } from './client'
-import type { AppVersionConfig, AppVersionSettingsPayload } from '../types/appVersion'
+import type { AppVersionSettings } from '../types/appVersion'
 
-export function fetchAppVersionSettings(): Promise<AppVersionConfig> {
-  return get<AppVersionConfig>('/admin/settings/app-version')
+export function fetchAppVersionSettings(): Promise<AppVersionSettings> {
+  return get<AppVersionSettings>('/admin/settings/app-version')
 }
 
-export function updateAppVersionSettings(payload: AppVersionSettingsPayload) {
-  return patch<AppVersionConfig>('/admin/settings/app-version', payload)
+/** الحقول الثلاثة كلها في كل حفظ — الخادم يتحقّق من اتّساقها معاً. */
+export function updateAppVersionSettings(payload: AppVersionSettings) {
+  return patch<AppVersionSettings>('/admin/settings/app-version', payload)
 }

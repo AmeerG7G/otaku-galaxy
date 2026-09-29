@@ -107,11 +107,12 @@ export type BroadcastPayload = BroadcastAudience & {
 /**
  * نتيجة البثّ.
  *
- * [CRITICAL] `recipients` عدد السجلات المنشأة **داخل التطبيق**، و`push`
- * يبقى `null` ما دام لا مزوّد إشعارات دفع مربوطاً. عرضهما كشيء واحد يجعل
- * المسؤول يظنّ أن الهواتف رنّت بينما لم يرنّ شيء.
+ * [CRITICAL] `recipients` عدد السجلات المنشأة **داخل التطبيق**، و`push.queued`
+ * عدد رسائل الدفع المنتظِرة في الصندوق الصادر — تُرسل **بعد** الردّ ولمن سمح
+ * بها في تفضيلاته (STEP 64). `provider` اسم المزوّد أو `not_configured`. لا رقم
+ * «وصل» هنا: الردّ لا ينتظر FCM.
  */
 export interface BroadcastResult {
   recipients: number
-  push: null | { provider: string; delivered: number; failed: number }
+  push: { provider: string; queued: number }
 }

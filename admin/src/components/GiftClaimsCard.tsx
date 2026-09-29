@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Alert,
   App,
   Button,
   Card,
@@ -137,12 +136,6 @@ export default function GiftClaimsCard() {
       }
     >
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-        <Alert
-          type="warning"
-          showIcon
-          message="التسليم يدوي — والمطالبة ليست تسليماً"
-          description="الزبون الذي بلغ العتبة وطالب بهديته ينتظر تسليمها فعلياً. المطالبة مسجَّلة عنده في التطبيق، ولا شيء يُغلقها إلا ضغطة «تعليم كمسلَّمة» هنا. لا تسقط بالتقادم ولا تُلغى تلقائياً."
-        />
 
         {data && data.items.length === 0 ? (
           <EmptyState
