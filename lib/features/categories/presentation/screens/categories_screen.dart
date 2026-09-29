@@ -9,6 +9,7 @@ import '../../../../core/router/app_router.dart';
 import '../../../products/domain/entities/category.dart';
 import '../../../products/domain/usecases/fetch_categories_usecase.dart';
 import '../../../visuals/domain/visual_slot.dart';
+import '../../../visuals/presentation/character_artwork.dart';
 
 /// تبويب الأقسام بتصميم Otaku Galaxy v2.
 ///
@@ -70,20 +71,36 @@ class _CategoriesScreenState extends State<CategoriesScreen> with LocaleRefetch 
   // أيّ شاشةٍ أخرى.
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return Stack(
       children: [
-        OtakuScreenHeader.tab(
-          title: context.strings('navCategories'),
-          subtitle: context.strings('categoriesSubtitle'),
-          artworkSlot: VisualSlots.categoriesHeader,
-          artworkWidth: 110,
-          artworkEnd: -10,
+        Column(
+          children: [
+            OtakuScreenHeader.tab(
+              title: context.strings('navCategories'),
+              subtitle: context.strings('categoriesSubtitle'),
+            ),
+            Expanded(
+              child: MediaQuery.removePadding(
+                context: context,
+                removeTop: true,
+                child: _buildBody(),
+              ),
+            ),
+          ],
         ),
-        Expanded(
-          child: MediaQuery.removePadding(
-            context: context,
-            removeTop: true,
-            child: _buildBody(),
+        // رسم الترويسة فوق الشاشة كلّها (الترويسة والقائمة معاً) لا داخل
+        // صندوق الترويسة: ذاك يُقصّ بـ`Clip.hardEdge` بارتفاع صندوقه القصير
+        // (نصّ العنوان فقط) لا بارتفاع الرسم، فدفعُ الرسم لأسفل هناك كان
+        // سيقصّ جزءاً منه بصمت. هنا يبقى آخر طفلٍ في المكدّس (أعلى الجميع)
+        // ولا يُقصّ أبداً طالما بقي داخل حدود الشاشة.
+        PositionedDirectional(
+          top: 0,
+          end: -10,
+          child: IgnorePointer(
+            child: CharacterArtwork(
+              slot: VisualSlots.categoriesHeader,
+              width: 110,
+            ),
           ),
         ),
       ],
