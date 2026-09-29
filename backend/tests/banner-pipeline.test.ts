@@ -90,7 +90,7 @@ describe('مسار البنر من اللوحة إلى التطبيق', () => {
       const created = await api
         .post('/api/admin/banners')
         .set('Authorization', `Bearer ${adminToken}`)
-        .send({ imageUrl, destinationType: 'none', sortOrder, title: `بنر ${sortOrder}` })
+        .send({ imageUrl, destinationType: 'none', sortOrder, titleAr: `بنر ${sortOrder}` })
         .expect(201);
       ids.push(created.body.data.id);
     }

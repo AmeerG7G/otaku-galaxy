@@ -228,10 +228,41 @@ export const adminSubcategorySchema = z.object({
   sortOrder: z.number().int().min(0).max(1000).optional(),
 });
 
+/**
+ * نصّ البنر بلغة — عنوانٌ أو سطرٌ ثانٍ (067).
+ *
+ * اختياريٌّ باللغتين كما كان قبل الفصل: بنرٌ بصورةٍ وحدها مشروع، فلا تُفرض
+ * لغةٌ ولا تُلزَم الأخرى بوجود الأولى. الغياب = «لا تغيير» في التعديل؛
+ * `null` أو الفراغ أو المسافات وحدها = «لا نصّ بهذه اللغة» (يُحفظ `NULL`،
+ * صورة «ناقص» الوحيدة — قيدا 067 يرفضان الفراغ في العمودين الكرديين). الحدود
+ * حدود ما قبل الفصل لكل لغة. لا قيد على الحروف: النصّ يُحفظ كما كُتب.
+ */
+function bannerText(kind: 'title' | 'subtitle', language: 'العربية' | 'الكردية') {
+  const label = kind === 'title' ? 'عنوان البنر' : 'السطر الثاني';
+  const max = kind === 'title' ? 120 : 160;
+  return z
+    .string({ error: `${label} ب${language} يجب أن يكون نصاً` })
+    .trim()
+    .max(max, `${label} ب${language} طويل جداً (${max} حرفاً كحد أقصى)`)
+    .nullable()
+    .optional()
+    .transform((value) => (value === undefined ? undefined : value || null));
+}
+
+const bannerContent = {
+  titleAr: bannerText('title', 'العربية'),
+  subtitleAr: bannerText('subtitle', 'العربية'),
+  titleCkb: bannerText('title', 'الكردية'),
+  subtitleCkb: bannerText('subtitle', 'الكردية'),
+  // مفتاحا الكتابة القديمان: `zod` كان سيُسقطهما بصمت فتقول لوحةٌ قديمة
+  // «تم الحفظ» والنصّ لم يتغيّر — رفضٌ يسمّي البديل (نفس قاعدة المنتج).
+  title: retiredKey('titleAr/titleCkb'),
+  subtitle: retiredKey('subtitleAr/subtitleCkb'),
+};
+
 export const adminBannerSchema = z.object({
   imageUrl,
-  title: z.string().trim().max(120).nullable().optional(),
-  subtitle: z.string().trim().max(160).optional(),
+  ...bannerContent,
   placement: z.enum(BANNER_PLACEMENTS).default('promo'),
   destinationType: z.enum(BANNER_DESTINATIONS).default('none'),
   destinationValue: z.string().trim().max(80).nullable().optional(),
@@ -252,8 +283,8 @@ export const adminBannerSchema = z.object({
  */
 export const adminBannerUpdateSchema = z.object({
   imageUrl: imageUrl.optional(),
-  title: z.string().trim().max(120).nullable().optional(),
-  subtitle: z.string().trim().max(160).optional(),
+  // كل لغةٍ مستقلة: تعديل العربية لا يلمس الكردية ولا العكس.
+  ...bannerContent,
   placement: z.enum(BANNER_PLACEMENTS).optional(),
   destinationType: z.enum(BANNER_DESTINATIONS).optional(),
   destinationValue: z.string().trim().max(80).nullable().optional(),

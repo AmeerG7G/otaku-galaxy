@@ -485,8 +485,11 @@ export const adminService = {
 
   async createBanner(input: {
     imageUrl: string;
-    title?: string | null;
-    subtitle?: string;
+    /** نصّ البنر بلغتيه (067) — كلٌّ اختياري ومستقل، `null` = لا نصّ. */
+    titleAr?: string | null;
+    subtitleAr?: string | null;
+    titleCkb?: string | null;
+    subtitleCkb?: string | null;
     placement?: 'hero' | 'promo';
     destinationType: 'product' | 'category' | 'subcategory' | 'anime' | 'none';
     destinationValue?: string | null;

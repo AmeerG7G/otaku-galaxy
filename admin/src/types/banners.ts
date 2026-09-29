@@ -18,9 +18,21 @@ export const PLACEMENT_HINTS: Record<BannerPlacement, string> = {
   promo: 'الشريط الأفقي تحت اللوحة الكبيرة. عدد مفتوح، والترتيب يحدّده «الترتيب».',
 }
 
-export interface AdminBanner {
+/**
+ * نصّ البنر بلغتيه (هجرة ٠٦٧) — أربعة حقول مستقلة يكتبها المسؤول بيده، لا
+ * ترجمة آلية ولا نسخ بين اللغتين. كلٌّ اختياري: `null` = لا نصّ بهذه اللغة.
+ */
+export interface BannerContent {
+  titleAr: string | null
+  subtitleAr: string | null
+  titleCkb: string | null
+  subtitleCkb: string | null
+}
+
+export interface AdminBanner extends BannerContent {
   id: string
   imageUrl: string
+  /** العنوان العربي كما في عموده — للعرض القديم فقط؛ الكتابة بالحقول الصريحة. */
   title: string | null
   subtitle: string
   placement: BannerPlacement
@@ -34,36 +46,24 @@ export interface AdminBannerListResponse {
   items: AdminBanner[]
 }
 
-export interface BannerCreatePayload {
-  subtitle?: string
+/**
+ * [CRITICAL] الكتابة بالحقول الصريحة وحدها: الخادم يرفض `title`/`subtitle`
+ * منذ ٠٦٧. في التعديل، الحقل الغائب لا يُمسّ — فحفظ لغةٍ لا يلمس الأخرى.
+ */
+export interface BannerCreatePayload extends Partial<BannerContent> {
   placement?: BannerPlacement
   imageUrl: string
-  title?: string | null
   destinationType?: BannerDestinationType
   destinationValue?: string | null
   sortOrder?: number
 }
 
-export interface BannerUpdatePayload {
-  subtitle?: string
+export interface BannerUpdatePayload extends Partial<BannerContent> {
   placement?: BannerPlacement
   imageUrl?: string
-  title?: string | null
   destinationType?: BannerDestinationType
   destinationValue?: string | null
   sortOrder?: number
   /** الخادم يقبلها في PATCH — كانت الشاشة تفترض خطأً أنه لا يقبلها. */
   isActive?: boolean
-}
-
-export interface BannerAdminRow {
-  id: string
-  image_url: string
-  title: string | null
-  destination_type: BannerDestinationType
-  destination_value: string | null
-  sort_order: number
-  is_active: boolean
-  created_at: string
-  updated_at: string
 }

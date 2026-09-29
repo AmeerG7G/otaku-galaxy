@@ -678,18 +678,20 @@ describe('حرّاس · دلالات الغياب و null في التعديل', 
     expect(after).toHaveLength(0);
   });
 
-  it('البنر: title: null يمسح، وغيابه يحفظ، وdestinationType الغائب لا يعود إلى none', async () => {
+  it('البنر: titleAr: null يمسح، وغيابه يحفظ، وdestinationType الغائب لا يعود إلى none', async () => {
     const created = await api
       .post('/api/admin/banners')
       .set(A())
-      .send({ imageUrl: '/uploads/b.png', title: 'عنوان', destinationType: 'category', destinationValue: 'x' })
+      .send({ imageUrl: '/uploads/b.png', titleAr: 'عنوان', destinationType: 'category', destinationValue: 'x' })
       .expect(201);
     const id = created.body.data.id;
     const kept = await api.patch(`/api/admin/banners/${id}`).set(A()).send({ imageUrl: '/uploads/c.png' }).expect(200);
     expect(kept.body.data.title).toBe('عنوان');
+    expect(kept.body.data.titleAr).toBe('عنوان');
     expect(kept.body.data.destinationType).toBe('category');
-    const cleared = await api.patch(`/api/admin/banners/${id}`).set(A()).send({ title: null }).expect(200);
+    const cleared = await api.patch(`/api/admin/banners/${id}`).set(A()).send({ titleAr: null }).expect(200);
     expect(cleared.body.data.title).toBeNull();
+    expect(cleared.body.data.titleAr).toBeNull();
   });
 
   it('الملف الشخصي: avatarUrl: null يمسح الصورة، و"" تُرفض، وغيابه يحفظها', async () => {

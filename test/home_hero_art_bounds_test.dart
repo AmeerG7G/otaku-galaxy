@@ -32,7 +32,7 @@ const _phones = <String, Size>{
 /// البنر الرئيسي في قاعدة التطوير — عنوانه وبلا عنوانٍ فرعي.
 const _devHero = model.Banner(
   id: 'hero',
-  title: 'اكتشف، اجمع، واستمتع!',
+  titleAr: 'اكتشف، اجمع، واستمتع!',
   placement: 'hero',
 );
 
@@ -180,7 +180,7 @@ void main() {
       await _pump(
         tester,
         size: const Size(834, 1112),
-        banner: const model.Banner(id: 'h', title: 'عرض', subtitle: 'جديد'),
+        banner: const model.Banner(id: 'h', titleAr: 'عرض', subtitleAr: 'جديد'),
       );
       final card = _card(tester);
       final art = _art(tester);
@@ -222,7 +222,7 @@ void main() {
         size: const Size(412, 892),
         banner: const model.Banner(
           id: 'h',
-          title: 'اكتشف، اجمع، واستمتع!',
+          titleAr: 'اكتشف، اجمع، واستمتع!',
           imageUrl: 'https://example.invalid/banner.png',
         ),
       );

@@ -1,5 +1,6 @@
 import type pg from 'pg';
 import type { BannerRow, GovernorateRow } from '../types/index.js';
+import { textOrNull } from '../utils/locale.js';
 
 /**
  * التمثيل المعتمد للبنر — **مصدر الحقيقة الوحيد** لشكل استجابة البنر.
@@ -16,8 +17,22 @@ export function toBannerDto(row: BannerRow) {
   return {
     id: row.id,
     imageUrl: row.image_url,
+    /**
+     * الزوج القديم — لعميلٍ لا يعرف الحقول الصريحة أدناه. هنا هو العمودان
+     * العربيان كما هما (لوحة التحكم عربية)؛ وفي الكتالوج يحسمه
+     * `localizeBanner` بلغة الطلب.
+     */
     title: row.title,
     subtitle: row.subtitle ?? '',
+    /**
+     * [CRITICAL] نصّ البنر بلغتيه صريحاً (067) — `null` = لا نصّ بهذه اللغة.
+     * لوحة التحكم تملأ منها حقول كل لغة، والتطبيق يختار منها بلغة واجهته
+     * **الآن**، فتبديل اللغة يبدّل النصّ بلا جلبٍ ثانٍ.
+     */
+    titleAr: textOrNull(row.title),
+    subtitleAr: textOrNull(row.subtitle),
+    titleCkb: textOrNull(row.title_ckb),
+    subtitleCkb: textOrNull(row.subtitle_ckb),
     /** أين يظهر في الرئيسية: `hero` اللوحة الكبيرة، `promo` الشريط تحتها. */
     placement: row.placement ?? 'promo',
     destinationType: row.destination_type,
@@ -51,8 +66,11 @@ export const bannerRepo = {
     db: pg.Pool | pg.PoolClient,
     input: {
       imageUrl: string;
-      title?: string | null;
-      subtitle?: string;
+      /** نصّ البنر بلغتيه — كلٌّ اختياري، والغياب/`null` = لا نصّ بتلك اللغة. */
+      titleAr?: string | null;
+      subtitleAr?: string | null;
+      titleCkb?: string | null;
+      subtitleCkb?: string | null;
       placement?: BannerRow['placement'];
       destinationType: BannerRow['destination_type'];
       destinationValue?: string | null;
@@ -61,12 +79,16 @@ export const bannerRepo = {
   ) {
     const { rows } = await db.query<BannerRow>(
       `INSERT INTO banners
-         (image_url, title, subtitle, placement, destination_type, destination_value, sort_order)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+         (image_url, title, subtitle, title_ckb, subtitle_ckb,
+          placement, destination_type, destination_value, sort_order)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
       [
         input.imageUrl,
-        input.title ?? null,
-        input.subtitle ?? '',
+        input.titleAr ?? null,
+        // العمود العربي `NOT NULL DEFAULT ''` منذ 030: الفراغ فيه = «لا سطر».
+        input.subtitleAr ?? '',
+        input.titleCkb ?? null,
+        input.subtitleCkb ?? null,
         input.placement ?? 'promo',
         input.destinationType,
         input.destinationValue ?? null,
@@ -81,8 +103,10 @@ export const bannerRepo = {
     id: string,
     input: {
       imageUrl?: string;
-      title?: string | null;
-      subtitle?: string;
+      titleAr?: string | null;
+      subtitleAr?: string | null;
+      titleCkb?: string | null;
+      subtitleCkb?: string | null;
       placement?: BannerRow['placement'];
       destinationType?: BannerRow['destination_type'];
       destinationValue?: string | null;
@@ -96,13 +120,23 @@ export const bannerRepo = {
       values.push(input.imageUrl);
       sets.push(`image_url = $${values.length}`);
     }
-    if (input.title !== undefined) {
-      values.push(input.title);
+    // [CRITICAL] كل لغةٍ في عمودها وحده: الحقل الغائب لا يُمسّ، فحفظُ العربية
+    // لا يلمس الكردية ولا العكس. `null` صريحة تمسح نصّ تلك اللغة وحدها.
+    if (input.titleAr !== undefined) {
+      values.push(input.titleAr);
       sets.push(`title = $${values.length}`);
     }
-    if (input.subtitle !== undefined) {
-      values.push(input.subtitle);
+    if (input.subtitleAr !== undefined) {
+      values.push(input.subtitleAr ?? '');
       sets.push(`subtitle = $${values.length}`);
+    }
+    if (input.titleCkb !== undefined) {
+      values.push(input.titleCkb);
+      sets.push(`title_ckb = $${values.length}`);
+    }
+    if (input.subtitleCkb !== undefined) {
+      values.push(input.subtitleCkb);
+      sets.push(`subtitle_ckb = $${values.length}`);
     }
     if (input.placement !== undefined) {
       values.push(input.placement);

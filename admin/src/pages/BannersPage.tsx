@@ -16,6 +16,7 @@ import {
   Switch,
   Table,
   Tag,
+  Typography,
 } from 'antd'
 import {
   EditOutlined,
@@ -33,6 +34,7 @@ import { listProducts } from '../api/productsApi'
 import { ApiError } from '../api/client'
 import type {
   AdminBanner,
+  BannerContent,
   BannerDestinationType,
   BannerPlacement,
 } from '../types/banners'
@@ -44,6 +46,7 @@ import ImageUploadField from '../components/ImageUploadField'
 import { MediaThumb } from '../components/ui/MediaThumb'
 import { PageHeader } from '../components/ui/PageHeader'
 import { ConfirmDangerButton } from '../components/ui/ConfirmDangerButton'
+import { SectionHeader } from '../components/ui/SectionHeader'
 
 const DESTINATION_LABELS: Record<BannerDestinationType, string> = {
   product: 'منتج',
@@ -55,12 +58,71 @@ const DESTINATION_LABELS: Record<BannerDestinationType, string> = {
 
 interface BannerFormValues {
   imageUrl: string
-  subtitle?: string
   placement: BannerPlacement
-  title?: string
+  /**
+   * نصّ البنر بلغتيه (هجرة ٠٦٧) — أربعة حقول مستقلة يكتبها المسؤول بيده، لا
+   * ترجمة آلية ولا نسخ بين اللغتين. كلٌّ اختياري كما كان النصّ قبل الفصل.
+   */
+  titleAr?: string
+  subtitleAr?: string
+  titleCkb?: string
+  subtitleCkb?: string
   destinationType: BannerDestinationType
   destinationValue?: string
   sortOrder?: number
+}
+
+const CONTENT_FIELDS = ['titleAr', 'subtitleAr', 'titleCkb', 'subtitleCkb'] as const
+
+/** نصٌّ مقصوص أو `null` — الفراغ «لا نصّ بهذه اللغة»، كما يحفظه الخادم. */
+function cleanText(value: string | null | undefined): string | null {
+  const trimmed = (value ?? '').trim()
+  return trimmed === '' ? null : trimmed
+}
+
+function contentOf(values: Partial<Record<keyof BannerContent, string | null>>): BannerContent {
+  return {
+    titleAr: cleanText(values.titleAr),
+    subtitleAr: cleanText(values.subtitleAr),
+    titleCkb: cleanText(values.titleCkb),
+    subtitleCkb: cleanText(values.subtitleCkb),
+  }
+}
+
+/**
+ * [CRITICAL] التعديل يرسل من النصوص الأربعة ما تغيّر وحده. الحقل الغائب لا
+ * يُمسّ على الخادم، فحفظ العربية لا يعيد كتابة الكردية ولا العكس — ولو عدّلها
+ * مسؤولٌ آخر بين فتح النموذج وحفظه.
+ */
+function changedContent(
+  values: BannerFormValues,
+  initial: BannerContent,
+): Partial<BannerContent> {
+  const next = contentOf(values)
+  const before = contentOf(initial)
+  const changed: Partial<BannerContent> = {}
+  for (const field of CONTENT_FIELDS) {
+    if (next[field] !== before[field]) changed[field] = next[field]
+  }
+  return changed
+}
+
+/** حدود كل حقل نصّ — حدود النموذج قبل الفصل، لكل لغة. */
+function textRules(kind: 'title' | 'subtitle', language: string) {
+  return kind === 'title'
+    ? [{ max: 100, message: `العنوان ب${language} يجب ألا يتجاوز 100 حرف` }]
+    : [{ max: 160, message: `السطر الثاني ب${language} يجب ألا يتجاوز 160 حرفاً` }]
+}
+
+/** لغةٌ ناقصة: للحقل نصٌّ باللغة الأخرى ولا نصّ له بهذه. */
+function missingLanguage(banner: AdminBanner): string | null {
+  if ((banner.titleAr && !banner.titleCkb) || (banner.subtitleAr && !banner.subtitleCkb)) {
+    return 'الكردية ناقصة'
+  }
+  if ((banner.titleCkb && !banner.titleAr) || (banner.subtitleCkb && !banner.subtitleAr)) {
+    return 'العربية ناقصة'
+  }
+  return null
 }
 
 export default function BannersPage() {
@@ -88,7 +150,15 @@ export default function BannersPage() {
   }
 
   const createMutation = useMutation({
-    mutationFn: createBanner,
+    mutationFn: (values: BannerFormValues) =>
+      createBanner({
+        imageUrl: values.imageUrl,
+        ...contentOf(values),
+        placement: values.placement,
+        destinationType: values.destinationType,
+        destinationValue: values.destinationValue ?? null,
+        sortOrder: values.sortOrder,
+      }),
     onSuccess: (result) => {
       message.success(result.message)
       setEditor(null)
@@ -105,13 +175,17 @@ export default function BannersPage() {
     mutationFn: (input: {
       id: string
       values: BannerFormValues | { isActive: boolean }
+      /** النصوص كما فُتح بها النموذج — منها يُعرف ما تغيّر. */
+      initial?: BannerContent
     }) =>
       'isActive' in input.values && !('imageUrl' in input.values)
         ? updateBanner(input.id, { isActive: input.values.isActive })
         : updateBanner(input.id, {
             imageUrl: (input.values as BannerFormValues).imageUrl,
-            title: (input.values as BannerFormValues).title?.trim() || null,
-            subtitle: (input.values as BannerFormValues).subtitle ?? '',
+            ...changedContent(
+              input.values as BannerFormValues,
+              input.initial ?? contentOf({}),
+            ),
             placement: (input.values as BannerFormValues).placement,
             destinationType: (input.values as BannerFormValues).destinationType,
             destinationValue:
@@ -155,9 +229,21 @@ export default function BannersPage() {
     },
     {
       title: 'العنوان',
-      dataIndex: 'title',
       key: 'title',
-      render: (value: string | null) => value ?? '—',
+      render: (_: unknown, banner: AdminBanner) => {
+        const missing = missingLanguage(banner)
+        return (
+          <Space direction="vertical" size={2}>
+            <span lang="ar">{banner.titleAr ?? '—'}</span>
+            {banner.titleCkb && (
+              <Typography.Text type="secondary" lang="ckb">
+                {banner.titleCkb}
+              </Typography.Text>
+            )}
+            {missing && <Tag color="orange">{missing}</Tag>}
+          </Space>
+        )
+      },
     },
     {
       // الموضع أول ما يحتاج المسؤول معرفته: بنر في «الشريط الترويجي» لا
@@ -326,8 +412,11 @@ export default function BannersPage() {
           <BannerForm
             initialValues={{
               imageUrl: editor.banner.imageUrl,
-              title: editor.banner.title ?? undefined,
-              subtitle: editor.banner.subtitle,
+              // كل لغةٍ في حقليها كما حفظها الخادم — لا احتياط يملأ لغةً من أخرى.
+              titleAr: editor.banner.titleAr ?? undefined,
+              subtitleAr: editor.banner.subtitleAr ?? undefined,
+              titleCkb: editor.banner.titleCkb ?? undefined,
+              subtitleCkb: editor.banner.subtitleCkb ?? undefined,
               placement: editor.banner.placement,
               destinationType: editor.banner.destinationType,
               destinationValue: editor.banner.destinationValue ?? undefined,
@@ -335,7 +424,11 @@ export default function BannersPage() {
             }}
             submitting={updateMutation.isPending}
             onSubmit={(values) =>
-              updateMutation.mutate({ id: editor.banner!.id, values })
+              updateMutation.mutate({
+                id: editor.banner!.id,
+                values,
+                initial: contentOf(editor.banner!),
+              })
             }
             onCancel={() => setEditor(null)}
             categories={categoriesQuery.data?.items ?? []}
@@ -432,20 +525,43 @@ function BannerForm({
           )}
         />
       </Form.Item>
-      <Form.Item
-        name="title"
-        label="العنوان"
-        rules={[{ max: 100, message: 'العنوان يجب ألا يتجاوز 100 حرف' }]}
+      <SectionHeader title="محتوى البنر" />
+      <Card
+        size="small"
+        title="العربية"
+        data-testid="banner-content-ar"
+        style={{ marginBottom: 12 }}
       >
-        <Input placeholder="موسم جديد من عالم الأنمي" />
-      </Form.Item>
-      <Form.Item
-        name="subtitle"
-        label="السطر الثاني"
-        rules={[{ max: 160, message: 'السطر الثاني يجب ألا يتجاوز 160 حرفاً' }]}
+        <Form.Item name="titleAr" label="العنوان بالعربية" rules={textRules('title', 'العربية')}>
+          <Input lang="ar" dir="rtl" placeholder="موسم جديد من عالم الأنمي" />
+        </Form.Item>
+        <Form.Item
+          name="subtitleAr"
+          label="السطر الثاني بالعربية"
+          rules={textRules('subtitle', 'العربية')}
+          style={{ marginBottom: 0 }}
+        >
+          <Input lang="ar" dir="rtl" placeholder="تشكيلة جديدة" />
+        </Form.Item>
+      </Card>
+      <Card
+        size="small"
+        title="الكردية"
+        data-testid="banner-content-ckb"
+        style={{ marginBottom: 24 }}
       >
-        <Input placeholder="تشكيلة جديدة" />
-      </Form.Item>
+        <Form.Item name="titleCkb" label="العنوان بالكردية" rules={textRules('title', 'الكردية')}>
+          <Input lang="ckb" dir="rtl" />
+        </Form.Item>
+        <Form.Item
+          name="subtitleCkb"
+          label="السطر الثاني بالكردية"
+          rules={textRules('subtitle', 'الكردية')}
+          style={{ marginBottom: 0 }}
+        >
+          <Input lang="ckb" dir="rtl" />
+        </Form.Item>
+      </Card>
       <Form.Item
         name="destinationType"
         label="نوع الوجهة"

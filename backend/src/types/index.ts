@@ -175,8 +175,14 @@ export type BannerDestination = (typeof BANNER_DESTINATIONS)[number];
 export type BannerRow = {
   id: string;
   image_url: string;
+  /** العنوان بالعربية (067: اختياري، `NULL` = بلا عنوان عربي). */
   title: string | null;
+  /** السطر الثاني بالعربية (`''` = بلا سطر عربي). */
   subtitle: string;
+  /** العنوان بالكردية — `NULL` = ناقص، لا فراغ أبداً (046/067). */
+  title_ckb: string | null;
+  /** السطر الثاني بالكردية — `NULL` = ناقص، لا فراغ أبداً (067). */
+  subtitle_ckb: string | null;
   placement: BannerPlacement;
   destination_type: BannerDestination;
   destination_value: string | null;

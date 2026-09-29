@@ -170,11 +170,11 @@ void main() {
 
       expect(data.heroBanner, isNotNull);
       expect(data.heroBanner!.placement, 'hero');
-      expect(data.heroBanner!.title, 'اكتشف، اجمع، واستمتع!');
+      expect(data.heroBanner!.titleAr, 'اكتشف، اجمع، واستمتع!');
       expect(data.heroBanner!.imageUrl, endsWith('/uploads/banner/2026/09/1916247f-3c19-4995-9805-f1e43e3f3735.png'));
       expect(data.promoBanners.map((b) => b.id), ['p1', 'p2']);
       expect(data.promoBanners.map((b) => b.placement).toSet(), {'promo'});
-      expect(data.promoBanners.first.subtitle, 'كل شيء');
+      expect(data.promoBanners.first.subtitleAr, 'كل شيء');
     });
 
     testWidgets('بنرات اللوحة تُعرض كلّها، ولا تعود البطاقة المحذوفة بجانبها', (
@@ -212,7 +212,8 @@ void main() {
 
     test('بنرٌ بلا عنوان يأخذ شارة «عرض» لا نصّ البطاقة المحذوفة', () {
       const banner = model.Banner(id: 'x', placement: 'promo');
-      expect(banner.title, isNull);
+      expect(banner.titleIn(AppLanguage.arabic), isNull);
+      expect(banner.titleIn(AppLanguage.kurdish), isNull);
       expect(AppStrings.arabic('promoBadge'), 'عرض');
     });
   });

@@ -76,6 +76,30 @@ export function pickLocalized(
   return arabic;
 }
 
+/**
+ * نظيرُ [pickLocalized] لنصٍّ **كلتا لغتيه اختيارية** — نصّ البنر (067).
+ *
+ * [pickLocalized] يفترض عربيةً حاضرة دائماً (اسم منتج، اسم قسم). نصّ البنر
+ * ليس كذلك: المسؤول قد يكتب لغةً دون أخرى، أو لا يكتب نصاً أصلاً. فالقاعدة
+ * هنا متناظرة: اللغة المطلوبة إن حضرت، وإلا الأخرى، وإلا `null` (لا نصّ).
+ * الفراغ والمسافات غيابٌ كما في [pickLocalized]. اختيارُ عرضٍ لا كتابة:
+ * العمود الناقص يبقى ناقصاً.
+ */
+export function pickLocalizedEither(
+  arabic: string | null | undefined,
+  kurdish: string | null | undefined,
+  locale: AppLocale,
+): string | null {
+  const ar = textOrNull(arabic);
+  const ckb = textOrNull(kurdish);
+  return locale === 'ckb' ? (ckb ?? ar) : (ar ?? ckb);
+}
+
+/** نصٌّ حاضر أو `null` — الفراغ والمسافات غياب، بأي لغة. */
+export function textOrNull(text: string | null | undefined): string | null {
+  return typeof text === 'string' && text.trim() !== '' ? text : null;
+}
+
 /** هل ينقص هذا الصفَّ نصٌّ كردي؟ */
 export function isMissingKurdish(kurdish: string | null | undefined): boolean {
   return typeof kurdish !== 'string' || kurdish.trim() === '';

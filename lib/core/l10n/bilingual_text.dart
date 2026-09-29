@@ -74,3 +74,30 @@ class BilingualText {
   @override
   String toString() => 'BilingualText(ar: $ar, ckb: $ckb)';
 }
+
+/// [CRITICAL] اختيار نصٍّ **كلتا لغتيه اختيارية** — نصّ البنر (هجرة ٠٦٧).
+///
+/// [BilingualText] يفترض عربيةً حاضرة دائماً (اسم منتج). نصّ البنر ليس كذلك:
+/// المسؤول قد يكتب لغةً دون أخرى، أو لا يكتب نصاً أصلاً. فالقاعدة متناظرة:
+/// لغة الواجهة إن حضرت، وإلا الأخرى، وإلا `null` (فتعرض الواجهة نصّها
+/// الافتراضي). الفراغ والمسافات غياب. نفس قاعدة الخادم (`pickLocalizedEither`)
+/// فيطابق ما يختاره التطبيقُ `title` الذي يحسمه الخادم بلغة الطلب.
+///
+/// كل شاشة تعرض نصّ بنر تمرّ من هنا (عبر `Banner.titleIn`/`subtitleIn`)
+/// ولا تقرّر اللغة بنفسها.
+String? pickEitherLanguage({
+  required String? ar,
+  required String? ckb,
+  required AppLanguage language,
+}) {
+  final arabic = _presentText(ar);
+  final kurdish = _presentText(ckb);
+  return language == AppLanguage.kurdish
+      ? (kurdish ?? arabic)
+      : (arabic ?? kurdish);
+}
+
+String? _presentText(String? text) {
+  final trimmed = text?.trim();
+  return trimmed == null || trimmed.isEmpty ? null : trimmed;
+}

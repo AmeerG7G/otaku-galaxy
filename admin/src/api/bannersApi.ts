@@ -1,8 +1,8 @@
 import { client, get } from './client'
 import type { ApiEnvelope } from '../types/api'
 import type {
+  AdminBanner,
   AdminBannerListResponse,
-  BannerAdminRow,
   BannerCreatePayload,
   BannerUpdatePayload,
 } from '../types/banners'
@@ -13,8 +13,8 @@ export function listAdminBanners(): Promise<AdminBannerListResponse> {
 
 export async function createBanner(
   payload: BannerCreatePayload,
-): Promise<{ row: BannerAdminRow; message: string }> {
-  const response = await client.post<ApiEnvelope<BannerAdminRow>>(
+): Promise<{ row: AdminBanner; message: string }> {
+  const response = await client.post<ApiEnvelope<AdminBanner>>(
     '/admin/banners',
     payload,
   )
@@ -24,8 +24,8 @@ export async function createBanner(
 export async function updateBanner(
   id: string,
   payload: BannerUpdatePayload,
-): Promise<{ row: BannerAdminRow; message: string }> {
-  const response = await client.patch<ApiEnvelope<BannerAdminRow>>(
+): Promise<{ row: AdminBanner; message: string }> {
+  const response = await client.patch<ApiEnvelope<AdminBanner>>(
     `/admin/banners/${id}`,
     payload,
   )

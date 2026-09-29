@@ -1,4 +1,9 @@
-import { pickLocalized, pickLocalizedList, type AppLocale } from './locale.js';
+import {
+  pickLocalized,
+  pickLocalizedEither,
+  pickLocalizedList,
+  type AppLocale,
+} from './locale.js';
 
 /**
  * حسم `name`/`description` للمنتج بلغة الطلب — مع إبقاء اللغتين صريحتين.
@@ -40,14 +45,31 @@ export function localizeNamed<
   return { ...rest, name: pickLocalized(entity.name, nameCkb, locale) };
 }
 
-/** البنر: عنوانه وحده نصٌّ يراه الزبون. */
+/**
+ * البنر: عنوانه وسطره الثاني بلغة الطلب — مع إبقاء اللغتين صريحتين (067).
+ *
+ * [CRITICAL] استثناءٌ مقصود من «لغة واحدة محسومة»، كالمنتج ([localizeProduct]):
+ *   • `title`/`subtitle` محسومان هنا — لعميلٍ أقدم لا يعرف غيرهما.
+ *   • `titleAr`/`subtitleAr`/`titleCkb`/`subtitleCkb` تخرج كما هي (`null` =
+ *     لا نصّ بتلك اللغة)، فيختار التطبيق بلغة واجهته الآن بلا جلبٍ ثانٍ.
+ * والاختيار متناظر ([pickLocalizedEither]) لأن نصّ البنر اختياريٌّ باللغتين:
+ * الكردية الناقصة تُعرض عربيةً، والعربية الناقصة تُعرض كرديةً. التطبيق يتبع
+ * القاعدة نفسها (`pickEitherLanguage`) — `title` هنا يساوي اختيارَه دائماً.
+ */
 export function localizeBanner<
-  T extends { title: string | null; titleCkb?: string | null },
->(banner: T, locale: AppLocale): Omit<T, 'titleCkb'> {
-  const { titleCkb, ...rest } = banner;
+  T extends {
+    title: string | null;
+    subtitle: string;
+    titleAr: string | null;
+    subtitleAr: string | null;
+    titleCkb: string | null;
+    subtitleCkb: string | null;
+  },
+>(banner: T, locale: AppLocale): T {
   return {
-    ...rest,
-    title: banner.title === null ? null : pickLocalized(banner.title, titleCkb, locale),
+    ...banner,
+    title: pickLocalizedEither(banner.titleAr, banner.titleCkb, locale),
+    subtitle: pickLocalizedEither(banner.subtitleAr, banner.subtitleCkb, locale) ?? '',
   };
 }
 

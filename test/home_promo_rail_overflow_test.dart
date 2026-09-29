@@ -160,14 +160,14 @@ void main() {
           banners: const [
             model.Banner(
               id: 'b1',
-              title: 'عرض الصيف',
-              subtitle: 'خصومات على كل شيء',
+              titleAr: 'عرض الصيف',
+              subtitleAr: 'خصومات على كل شيء',
               imageUrl: '',
             ),
             model.Banner(
               id: 'b2',
-              title: 'وصل حديثاً',
-              subtitle: 'مجسّمات جديدة',
+              titleAr: 'وصل حديثاً',
+              subtitleAr: 'مجسّمات جديدة',
               imageUrl: '',
             ),
           ],
@@ -197,12 +197,12 @@ void main() {
               onTap: () {},
               banners: const [
                 // البنر المبلَّغ عنه: عنوانٌ يلتفّ ثلاثة أسطر، وفرعيّ فارغ.
-                model.Banner(id: 'reported', title: _reportedTitle),
+                model.Banner(id: 'reported', titleAr: _reportedTitle),
                 // والأسوأ: عنوانٌ وفرعيّ طويلان معاً، بالكردية.
                 model.Banner(
                   id: 'long',
-                  title: 'وەرزی نوێی ئەنیمە و فیگەری جوان و زۆر شتی تر',
-                  subtitle: 'فیگەر و پۆستەر و جلوبەرگ و زۆر شتی تری جوان',
+                  titleCkb: 'وەرزی نوێی ئەنیمە و فیگەری جوان و زۆر شتی تر',
+                  subtitleCkb: 'فیگەر و پۆستەر و جلوبەرگ و زۆر شتی تری جوان',
                 ),
               ],
             ),
@@ -220,7 +220,7 @@ void main() {
         dark: false,
         rail: HomePromoRail(
           onTap: () {},
-          banners: const [model.Banner(id: 'reported', title: _reportedTitle)],
+          banners: const [model.Banner(id: 'reported', titleAr: _reportedTitle)],
         ),
       );
       final texts = find.descendant(
@@ -243,8 +243,8 @@ void main() {
           banners: const [
             model.Banner(
               id: 'long',
-              title: 'عنوانٌ طويلٌ جداً لبنرٍ من لوحة التحكم يلتفّ أسطراً كثيرة',
-              subtitle: 'وسطرٌ فرعيّ طويلٌ هو الآخر يلتفّ لو تُرك بلا حدّ',
+              titleAr: 'عنوانٌ طويلٌ جداً لبنرٍ من لوحة التحكم يلتفّ أسطراً كثيرة',
+              subtitleAr: 'وسطرٌ فرعيّ طويلٌ هو الآخر يلتفّ لو تُرك بلا حدّ',
             ),
           ],
         ),
@@ -351,8 +351,8 @@ void main() {
           rail: HomePromoRail(
             onTap: () {},
             banners: const [
-              model.Banner(id: 'a', title: 'عرض الصيف', subtitle: 'كل شيء'),
-              model.Banner(id: 'b', title: 'وصل حديثاً', subtitle: 'جديد'),
+              model.Banner(id: 'a', titleAr: 'عرض الصيف', subtitleAr: 'كل شيء'),
+              model.Banner(id: 'b', titleAr: 'وصل حديثاً', subtitleAr: 'جديد'),
             ],
           ),
         );

@@ -126,6 +126,9 @@ class HomeHeroCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // نصّ البنر بلغة الواجهة الآن — الكردية الناقصة تسقط إلى العربية والعكس.
+    final title = banner?.titleIn(context.language);
+    final subtitle = banner?.subtitleIn(context.language);
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
       child: Container(
@@ -184,9 +187,7 @@ class HomeHeroCard extends StatelessWidget {
                         ),
                       ),
                       child: Text(
-                        (banner?.subtitle.trim().isNotEmpty ?? false)
-                            ? banner!.subtitle.trim()
-                            : context.strings('heroNewCollection'),
+                        subtitle ?? context.strings('heroNewCollection'),
                         style: Theme.of(context).textTheme.labelSmall?.copyWith(
                           fontSize: 10.5,
                           fontWeight: AppDimens.weightExtraBold,
@@ -196,9 +197,7 @@ class HomeHeroCard extends StatelessWidget {
                     ),
                     const SizedBox(height: AppDimens.space4),
                     Text(
-                      (banner?.title?.trim().isNotEmpty ?? false)
-                          ? banner!.title!.trim()
-                          : context.strings('heroNewSeason'),
+                      title ?? context.strings('heroNewSeason'),
                       style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                         fontSize: 23,
                         height: 1.3,
@@ -335,10 +334,10 @@ class HomePromoRail extends StatelessWidget {
                 for (final (index, banner) in managed.indexed) ...[
                   if (index > 0) const SizedBox(width: AppDimens.space4),
                   _PromoCard(
-                    title: banner.title?.trim().isNotEmpty == true
-                        ? banner.title!.trim()
-                        : context.strings('promoBadge'),
-                    subtitle: banner.subtitle,
+                    title:
+                        banner.titleIn(context.language) ??
+                        context.strings('promoBadge'),
+                    subtitle: banner.subtitleIn(context.language) ?? '',
                     // الأولى بلا شخصية احتياطية: كانت الصورة 4، وحُذفت
                     // (2026-09-28) — صورة البنر المرفوعة وحدها تُعرض.
                     slot: index == 0 ? null : VisualSlots.homePromoSecondary,

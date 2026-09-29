@@ -77,7 +77,7 @@ describe('مسار إعادة الترقيم من اللوحة إلى الكتا
     const created = await api
       .post('/api/admin/banners')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ imageUrl, destinationType: 'none', placement: 'hero', sortOrder, title })
+      .send({ imageUrl, destinationType: 'none', placement: 'hero', sortOrder, titleAr: title })
       .expect(201);
     return created.body.data as { id: string };
   }

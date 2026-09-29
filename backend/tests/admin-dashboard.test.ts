@@ -570,7 +570,7 @@ describe('لوحة التحكم — البنرات', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         imageUrl: '/uploads/banner/test/a.png',
-        title: 'بنر اختبار',
+        titleAr: 'بنر اختبار',
         destinationType: 'category',
         destinationValue: categoryId,
         sortOrder: 90,
@@ -587,8 +587,10 @@ describe('لوحة التحكم — البنرات', () => {
   // قائمة بيضاء مقصودة: كل حقل جديد يُضاف هنا صراحةً، فلا يتسرّب شيء إلى
   // استجابة البنر دون أن يكسر الاختبار. `subtitle` و`placement` أُضيفا مع
   // إدارة بنرات الرئيسية (السطر الثاني، وموضع العرض: بطل أم شريط ترويجي).
+  // والأربعة الصريحة (`titleAr`… `subtitleCkb`) أُضيفت مع نصّ البنر بلغتين (067).
   const BANNER_KEYS = [
     'id', 'imageUrl', 'title', 'subtitle', 'placement',
+    'titleAr', 'subtitleAr', 'titleCkb', 'subtitleCkb',
     'destinationType', 'destinationValue', 'sortOrder', 'isActive',
   ].sort();
 
@@ -603,7 +605,7 @@ describe('لوحة التحكم — البنرات', () => {
     const patched = await api
       .patch(`/api/admin/banners/${created.body.data.id}`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ title: 'معدَّل' })
+      .send({ titleAr: 'معدَّل' })
       .expect(200);
     expect(Object.keys(patched.body.data).sort()).toEqual(BANNER_KEYS);
 
@@ -640,6 +642,7 @@ describe('لوحة التحكم — البنرات', () => {
     expect(row.destinationType).toBe('category');
     expect(row.destinationValue).toBe(categoryId);
     expect(row.title).toBe('بنر اختبار');
+    expect(row.titleAr).toBe('بنر اختبار');
     expect(row.sortOrder).toBe(90);
     expect(row.imageUrl).toBe('/uploads/banner/test/c.png');
   });
