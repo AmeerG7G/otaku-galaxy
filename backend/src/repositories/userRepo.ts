@@ -1,5 +1,6 @@
 import type pg from 'pg';
 import { GALAXY_LEVELS } from '../domain/galaxyPoints.js';
+import { normalizePermissions, type AdminSection } from '../domain/adminPermissions.js';
 import { DEFAULT_LOCALE, isAppLocale, type AppLocale } from '../utils/locale.js';
 import type { Gender, PublicUser, Role } from '../types/index.js';
 import { phoneSearchFragment } from '../utils/phone.js';
@@ -292,6 +293,8 @@ export const userRepo = {
     isActive: boolean;
     tokenVersion: number;
     locale: AppLocale;
+    isSuperAdmin: boolean;
+    permissions: AdminSection[];
   } | null> {
     const { rows } = await db.query<{
       id: string;
@@ -300,13 +303,19 @@ export const userRepo = {
       is_active: boolean;
       token_version: number;
       preferred_language: string;
+      is_super_admin: boolean;
+      admin_permissions: string[];
     }>(
-      `SELECT id, role, phone, is_active, token_version, preferred_language
+      `SELECT id, role, phone, is_active, token_version, preferred_language,
+              is_super_admin, admin_permissions
          FROM users WHERE id = $1`,
       [id],
     );
     const row = rows[0];
     if (!row) return null;
+    // [SECURITY] الصلاحيات للمسؤول وحده. القيدان في الهجرة ٠٦٨ يمنعان زبوناً
+    // يحمل صفةً إدارية، وهذا حزامٌ ثانٍ لا يعتمد على القاعدة وحدها.
+    const isAdmin = row.role === 'admin';
     return {
       id: row.id,
       role: row.role,
@@ -314,6 +323,8 @@ export const userRepo = {
       isActive: row.is_active,
       tokenVersion: row.token_version,
       locale: isAppLocale(row.preferred_language) ? row.preferred_language : DEFAULT_LOCALE,
+      isSuperAdmin: isAdmin && row.is_super_admin,
+      permissions: isAdmin && !row.is_super_admin ? normalizePermissions(row.admin_permissions) : [],
     };
   },
 

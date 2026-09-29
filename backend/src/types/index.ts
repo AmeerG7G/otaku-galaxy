@@ -1,5 +1,6 @@
 /** أنواع مشتركة للـ API (يُعتمد عليها في التحكم والتطبيقات الزبونة). */
 
+import type { AdminSection } from '../domain/adminPermissions.js';
 import type { AppLocale } from '../utils/locale.js';
 
 export type Role = 'customer' | 'admin';
@@ -65,6 +66,13 @@ export interface AuthUser {
   phone: string;
   /** لغة المخاطبة المختارة — تقودها `resolveLocale` والإشعارات. */
   locale: AppLocale;
+  /**
+   * المسؤول الأعلى — يملك كل الأقسام ضمناً. `false` لكل من ليس مسؤولاً.
+   * يُقرأ من الصفّ في كل طلب (لا من التوكن)، فالتغيير يسري فوراً.
+   */
+  isSuperAdmin: boolean;
+  /** أقسام المسؤول الفرعي. فارغةٌ للمسؤول الأعلى (يملك كل شيء) وللزبون. */
+  permissions: readonly AdminSection[];
 }
 
 /** بيانات المستخدم المكشوفة في الردود (بلا password_hash). */

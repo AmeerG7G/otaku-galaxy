@@ -1,6 +1,7 @@
 import { createApp } from './app.js';
 import { config } from './config/index.js';
 import { closePools } from './database/pool.js';
+import { startPushOutboxScheduler } from './jobs/pushOutboxJob.js';
 import { startRatingReminderScheduler } from './jobs/ratingReminderJob.js';
 
 const app = createApp();
@@ -12,6 +13,8 @@ const server = app.listen(config.port, () => {
 // جدولة تذكير التقييم تعيش مع الخادم لا مع التطبيق (createApp)، فلا
 // تشتغل أثناء الاختبارات التي تبني التطبيق وحده.
 const stopRatingReminders = startRatingReminderScheduler();
+// صندوق الدفع الصادر — يرسل الإشعارات الفورية خارج الطلبات (هجرة ٠٧٠).
+const stopPushOutbox = startPushOutboxScheduler();
 
 /**
  * إغلاق منظَّم.
@@ -27,6 +30,7 @@ const stopRatingReminders = startRatingReminderScheduler();
 async function shutdown(reason: string, exitCode = 0) {
   console.log(`\n${reason} — shutting down...`);
   stopRatingReminders();
+  stopPushOutbox();
   server.close(async () => {
     await closePools();
     process.exit(exitCode);

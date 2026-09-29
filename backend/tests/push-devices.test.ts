@@ -187,8 +187,8 @@ describe('بثّ الإشعارات مع الدفع', () => {
 
     // السجلّ داخل التطبيق هو الضمانة — يُكتب سواء نجح الدفع أم لا.
     expect(res.body.data.recipients).toBeGreaterThan(0);
-    expect(res.body.data.push).not.toBeNull();
     expect(res.body.data.push.provider).toBe('noop');
+    expect(res.body.data.push.queued).toBe(res.body.data.recipients);
 
     // ووصل الزبون فعلاً داخل التطبيق.
     const mine = await api

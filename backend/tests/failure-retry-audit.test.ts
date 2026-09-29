@@ -11,6 +11,7 @@ import { orderRepo } from '../src/repositories/orderRepo.js';
 import { pointsRepo } from '../src/repositories/pointsRepo.js';
 import { audienceRepo } from '../src/repositories/audienceRepo.js';
 import { loyaltyRewardsService } from '../src/services/loyaltyRewardsService.js';
+import { dispatchPushOutbox } from '../src/jobs/pushOutboxJob.js';
 import { pushProvider } from '../src/services/push/index.js';
 import { storage } from '../src/storage/index.js';
 import {
@@ -1323,25 +1324,46 @@ describe('Failure / retry / idempotency audit', () => {
       expect((await register(user.token, token)).body.data.created).toBe(true);
     });
 
-    it('in-app record committed, push provider throws → 201, record kept, no throw surfaces (best-effort push)', async () => {
+    it('in-app record committed; the request never calls the provider — a provider failure is a scheduled retry, not a lost push', async () => {
       const user = await registerAndLogin();
       await register(user.token, `fra-push-${Math.random().toString(36).slice(2)}-${Date.now()}`);
-      const provider = pushProvider();
-      const send = vi.spyOn(provider, 'send').mockRejectedValueOnce(new Error('injected: provider down'));
+      // الإشعار اليدوي «ترويجي» ⇒ يحكمه تفضيل العروض، وافتراضيّه مطفأ.
+      await api.patch('/api/notifications/prefs').set(authed(user.token)).send({ key: 'offers', enabled: true }).expect(200);
+      const send = vi.spyOn(pushProvider(), 'send');
       const res = await api
         .post('/api/admin/notifications')
         .set(authed(adminToken))
         .send({ userId: user.userId, title: 'عرض', body: 'نص' });
       expect(res.status).toBe(201);
-      expect(send).toHaveBeenCalledTimes(1);
+      // STEP 64: الدفع خارج الطلب — لا نداء للمزوّد قبل الردّ.
+      expect(send).not.toHaveBeenCalled();
       expect(await count(`FROM notifications WHERE user_id = $1 AND type = 'promotion'`, [user.userId])).toBe(1);
+
+      const outbox = () =>
+        db.query<{ status: string; attempts: number }>(
+          `SELECT status, attempts FROM push_outbox WHERE user_id = $1 AND audience = 'customer'`,
+          [user.userId],
+        );
+      // دفعةٌ واسعة: صفوف السويتات الأخرى تسبق هذا الصفّ بترتيب الوصول.
+      await dispatchPushOutbox({
+        batchSize: 100_000,
+        provider: { name: 'down', send: async () => { throw new Error('injected: provider down'); } },
+      });
+      expect((await outbox()).rows).toEqual([{ status: 'pending', attempts: 1 }]);
+
+      // يصير مستحقاً ثانيةً ⇒ المحاولة التالية تنجح.
+      await db.query(`UPDATE push_outbox SET next_attempt_at = now() WHERE user_id = $1`, [user.userId]);
+      await dispatchPushOutbox({
+        batchSize: 100_000,
+        provider: { name: 'up', send: async ({ tokens }) => ({ sent: tokens.length, invalidTokens: [], transientFailures: 0 }) },
+      });
+      expect((await outbox()).rows).toEqual([{ status: 'sent', attempts: 2 }]);
     });
 
-    it('push succeeded but the response was dropped → an admin retry creates a second record and a second push (at-least-once, no dedupe)', async () => {
+    it('response dropped → an admin retry creates a second record and a second outbox row (at-least-once, no dedupe — CA-7)', async () => {
       const user = await registerAndLogin();
       await register(user.token, `fra-push2-${Math.random().toString(36).slice(2)}-${Date.now()}`);
-      const provider = pushProvider();
-      const send = vi.spyOn(provider, 'send');
+      const send = vi.spyOn(pushProvider(), 'send');
       responsePatch = failNextResponse('/api/admin/notifications', 'drop');
       await expect(
         api.post('/api/admin/notifications').set(authed(adminToken)).send({ userId: user.userId, title: 'عرض', body: 'نص' }).then((r) => r),
@@ -1354,9 +1376,10 @@ describe('Failure / retry / idempotency audit', () => {
         .set(authed(adminToken))
         .send({ userId: user.userId, title: 'عرض', body: 'نص' });
       expect(retry.status).toBe(201);
-      expect(send).toHaveBeenCalledTimes(2);
-      // العقد الحالي: لا مفتاح تكرار — إعادةُ الإرسال إشعارٌ ثانٍ (موثَّق).
+      expect(send).not.toHaveBeenCalled();
+      // العقد: لا مفتاح تكرار — إعادةُ الإرسال إشعارٌ ثانٍ وصفُّ دفعٍ ثانٍ (موثَّق).
       expect(await count(`FROM notifications WHERE user_id = $1 AND type = 'promotion'`, [user.userId])).toBe(2);
+      expect(await count(`FROM push_outbox WHERE user_id = $1 AND audience = 'customer'`, [user.userId])).toBe(2);
     });
   });
 
@@ -1405,10 +1428,9 @@ describe('Failure / retry / idempotency audit', () => {
       expect(await promoCount(b.userId)).toBe(1);
     });
 
-    it('broadcast: records committed, push provider throws → 201 with push counts zero, records kept', async () => {
+    it('broadcast: records committed and queued — the response never waits for the provider', async () => {
       const a = await registerAndLogin();
-      const provider = pushProvider();
-      vi.spyOn(provider, 'send').mockRejectedValueOnce(new Error('injected: provider down'));
+      const send = vi.spyOn(pushProvider(), 'send');
       await api.post('/api/devices').set(authed(a.token)).send({ token: `fra-bc-${Date.now()}-${Math.random()}`, platform: 'android' }).expect(200);
       const res = await api
         .post('/api/admin/notifications/broadcast')
@@ -1416,7 +1438,8 @@ describe('Failure / retry / idempotency audit', () => {
         .send({ audience: 'users', userIds: [a.userId], title: 'بثّ', body: 'نص' });
       expect(res.status).toBe(201);
       expect(res.body.data.recipients).toBe(1);
-      expect(res.body.data.push.delivered).toBe(0);
+      expect(res.body.data.push.queued).toBe(1);
+      expect(send).not.toHaveBeenCalled();
       expect(await promoCount(a.userId)).toBe(1);
     });
 

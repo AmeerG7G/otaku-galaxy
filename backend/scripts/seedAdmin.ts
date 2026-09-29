@@ -65,10 +65,16 @@ export async function seedAdminUser(
   const username = env.SEED_ADMIN_USERNAME?.trim() || 'مدير المتجر';
   const passwordHash = await bcrypt.hash(password, config.bcryptRounds);
   await client.query(
-    `INSERT INTO users (username, phone, password_hash, role, phone_verified_at)
-     VALUES ($1, $2, $3, 'admin', now())
+    // أول مسؤولٍ في بيئةٍ جديدة هو **المسؤول الأعلى** (هجرة ٠٦٨): لا مسار API
+    // يمنح هذه الصفة، فهذا السكربت والهجرة وحدهما يفعلان. القائمة فارغة لأن
+    // الأعلى يملك كل شيء ضمناً (قيد `users_super_admin_no_list`).
+    `INSERT INTO users (username, phone, password_hash, role, phone_verified_at,
+                        is_super_admin, admin_permissions)
+     VALUES ($1, $2, $3, 'admin', now(), TRUE, '{}')
      ON CONFLICT (phone) DO UPDATE
        SET role = 'admin',
+           is_super_admin = TRUE,
+           admin_permissions = '{}',
            password_hash = EXCLUDED.password_hash,
            phone_verified_at = COALESCE(users.phone_verified_at, now())`,
     [username, phone, passwordHash],

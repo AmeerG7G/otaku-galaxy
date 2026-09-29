@@ -3,6 +3,7 @@ import type { AppLocale } from '../utils/locale.js';
 import jwt from 'jsonwebtoken';
 import { config } from '../config/index.js';
 import { db, withTransaction } from '../database/pool.js';
+import { adminEvents } from './adminEvents.js';
 import { mediaRepo } from '../repositories/mediaRepo.js';
 import { userRepo, toPublicUser, type UserRow } from '../repositories/userRepo.js';
 import type { AuthUser, Gender, PublicUser } from '../types/index.js';
@@ -15,7 +16,7 @@ export interface AuthResult {
   user: PublicUser;
 }
 
-function signToken(user: UserRow): string {
+export function signToken(user: UserRow): string {
   // `tv` هو مفتاح الإبطال: يقارنه وسيط المصادقة بنسخة الصف في كل طلب.
   const payload = { sub: user.id, role: user.role, phone: user.phone, tv: user.token_version };
   return jwt.sign(payload, config.jwtSecret, {
@@ -112,6 +113,15 @@ export const authService = {
         submittedUsername: input.username,
         submittedGender: input.gender,
       });
+      // تنبيه المسؤول بطلبٍ **جديد** فقط: استئناف طلبٍ معلَّق لا يرنّ ثانيةً.
+      if (pending.inserted) {
+        await adminEvents.accountRequest(tx, {
+          id: pending.id,
+          kind: 'registration',
+          username: input.username,
+          phone: written.phone,
+        });
+      }
       return { user: written, request: pending };
     });
 
@@ -168,14 +178,25 @@ export const authService = {
       throw Errors.badRequest('مستوى غير معروف', 'UNKNOWN_LEVEL');
     }
     const user = await userRepo.findByPhone(db, input.phone);
-    const request = await accountRequestRepo.upsertPending(db, {
-      kind: 'password_reset',
-      // حساب موقوف لا يُربط: الإدارة تراه بلا حساب وتقرّر.
-      userId: user && user.is_active ? user.id : null,
-      submittedPhone: input.phone,
-      submittedUsername: input.username,
-      submittedGender: input.gender,
-      submittedLevelKey: input.levelKey,
+    const request = await withTransaction(async (tx) => {
+      const pending = await accountRequestRepo.upsertPending(tx, {
+        kind: 'password_reset',
+        // حساب موقوف لا يُربط: الإدارة تراه بلا حساب وتقرّر.
+        userId: user && user.is_active ? user.id : null,
+        submittedPhone: input.phone,
+        submittedUsername: input.username,
+        submittedGender: input.gender,
+        submittedLevelKey: input.levelKey,
+      });
+      if (pending.inserted) {
+        await adminEvents.accountRequest(tx, {
+          id: pending.id,
+          kind: 'password_reset',
+          username: input.username,
+          phone: input.phone,
+        });
+      }
+      return pending;
     });
     return {
       request: { id: request.id, status: request.status, createdAt: request.created_at.toISOString() },

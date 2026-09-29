@@ -113,6 +113,8 @@ export const updateSettingsSchema = z.object({
     .optional(),
   // سطر واحد مشترك تحت صفّ الروابط الاجتماعية (1..60 حرفاً).
   social_description: z.string().trim().max(60).optional(),
+  // رابط المتجر في رسالة مشاركة المنتج (STEP 64) — http(s) أو فارغ.
+  store_share_url: optionalUrl.optional(),
 });
 
 // ── نسخة التطبيق ──
@@ -128,17 +130,25 @@ const optionalSemver = z
   );
 
 /**
- * إعدادات إجبار التحديث.
+ * إعدادات إجبار التحديث — ثلاثة حقول، كلّها في كل حفظ (STEP 64).
  *
  * [CRITICAL] الفصل عن `updateSettingsSchema` مقصود: الخطأ هنا يحجب التطبيق
  * عن كل مستخدميه، فلا يجوز أن يُحفظ حدٌّ أدنى بصيغة فاسدة لأنه مرّ ضمن
- * دفعة روابط تواصل. التحقق من الصيغة يقع قبل الكتابة لا بعدها.
+ * دفعة روابط تواصل. والتفعيل بلا حدٍّ صالح أو بلا رابط مرفوض: حجبٌ بلا زرٍّ
+ * يعمل حبسٌ للمستخدم لا تحديث.
  */
-export const updateAppVersionSettingsSchema = z.object({
-  app_min_supported_version: optionalSemver.optional(),
-  app_latest_version: optionalSemver.optional(),
-  app_android_store_url: optionalUrl.optional(),
-  app_ios_store_url: optionalUrl.optional(),
-  app_update_message: z.string().trim().max(300).optional(),
-  app_update_message_ckb: z.string().trim().max(300).optional(),
-});
+export const updateAppVersionSettingsSchema = z
+  .strictObject({
+    enabled: z.boolean({ error: 'حدّد تفعيل إجبار التحديث' }),
+    minimumVersion: optionalSemver,
+    updateUrl: optionalUrl,
+  })
+  .superRefine((value, ctx) => {
+    if (!value.enabled) return;
+    if (!value.minimumVersion) {
+      ctx.addIssue({ code: 'custom', path: ['minimumVersion'], message: 'أدخل الحدّ الأدنى للنسخة قبل تفعيل الإجبار' });
+    }
+    if (!value.updateUrl) {
+      ctx.addIssue({ code: 'custom', path: ['updateUrl'], message: 'أدخل رابط التحديث قبل تفعيل الإجبار' });
+    }
+  });

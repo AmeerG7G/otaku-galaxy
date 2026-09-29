@@ -1,3 +1,4 @@
+import jwt from 'jsonwebtoken';
 import { config } from '../../config/index.js';
 
 /**
@@ -12,6 +13,11 @@ export interface PushMessage {
   body: string;
   /** بيانات التوجيه (فتح طلب بعينه مثلاً) — تصل التطبيق كما هي. */
   data?: Record<string, string>;
+  /**
+   * رسالة بيانات لا إشعار: يعرضها العميل بنفسه (عامل خدمة اللوحة، ليضبط
+   * رابط النقر). غيابه = إشعارٌ يعرضه نظام الهاتف ولو كان التطبيق مغلقاً.
+   */
+  dataOnly?: boolean;
 }
 
 /** نتيجة الإرسال: كم وصل، وأي الرموز رفضها المزوّد. */
@@ -19,6 +25,8 @@ export interface PushResult {
   sent: number;
   /** رموز ردّ المزوّد بأنها غير صالحة/منتهية — تُعطَّل عند المستدعي. */
   invalidTokens: string[];
+  /** رموز فشلت لعطلٍ عابر (شبكة، مهلة، 429، 5xx) — يُعاد إرسالها لاحقاً. */
+  transientFailures?: number;
 }
 
 export interface PushProvider {
@@ -51,20 +59,46 @@ class NoopPushProvider implements PushProvider {
   }
 }
 
+/** تبادل رمز الوصول لحساب الخدمة (OAuth2 JWT bearer). */
+export const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
+export const FCM_SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
+
+/** قناة أندرويد الافتراضية — يُنشئها التطبيق بالاسم نفسه عند الإقلاع. */
+export const ANDROID_CHANNEL_ID = 'otaku_default';
+
 /**
- * Firebase Cloud Messaging عبر HTTP v1.
- *
- * [CRITICAL] لا مفاتيح في الشيفرة. الاعتماد كلّه من البيئة، والإقلاع يسقط
- * إن نقص شيء منه (انظر `createPushProvider`).
- *
- * التنفيذ هنا **بنيةٌ كاملة بلا اعتماد حقيقي**: يبني الطلب ويقرأ الردّ
- * ويستخرج الرموز غير الصالحة. ما ينقصه هو رمز وصول OAuth2 مُوقَّع بحساب
- * الخدمة — وهو ما لا يمكن توليده بلا ملف الاعتماد الحقيقي. الدالة
- * [obtainAccessToken] هي نقطة الوصل تلك، وتُرمى صراحةً بدل أن تُرجع قيمة
- * وهمية توحي بأن الإرسال يعمل.
+ * رفضُ FCM لرمزٍ بعينه لا للرسالة: الرمز لم يعد مسجَّلاً، أو ليس رمزاً أصلاً،
+ * أو يخصّ مشروع Firebase آخر. هذه وحدها تُعطِّل الرمز. أيُّ ٤٠٠ آخر (حمولة
+ * فاسدة) خطأٌ فينا — تعطيل الرموز عليه كان سيُسقط أجهزة الزبائن كلها بسبب علّة
+ * في الشيفرة.
  */
-class FcmPushProvider implements PushProvider {
+function isTokenRejection(status: number, payload: unknown): boolean {
+  if (status === 404) return true;
+  const error = (payload as { error?: { status?: string; message?: string; details?: unknown[] } })?.error;
+  const codes = (error?.details ?? [])
+    .map((detail) => (detail as { errorCode?: string })?.errorCode)
+    .filter(Boolean);
+  if (codes.includes('UNREGISTERED') || codes.includes('SENDER_ID_MISMATCH')) return true;
+  return (
+    status === 400 &&
+    error?.status === 'INVALID_ARGUMENT' &&
+    /registration token/i.test(error?.message ?? '')
+  );
+}
+
+/**
+ * Firebase Cloud Messaging عبر HTTP v1 — بلا مكتبة إضافية ولا خدمة مدفوعة.
+ *
+ * [CRITICAL] لا مفاتيح في الشيفرة. الاعتماد كلّه من البيئة
+ * (`FCM_PROJECT_ID`، `FCM_CLIENT_EMAIL`، `FCM_PRIVATE_KEY`).
+ *
+ * رمز الوصول: تأكيد JWT موقَّع RS256 بمفتاح حساب الخدمة يُبادَل عند Google
+ * برمز وصول يعيش ساعة؛ يُخبَّأ ويُجدَّد قبل انتهائه بدقيقة، ويُمسح عند ٤٠١.
+ * كل نداء شبكة (التبادل والإرسال) له مهلة `PUSH_TIMEOUT_MS`.
+ */
+export class FcmPushProvider implements PushProvider {
   readonly name = 'fcm';
+  private accessToken: { value: string; expiresAt: number } | null = null;
 
   constructor(
     private readonly settings: {
@@ -73,63 +107,130 @@ class FcmPushProvider implements PushProvider {
       privateKey: string;
       timeoutMs: number;
     },
+    private readonly now: () => number = Date.now,
   ) {}
 
-  /**
-   * رمز وصول OAuth2 لحساب الخدمة.
-   *
-   * [غير منفَّذ عمداً] يتطلّب توقيع JWT بمفتاح حساب الخدمة الخاص ثم تبادله
-   * مع Google. تنفيذُه بلا اعتماد حقيقي يعني كتابة توقيعٍ لا يمكن التحقق
-   * منه، فيُترك صريحاً: من يضبط الاعتماد يكمل هذه الدالة (أو يستبدل الصنف
-   * بـ`firebase-admin`) وكل ما عداها جاهز.
-   */
-  private async obtainAccessToken(): Promise<string> {
-    throw new PushDeliveryError(
-      'رمز وصول FCM غير منفَّذ — أكمل obtainAccessToken بعد ضبط اعتماد حساب الخدمة.',
-    );
+  private async fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.settings.timeoutMs);
+    try {
+      return await fetch(url, { ...init, signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
-  async send({ tokens, title, body, data }: PushMessage): Promise<PushResult> {
-    if (tokens.length === 0) return { sent: 0, invalidTokens: [] };
+  /** رمز وصول OAuth2 لحساب الخدمة — مخبّأ حتى قبل انتهائه بستين ثانية. */
+  async obtainAccessToken(): Promise<string> {
+    const now = this.now();
+    if (this.accessToken && now < this.accessToken.expiresAt - 60_000) {
+      return this.accessToken.value;
+    }
+    let assertion: string;
+    try {
+      const iat = Math.floor(now / 1000);
+      assertion = jwt.sign(
+        { iss: this.settings.clientEmail, scope: FCM_SCOPE, aud: GOOGLE_TOKEN_URL, iat, exp: iat + 3600 },
+        this.settings.privateKey,
+        { algorithm: 'RS256' },
+      );
+    } catch (error) {
+      // مفتاحٌ فاسد في البيئة: لا يُطبع المفتاح، يُقال إنه فاسد.
+      throw new PushDeliveryError('FCM_PRIVATE_KEY غير صالح لتوقيع RS256', { cause: error });
+    }
+    let response: Response;
+    try {
+      response = await this.fetchWithTimeout(GOOGLE_TOKEN_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+          assertion,
+        }).toString(),
+      });
+    } catch (error) {
+      throw new PushDeliveryError('تعذّر الوصول إلى خادم رموز Google', { cause: error });
+    }
+    if (!response.ok) {
+      throw new PushDeliveryError(`رفض تبادل رمز وصول FCM (HTTP ${response.status})`);
+    }
+    const payload = (await response.json().catch(() => ({}))) as {
+      access_token?: unknown;
+      expires_in?: unknown;
+    };
+    if (typeof payload.access_token !== 'string' || !payload.access_token) {
+      throw new PushDeliveryError('ردّ تبادل الرمز بلا access_token');
+    }
+    const ttlSeconds = typeof payload.expires_in === 'number' ? payload.expires_in : 3600;
+    this.accessToken = { value: payload.access_token, expiresAt: now + ttlSeconds * 1000 };
+    return payload.access_token;
+  }
 
-    const accessToken = await this.obtainAccessToken();
+  private messageFor(token: string, { title, body, data, dataOnly }: PushMessage) {
+    const payloadData = data ?? {};
+    if (dataOnly) {
+      // عامل خدمة اللوحة يعرض الإشعار بنفسه من هذه الحقول.
+      return {
+        token,
+        data: { ...payloadData, title, body },
+        webpush: { headers: { Urgency: 'high' } },
+        android: { priority: 'HIGH' as const },
+      };
+    }
+    return {
+      token,
+      notification: { title, body },
+      data: payloadData,
+      android: {
+        priority: 'HIGH' as const,
+        // النقر يفتح نشاط التطبيق الافتراضي؛ `firebase_messaging` يسلّمه
+        // الرسالة (`getInitialMessage`/`onMessageOpenedApp`) فيوجّه منها.
+        notification: { channel_id: ANDROID_CHANNEL_ID },
+      },
+      apns: { payload: { aps: { sound: 'default' } } },
+    };
+  }
+
+  async send(message: PushMessage): Promise<PushResult> {
+    const { tokens } = message;
+    if (tokens.length === 0) return { sent: 0, invalidTokens: [], transientFailures: 0 };
+
     const endpoint = `https://fcm.googleapis.com/v1/projects/${this.settings.projectId}/messages:send`;
-
     let sent = 0;
+    let transientFailures = 0;
     const invalidTokens: string[] = [];
 
     // FCM v1 يرسل رسالةً لجهاز واحد في الطلب الواحد؛ رمزٌ فاسد لا يُفشل
     // البقية — يُسجَّل ويُكمَل.
     for (const token of tokens) {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), this.settings.timeoutMs);
+      const accessToken = await this.obtainAccessToken();
+      let response: Response;
       try {
-        const response = await fetch(endpoint, {
+        response = await this.fetchWithTimeout(endpoint, {
           method: 'POST',
-          signal: controller.signal,
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            message: { token, notification: { title, body }, data: data ?? {} },
-          }),
+          headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: this.messageFor(token, message) }),
         });
-
-        if (response.ok) {
-          sent += 1;
-        } else if (response.status === 404 || response.status === 400) {
-          // الرمز غير مسجَّل أو فاسد — يُعطَّل عند المستدعي.
-          invalidTokens.push(token);
-        }
       } catch {
         // انقطاع شبكة أو مهلة: لا يُعطَّل الرمز — العطل في الطريق لا فيه.
-      } finally {
-        clearTimeout(timer);
+        transientFailures += 1;
+        continue;
+      }
+      if (response.ok) {
+        sent += 1;
+        continue;
+      }
+      const payload = await response.json().catch(() => null);
+      if (isTokenRejection(response.status, payload)) {
+        invalidTokens.push(token);
+      } else {
+        // ٤٠١: رمز الوصول انتهى أو أُلغي — يُمسح ليُطلب جديدٌ في المحاولة التالية.
+        if (response.status === 401) this.accessToken = null;
+        transientFailures += 1;
       }
     }
 
-    return { sent, invalidTokens };
+    return { sent, invalidTokens, transientFailures };
   }
 }
 
@@ -191,4 +292,22 @@ export function pushProvider(): PushProvider {
 /** لإعادة البناء بعد تغيير الإعدادات في الاختبارات. */
 export function resetPushProvider(): void {
   cached = null;
+}
+
+/**
+ * حالة الدفع لهذه البيئة — للمهمّة ولوحة التحكم.
+ *
+ * لا ترمي: اعتمادٌ ناقص يعني `configured: false` وسبباً مقروءاً، لا انهيار
+ * المهمّة ولا طلب اللوحة. الإشعارات داخل التطبيق لا تتأثر.
+ */
+export function pushStatus(): { configured: boolean; provider: PushProvider | null; reason: string | null } {
+  try {
+    return { configured: true, provider: pushProvider(), reason: null };
+  } catch (error) {
+    return {
+      configured: false,
+      provider: null,
+      reason: error instanceof Error ? error.message : 'push_not_configured',
+    };
+  }
 }

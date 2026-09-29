@@ -202,16 +202,13 @@ describe('استهداف الإشعارات وشرائح الزبائن', () => 
     }).expect(201);
     // [CRITICAL] الرقمان منفصلان ولا يجوز خلطهما.
     //
-    // كان `push` يساوي `null` ما دام لا مزوّد مربوطاً؛ صار يحمل نتيجة
-    // حقيقية بعد ربط طبقة الدفع. الغرض الذي يحرسه هذا الاختبار لم يتغيّر —
-    // بل صار أوضح: هذا الزبون بلا جهاز مسجَّل، فسجلّ التطبيق يُكتب (١)
-    // بينما التسليم صفر. لو عاد الحقلان بالرقم نفسه لكان معناه أن أحدهما
-    // يُشتقّ من الآخر، وعندها يظنّ المسؤول أن الإشعار وصل الهواتف لمجرّد
-    // أنه كُتب في القاعدة.
+    // `recipients` سجلاتٌ داخل التطبيق كُتبت الآن؛ `push.queued` صفوفٌ في
+    // الصندوق الصادر تُرسل **بعد** الردّ (STEP 64، هجرة ٠٧٠). لا رقم «وصل»
+    // في الردّ أصلاً: الردّ لا ينتظر FCM، فلا يظنّ المسؤول أن الإشعار رنّ
+    // الهواتف لمجرّد أنه كُتب في القاعدة.
     expect(res.body.data.recipients).toBe(1);
-    expect(res.body.data.push).not.toBeNull();
-    expect(res.body.data.push.delivered).toBe(0);
-    expect(res.body.data.push.provider).toBe('noop');
+    expect(res.body.data.push).toEqual({ provider: 'noop', queued: 1 });
+    expect(res.body.data.push).not.toHaveProperty('delivered');
     expect(res.body.message).toContain('داخل التطبيق');
   });
 

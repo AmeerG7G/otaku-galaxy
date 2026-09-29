@@ -1,26 +1,47 @@
 import { db } from '../database/pool.js';
-import { settingsRepo } from '../repositories/settingsRepo.js';
+import { settingsRepo, type StoreSettings } from '../repositories/settingsRepo.js';
 import { parseVersion, isBelowMinimum } from '../utils/semver.js';
 
 /**
- * إعدادات نسخة التطبيق كما يقرؤها العميل.
+ * إجبار التحديث — ثلاثة إعدادات يضبطها المسؤول (STEP 64، هجرة ٠٦٩):
+ * مفعَّل؟ والحدّ الأدنى، ورابط التحديث.
  *
- * القيمة الفارغة تعني «غير مضبوط» لا «صفر» — نفس عقد بقية `store_settings`.
- * ما دام `minimumSupportedVersion` فارغاً لا يُحجب أحد، فنشرُ هذه الترقية
- * لا يغيّر سلوك أي مستخدم حتى يقرّر المسؤول ذلك بنفسه.
+ * [CRITICAL] «الحدّ الفعلي» (`minimumSupportedVersion` في الردّ العامّ) فارغٌ
+ * في كل حالة شكّ: الإجبار موقوف، أو الحدّ فارغ، أو ليس نسخةً دلالية صالحة، أو
+ * تعذّرت قراءة القاعدة. الفارغ = لا حجب، في الخادم (426) وفي التطبيق معاً.
+ * الحجب قرارٌ لا رجعة منه داخل التطبيق، فلا يُتّخذ إلا على إعدادٍ صريح صالح.
  */
+
+/** ما يقرؤه تطبيق الزبون من `GET /catalog/app-version`. */
 export interface AppVersionConfig {
+  forceUpdateEnabled: boolean;
+  /** الحدّ الفعلي — فارغ متى لم يكن الإجبار نافذاً. */
   minimumSupportedVersion: string;
+  /** الرابط الذي يفتحه زرّ «حدّث» — فارغ = غير مضبوط. */
+  updateUrl: string;
+  /**
+   * حقول النسخ المثبَّتة قبل التبسيط (1.0.0): تقرأ رابطاً لكل منصّة ورسالةً
+   * ونسخةً أحدث. تُشتقّ هنا من الإعدادات الجديدة فتواصل تلك النسخ العمل —
+   * زرّها يفتح الرابط نفسه، ونصّها الافتراضي يظهر بدل رسالةٍ لم تعد موجودة.
+   */
   latestVersion: string;
   androidStoreUrl: string;
   iosStoreUrl: string;
   updateMessage: string;
-  /** رسالة التحديث بالكردية — يختار التطبيق بين الاثنتين بلغة واجهته. */
   updateMessageCkb: string;
 }
 
+/** ما تعرضه اللوحة وتحرّره — القيم كما حُفظت، لا الفعلية. */
+export interface AppVersionSettings {
+  enabled: boolean;
+  minimumVersion: string;
+  updateUrl: string;
+}
+
 const EMPTY: AppVersionConfig = {
+  forceUpdateEnabled: false,
   minimumSupportedVersion: '',
+  updateUrl: '',
   latestVersion: '',
   androidStoreUrl: '',
   iosStoreUrl: '',
@@ -28,12 +49,31 @@ const EMPTY: AppVersionConfig = {
   updateMessageCkb: '',
 };
 
+export function settingsFrom(settings: StoreSettings): AppVersionSettings {
+  return {
+    enabled: settings.app_force_update_enabled === 'true',
+    minimumVersion: settings.app_min_supported_version.trim(),
+    updateUrl: settings.app_update_url.trim(),
+  };
+}
+
+/** الإعداد المحفوظ → ما يراه التطبيق، بقاعدة «لا حجب عند الشكّ». */
+export function publicConfigFrom(settings: AppVersionSettings): AppVersionConfig {
+  const effective =
+    settings.enabled && parseVersion(settings.minimumVersion) !== null ? settings.minimumVersion : '';
+  return {
+    ...EMPTY,
+    forceUpdateEnabled: effective !== '',
+    minimumSupportedVersion: effective,
+    updateUrl: settings.updateUrl,
+    androidStoreUrl: settings.updateUrl,
+    iosStoreUrl: settings.updateUrl,
+  };
+}
+
 /**
- * ذاكرة قصيرة الأجل — لأن الوسيط يقرأ هذه الإعدادات في **كل** طلب محميّ.
- *
- * بلا تخبئة يصير كل نداء API استعلامَ قاعدةٍ إضافياً لقراءة خمس قيم لا
- * تتغيّر إلا حين يحرّرها المسؤول. المدة قصيرة عمداً: رفعُ الحدّ الأدنى يسري
- * خلال نصف دقيقة بلا إعادة تشغيل.
+ * يُخبّأ ثلاثين ثانية: الوسيط يقرؤه في كل طلب محميّ. `settingsService.update`
+ * يُبطله عند الحفظ، فتغيير اللوحة يسري فوراً.
  */
 const CACHE_TTL_MS = 30_000;
 let cached: { value: AppVersionConfig; at: number } | null = null;
@@ -49,19 +89,10 @@ export const appVersionService = {
 
     let value: AppVersionConfig;
     try {
-      const settings = await settingsRepo.getAll(db);
-      value = {
-        minimumSupportedVersion: settings.app_min_supported_version,
-        latestVersion: settings.app_latest_version,
-        androidStoreUrl: settings.app_android_store_url,
-        iosStoreUrl: settings.app_ios_store_url,
-        updateMessage: settings.app_update_message,
-        updateMessageCkb: settings.app_update_message_ckb,
-      };
+      value = publicConfigFrom(settingsFrom(await settingsRepo.getAll(db)));
     } catch {
-      // [CRITICAL] تعذّر قراءة الإعداد ليس سبباً لحجب أحد. الإعداد الفارغ
-      // = «لا حدّ أدنى» = لا حجب. انقطاعُ القاعدة يجب ألّا يقفل التطبيق
-      // على كل مستخدميه.
+      // [CRITICAL] تعذّر قراءة الإعداد ليس سبباً لحجب أحد: انقطاعُ القاعدة
+      // يجب ألّا يقفل التطبيق على كل مستخدميه.
       value = EMPTY;
     }
 
@@ -69,29 +100,22 @@ export const appVersionService = {
     return value;
   },
 
+  /** الإعداد كما حُفظ — للوحة. */
+  async settings(): Promise<AppVersionSettings> {
+    return settingsFrom(await settingsRepo.getAll(db));
+  },
+
   /**
-   * هل يجب إجبار هذه النسخة على التحديث؟
-   *
-   * تُعيد `false` في كل حالة شكّ: حدّ غير مضبوط، حدّ فاسد، نسخة عميل غائبة
-   * أو غير صالحة. الحجب قرارٌ لا رجعة فيه من داخل التطبيق، فلا يُتّخذ إلا
-   * على مقارنةٍ صريحة بين نسختين صالحتين.
+   * هل يجب إجبار هذه النسخة على التحديث؟ `false` في كل حالة شكّ: إجبارٌ
+   * موقوف، حدّ غير صالح، نسخة عميل غائبة أو فاسدة.
    */
   async isUpdateRequired(clientVersion: unknown): Promise<boolean> {
     const { minimumSupportedVersion } = await this.config();
     if (!minimumSupportedVersion) return false;
     return isBelowMinimum(clientVersion, minimumSupportedVersion) === true;
   },
-
-  /** الرابط الموافق للمنصّة، مع الرجوع إلى الآخر إن لم يُضبط إلا واحد. */
-  storeUrlFor(platform: string | undefined, config: AppVersionConfig): string {
-    const ios = platform === 'ios';
-    const preferred = ios ? config.iosStoreUrl : config.androidStoreUrl;
-    if (preferred) return preferred;
-    return ios ? config.androidStoreUrl : config.iosStoreUrl;
-  },
 };
 
-/** يتحقق أن نصّاً صالح كنسخة دلالية — تستعمله طبقة التحقق في اللوحة. */
 export function isValidVersionString(value: string): boolean {
   return parseVersion(value) !== null;
 }

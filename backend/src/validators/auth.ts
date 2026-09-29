@@ -150,3 +150,14 @@ export type LoginInput = z.infer<typeof loginSchema>;
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
+
+/**
+ * المخطّطات نفسها لإدارة المسؤولين (`validators/adminAccounts.ts`) — سياسةٌ
+ * واحدة للرقم وكلمة المرور والاسم، لا نسخةٌ ثانية تتباعد عنها.
+ */
+export {
+  phone as iraqiPhoneSchema,
+  newPassword as newPasswordSchema,
+  loginPassword as currentPasswordSchema,
+  username as usernameSchema,
+};

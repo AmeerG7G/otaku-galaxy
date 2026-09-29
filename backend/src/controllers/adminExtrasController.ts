@@ -1,5 +1,6 @@
 import type { RequestHandler } from 'express';
 import { db } from '../database/pool.js';
+import { adminAuditRepo } from '../repositories/adminAuditRepo.js';
 import { franchiseRepo } from '../repositories/franchisesRepo.js';
 import { statsRepo } from '../repositories/statsRepo.js';
 import { notificationsService } from '../services/notificationsService.js';
@@ -46,6 +47,28 @@ import {
 import { loyaltyRewardsService } from '../services/loyaltyRewardsService.js';
 import { config } from '../config/index.js';
 import type { Audience, AudienceSegment } from '../repositories/audienceRepo.js';
+
+/**
+ * سجلّ تغيير الإعدادات: المفاتيح التي تغيّرت فقط، بقيمها قبل وبعد. فشلُ
+ * الكتابة يُسجَّل ولا يُفشل حفظاً تمّ فعلاً.
+ */
+async function recordSettingsChange(
+  actorId: string,
+  action: string,
+  before: Record<string, string>,
+  after: Record<string, string>,
+) {
+  const changes: Record<string, { before: string; after: string }> = {};
+  for (const [key, value] of Object.entries(after)) {
+    if (before[key] !== value) changes[key] = { before: before[key] ?? '', after: value };
+  }
+  if (Object.keys(changes).length === 0) return;
+  try {
+    await adminAuditRepo.record(db, { actorId, action, targetType: 'settings', details: { changes } });
+  } catch (error) {
+    console.error('[admin-audit] failed to record settings change', error);
+  }
+}
 
 export const adminExtrasController = {
   /** أرقام لوحة التحكم مجمَّعة على الخادم في استعلام واحد. */
@@ -102,10 +125,22 @@ export const adminExtrasController = {
     return ok(res, await franchisesService.update(id, body), 'تم التحديث');
   }) as RequestHandler,
 
-  deleteFranchise: (async (req, res) => {
+  /** ما يربطه الأنمي — عددٌ يعرضه تأكيد الحذف قبل الضغط. */
+  franchiseUsage: (async (req, res) => {
     const { id } = parse(franchiseIdParamSchema, req.params);
-    await franchisesService.remove(id);
-    return noContent(res);
+    return ok(res, await franchisesService.usage(id));
+  }) as RequestHandler,
+
+  /**
+   * حذف الأنمي ولو ارتبط بمنتجات: يُفكّ الارتباط وتبقى المنتجات كما هي.
+   * الردّ يحمل عدد المنتجات التي فُكّ ارتباطها، والسجلّ الدلالي يُكتب في
+   * المعاملة نفسها.
+   */
+  deleteFranchise: (async (req, res) => {
+    res.locals.auditHandled = true;
+    const { id } = parse(franchiseIdParamSchema, req.params);
+    const result = await franchisesService.remove(id, req.auth!.id);
+    return ok(res, result, 'حُذف الأنمي — المنتجات باقية');
   }) as RequestHandler,
 
   // ── مناطق التوصيل ──
@@ -155,28 +190,39 @@ export const adminExtrasController = {
     return ok(res, await settingsService.getAll());
   }) as RequestHandler,
 
+  /** السجلّ الدلالي يحمل ما تغيّر قبل/بعد — لا سرّ في هذه المفاتيح. */
   updateSettings: (async (req, res) => {
+    res.locals.auditHandled = true;
     const body = parse(updateSettingsSchema, req.body);
-    return ok(res, await settingsService.update(body), 'حُفظت الإعدادات');
+    const before = await settingsService.getAll();
+    const saved = await settingsService.update(body);
+    await recordSettingsChange(req.auth!.id, 'settings.updated', before, saved);
+    return ok(res, saved, 'حُفظت الإعدادات');
   }) as RequestHandler,
 
   // ── نسخة التطبيق (إجبار التحديث) ──
 
   getAppVersionSettings: (async (_req, res) => {
-    return ok(res, await appVersionService.config());
+    return ok(res, await appVersionService.settings());
   }) as RequestHandler,
 
   /**
-   * يرفع الحدّ الأدنى المدعوم بلا نشر خادم جديد.
+   * يضبط إجبار التحديث بلا نشر خادم جديد.
    *
-   * [CRITICAL] مسار مُصادَق ومحصور بالمسؤول (`/api/admin` كلّه خلف
-   * `authenticate` + `requireAdmin`): من يملك تغيير هذا الحقل يملك حجب
-   * التطبيق عن كل مستخدميه بحفظةٍ واحدة.
+   * [CRITICAL] من يملك هذا الحقل يملك حجب التطبيق عن كل مستخدميه بحفظةٍ
+   * واحدة — المسار خلف صلاحية «الإعدادات»، والتغيير مسجَّلٌ قبل/بعد.
    */
   updateAppVersionSettings: (async (req, res) => {
+    res.locals.auditHandled = true;
     const body = parse(updateAppVersionSettingsSchema, req.body);
-    await settingsService.update(body);
-    return ok(res, await appVersionService.config(), 'حُفظت إعدادات النسخة');
+    const before = await settingsService.getAll();
+    const saved = await settingsService.update({
+      app_force_update_enabled: body.enabled ? 'true' : 'false',
+      app_min_supported_version: body.minimumVersion,
+      app_update_url: body.updateUrl,
+    });
+    await recordSettingsChange(req.auth!.id, 'settings.app_version_updated', before, saved);
+    return ok(res, await appVersionService.settings(), 'حُفظت إعدادات النسخة');
   }) as RequestHandler,
 
   // ── إشعار يدوي ──

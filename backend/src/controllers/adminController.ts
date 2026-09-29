@@ -13,6 +13,8 @@ import {
 import { Errors } from '../utils/errors.js';
 import {
   adminBannerIdSchema,
+  adminOfferFlagsSchema,
+  adminRestockScheduleSchema,
   adminBannerSchema,
   adminBannerUpdateSchema,
   adminCategoryIdSchema,
@@ -87,6 +89,22 @@ export const adminController = {
       adminService.updateProduct(id, input),
     );
     return ok(res, product, 'حُدّث المنتج');
+  }) as RequestHandler,
+
+  /** علَما العرض/الاختيار — مسار «العروض» الضيّق. */
+  updateOfferFlags: (async (req, res) => {
+    const id = parse(adminProductIdSchema, req.params).id;
+    const input = parse(adminOfferFlagsSchema, req.body ?? {});
+    const product = await withProductConstraints(() => adminService.updateProduct(id, input));
+    return ok(res, product, 'حُدّث العرض');
+  }) as RequestHandler,
+
+  /** موعد التوفر — مسار «طلبات التوفر» الضيّق. */
+  scheduleRestock: (async (req, res) => {
+    const id = parse(adminProductIdSchema, req.params).id;
+    const input = parse(adminRestockScheduleSchema, req.body ?? {});
+    const product = await withProductConstraints(() => adminService.updateProduct(id, input));
+    return ok(res, product, 'حُفظ موعد التوفر');
   }) as RequestHandler,
 
   deleteProduct: (async (req, res) => {
@@ -292,7 +310,10 @@ export const adminController = {
   setCustomerPassword: (async (req, res) => {
     const { id } = parse(adminCustomerIdSchema, req.params);
     const input = parse(adminSetCustomerPasswordSchema, req.body);
-    const data = await adminService.setCustomerPassword(id, req.auth!.id, input);
+    const auth = req.auth!;
+    const data = await adminService.setCustomerPassword(id, auth.id, input, {
+      requireRequest: !auth.isSuperAdmin && !auth.permissions.includes('customers'),
+    });
     return ok(res, data, 'وُضعت كلمة المرور الجديدة — بلّغها الزبون عبر واتساب');
   }) as RequestHandler,
 

@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { api, createAdminUser, purgeTestUsers, registerAndLogin } from './helpers.js';
 import { db } from '../src/database/pool.js';
@@ -79,26 +80,32 @@ describe('مقارنة النسخ الدلالية', () => {
 
 // ─────────────────────── مسار الإعداد العام ───────────────────────
 
+/** إجبارٌ نافذ: مفعَّل + حدّ + رابط — كما تحفظه اللوحة. */
+async function enforce(minimum: string, url = 'https://play.google.com/store/apps/details?id=x') {
+  await setVersionSettings({
+    app_force_update_enabled: 'true',
+    app_min_supported_version: minimum,
+    app_update_url: url,
+  });
+}
+
 describe('مسار إعدادات نسخة التطبيق', () => {
   afterEach(clearVersionSettings);
 
-  it('يعيد الإعداد كاملاً بلا مصادقة', async () => {
-    await setVersionSettings({
-      app_min_supported_version: '1.2.0',
-      app_latest_version: '1.3.0',
-      app_android_store_url: 'https://play.google.com/store/apps/details?id=x',
-      app_ios_store_url: 'https://apps.apple.com/app/id1',
-      app_update_message: 'حدّث التطبيق من فضلك',
-    });
-
+  it('يعيد الحدّ الفعلي والرابط بلا مصادقة — والحقول القديمة مشتقّة للنسخ المثبَّتة', async () => {
+    await enforce('1.2.0');
     const res = await api.get('/api/catalog/app-version');
     expect(res.status).toBe(200);
-    expect(res.body.data).toMatchObject({
+    expect(res.body.data).toEqual({
+      forceUpdateEnabled: true,
       minimumSupportedVersion: '1.2.0',
-      latestVersion: '1.3.0',
+      updateUrl: 'https://play.google.com/store/apps/details?id=x',
+      // نسخة 1.0.0 تقرأ هذه: الرابط نفسه للمنصّتين، ولا رسالة مخصّصة ولا «أحدث».
+      latestVersion: '',
       androidStoreUrl: 'https://play.google.com/store/apps/details?id=x',
-      iosStoreUrl: 'https://apps.apple.com/app/id1',
-      updateMessage: 'حدّث التطبيق من فضلك',
+      iosStoreUrl: 'https://play.google.com/store/apps/details?id=x',
+      updateMessage: '',
+      updateMessageCkb: '',
     });
   });
 
@@ -106,10 +113,23 @@ describe('مسار إعدادات نسخة التطبيق', () => {
     const res = await api.get('/api/catalog/app-version');
     expect(res.status).toBe(200);
     expect(res.body.data.minimumSupportedVersion).toBe('');
+    expect(res.body.data.forceUpdateEnabled).toBe(false);
+  });
+
+  it('[CRITICAL] الإجبار الموقوف لا يحجب ولو بقي حدٌّ محفوظ', async () => {
+    await setVersionSettings({ app_force_update_enabled: 'false', app_min_supported_version: '9.0.0' });
+    const res = await api.get('/api/catalog/app-version');
+    expect(res.body.data).toMatchObject({ forceUpdateEnabled: false, minimumSupportedVersion: '' });
+  });
+
+  it('[CRITICAL] حدٌّ فاسد في القاعدة (كُتب خارج اللوحة) لا يحجب', async () => {
+    await setVersionSettings({ app_force_update_enabled: 'true', app_min_supported_version: 'v2' });
+    const res = await api.get('/api/catalog/app-version');
+    expect(res.body.data).toMatchObject({ forceUpdateEnabled: false, minimumSupportedVersion: '' });
   });
 
   it('[CRITICAL] المسار مفتوح لنسخة محجوبة — وإلا صار الحجب حلقةً مغلقة', async () => {
-    await setVersionSettings({ app_min_supported_version: '9.0.0' });
+    await enforce('9.0.0');
     // نفس الرأس الذي يُرفض به أي طلب محميّ.
     const res = await api.get('/api/catalog/app-version').set('X-App-Version', '1.0.0');
     expect(res.status).toBe(200);
@@ -125,7 +145,7 @@ describe('رفض النسخ غير المدعومة على الخادم', () => 
   it('[CRITICAL] نسخة دون الحدّ تُرفض بـ426 حتى بتوكن صالح', async () => {
     // الحاجز في Flutter يُتجاوَز بتعديل التطبيق؛ هذا هو الحاجز الذي لا يُتجاوَز.
     const { token } = await registerAndLogin();
-    await setVersionSettings({ app_min_supported_version: '2.0.0' });
+    await enforce('2.0.0');
 
     const res = await api
       .get('/api/cart')
@@ -134,11 +154,32 @@ describe('رفض النسخ غير المدعومة على الخادم', () => 
 
     expect(res.status).toBe(426);
     expect(res.body.error.code).toBe('APP_UPDATE_REQUIRED');
+    expect(res.body.error.details).toEqual({
+      minimumSupportedVersion: '2.0.0',
+      updateUrl: 'https://play.google.com/store/apps/details?id=x',
+    });
+  });
+
+  it('[CRITICAL] 1.9.9 < 1.10.0 < 2.0.0 — المقارنة دلالية على الخادم أيضاً', async () => {
+    const { token } = await registerAndLogin();
+    await enforce('1.10.0');
+    const status = async (version: string) =>
+      (await api.get('/api/cart').set('Authorization', `Bearer ${token}`).set('X-App-Version', version)).status;
+    expect(await status('1.9.9')).toBe(426);
+    expect(await status('1.10.0')).toBe(200);
+    expect(await status('2.0.0')).toBe(200);
+  });
+
+  it('الإجبار الموقوف لا يرفض أحداً', async () => {
+    const { token } = await registerAndLogin();
+    await setVersionSettings({ app_force_update_enabled: 'false', app_min_supported_version: '99.0.0' });
+    const res = await api.get('/api/cart').set('Authorization', `Bearer ${token}`).set('X-App-Version', '1.0.0');
+    expect(res.status).toBe(200);
   });
 
   it('النسخة المساوية للحدّ والأحدث منه تمرّان', async () => {
     const { token } = await registerAndLogin();
-    await setVersionSettings({ app_min_supported_version: '2.0.0' });
+    await enforce('2.0.0');
 
     for (const version of ['2.0.0', '2.0.1', '10.0.0']) {
       const res = await api
@@ -153,7 +194,7 @@ describe('رفض النسخ غير المدعومة على الخادم', () => 
     // العميل الحالي لا يرسل الرأس أصلاً. حجبُ الغياب كان سيقطع الـAPI عن
     // كل من ثبّت التطبيق، وهو تعطيلٌ لا إجبارُ تحديث.
     const { token } = await registerAndLogin();
-    await setVersionSettings({ app_min_supported_version: '99.0.0' });
+    await enforce('99.0.0');
 
     const res = await api.get('/api/cart').set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(200);
@@ -161,7 +202,7 @@ describe('رفض النسخ غير المدعومة على الخادم', () => 
 
   it('الرأس الفاسد يمرّ — لا حجب عند الشكّ', async () => {
     const { token } = await registerAndLogin();
-    await setVersionSettings({ app_min_supported_version: '99.0.0' });
+    await enforce('99.0.0');
 
     const res = await api
       .get('/api/cart')
@@ -171,107 +212,163 @@ describe('رفض النسخ غير المدعومة على الخادم', () => 
   });
 
   it('المصادقة تبقى مطلوبة — فحص النسخة لا يفتح مساراً محميّاً', async () => {
-    await setVersionSettings({ app_min_supported_version: '1.0.0' });
+    await enforce('1.0.0');
     const res = await api.get('/api/cart').set('X-App-Version', '2.0.0');
     expect(res.status).toBe(401);
   });
-});
 
-// ─────────────────────── ضبطها من اللوحة ───────────────────────
-
-describe('ضبط الحدّ الأدنى من لوحة التحكم', () => {
-  afterEach(clearVersionSettings);
-
-  it('[CRITICAL] المسؤول يرفع الحدّ بلا نشر خادم جديد', async () => {
-    const token = await createAdminUser();
-
-    const saved = await api
-      .patch('/api/admin/settings/app-version')
-      .set('Authorization', `Bearer ${token}`)
-      .send({
-        app_min_supported_version: '1.2.0',
-        app_latest_version: '1.3.0',
-        app_android_store_url: 'https://play.google.com/store/apps/details?id=x',
-      });
-    expect(saved.status).toBe(200);
-
-    // يظهر فوراً على المسار العام: التخبئة تُبطَل مع الحفظ لا بعد مهلتها.
-    const publicRes = await api.get('/api/catalog/app-version');
-    expect(publicRes.body.data.minimumSupportedVersion).toBe('1.2.0');
-    expect(publicRes.body.data.latestVersion).toBe('1.3.0');
-  });
-
-  it('رسالة التحديث بالكردية تُحفظ من اللوحة وتصل التطبيق مع العربية', async () => {
-    const token = await createAdminUser();
-    const saved = await api
-      .patch('/api/admin/settings/app-version')
-      .set('Authorization', `Bearer ${token}`)
-      .send({
-        app_update_message: 'حدّث التطبيق من فضلك',
-        app_update_message_ckb: 'تکایە ئەپەکە نوێ بکەرەوە',
-      });
-    expect(saved.status).toBe(200);
-    expect(saved.body.data.updateMessageCkb).toBe('تکایە ئەپەکە نوێ بکەرەوە');
-
-    const publicRes = await api.get('/api/catalog/app-version');
-    expect(publicRes.body.data.updateMessage).toBe('حدّث التطبيق من فضلك');
-    expect(publicRes.body.data.updateMessageCkb).toBe('تکایە ئەپەکە نوێ بکەرەوە');
-  });
-
-  it('[CRITICAL] رفض 426 يحمل رسالة المسؤول بلغة الطلب — لا عربية لطلبٍ كردي', async () => {
+  it('رسالة 426 نصٌّ افتراضي بلغة الطلب — كرديٌّ لطلبٍ كردي', async () => {
     const { token } = await registerAndLogin();
-    await setVersionSettings({
-      app_min_supported_version: '2.0.0',
-      app_update_message: 'حدّث التطبيق من فضلك',
-      app_update_message_ckb: 'تکایە ئەپەکە نوێ بکەرەوە',
-    });
+    await enforce('2.0.0');
     const reject = (language: string) =>
       api
         .get('/api/cart')
         .set('Authorization', `Bearer ${token}`)
         .set('Accept-Language', language)
         .set('X-App-Version', '1.9.0');
+    expect((await reject('ar')).body.message).toBe('يلزم تحديث التطبيق للمتابعة');
+    expect((await reject('ckb')).body.message).toBe('بۆ بەردەوامبوون ئەپەکە نوێ بکەرەوە');
+  });
+});
 
-    const ckb = await reject('ckb');
-    expect(ckb.status).toBe(426);
-    expect(ckb.body.error.code).toBe('APP_UPDATE_REQUIRED');
-    expect(ckb.body.message).toBe('تکایە ئەپەکە نوێ بکەرەوە');
+// ─────────────────────── ضبطها من اللوحة ───────────────────────
 
-    const ar = await reject('ar');
-    expect(ar.body.message).toBe('حدّث التطبيق من فضلك');
+describe('ضبط إجبار التحديث من لوحة التحكم (ثلاثة حقول)', () => {
+  afterEach(clearVersionSettings);
+
+  const save = (token: string, body: unknown) =>
+    api.patch('/api/admin/settings/app-version').set('Authorization', `Bearer ${token}`).send(body as object);
+
+  it('[CRITICAL] المسؤول يفعّل الإجبار بلا نشر خادم جديد — ويسري فوراً', async () => {
+    const token = await createAdminUser();
+    const saved = await save(token, {
+      enabled: true,
+      minimumVersion: '1.2.0',
+      updateUrl: 'https://example.com/app.apk',
+    });
+    expect(saved.status).toBe(200);
+    expect(saved.body.data).toEqual({ enabled: true, minimumVersion: '1.2.0', updateUrl: 'https://example.com/app.apk' });
+
+    // التخبئة تُبطَل مع الحفظ لا بعد مهلتها.
+    const publicRes = await api.get('/api/catalog/app-version');
+    expect(publicRes.body.data).toMatchObject({
+      forceUpdateEnabled: true,
+      minimumSupportedVersion: '1.2.0',
+      updateUrl: 'https://example.com/app.apk',
+    });
+
+    const read = await api.get('/api/admin/settings/app-version').set('Authorization', `Bearer ${token}`);
+    expect(read.body.data).toEqual({ enabled: true, minimumVersion: '1.2.0', updateUrl: 'https://example.com/app.apk' });
+
+    // الإيقاف يُبقي القيم للمرة القادمة ويرفع الحجب.
+    await save(token, { enabled: false, minimumVersion: '1.2.0', updateUrl: 'https://example.com/app.apk' }).expect(200);
+    expect((await api.get('/api/catalog/app-version')).body.data.minimumSupportedVersion).toBe('');
+  });
+
+  it('[CRITICAL] التفعيل بلا حدٍّ أو بلا رابط مرفوض — لا حبس بلا زرّ يعمل', async () => {
+    const token = await createAdminUser();
+    for (const body of [
+      { enabled: true, minimumVersion: '', updateUrl: 'https://example.com/app' },
+      { enabled: true, minimumVersion: '1.0.0', updateUrl: '' },
+    ]) {
+      const res = await save(token, body);
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    }
+    expect((await api.get('/api/catalog/app-version')).body.data.forceUpdateEnabled).toBe(false);
   });
 
   it('[CRITICAL] الحدّ بصيغة فاسدة يُرفض قبل الكتابة', async () => {
-    // الخطأ هنا يحجب التطبيق عن كل مستخدميه، فلا يُقبل حفظه أصلاً.
     const token = await createAdminUser();
-    const res = await api
-      .patch('/api/admin/settings/app-version')
-      .set('Authorization', `Bearer ${token}`)
-      .send({ app_min_supported_version: 'v1.2' });
-    // 400 هو عقد التحقق الموحّد في هذا الخادم (`parse` في utils/zod).
+    const res = await save(token, { enabled: true, minimumVersion: 'v1.2', updateUrl: 'https://example.com' });
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
-
-    const publicRes = await api.get('/api/catalog/app-version');
-    expect(publicRes.body.data.minimumSupportedVersion).toBe('');
+    expect((await api.get('/api/catalog/app-version')).body.data.minimumSupportedVersion).toBe('');
   });
 
-  it('رابط المتجر يجب أن يكون http(s) — لا javascript:', async () => {
+  it('رابط التحديث يجب أن يكون http(s) — لا javascript:', async () => {
     const token = await createAdminUser();
-    const res = await api
-      .patch('/api/admin/settings/app-version')
-      .set('Authorization', `Bearer ${token}`)
-      .send({ app_android_store_url: 'javascript:alert(1)' });
+    const res = await save(token, { enabled: false, minimumVersion: '', updateUrl: 'javascript:alert(1)' });
     expect(res.status).toBe(400);
+  });
+
+  it('الحقول القديمة مرفوضة لا مُسقَطة بصمت (جسمٌ صارم)', async () => {
+    const token = await createAdminUser();
+    const res = await save(token, { app_min_supported_version: '9.0.0' });
+    expect(res.status).toBe(400);
+    expect((await api.get('/api/catalog/app-version')).body.data.minimumSupportedVersion).toBe('');
+  });
+
+  it('التغيير مسجَّل قبل/بعد في سجلّ نشاط الإدارة', async () => {
+    const token = await createAdminUser();
+    await save(token, { enabled: true, minimumVersion: '3.1.0', updateUrl: 'https://example.com/v3' }).expect(200);
+    const { rows } = await db.query<{ details: { changes: Record<string, { before: string; after: string }> } }>(
+      `SELECT details FROM admin_audit_log WHERE action = 'settings.app_version_updated' ORDER BY id DESC LIMIT 1`,
+    );
+    expect(rows[0]!.details.changes.app_min_supported_version).toEqual({ before: '', after: '3.1.0' });
+    expect(rows[0]!.details.changes.app_force_update_enabled).toEqual({ before: '', after: 'true' });
   });
 
   it('[CRITICAL] غير المسؤول لا يملك حجب التطبيق', async () => {
     const { token } = await registerAndLogin();
-    const res = await api
-      .patch('/api/admin/settings/app-version')
-      .set('Authorization', `Bearer ${token}`)
-      .send({ app_min_supported_version: '99.0.0' });
+    const res = await save(token, { enabled: true, minimumVersion: '99.0.0', updateUrl: 'https://example.com' });
     expect(res.status).toBe(403);
+  });
+});
+
+// ─────────────────────── هجرة ٠٦٩ ───────────────────────
+
+describe('هجرة 069 — الإعدادات الستّة إلى ثلاثة بلا تغيير في السلوك', () => {
+  const migration = () =>
+    readFile(new URL('../src/database/migrations/069_simplify_app_update.sql', import.meta.url), 'utf8');
+
+  /** تُعاد الهجرة على صفوفٍ قديمة داخل معاملة تُلغى — القاعدة لا تتغيّر. */
+  async function replay(before: Record<string, string>) {
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(`DELETE FROM store_settings WHERE key LIKE 'app_%'`);
+      for (const [key, value] of Object.entries(before)) {
+        await client.query('INSERT INTO store_settings (key, value) VALUES ($1, $2)', [key, value]);
+      }
+      await client.query(await migration());
+      const { rows } = await client.query<{ key: string; value: string }>(
+        `SELECT key, value FROM store_settings WHERE key LIKE 'app_%' ORDER BY key`,
+      );
+      return Object.fromEntries(rows.map((row) => [row.key, row.value]));
+    } finally {
+      await client.query('ROLLBACK');
+      client.release();
+    }
+  }
+
+  it('حدٌّ مضبوط ⇒ مفعَّل، ورابط أندرويد يصير رابط التحديث، والقديم يُحذف', async () => {
+    expect(
+      await replay({
+        app_min_supported_version: '1.4.0',
+        app_latest_version: '1.5.0',
+        app_android_store_url: 'https://play.google.com/x',
+        app_ios_store_url: 'https://apps.apple.com/x',
+        app_update_message: 'حدّث',
+        app_update_message_ckb: 'نوێ بکەرەوە',
+      }),
+    ).toEqual({
+      app_force_update_enabled: 'true',
+      app_min_supported_version: '1.4.0',
+      app_update_url: 'https://play.google.com/x',
+    });
+  });
+
+  it('بلا حدّ ⇒ موقوف؛ رابط آبل وحده يصير رابط التحديث', async () => {
+    expect(await replay({ app_ios_store_url: 'https://apps.apple.com/x', app_min_supported_version: '' })).toEqual({
+      app_force_update_enabled: 'false',
+      app_min_supported_version: '',
+      app_update_url: 'https://apps.apple.com/x',
+    });
+  });
+
+  it('بيئةٌ لم تُضبط قطّ ⇒ موقوف ورابط فارغ', async () => {
+    expect(await replay({})).toEqual({ app_force_update_enabled: 'false', app_update_url: '' });
   });
 });
 

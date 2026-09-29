@@ -4,23 +4,27 @@ import { audienceRepo, type Audience } from '../repositories/audienceRepo.js';
 import { notificationRepo } from '../repositories/notificationsRepo.js';
 import { userRepo } from '../repositories/userRepo.js';
 import { Errors } from '../utils/errors.js';
-import { pushService } from './pushService.js';
-import { pushProvider } from './push/index.js';
+import { pushStatus } from './push/index.js';
 
 /**
  * نتيجة بثّ إشعار.
  *
  * [CRITICAL] `recipients` هو عدد **السجلات المكتوبة داخل التطبيق**، وليس
- * عدد الأجهزة التي وصلها إشعار دفع. لا مزوّد دفع مربوطاً بالمنظومة بعد،
- * فـ`push` يبقى `null` — لا صفراً ولا «نجح». الفرق ليس تجميلاً: مسؤولٌ
- * يقرأ «أُرسل إلى ٤٠٠» ويظنّ أن أربعمئة هاتف رنّ، بينما الحقيقة أن أربعمئة
- * سجل ستُقرأ متى فتح أصحابها التطبيق.
+ * عدد الأجهزة التي رنّت. الدفع لا يحدث داخل الطلب: كل سجلٍّ يضع صفّه في
+ * `push_outbox` (زناد الهجرة ٠٧٠) وترسله المهمّة بعد الردّ. `push.queued` هو
+ * عدد الصفوف المنتظِرة، و`provider` اسم المزوّد أو `not_configured` — فلا
+ * يقرأ المسؤول «أُرسل إلى ٤٠٠» ويظنّ أن أربعمئة هاتف رنّ.
  */
 export interface BroadcastResult {
   /** عدد سجلات الإشعار المنشأة داخل التطبيق. */
   recipients: number;
-  /** حالة الدفع الخارجي — `null` ما دام لا مزوّد مربوطاً. */
-  push: null | { provider: string; delivered: number; failed: number };
+  push: { provider: string; queued: number };
+}
+
+/** اسم المزوّد لردود اللوحة — `not_configured` حين لا اعتماد. */
+function providerName(): string {
+  const status = pushStatus();
+  return status.provider?.name ?? 'not_configured';
 }
 
 export const notificationsService = {
@@ -66,14 +70,8 @@ export const notificationsService = {
       body: input.body,
     });
 
-    // السجلّ أولاً ثم الدفع: الزبون سيرى الإشعار في التطبيق حتى لو تعذّر
-    // إيصاله إلى نظام الهاتف. الدفع لا يرمي (انظر `pushService`).
-    await pushService.pushToUsers({
-      userIds: [input.userId],
-      title: input.title,
-      body: input.body,
-    });
-
+    // الدفع يخرج بعد الردّ من `push_outbox` (زناد الإدراج أعلاه): فشلُ FCM لا
+    // يُفشل الطلب، وبطؤه لا يُبطئه.
     return created;
   },
 
@@ -108,22 +106,12 @@ export const notificationsService = {
       body: input.body,
     });
 
-    // الحقل `push` كان محجوزاً منذ البداية بقيمة `null`؛ صار يحمل نتيجة
-    // فعلية بالشكل نفسه الذي أعلنه العقد — بلا تغيير في العقد.
-    // `failed` = الرموز التي رفضها المزوّد وعُطِّلت، لا أخطاء الشبكة العابرة.
-    const result = await pushService.pushToUsers({
-      userIds,
-      title,
-      body: input.body,
-    });
-
+    // [CA-7] لا دفع داخل الطلب: البثّ لآلاف الزبائن كان ينتظر FCM جهازاً
+    // جهازاً فتنقضي مهلة اللوحة ويعيد المسؤول الإرسال. الآن يعود الردّ فور
+    // كتابة السجلات، ويرسل الصندوق الصادر بعدها (هجرة ٠٧٠).
     return {
       recipients,
-      push: {
-        provider: pushProvider().name,
-        delivered: result.sent,
-        failed: result.invalidTokens.length,
-      },
+      push: { provider: providerName(), queued: recipients },
     };
   },
 };

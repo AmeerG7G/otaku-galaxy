@@ -3,6 +3,7 @@ import { pickProductName, type AppLocale, type ProductNames } from '../utils/loc
 import { userRepo } from '../repositories/userRepo.js';
 import { MONTH_NAMES, PARAM_TEMPLATES } from '../domain/notificationTemplates.js';
 import { db, withTransaction } from '../database/pool.js';
+import { adminEvents } from './adminEvents.js';
 import { productRepo } from '../repositories/catalogRepo.js';
 import { notificationRepo } from '../repositories/notificationsRepo.js';
 import { restockRepo } from '../repositories/restockRepo.js';
@@ -44,6 +45,11 @@ export const restockService = {
       }
 
       const result = await restockRepo.subscribe(tx, userId, productId);
+
+      // تنبيه المسؤول باشتراكٍ **جديد** — الضغط المكرّر لا يرنّ هاتفه ثانيةً.
+      if (!result.alreadySubscribed) {
+        await adminEvents.restockRequest(tx, { id: productId, name: product.nameAr });
+      }
 
       // موعدٌ محدَّد سلفاً: الزبون الذي اشترك الآن يستحق معرفته فوراً، لا
       // انتظار دورة جدولة تخبره بما هو مكتوب في القاعدة أصلاً.

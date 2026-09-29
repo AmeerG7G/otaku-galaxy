@@ -715,7 +715,9 @@ export const adminService = {
    */
   async customerPoints(userId: string) {
     const user = await userRepo.findById(db, userId);
-    if (!user) throw Errors.notFound('العميل غير موجود');
+    // [SECURITY] زبائن فقط: صفّ مسؤولٍ ليس «عميلاً» يُقرأ من هنا — وإلا قرأ
+    // مسؤولٌ فرعي بصلاحية الزبائن اسمَ المسؤول الأعلى ورقمه بمعرّفه.
+    if (!user || user.role !== 'customer') throw Errors.notFound('العميل غير موجود');
 
     const [balance, ledger] = await Promise.all([
       pointsRepo.balance(db, userId),
@@ -771,7 +773,10 @@ export const adminService = {
    */
   async setUserActive(userId: string, isActive?: boolean) {
     const user = await userRepo.findById(db, userId);
-    if (!user) throw Errors.notFound('المستخدم غير موجود');
+    // [SECURITY] إيقاف **الزبائن** وحدهم. كان المسار يقبل أي معرّف، فيوقف
+    // مسؤولٌ فرعي بصلاحية الزبائن المسؤولَ الأعلى ويُسقط جلساته. إيقاف
+    // المسؤولين مسارُه `PATCH /admin/admins/:id` للمسؤول الأعلى وحده.
+    if (!user || user.role !== 'customer') throw Errors.notFound('المستخدم غير موجود');
     const nextActive = isActive ?? !user.is_active;
     if (nextActive === user.is_active) return { id: user.id, isActive: user.is_active };
     const updated = await userRepo.update(db, userId, {
@@ -902,9 +907,15 @@ export const adminService = {
     customerId: string,
     adminId: string,
     input: { newPassword: string; requestId?: string | null; note?: string | null },
+    options: { requireRequest?: boolean } = {},
   ) {
     const user = await userRepo.findById(db, customerId);
     if (!user || user.role !== 'customer') throw Errors.notFound('الزبون غير موجود');
+    // [SECURITY] مسؤولٌ بصلاحية «طلبات الحساب» دون «الزبائن» يحسم طلب إعادة
+    // تعيينٍ قائماً فقط — لا يضع كلمة مرورٍ لأي زبونٍ بلا طلب.
+    if (options.requireRequest && !input.requestId) {
+      throw Errors.forbidden('لا تملك صلاحية هذا القسم', 'ADMIN_PERMISSION_DENIED');
+    }
 
     let request: AccountRequestRow | null = null;
     if (input.requestId) {

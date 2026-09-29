@@ -120,10 +120,15 @@ export async function createAdminUser() {
   const phone = '+9647800000000';
   const passwordHash = await bcrypt.hash(ADMIN_TEST_PASSWORD, 10);
   await db.query(
-    `INSERT INTO users (username, phone, password_hash, role, phone_verified_at)
-     VALUES ($1, $2, $3, 'admin', now())
+    // المسؤول المشترك **أعلى** (هجرة ٠٦٨) — يملك كل الأقسام كما كان يملكها
+    // المسؤول الوحيد قبل التقسيم، فلا تتغيّر دلالة أي اختبارٍ قائم.
+    `INSERT INTO users (username, phone, password_hash, role, phone_verified_at,
+                        is_super_admin, admin_permissions)
+     VALUES ($1, $2, $3, 'admin', now(), TRUE, '{}')
      ON CONFLICT (phone) DO UPDATE
        SET role = 'admin',
+           is_super_admin = TRUE,
+           admin_permissions = '{}',
            password_hash = EXCLUDED.password_hash,
            is_active = TRUE,
            phone_verified_at = now()`,
@@ -134,6 +139,49 @@ export async function createAdminUser() {
     .send({ phone, password: ADMIN_TEST_PASSWORD })
     .expect(200);
   return login.body.data.token as string;
+}
+
+/**
+ * مسؤولٌ **فرعي** بصلاحياتٍ محدَّدة — لاختبارات الصلاحيات.
+ *
+ * نطاق الأرقام ‎+964780000xxxx (اللاحقة ١..٩٩٩٩): خارج `purgeTestUsers` (‎+96477…) كالمسؤول
+ * المشترك، فلا يحذفه تنظيف سويتٍ أخرى. كل نداء يعيد ضبط صلاحيات الرقم
+ * نفسه، فالاختبار يحدّد ما يملكه المسؤول لا ما تبقّى من اختبارٍ سابق.
+ * `purgeSubAdmins` يحذف هذه الصفوف في `afterAll`.
+ */
+export async function createSubAdmin(
+  permissions: string[],
+  options: { suffix?: number; username?: string } = {},
+): Promise<{ token: string; userId: string; phone: string; password: string }> {
+  const n = options.suffix ?? 1;
+  // ‎+9647800000000 هو المسؤول المشترك (الأعلى) — اللاحقة صفر تعيد ضبطه فرعياً.
+  if (!Number.isInteger(n) || n < 1 || n > 9999) throw new Error('createSubAdmin: suffix 1..9999');
+  const phone = `+964780000${String(n).padStart(4, '0')}`;
+  const password = 'sub-admin-password-1';
+  const passwordHash = await bcrypt.hash(password, 4);
+  const { rows } = await db.query<{ id: string }>(
+    `INSERT INTO users (username, phone, password_hash, role, phone_verified_at,
+                        is_super_admin, admin_permissions)
+     VALUES ($1, $2, $3, 'admin', now(), FALSE, $4::text[])
+     ON CONFLICT (phone) DO UPDATE
+       SET role = 'admin',
+           is_super_admin = FALSE,
+           admin_permissions = EXCLUDED.admin_permissions,
+           password_hash = EXCLUDED.password_hash,
+           is_active = TRUE,
+           phone_verified_at = now()
+     RETURNING id`,
+    [options.username ?? 'مسؤول فرعي', phone, passwordHash, permissions],
+  );
+  const login = await api.post('/api/auth/login').send({ phone, password }).expect(200);
+  return { token: login.body.data.token as string, userId: rows[0]!.id, phone, password };
+}
+
+/** حذف المسؤولين الفرعيين الذين أنشأتهم الاختبارات (‎+964780000xxxx، غير الأعلى). */
+export async function purgeSubAdmins() {
+  await db.query(
+    `DELETE FROM users WHERE phone LIKE '+964780000%' AND role = 'admin' AND NOT is_super_admin`,
+  );
 }
 
 /**

@@ -343,6 +343,22 @@ describe('Phase 3 — vertical privilege escalation (every admin endpoint)', () 
     ['post', () => '/api/admin/notifications/broadcast', { audience: { type: 'all' }, title: 'x', body: 'x' }],
     ['post', () => '/api/admin/notifications/audience', { audience: { type: 'all' } }],
     ['post', () => '/api/admin/uploads'],
+    // STEP 64 — المسؤولون، سجلّ النشاط، ومسارا «العروض»/«طلبات التوفر» الضيّقان.
+    ['get', () => '/api/admin/me'],
+    ['patch', () => '/api/admin/me', { username: 'x' }],
+    ['get', () => '/api/admin/admins'],
+    ['post', () => '/api/admin/admins', { username: 'xx', phone: '07800000999', password: 'password-1', permissions: [] }],
+    ['patch', () => `/api/admin/admins/${U}`, { permissions: ['orders'] }],
+    ['delete', () => `/api/admin/admins/${U}`],
+    ['get', () => '/api/admin/audit'],
+    ['patch', () => `/api/admin/offers/${U}`, { isOffer: true }],
+    ['patch', () => `/api/admin/restock/${U}/schedule`, { restockAt: null }],
+    ['get', () => '/api/admin/push/status'],
+    ['post', () => '/api/admin/devices', { token: 'admin-device-token-x', platform: 'web' }],
+    ['post', () => '/api/admin/devices/unregister', { token: 'admin-device-token-x' }],
+    ['get', () => '/api/admin/notification-prefs'],
+    ['patch', () => '/api/admin/notification-prefs', { key: 'new_order', enabled: false }],
+    ['get', () => `/api/admin/franchises/${U}/usage`],
   ];
 
   it.each(ADMIN_ENDPOINTS)('%s %s → 401 anonymous / 403 customer', async (method, path, body) => {

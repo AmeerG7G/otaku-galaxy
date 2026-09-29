@@ -270,6 +270,9 @@ export const config = {
     // مفتاح حساب الخدمة — يُمرَّر بأسطر `\n` مهرّبة في متغيّر البيئة.
     privateKey: (process.env.FCM_PRIVATE_KEY ?? '').replace(/\\n/g, '\n'),
     timeoutMs: Number(process.env.PUSH_TIMEOUT_MS ?? 10_000),
+    /** دورة صندوق الدفع الصادر (`jobs/pushOutboxJob.ts`) وحجم دفعتها. */
+    outboxIntervalMs: Number(process.env.PUSH_OUTBOX_INTERVAL_MS ?? 5_000),
+    outboxBatchSize: Number(process.env.PUSH_OUTBOX_BATCH ?? 50),
   },
 
   corsOrigins: (process.env.CORS_ORIGINS ?? '')

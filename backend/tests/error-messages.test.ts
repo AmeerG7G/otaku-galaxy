@@ -34,6 +34,8 @@ const CUSTOMER_FACING = [
   'services/birthdayService.ts',
   'services/restockService.ts',
   'services/notificationPrefsService.ts',
+  'services/pushService.ts',
+  'middleware/app-version.ts',
   'services/favoritesService.ts',
   'services/catalogService.ts',
   'services/mediaService.ts',

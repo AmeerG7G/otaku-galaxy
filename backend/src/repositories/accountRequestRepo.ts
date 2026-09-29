@@ -48,8 +48,9 @@ export const accountRequestRepo = {
       submittedGender: Gender | null;
       submittedLevelKey?: string | null;
     },
-  ): Promise<AccountRequestRow> {
-    const { rows } = await db.query<AccountRequestRow>(
+  ): Promise<AccountRequestRow & { inserted: boolean }> {
+    // `inserted`: طلبٌ جديد لا استئنافُ معلَّق — تنبيه المسؤول للجديد وحده.
+    const { rows } = await db.query<AccountRequestRow & { inserted: boolean }>(
       `INSERT INTO account_requests
          (kind, user_id, submitted_phone, submitted_username, submitted_gender, submitted_level_key)
        VALUES ($1, $2, $3, $4, $5, $6)
@@ -60,7 +61,7 @@ export const accountRequestRepo = {
          submitted_gender    = EXCLUDED.submitted_gender,
          submitted_level_key = EXCLUDED.submitted_level_key,
          updated_at          = now()
-       RETURNING *`,
+       RETURNING *, (xmax = 0) AS inserted`,
       [
         input.kind,
         input.userId,

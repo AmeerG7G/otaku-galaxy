@@ -1,7 +1,6 @@
 import type { RequestHandler } from 'express';
 import { appVersionService } from '../services/appVersionService.js';
 import { AppError } from '../utils/errors.js';
-import { resolveLocale } from '../utils/locale.js';
 
 /** الرأس الذي يعلن به تطبيق العميل نسخته المثبَّتة. */
 export const APP_VERSION_HEADER = 'x-app-version';
@@ -30,19 +29,17 @@ export const requireSupportedAppVersion: RequestHandler = (req, _res, next) => {
     .then(async (required) => {
       if (!required) return next();
       const config = await appVersionService.config();
-      // رسالة المسؤول بلغة الطلب؛ وإلا النصّ الافتراضي الذي يترجمه معالج
-      // الأخطاء — لا رسالةٌ عربية لطلبٍ كردي.
-      const custom =
-        resolveLocale(req) === 'ckb' ? config.updateMessageCkb : config.updateMessage;
       next(
         new AppError(
-          // 426 Upgrade Required — الرمز القياسي لـ«حدّث ثم عد».
+          // 426 Upgrade Required — الرمز القياسي لـ«حدّث ثم عد». الرسالة
+          // الافتراضية يترجمها معالج الأخطاء بلغة الطلب (STEP 64: لا رسالة
+          // مخصّصة من اللوحة بعد اليوم).
           426,
           APP_UPDATE_REQUIRED,
-          custom || 'يلزم تحديث التطبيق للمتابعة',
+          'يلزم تحديث التطبيق للمتابعة',
           {
             minimumSupportedVersion: config.minimumSupportedVersion,
-            latestVersion: config.latestVersion,
+            updateUrl: config.updateUrl,
           },
         ),
       );

@@ -11,6 +11,7 @@ import {
 import { config } from '../config/index.js';
 import { sendRatingReminderNow } from '../jobs/ratingReminderJob.js';
 import { db, withTransaction } from '../database/pool.js';
+import { adminEvents } from './adminEvents.js';
 import { birthdayDiscountAmount } from '../domain/birthday.js';
 import { fitProductDiscounts, priceOrder } from '../domain/orderPricing.js';
 import {
@@ -384,6 +385,8 @@ export const orderService = {
 
       await cartRepo.clear(tx, userId);
       const created = await orderRepo.findById(tx, order.id);
+      // تنبيه هاتف المسؤول — في المعاملة نفسها: طلبٌ تراجع لا يرنّ هاتفاً.
+      if (created) await adminEvents.newOrder(tx, created);
       return created;
     });
   },

@@ -489,32 +489,55 @@ describe('Pre-staging contract closure (STEP 57)', () => {
   // CA-7 — إشعارات الإدارة: at-least-once، والدفع لا يعمل بعد
   // ═══════════════════════════════════════════════════════════════════
 
-  describe('CA-7 — admin notifications are at-least-once; push delivery is not wired', () => {
-    const saved = { ...config.push };
-    afterEach(() => {
-      Object.assign(config.push, saved);
-      resetPushProvider();
+  describe('CA-7 — resolved by the push outbox (STEP 64): push never runs inside the admin request', () => {
+    /**
+     * CA-7 كان كامناً لأن الدفع لم يكن يعمل: إكمالُ FCM داخل الطلب كان سيجعل
+     * بثّاً لآلاف الزبائن ينتظر FCM جهازاً جهازاً فتنقضي مهلة اللوحة ويُعاد
+     * الإرسال مكرّراً. الحلّ المختار (أحد خيارَي STEP 57): الدفع **بعد الردّ** —
+     * كل سجلٍّ يضع صفّه في `push_outbox` بزناد، والمهمّة ترسل. الإعادة بعد ردٍّ
+     * ضائع ما تزال سجلاً ثانياً (at-least-once موثَّق)، لكنها لم تعد نتيجةَ
+     * مهلةٍ يصنعها الدفع نفسه.
+     */
+    afterEach(() => vi.restoreAllMocks());
+
+    it('[CA-7] a broadcast responds without calling the push provider; every record is queued in the same transaction', async () => {
+      const adminToken = await createAdminUser();
+      const customer = await registerAndLogin();
+      const send = vi.spyOn(pushProvider(), 'send');
+      const res = await api
+        .post('/api/admin/notifications/broadcast')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ audience: 'users', userIds: [customer.userId], title: 'CA-7', body: '' })
+        .expect(201);
+      expect(send).not.toHaveBeenCalled();
+      expect(res.body.data.push).toEqual({ provider: 'noop', queued: 1 });
+      const queued = await db.query<{ n: string }>(
+        `SELECT COUNT(*)::text AS n FROM push_outbox o
+           JOIN notifications n ON n.id = o.notification_id
+          WHERE o.user_id = $1 AND n.title = 'CA-7' AND o.status = 'pending'`,
+        [customer.userId],
+      );
+      expect(Number(queued.rows[0]!.n)).toBe(1);
     });
 
-    /**
-     * سلك تنبيه لا اختبار سلوك: CA-7 كامنٌ **لأن** FCM لا يُرسل شيئاً بعد
-     * (`obtainAccessToken` يرمي فوراً، فلا يطول بثٌّ حتى تنقضي مهلة اللوحة).
-     * يوم يُكمَل الإرسال الحقيقي يسقط هذا الاختبار — وقبل تعديله يجب حسم CA-7
-     * (مفتاح عدم تكرار على البثّ، أو الدفع بعد الردّ). انظر STEP 57.
-     */
-    it('[CA-7 tripwire] the FCM provider still refuses to send — completing it requires resolving CA-7 first', async () => {
-      Object.assign(config.push, {
-        provider: 'fcm',
-        projectId: 'tripwire-project',
-        clientEmail: 'tripwire@example.invalid',
-        privateKey: 'tripwire-key',
-        timeoutMs: 10,
-      });
-      resetPushProvider();
-
-      await expect(
-        pushProvider().send({ tokens: ['tripwire-token'], title: 't', body: 'b' }),
-      ).rejects.toBeInstanceOf(PushDeliveryError);
+    it('[CA-7] an FCM provider with a malformed service-account key fails as PushDeliveryError (never a fake success)', async () => {
+      const saved = { ...config.push };
+      try {
+        Object.assign(config.push, {
+          provider: 'fcm',
+          projectId: 'tripwire-project',
+          clientEmail: 'tripwire@example.invalid',
+          privateKey: 'not-a-pem-key',
+          timeoutMs: 10,
+        });
+        resetPushProvider();
+        await expect(
+          pushProvider().send({ tokens: ['tripwire-token'], title: 't', body: 'b' }),
+        ).rejects.toBeInstanceOf(PushDeliveryError);
+      } finally {
+        Object.assign(config.push, saved);
+        resetPushProvider();
+      }
     });
   });
 

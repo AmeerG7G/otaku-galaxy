@@ -13,6 +13,8 @@ export const settingsService = {
         whatsapp: settings.social_whatsapp,
         description: settings.social_description,
       },
+      // رابط المتجر في رسالة مشاركة المنتج — فارغٌ = الاسم وحده (STEP 64).
+      share: { storeUrl: settings.store_share_url },
     };
   },
 

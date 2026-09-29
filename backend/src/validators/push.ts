@@ -17,3 +17,13 @@ export const registerDeviceSchema = z.object({
 export const unregisterDeviceSchema = z.object({
   token: z.string().trim().min(8).max(4096),
 });
+
+// ── أجهزة المسؤولين وتفضيلاتهم (STEP 64، هجرة ٠٧٠) ──
+
+/** جهاز اللوحة: متصفّحٌ غالباً (Web Push عبر FCM). */
+export const registerAdminDeviceSchema = registerDeviceSchema;
+
+export const adminNotificationPrefSchema = z.strictObject({
+  key: z.enum(['new_order', 'account_request', 'restock_request'], { error: 'تفضيل غير معروف' }),
+  enabled: z.boolean(),
+});

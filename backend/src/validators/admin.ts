@@ -215,6 +215,30 @@ export const adminProductUpdateSchema = z.object({
   restockAt,
 }).superRefine(assertDeliveryPromoCoherent);
 
+/**
+ * «العروض» — علَما العرض والاختيار وحدهما (STEP 64).
+ *
+ * [SECURITY] مسارٌ ضيّق لصلاحية «العروض»: كانت الصفحة تكتب عبر
+ * `PATCH /products/:id` الكامل، فمن يملك العروض يعدّل السعر والمخزون والصور.
+ * `strictObject` يرفض أي حقلٍ آخر بدل أن يُسقطه.
+ */
+export const adminOfferFlagsSchema = z
+  .strictObject({
+    isOffer: z.boolean().optional(),
+    isSelected: z.boolean().optional(),
+  })
+  .refine((v) => v.isOffer !== undefined || v.isSelected !== undefined, {
+    message: 'لا تغيير في الطلب',
+  });
+
+/** «طلبات التوفر» — موعد التوفر وحده؛ `null` يمسحه. */
+export const adminRestockScheduleSchema = z.strictObject({
+  restockAt: z
+    .string()
+    .datetime({ offset: true, message: 'تاريخ توفر غير صالح' })
+    .nullable(),
+});
+
 export const adminCategorySchema = z.object({
   name: z.string().trim().min(2).max(60),
   imageUrl: imageUrl.nullable().optional(),

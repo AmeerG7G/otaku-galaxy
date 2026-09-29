@@ -15,6 +15,14 @@ export const SOCIAL_SETTING_KEYS = [
 ] as const;
 
 /**
+ * رابط المتجر في رسالة مشاركة المنتج (STEP 64).
+ *
+ * المشاركة من التطبيق تحمل اسم المنتج وهذا الرابط وحدهما — لا سعر. الرابط
+ * هنا لا في Flutter كي يغيّره المسؤول بلا إصدار تطبيق. فارغٌ = الاسم وحده.
+ */
+export const SHARE_SETTING_KEYS = ['store_share_url'] as const;
+
+/**
  * [NOTE] `BUSINESS_SETTING_KEYS` حُذفت بالكامل.
  *
  * كانت تحمل خمسة مفاتيح: ثلاثة لقيم نقاط المجرّة (صارت قواعد ثابتة)، ونسبة
@@ -37,23 +45,22 @@ export const SOCIAL_SETTING_KEYS = [
  * نصّية لا رقمية: النسخة `1.10.0` ليست رقماً، والرابط ليس رقماً.
  */
 export const APP_VERSION_SETTING_KEYS = [
+  // STEP 64 (هجرة ٠٦٩): ثلاثة إعدادات لا ستّة — مفعَّل؟ الحدّ الأدنى، رابط
+  // التحديث. أُزيلت: أحدث نسخة، رابطا المتجرين، والرسالتان بلغتين (60.5).
+  'app_force_update_enabled',
   'app_min_supported_version',
-  'app_latest_version',
-  'app_android_store_url',
-  'app_ios_store_url',
-  'app_update_message',
-  // الرسالة نفسها بالكردية — فارغةً يعرض التطبيق نصّه الكردي الافتراضي لا
-  // الرسالة العربية (2026-09-27).
-  'app_update_message_ckb',
+  'app_update_url',
 ] as const;
 
 export const SETTING_KEYS = [
   ...SOCIAL_SETTING_KEYS,
+  ...SHARE_SETTING_KEYS,
   ...APP_VERSION_SETTING_KEYS,
 ] as const;
 
 export type SocialSettingKey = (typeof SOCIAL_SETTING_KEYS)[number];
 export type AppVersionSettingKey = (typeof APP_VERSION_SETTING_KEYS)[number];
+export type ShareSettingKey = (typeof SHARE_SETTING_KEYS)[number];
 export type SettingKey = (typeof SETTING_KEYS)[number];
 
 export type StoreSettings = Record<SettingKey, string>;
@@ -70,12 +77,10 @@ const EMPTY_SETTINGS: StoreSettings = {
   social_instagram: '',
   social_whatsapp: '',
   social_description: '',
+  store_share_url: '',
+  app_force_update_enabled: '',
   app_min_supported_version: '',
-  app_latest_version: '',
-  app_android_store_url: '',
-  app_ios_store_url: '',
-  app_update_message: '',
-  app_update_message_ckb: '',
+  app_update_url: '',
 };
 
 export const settingsRepo = {

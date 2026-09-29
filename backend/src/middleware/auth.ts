@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { config } from '../config/index.js';
 import { db } from '../database/pool.js';
 import { userRepo } from '../repositories/userRepo.js';
+import type { AdminSection } from '../domain/adminPermissions.js';
 import type { AuthUser } from '../types/index.js';
 import { Errors } from '../utils/errors.js';
 
@@ -83,12 +84,7 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
     // يجب أن تسري فوراً، لا بعد أن يعيد المستخدم تسجيل الدخول.
     // [I18N] اللغة تُقرأ من الصفّ لا من التوكن: تبديلُها في الإعدادات يسري
     // على الطلب التالي مباشرةً، بلا انتظار انتهاء توكنٍ عمرُه سبعة أيام.
-    req.auth = {
-      id: state.id,
-      role: state.role,
-      phone: state.phone,
-      locale: state.locale,
-    };
+    req.auth = authUserFrom(state);
     return next();
   } catch (error) {
     return next(error);
@@ -101,6 +97,66 @@ export function requireAdmin(req: Request, _res: Response, next: NextFunction) {
     return next(Errors.forbidden());
   }
   return next();
+}
+
+/**
+ * رفض مسؤولٍ لا يملك القسم — رمزٌ خاص يميّزه عن رفض غير المسؤول.
+ *
+ * الرسالة عامّة عمداً: لا تسمّي القسم المطلوب ولا ما يملكه المسؤول، فلا
+ * يُستعمل الرفض لاستكشاف خريطة الصلاحيات.
+ */
+const permissionDenied = () =>
+  Errors.forbidden('لا تملك صلاحية هذا القسم', 'ADMIN_PERMISSION_DENIED');
+
+/**
+ * صلاحية قسمٍ أو أكثر من أقسام اللوحة.
+ *
+ * [SECURITY] يمرّ المسؤول الأعلى، أو مسؤولٌ يملك **أحد** الأقسام المذكورة.
+ * أكثر من قسمٍ يعني قراءةً مشتركة بين نماذج (قائمة الأقسام يحتاجها نموذج
+ * المنتج مثلاً) — لا يُستعمل لمسار كتابة إلا حيث يتحقّق الـservice من الباقي.
+ *
+ * يُركَّب بعد `requireAdmin` (على الموجِّه كلّه)، ويعيد الفحص مع ذلك: مسارٌ
+ * يُنقل يوماً إلى موجِّه آخر لا يرث الحماية صامتاً.
+ */
+export function requirePermission(...sections: [AdminSection, ...AdminSection[]]) {
+  return function permissionGuard(req: Request, _res: Response, next: NextFunction) {
+    const auth = req.auth;
+    if (auth?.role !== 'admin') return next(Errors.forbidden());
+    if (auth.isSuperAdmin) return next();
+    if (sections.some((section) => auth.permissions.includes(section))) return next();
+    return next(permissionDenied());
+  };
+}
+
+/** المسؤول الأعلى وحده — إدارة المسؤولين وسجلّ النشاط. */
+export function requireSuperAdmin(req: Request, _res: Response, next: NextFunction) {
+  const auth = req.auth;
+  if (auth?.role !== 'admin') return next(Errors.forbidden());
+  if (!auth.isSuperAdmin) return next(permissionDenied());
+  return next();
+}
+
+/**
+ * أي مسؤول، بلا قسم — لما يخصّ المسؤول نفسه فقط (ملفّه، أجهزته، تفضيلاته).
+ *
+ * صريحٌ لا ضمني: حارس المصدر في `admin-permissions.test.ts` يرفض أي مسار
+ * إداري بلا حارس، فمسارٌ «لكل مسؤول» يجب أن يقول ذلك بنفسه.
+ */
+export function requireAnyAdmin(req: Request, _res: Response, next: NextFunction) {
+  if (req.auth?.role !== 'admin') return next(Errors.forbidden());
+  return next();
+}
+
+/** الفاعل من صفّ القاعدة — مصدرٌ واحد لـ`authenticate` و`optionalAuthenticate`. */
+function authUserFrom(state: NonNullable<Awaited<ReturnType<typeof userRepo.findAuthState>>>): AuthUser {
+  return {
+    id: state.id,
+    role: state.role,
+    phone: state.phone,
+    locale: state.locale,
+    isSuperAdmin: state.isSuperAdmin,
+    permissions: state.permissions,
+  };
 }
 
 /**
@@ -129,12 +185,7 @@ export async function optionalAuthenticate(req: Request, _res: Response, next: N
     const tokenVersion = typeof payload.tv === 'number' ? payload.tv : 0;
     if (tokenVersion !== state.tokenVersion) return next();
 
-    req.auth = {
-      id: state.id,
-      role: state.role,
-      phone: state.phone,
-      locale: state.locale,
-    };
+    req.auth = authUserFrom(state);
   } catch {
     // توكن غير صالح على مسار عام — يُخدَم زائراً.
   }
