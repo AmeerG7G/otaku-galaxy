@@ -189,6 +189,38 @@ button,
   letter-spacing: 0;
 }
 
+/*
+ * شريط خيارات (Segmented) يلتفّ إلى سطرٍ ثانٍ بدل أن يخرج من بطاقته.
+ *
+ * أنتديب يرسم الخيارات صفّاً واحداً لا يلتفّ: ستة خيارات «أعياد الميلاد»
+ * (≈500px) في بطاقةٍ أضيق كانت تُقصّ من جهة النهاية (اليسار في RTL) فيضيع
+ * «لم يسجّل ميلاده» وما بعده. القرار كان بعرض الشاشة (`screens.md`) لا
+ * بالعرض المتاح فعلاً. هنا الشريط لا يتجاوز عرض حاويته أبداً ويلتفّ.
+ * المؤشّر المتحرّك يُخفى لأنه يتحرّك أفقياً فقط ويقفز بين السطرين؛ الخيار
+ * المحدَّد له خلفيته الخاصة (`-item-selected`) فلا يضيع التحديد.
+ */
+.og-segmented-wrap.ant-segmented {
+  max-width: 100%;
+}
+.og-segmented-wrap.ant-segmented .ant-segmented-group {
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+.og-segmented-wrap.ant-segmented .ant-segmented-thumb {
+  display: none;
+}
+
+/* شريط التمرير على خلفية القائمة الجانبية الداكنة — كان داكناً على داكن فلا
+   يُرى، فلا يعرف المسؤول أن تحت «طلبات الحساب» أقساماً أخرى. */
+.og-sidebar-scroll {
+  scrollbar-color: rgba(233, 228, 248, 0.45) transparent;
+}
+.og-sidebar-scroll::-webkit-scrollbar-thumb {
+  background: rgba(233, 228, 248, 0.45);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
 /* أرقام لاتينية داخل النصوص العربية تبقى مقروءة (الأرقام الآتية من الخادم) */
 .tnum {
   font-variant-numeric: tabular-nums;

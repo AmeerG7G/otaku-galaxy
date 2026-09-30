@@ -31,6 +31,7 @@ import { ApiError } from '../api/client'
 import EmptyState from '../components/EmptyState'
 import SetCustomerPasswordModal from '../components/SetCustomerPasswordModal'
 import { PageHeader } from '../components/ui/PageHeader'
+import { PhoneText } from '../components/ui/PhoneText'
 import { ResponsiveTable } from '../components/ui/ResponsiveTable'
 import { SearchField } from '../components/ui/SearchField'
 import { WhatsAppButton } from '../components/ui/WhatsAppButton'
@@ -224,9 +225,7 @@ export default function AccountRequestsPage() {
     return (
       <Space direction="vertical" size={0}>
         <Typography.Text strong>{r.submitted.username}</Typography.Text>
-        <Typography.Text dir="ltr" copyable>
-          {r.submitted.phone}
-        </Typography.Text>
+        <PhoneText phone={r.submitted.phone} copyable />
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
           {customerGenderLabel(r.submitted.gender)}
           {r.submitted.levelKey ? ` · المستوى: ${r.submitted.levelKey}` : ''}
@@ -298,22 +297,29 @@ export default function AccountRequestsPage() {
     )
   }
 
+  // [CRITICAL] العمودان المرنان كانا بلا عرض، والجدول بلا `scroll.x`: الأعمدة
+  // الثابتة أخذت حصّتها وسُحق «ما أرسله الزبون» إلى ٤٠px فتكسّر الاسم حرفاً
+  // حرفاً والرقم إلى «+9647 / 71234 / 5678»، ثم خرج الفائض من البطاقة وقُصّ.
+  // الآن لكل عمودٍ عرض، والجدول يتمرّر أفقياً (`ResponsiveTable`)، والإجراءات
+  // مثبّتة في نهايته فلا تغيب أثناء التمرير.
   const columns = [
     {
       title: 'النوع',
       dataIndex: 'kind',
       key: 'kind',
-      width: 150,
+      width: 130,
       render: (value: AccountRequestKind) => ACCOUNT_REQUEST_KIND_LABELS[value],
     },
     {
       title: 'ما أرسله الزبون',
       key: 'submitted',
+      width: 230,
       render: (_: unknown, r: AccountRequest) => renderSubmitted(r),
     },
     {
       title: 'الحساب المخزَّن',
       key: 'account',
+      width: 270,
       render: (_: unknown, r: AccountRequest) => renderAccount(r),
     },
     {
@@ -327,13 +333,14 @@ export default function AccountRequestsPage() {
       title: 'وقت الطلب',
       dataIndex: 'createdAt',
       key: 'createdAt',
-      width: 160,
-      render: (value: string) => formatDateTime(value),
+      width: 180,
+      render: (value: string) => <span style={{ whiteSpace: 'nowrap' }}>{formatDateTime(value)}</span>,
     },
     {
       title: 'الإجراءات',
       key: 'actions',
-      width: 300,
+      width: 240,
+      fixed: 'end' as const,
       render: (_: unknown, r: AccountRequest) => renderActions(r),
     },
   ]
@@ -356,6 +363,7 @@ export default function AccountRequestsPage() {
       <Card variant="outlined">
         <Flex gap={12} wrap align="center">
           <Segmented<AccountRequestKind | 'all'>
+            className="og-segmented-wrap"
             block={!screens.md}
             style={screens.md ? undefined : { width: '100%' }}
             value={kind}

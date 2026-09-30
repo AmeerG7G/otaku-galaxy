@@ -22,8 +22,7 @@ import type { TablePaginationConfig } from 'antd'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { listCustomers, setUserActive } from '../api/customersApi'
-import { getCustomerPoints } from '../api/pointsApi'
-import type { PointsLedgerEntry, PointsReason } from '../types/points'
+import { PointsLedger } from '../components/PointsLedger'
 import { ApiError } from '../api/client'
 import type {
   AdminCustomer,
@@ -32,7 +31,6 @@ import type {
 } from '../types/customers'
 import { CUSTOMER_SORT_LABELS, customerGenderLabel } from '../types/customers'
 import { formatDateTime } from '../utils/format'
-import { POINTS_REASON_LABELS } from '../constants/points'
 import EmptyState from '../components/EmptyState'
 import { PageHeader } from '../components/ui/PageHeader'
 import { SearchField } from '../components/ui/SearchField'
@@ -89,17 +87,6 @@ export default function CustomersPage() {
     }, SEARCH_DEBOUNCE_MS)
     return () => clearTimeout(timer)
   }, [searchInput])
-
-  /**
-   * نقاط العميل المحدَّد — تُجلب عند الفتح فقط.
-   *
-   * تقرأ نفس دفتر النقاط الذي تقرأه صفحة النقاط؛ لا حساب ولا تخزين ثانٍ.
-   */
-  const pointsQuery = useQuery({
-    queryKey: ['admin-customer-points', pointsFor?.id],
-    queryFn: () => getCustomerPoints(pointsFor!.id),
-    enabled: Boolean(pointsFor),
-  })
 
   // [CRITICAL] كل المعايير تُرسَل إلى الخادم. الترشيح في المتصفح كان يعني
   // تحميل كل زبون في المتجر على كل حرف — يعمل على عشرين، وينهار على ألف.
@@ -209,8 +196,9 @@ export default function CustomersPage() {
       dataIndex: 'gender',
       key: 'gender',
       width: 110,
-      // [CRITICAL] القيمة المخزَّنة وحدها. لا استنتاج من الاسم، و`null` تبقى
-      // «غير محدد» — لا تُحسب ذكراً لأن الحقل أُضيف بعد تسجيل صاحبها.
+      // [CRITICAL] القيمة المخزَّنة وحدها: ذكر أو أنثى. لا استنتاج من الاسم،
+      // و`null` (حسابٌ أقدم من حقل الجنس لم يُسأل) تُعرض «—» — غيابُ قيمة لا
+      // جنسٌ ثالث، ولا تُحسب ذكراً.
       render: (value: AdminCustomer['gender']) =>
         value === 'male' ? (
           <Tag color="blue">{customerGenderLabel('male')}</Tag>
@@ -475,45 +463,11 @@ export default function CustomersPage() {
         open={Boolean(pointsFor)}
         onCancel={() => setPointsFor(null)}
         footer={null}
-        width={680}
+        width={860}
+        destroyOnHidden
         title={pointsFor ? `نقاط ${pointsFor.username}` : 'النقاط'}
       >
-        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-          <Statistic title="الرصيد الحالي" value={pointsQuery.data?.balance ?? 0} />
-          <Table
-            rowKey="id"
-            size="small"
-            loading={pointsQuery.isPending}
-            dataSource={(pointsQuery.data?.ledger ?? []) as PointsLedgerEntry[]}
-            scroll={{ x: 480 }}
-            pagination={{ pageSize: 8, showSizeChanger: false }}
-            columns={[
-              { title: 'الحركة', dataIndex: 'label', key: 'label' },
-              {
-                title: 'السبب',
-                dataIndex: 'reason',
-                key: 'reason',
-                render: (reason: PointsReason) => <Tag>{POINTS_REASON_LABELS[reason] ?? reason}</Tag>,
-              },
-              {
-                title: 'النقاط',
-                dataIndex: 'amount',
-                key: 'amount',
-                render: (amount: number) => (
-                  <Typography.Text type={amount < 0 ? 'danger' : 'success'} strong>
-                    {amount > 0 ? `+${amount}` : amount}
-                  </Typography.Text>
-                ),
-              },
-              {
-                title: 'التاريخ',
-                dataIndex: 'createdAt',
-                key: 'createdAt',
-                render: (value: string) => formatDateTime(value),
-              },
-            ]}
-          />
-        </Space>
+        {pointsFor && <PointsLedger customerId={pointsFor.id} />}
       </Modal>
     </Space>
   )

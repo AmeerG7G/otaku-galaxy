@@ -9,8 +9,10 @@ vi.mock('../../api/adminAccountsApi', () => ({ fetchAdminMe: vi.fn() }))
 import { fetchAdminMe } from '../../api/adminAccountsApi'
 import { useAuthStore } from '../../stores/authStore'
 import { DESKTOP, PHONE, setViewportWidth } from '../../test/viewport'
+import { PhoneText } from './PhoneText'
 import { ProductLink } from './ProductLink'
 import { ResponsiveTable } from './ResponsiveTable'
+import { tableScrollWidth } from './tableLayout'
 import { SearchField } from './SearchField'
 import { WhatsAppButton } from './WhatsAppButton'
 
@@ -66,6 +68,63 @@ describe('ResponsiveTable', () => {
     )
     await userEvent.click(screen.getByTitle('2'))
     expect(onChange).toHaveBeenCalledWith(2, 2)
+  })
+})
+
+/**
+ * [STEP 66] «لا يمكن تمرير جدول الطلبات/طلبات الحساب أفقياً».
+ *
+ * جدولٌ بلا `scroll.x` يُضغط في البطاقة (عمودٌ مرنٌ بـ٤٠px) ثم يفيض فيقصّه
+ * المحتوى؛ وجدولٌ به يتمرّر لكن شريطه الوحيد تحت آخر صفّ خارج الشاشة. العقد:
+ * الجدول حاوية تمريرٍ بعرضه الطبيعي، برأسٍ لاصق وشريطٍ أفقي لاصق، والعمود
+ * المثبَّت (`fixed: 'end'`) يبقى ظاهراً. jsdom لا يرسم — التمرير الفعلي والشريط
+ * اللاصق تحقّقٌ في المتصفّح (انظر تقرير STEP 66)؛ هنا الإعداد الذي يصنعهما.
+ */
+describe('ResponsiveTable — جدولٌ عريض لا يُقصّ (STEP 66)', () => {
+  afterEach(() => setViewportWidth(PHONE))
+
+  const wide = [
+    { title: 'الاسم', dataIndex: 'name', width: 300 },
+    { title: 'بلا عرض', key: 'free' },
+    { title: 'الإجراءات', key: 'actions', width: 200, fixed: 'end' as const },
+  ]
+
+  it('عرض التمرير = مجموع الأعمدة (عمودٌ بلا عرض = 160، والتوسيع 48)', () => {
+    expect(tableScrollWidth(wide)).toBe(660)
+    expect(tableScrollWidth(wide, { expandable: true })).toBe(708)
+    expect(tableScrollWidth([{ title: 'مجموعة', children: [{ title: 'أ', width: 100 }, { title: 'ب', width: 50 }] }])).toBe(150)
+  })
+
+  it('الشاشة العريضة: الجدول بعرضه الطبيعي داخل حاوية تمرير، برأسٍ لاصق، والإجراءات مثبّتة في النهاية', () => {
+    setViewportWidth(DESKTOP)
+    const { container } = wrap(<ResponsiveTable<Row> rowKey="id" dataSource={rows} columns={wide} renderCard={() => null} />)
+    const body = container.querySelector('.ant-table-body > table') as HTMLTableElement
+    expect(body.style.width).toBe('660px')
+    expect(container.querySelector('.ant-table')!.classList.contains('ant-table-scroll-horizontal')).toBe(true)
+    // رأسٌ لاصق ⇒ rc-table يرسم شريط التمرير الأفقي اللاصق أسفل الشاشة.
+    expect(container.querySelector('.ant-table-header.ant-table-sticky-holder')).not.toBeNull()
+    const pinned = container.querySelectorAll('td.ant-table-cell-fix-end')
+    expect(pinned).toHaveLength(rows.length)
+  })
+
+  it('من يريد غير ذلك يقوله صراحةً — `scroll` و`sticky` الممرَّران يغلبان', () => {
+    setViewportWidth(DESKTOP)
+    const { container } = wrap(
+      <ResponsiveTable<Row> rowKey="id" dataSource={rows} columns={wide} scroll={{ x: 900 }} sticky={false} renderCard={() => null} />,
+    )
+    expect(container.querySelector('.ant-table-sticky-holder')).toBeNull()
+    expect((container.querySelector('.ant-table-content > table, .ant-table-body > table') as HTMLTableElement).style.width).toBe('900px')
+  })
+})
+
+describe('PhoneText', () => {
+  it('[STEP 66] الاتجاه في style لا في سمة dir — صنف أنتديب RTL كان يقلب «+9647…» إلى «…9647+»', () => {
+    render(<PhoneText phone="+9647701234567" />)
+    const el = screen.getByTestId('phone-text')
+    expect(el).toHaveTextContent('+9647701234567')
+    expect(el.style.direction).toBe('ltr')
+    expect(el.style.unicodeBidi).toBe('isolate')
+    expect(el.style.whiteSpace).toBe('nowrap')
   })
 })
 

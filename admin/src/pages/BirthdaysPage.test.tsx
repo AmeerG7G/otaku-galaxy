@@ -73,19 +73,40 @@ describe('أعياد الميلاد — كل خيار في المتناول وي
 
   afterEach(() => setViewportWidth(PHONE))
 
-  it('[regression] الهاتف: قائمة منسدلة بالخيارات الستّة — «الكل» (الأخير) يُختار ويُرسَل ويُكتب في الرابط', async () => {
-    setViewportWidth(PHONE)
-    const user = userEvent.setup()
-    renderPage()
-    await waitFor(() => expect(listBirthdayCustomers).toHaveBeenCalled())
-    await user.click(screen.getByRole('combobox', { name: 'مجموعة أعياد الميلاد' }))
-    for (const label of ['أعياد اليوم', 'أعياد قادمة', 'أعياد مؤخّراً', 'لم يسجّل ميلاده', 'المسجَّلون', 'الكل']) {
-      expect((await screen.findAllByText(label)).length).toBeGreaterThan(0)
-    }
-    await user.click(screen.getAllByText('الكل').at(-1)!)
-    await waitFor(() => expect(lastCall()).toMatchObject({ filter: 'all', page: 1 }))
-    expect(location.search).toContain('tab=all')
-  })
+  /** الخيارات الستّة كما تظهر في الشريط — بالترتيب. */
+  const tabOptions = () =>
+    [...document.querySelectorAll('[aria-label="مجموعة أعياد الميلاد"] .ant-segmented-item')].map((el) => el.textContent)
+  const SIX = ['أعياد اليوم', 'أعياد قادمة', 'أعياد مؤخّراً', 'لم يسجّل ميلاده', 'المسجَّلون', 'الكل']
+
+  /**
+   * [STEP 66] «لم يسجّل ميلاده خارج الشاشة». القرار كان بعرض الشاشة
+   * (`screens.md`) لا بالعرض المتاح، فالشريط غير الملتفّ يخرج من بطاقةٍ أضيق
+   * منه ويُقصّ. الآن شريطٌ واحد بكل العروض، يلتفّ داخل بطاقته. jsdom لا يرسم،
+   * فالتخطيط الفعلي تحقّقٌ في المتصفّح؛ هنا العقد: الخيارات الستة كلها في
+   * الشريط نفسه، بصنف الالتفاف، وكلٌّ منها يُختار ويُرسَل ويُكتب في الرابط.
+   */
+  for (const [name, width] of [['الهاتف', PHONE], ['الشاشة العريضة', DESKTOP]] as const) {
+    it(`[regression] ${name}: الخيارات الستّة ظاهرة معاً في شريطٍ يلتفّ — «لم يسجّل ميلاده» و«الكل» تُختاران`, async () => {
+      setViewportWidth(width)
+      const user = userEvent.setup()
+      renderPage()
+      await waitFor(() => expect(listBirthdayCustomers).toHaveBeenCalled())
+
+      expect(tabOptions()).toEqual(SIX)
+      const bar = document.querySelector('[aria-label="مجموعة أعياد الميلاد"]')!
+      expect(bar.classList.contains('og-segmented-wrap')).toBe(true)
+      // لا قائمة منسدلة تُخفي الخيارات خلف نقرة.
+      expect(screen.queryByRole('combobox', { name: 'مجموعة أعياد الميلاد' })).toBeNull()
+
+      await user.click(screen.getByText('لم يسجّل ميلاده'))
+      await waitFor(() => expect(lastCall()).toMatchObject({ filter: 'missing', page: 1 }))
+      expect(location.search).toContain('tab=missing')
+
+      await user.click(screen.getByText('الكل'))
+      await waitFor(() => expect(lastCall()).toMatchObject({ filter: 'all', page: 1 }))
+      expect(location.search).toContain('tab=all')
+    })
+  }
 
   it('[regression] «إعادة التحميل»: الرابط يعيد التبويب والنافذة والصفحة كما اختيرت', async () => {
     renderPage('/birthdays?tab=upcoming&window=30&page=2')

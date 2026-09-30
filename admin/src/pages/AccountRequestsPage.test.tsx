@@ -238,4 +238,27 @@ describe('طلبات الحساب على الهاتف والشاشة العري�
     expect(row.tagName).toBe('TR')
     expect(container.querySelector('.ant-table')).not.toBeNull()
   })
+
+  /**
+   * [STEP 66] «الجدول لا يُمرَّر ولا يُرى كاملاً». بلا `scroll.x` سُحق
+   * «ما أرسله الزبون» إلى ٤٠px (الاسم حرفاً حرفاً، الرقم «+9647 / 71234 /
+   * 5678») وخرج الفائض من البطاقة فقُصّ بلا شريط. الآن عرضٌ لكل عمود،
+   * الجدول حاوية تمريرٍ بعرضه الطبيعي، والإجراءات مثبّتة في نهايته.
+   */
+  it('[regression] الشاشة العريضة: الجدول بعرضه الطبيعي يتمرّر، والإجراءات مثبّتة، والرقم LTR لا يتكسّر', async () => {
+    setViewportWidth(DESKTOP)
+    const { container } = renderPage()
+    const row = (await screen.findByText('+9647701234567')).closest('tr')! as HTMLElement
+    // ٤٨ (التوسيع) + ١٣٠ + ٢٣٠ + ٢٧٠ + ١٣٠ + ١٨٠ + ٢٤٠
+    expect((container.querySelector('.ant-table-body > table') as HTMLTableElement).style.width).toBe('1228px')
+    expect(container.querySelector('.ant-table-sticky-holder')).not.toBeNull()
+    const cells = row.querySelectorAll('td')
+    const actions = cells[cells.length - 1]! as HTMLElement
+    expect(actions.className).toContain('ant-table-cell-fix-end')
+    expect(within(actions).getByText('موافقة')).toBeInTheDocument()
+    expect(within(actions).getByText('رفض')).toBeInTheDocument()
+    const phone = within(row).getByTestId('phone-text')
+    expect(phone.style.direction).toBe('ltr')
+    expect(phone.style.whiteSpace).toBe('nowrap')
+  })
 })

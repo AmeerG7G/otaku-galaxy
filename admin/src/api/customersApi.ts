@@ -28,10 +28,10 @@ export interface ListCustomersParams {
   /**
    * ترشيح الجنس — يجري في القاعدة كبقية المعايير.
    *
-   * `unknown` تطابق `gender IS NULL`؛ لا تُحذف الحسابات القديمة من القائمة
-   * ولا تُضمّ إلى أحد الجنسين.
+   * ذكر أو أنثى فقط (STEP 66) — الخادم يرفض أي قيمة ثالثة بـ400. الحسابات
+   * القديمة بلا جنس تبقى في القائمة غير المرشَّحة ولا تُضمّ إلى أحد الجنسين.
    */
-  gender?: CustomerGender | 'unknown'
+  gender?: CustomerGender
   /** ترشيح بمستوى المجرّة — يُحوَّل إلى مدى نقاطٍ على الخادم. */
   levelKey?: string
   sort?: CustomerSort

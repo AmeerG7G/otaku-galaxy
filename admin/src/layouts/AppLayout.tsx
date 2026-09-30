@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   App,
@@ -15,9 +15,18 @@ import {
   Tooltip,
   Typography,
 } from 'antd'
-import { BellOutlined, LogoutOutlined, MenuOutlined, SunOutlined, MoonOutlined } from '@ant-design/icons'
+import {
+  BellOutlined,
+  LogoutOutlined,
+  MenuOutlined,
+  MoonOutlined,
+  SunOutlined,
+  UserSwitchOutlined,
+} from '@ant-design/icons'
 import { activeMenuKey, navItemsFor, navTitleFor } from './nav'
+import { APP_HEADER_HEIGHT } from './metrics'
 import { useAdminProfile } from '../hooks/useAdminProfile'
+import { canAccess } from '../types/adminPermissions'
 import AdminPushDrawer from '../components/AdminPushDrawer'
 import { disableWebPush, onForegroundPush, resyncWebPush } from '../push/webPush'
 import { useAuthStore } from '../stores/authStore'
@@ -108,6 +117,22 @@ export default function AppLayout() {
   const isDesktop = Boolean(screens.lg)
   const selectedKey = activeMenuKey(location.pathname)
   const sectionTitle = navTitleFor(selectedKey)
+  const canManageAdmins = canAccess(profile, 'admins')
+  const menuScrollRef = useRef<HTMLDivElement | null>(null)
+
+  // القسم المفتوح يظهر في القائمة وإن كان في آخرها: «المسؤولون» كان تحت
+  // حافّة القائمة بـ٣٦٥px على شاشة ٧٦٨ فيبدو القسم غير موجود.
+  // تمريرُ حاوية القائمة وحدها — `scrollIntoView` يمرّر الصفحة كلها معها.
+  useEffect(() => {
+    const scroller = menuScrollRef.current
+    const selected = scroller?.querySelector<HTMLElement>('.ant-menu-item-selected')
+    if (!scroller || !selected) return
+    const box = scroller.getBoundingClientRect()
+    const item = selected.getBoundingClientRect()
+    const margin = 8
+    if (item.bottom > box.bottom) scroller.scrollTop += item.bottom - box.bottom + margin
+    else if (item.top < box.top) scroller.scrollTop -= box.top - item.top + margin
+  }, [selectedKey, drawerOpen, profile])
 
   function handleMenuClick({ key }: { key: string }) {
     navigate(key)
@@ -173,6 +198,25 @@ export default function AppLayout() {
           {profile?.isSuperAdmin ? 'المسؤول الأعلى' : 'مسؤول'}
         </Typography.Text>
       </div>
+      {/*
+        [STEP 66] مدخلٌ ظاهر دائماً إلى «المسؤولون» (ملفّي، والمسؤولون وسجلّ
+        النشاط للأعلى): القسم آخر القائمة، وعلى شاشة حاسوبٍ عادية يقع تحت
+        حافّتها بلا شريط تمرير يُرى — فبدا للمالك أن القسم غير موجود. يظهر
+        لمن يملك قسم «المسؤولون» فقط؛ والخادم يفرض الصلاحية في كل الأحوال.
+      */}
+      {canManageAdmins && (
+        <Tooltip title="المسؤولون والصلاحيات">
+          <Button
+            ghost
+            type="text"
+            icon={<UserSwitchOutlined />}
+            aria-label="المسؤولون والصلاحيات"
+            data-testid="admins-shortcut"
+            onClick={() => handleMenuClick({ key: '/admins' })}
+            style={{ color: 'var(--og-sidebar-text)' }}
+          />
+        </Tooltip>
+      )}
       <Tooltip title="تسجيل الخروج">
         <Button
           ghost
@@ -209,7 +253,12 @@ export default function AppLayout() {
           }}
         >
           <SidebarBrand />
-          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', paddingBottom: 12 }}>
+          <div
+            ref={menuScrollRef}
+            className="og-sidebar-scroll"
+            data-testid="sidebar-menu-scroll"
+            style={{ flex: 1, minHeight: 0, overflowY: 'auto', paddingBottom: 12 }}
+          >
             {sidebarMenu}
           </div>
           {userPanel}
@@ -233,7 +282,12 @@ export default function AppLayout() {
           title={<SidebarBrand />}
           closable
         >
-          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', paddingBottom: 12 }}>
+          <div
+            ref={menuScrollRef}
+            className="og-sidebar-scroll"
+            data-testid="sidebar-menu-scroll"
+            style={{ flex: 1, minHeight: 0, overflowY: 'auto', paddingBottom: 12 }}
+          >
             {sidebarMenu}
           </div>
           {userPanel}
@@ -245,8 +299,8 @@ export default function AppLayout() {
           style={{
             background: 'var(--og-surface)',
             paddingInline: isDesktop ? 24 : 12,
-            height: 64,
-            lineHeight: '64px',
+            height: APP_HEADER_HEIGHT,
+            lineHeight: `${APP_HEADER_HEIGHT}px`,
             display: 'flex',
             alignItems: 'center',
             gap: 12,
@@ -308,11 +362,20 @@ export default function AppLayout() {
             </Space>
           ) : null}
         </Header>
+        {/*
+          [CRITICAL] `clip` لا `hidden`. الفائض الأفقي يُقصّ هنا كي لا تنزاح
+          اللوحة كلها جانبياً، لكن `overflow-x: hidden` يجعل `overflow-y`
+          تلقائياً `auto` فيصير `main` حاوية تمرير — فيلتصق كل عنصرٍ `sticky`
+          داخله (رأس الجدول وشريط تمريره الأفقي) بـ`main` الذي لا يتمرّر أبداً
+          بدل الصفحة. `clip` يقصّ بلا حاوية تمرير. والجداول العريضة لا تعتمد
+          على هذا القصّ: كلٌّ منها حاوية تمريرٍ أفقي بذاته (`ResponsiveTable`).
+        */}
         <Content
+          data-testid="app-content"
           style={{
             padding: isDesktop ? 24 : 12,
             minWidth: 0,
-            overflowX: 'hidden',
+            overflowX: 'clip',
           }}
         >
           <Outlet />

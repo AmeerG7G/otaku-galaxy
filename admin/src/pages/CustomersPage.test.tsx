@@ -23,8 +23,8 @@ import type { AdminCustomer, AdminCustomerListResponse } from '../types/customer
 /**
  * إدارة الزبائن: الجنس والهاتف.
  *
- * حدّان تحرسهما هذه الاختبارات: `null` تعني «غير محدد» لا «ذكر»، والعدّادات
- * تأتي من الخادم لا من الصفحة المعروضة.
+ * حدّان تحرسهما هذه الاختبارات: `null` (حسابٌ قديم لم يُسأل) تُعرض «—» لا
+ * «ذكر» ولا جنساً ثالثاً، والعدّادات تأتي من الخادم لا من الصفحة المعروضة.
  */
 
 function customer(overrides: Partial<AdminCustomer> = {}): AdminCustomer {
@@ -54,7 +54,7 @@ function listOf(items: AdminCustomer[]): AdminCustomerListResponse {
     limit: 12,
     total: 1200,
     hasMore: true,
-    genderCounts: { total: 1200, male: 700, female: 480, unknown: 20 },
+    genderCounts: { total: 1200, male: 700, female: 480 },
   }
 }
 
@@ -161,7 +161,7 @@ describe('تزامن الجنس مع تغييره من التطبيق', () => {
     // ثم بعد تبديل زبونٍ واحد ٨٩٩٩ / ٣٠٠١.
     vi.mocked(listCustomers).mockResolvedValue({
       ...listOf([customer({ gender: 'male' })]),
-      genderCounts: { total: 12000, male: 9000, female: 3000, unknown: 0 },
+      genderCounts: { total: 12000, male: 9000, female: 3000 },
     })
     renderPage()
     expect(await screen.findByText('ذكر')).toBeInTheDocument()
@@ -170,7 +170,7 @@ describe('تزامن الجنس مع تغييره من التطبيق', () => {
 
     vi.mocked(listCustomers).mockResolvedValue({
       ...listOf([customer({ gender: 'female' })]),
-      genderCounts: { total: 12000, male: 8999, female: 3001, unknown: 0 },
+      genderCounts: { total: 12000, male: 8999, female: 3001 },
     })
     await userEvent.setup().click(screen.getByRole('button', { name: /تحديث/ }))
     expect(await screen.findByText('أنثى')).toBeInTheDocument()

@@ -34,12 +34,14 @@ export interface AdminCustomer {
  *
  * [CRITICAL] لا يُشتقّ من `items`: القائمة مقسَّمة إلى صفحات، وجمع صفحةٍ
  * واحدة كان سيعرض «الذكور: ٧» على متجرٍ فيه سبعمئة.
+ *
+ * ذكر وأنثى والمجموع فقط (STEP 66) — لا عدّاد «غير محدد». الحسابات القديمة
+ * بلا جنس داخل `total` وحده.
  */
 export interface CustomerGenderCounts {
   total: number
   male: number
   female: number
-  unknown: number
 }
 
 export interface AdminCustomerListResponse {

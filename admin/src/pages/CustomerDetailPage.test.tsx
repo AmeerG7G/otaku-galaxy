@@ -10,8 +10,10 @@ vi.mock('../api/customersApi', () => ({
   getCustomerDetail: vi.fn(),
   setCustomerPassword: vi.fn(),
 }))
+vi.mock('../api/pointsApi', () => ({ getCustomerPoints: vi.fn() }))
 
 import { getCustomerDetail } from '../api/customersApi'
+import { getCustomerPoints } from '../api/pointsApi'
 import CustomerDetailPage from './CustomerDetailPage'
 import type { AdminCustomerDetail } from '../types/customers'
 
@@ -72,10 +74,28 @@ function renderPage(queryClient = createQueryClient({ retry: false })) {
   )
 }
 
+const ledger = {
+  customer: { id: 'u1', username: 'أمير', phone: '+9647701234567', isActive: true, createdAt: '2026-09-01T00:00:00Z' },
+  balance: 120,
+  ledger: [
+    { id: 'l1', label: 'نقاط شراء', amount: 120, reason: 'order_received' as const, orderId: 'o1234567-abcd', orderNumber: '10420', reviewId: null, balanceAfter: 120, createdAt: '2026-09-03T00:00:00Z' },
+  ],
+}
+
 describe('ملفّ الزبون', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(getCustomerDetail).mockResolvedValue(detail())
+    vi.mocked(getCustomerPoints).mockResolvedValue(ledger)
+  })
+
+  it('[regression STEP 66] «رصيده ١٢٠ — من أين؟»: سجلّ النقاط في ملفّ الزبون نفسه', async () => {
+    renderPage()
+    const card = (await screen.findByTestId('customer-points-ledger')) as HTMLElement
+    expect(await within(card).findByText('نقاط شراء')).toBeInTheDocument()
+    expect(within(card).getByText('+120')).toBeInTheDocument()
+    expect(within(card).getByText(/#10420/)).toBeInTheDocument()
+    expect(getCustomerPoints).toHaveBeenCalledWith('u1')
   })
 
   it('الهوية والنقاط والمستوى والطلبات وطلبات الحساب من مكانٍ واحد', async () => {
@@ -117,6 +137,7 @@ describe('ملفّ الزبون', () => {
 describe('ملفّ الزبون — تزامن الجنس', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(getCustomerPoints).mockResolvedValue(ledger)
   })
 
   const genderCell = () => {

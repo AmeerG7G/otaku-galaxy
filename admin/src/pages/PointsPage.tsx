@@ -11,17 +11,17 @@ import {
   Tag,
   Typography,
 } from 'antd'
-import { formatDateTime } from '../utils/format'
 import { POINTS_REASON_COLORS, POINTS_REASON_LABELS } from '../constants/points'
 import EmptyState from '../components/EmptyState'
 import GalaxyRulesCard from '../components/GalaxyRulesCard'
 import GiftClaimsCard from '../components/GiftClaimsCard'
 import { PageHeader } from '../components/ui/PageHeader'
-import { getCustomerPoints, getPointsSummary } from '../api/pointsApi'
+import { PhoneText } from '../components/ui/PhoneText'
+import { getPointsSummary } from '../api/pointsApi'
+import { PointsLedger } from '../components/PointsLedger'
 import type {
   PointsByReason,
   PointsReason,
-  PointsLedgerEntry,
   PointsTopBalance,
 } from '../types/points'
 
@@ -49,12 +49,6 @@ export default function PointsPage() {
     queryFn: getPointsSummary,
   })
 
-  const detail = useQuery({
-    queryKey: ['admin-customer-points', selected?.userId],
-    queryFn: () => getCustomerPoints(selected!.userId),
-    enabled: Boolean(selected),
-  })
-
   const topColumns = [
     {
       title: 'العميل',
@@ -62,9 +56,7 @@ export default function PointsPage() {
       render: (_: unknown, row: PointsTopBalance) => (
         <Space direction="vertical" size={0}>
           <Typography.Text strong>{row.username}</Typography.Text>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            {row.phone}
-          </Typography.Text>
+          <PhoneText phone={row.phone} secondary style={{ fontSize: 12 }} />
         </Space>
       ),
     },
@@ -95,38 +87,6 @@ export default function PointsPage() {
     },
     { title: 'عدد الحركات', dataIndex: 'entries', key: 'entries' },
     { title: 'مجموع النقاط', dataIndex: 'total', key: 'total' },
-  ]
-
-  const ledgerColumns = [
-    {
-      title: 'الحركة',
-      dataIndex: 'label',
-      key: 'label',
-    },
-    {
-      title: 'السبب',
-      dataIndex: 'reason',
-      key: 'reason',
-      render: (reason: PointsReason) => (
-        <Tag color={POINTS_REASON_COLORS[reason]}>{POINTS_REASON_LABELS[reason] ?? reason}</Tag>
-      ),
-    },
-    {
-      title: 'النقاط',
-      dataIndex: 'amount',
-      key: 'amount',
-      render: (amount: number) => (
-        <Typography.Text type={amount < 0 ? 'danger' : 'success'} strong>
-          {amount > 0 ? `+${amount}` : amount}
-        </Typography.Text>
-      ),
-    },
-    {
-      title: 'التاريخ',
-      dataIndex: 'createdAt',
-      key: 'createdAt',
-      render: (value: string) => formatDateTime(value),
-    },
   ]
 
   const data = summary.data
@@ -198,23 +158,19 @@ export default function PointsPage() {
         open={Boolean(selected)}
         onCancel={() => setSelected(null)}
         footer={null}
-        width={720}
+        width={860}
+        destroyOnHidden
         title={
-          selected ? `دفتر نقاط — ${selected.username} (${selected.phone})` : 'دفتر النقاط'
+          selected ? (
+            <>
+              دفتر نقاط — {selected.username} (<PhoneText phone={selected.phone} />)
+            </>
+          ) : (
+            'دفتر النقاط'
+          )
         }
       >
-        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-          <Statistic title="الرصيد الحالي" value={detail.data?.balance ?? 0} />
-          <Table
-            rowKey="id"
-            size="small"
-            loading={detail.isPending}
-            columns={ledgerColumns}
-            dataSource={(detail.data?.ledger ?? []) as PointsLedgerEntry[]}
-            scroll={{ x: 520 }}
-            pagination={{ pageSize: 10, showSizeChanger: false }}
-          />
-        </Space>
+        {selected && <PointsLedger customerId={selected.userId} />}
       </Modal>
     </Space>
   )

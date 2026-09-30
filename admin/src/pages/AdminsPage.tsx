@@ -32,6 +32,7 @@ import {
 import { ApiError } from '../api/client'
 import EmptyState from '../components/EmptyState'
 import { PageHeader } from '../components/ui/PageHeader'
+import { PhoneText } from '../components/ui/PhoneText'
 import { ResponsiveTable } from '../components/ui/ResponsiveTable'
 import { ADMIN_ME_QUERY_KEY, useAdminProfile } from '../hooks/useAdminProfile'
 import { useAuthStore } from '../stores/authStore'
@@ -347,33 +348,30 @@ function SubAdminsTab() {
           {
             title: 'المسؤول',
             key: 'who',
+            width: 220,
             render: (_: unknown, admin) => (
               <Space direction="vertical" size={0}>
                 <Typography.Text strong>{admin.username}</Typography.Text>
-                <Typography.Text type="secondary" dir="ltr">
-                  {admin.phone}
-                </Typography.Text>
+                <PhoneText phone={admin.phone} secondary />
               </Space>
             ),
           },
           { title: 'الحالة', key: 'status', width: 100, render: (_: unknown, admin) => status(admin) },
-          { title: 'الصلاحيات', key: 'permissions', render: (_: unknown, admin) => <PermissionTags permissions={admin.permissions} /> },
+          { title: 'الصلاحيات', key: 'permissions', width: 300, render: (_: unknown, admin) => <PermissionTags permissions={admin.permissions} /> },
           {
             title: 'آخر نشاط',
             key: 'activity',
             width: 160,
             render: (_: unknown, admin) => (admin.lastActivityAt ? formatDateTime(admin.lastActivityAt) : '—'),
           },
-          { title: 'الإجراءات', key: 'actions', width: 190, render: (_: unknown, admin) => actions(admin) },
+          { title: 'الإجراءات', key: 'actions', width: 190, fixed: 'end', render: (_: unknown, admin) => actions(admin) },
         ]}
         renderCard={(admin) => (
           <Space direction="vertical" size={10} style={{ width: '100%' }}>
             <Flex justify="space-between" align="flex-start" gap={8}>
               <Space direction="vertical" size={0} style={{ minWidth: 0 }}>
                 <Typography.Text strong>{admin.username}</Typography.Text>
-                <Typography.Text type="secondary" dir="ltr">
-                  {admin.phone}
-                </Typography.Text>
+                <PhoneText phone={admin.phone} secondary />
               </Space>
               {status(admin)}
             </Flex>
@@ -462,8 +460,8 @@ function AuditTab() {
         columns={[
           { title: 'الوقت', key: 'at', width: 160, render: (_: unknown, e) => formatDateTime(e.createdAt) },
           { title: 'المسؤول', dataIndex: 'actorName', key: 'actor', width: 160 },
-          { title: 'الفعل', key: 'action', render: (_: unknown, e) => describeAudit(e) },
-          { title: 'التفاصيل', key: 'details', render: (_: unknown, e) => <Typography.Text type="secondary">{auditDetails(e) || '—'}</Typography.Text> },
+          { title: 'الفعل', key: 'action', width: 240, render: (_: unknown, e) => describeAudit(e) },
+          { title: 'التفاصيل', key: 'details', width: 280, render: (_: unknown, e) => <Typography.Text type="secondary">{auditDetails(e) || '—'}</Typography.Text> },
         ]}
         renderCard={(e) => (
           <Space direction="vertical" size={4} style={{ width: '100%' }}>

@@ -10,7 +10,6 @@ import {
   Grid,
   Row,
   Segmented,
-  Select,
   Space,
   Statistic,
   Tag,
@@ -29,6 +28,7 @@ import EmptyState from '../components/EmptyState'
 import { resolveMediaUrl } from '../utils/media'
 import { formatDateTime } from '../utils/format'
 import { PageHeader } from '../components/ui/PageHeader'
+import { PhoneText } from '../components/ui/PhoneText'
 import { ResponsiveTable } from '../components/ui/ResponsiveTable'
 import { useCan } from '../hooks/useAdminProfile'
 import { useTableState } from '../hooks/useTableState'
@@ -140,9 +140,7 @@ export default function BirthdaysPage() {
       </Avatar>
       <Space direction="vertical" size={0}>
         <Typography.Text strong>{customer.username}</Typography.Text>
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          {customer.phone}
-        </Typography.Text>
+        <PhoneText phone={customer.phone} secondary style={{ fontSize: 12 }} />
       </Space>
     </Flex>
   )
@@ -166,6 +164,7 @@ export default function BirthdaysPage() {
     {
       title: 'الزبون',
       key: 'user',
+      width: 250,
       render: (_: unknown, customer: BirthdayCustomer) => renderWho(customer),
     },
     {
@@ -197,6 +196,7 @@ export default function BirthdaysPage() {
       title: 'سجّل في',
       dataIndex: 'birthdaySetAt',
       key: 'birthdaySetAt',
+      width: 190,
       render: (value: string | null) => (value ? formatDateTime(value) : '—'),
     },
   ]
@@ -280,27 +280,25 @@ export default function BirthdaysPage() {
         {/*
           [STEP 64 §15] على الهاتف كان شريط التبويبات الستّة (497px) في صندوقٍ
           بعرض 309 داخل محتوى يقصّ الفائض أفقياً: «المسجَّلون» و«الكل» خارج
-          الشاشة فلا يُضغطان — «الخيار الأخير لا يُحفظ». دون `md` صار قائمةً
-          منسدلة بعرض السطر، والنافذة شريطاً بعرض السطر؛ كل خيار في المتناول.
+          الشاشة فلا يُضغطان — «الخيار الأخير لا يُحفظ».
+
+          [STEP 66] ثم عاد البلاغ بصيغة «لم يسجّل ميلاده خارج الشاشة»: القرار
+          كان بعرض **الشاشة** (`screens.md`) لا بالعرض **المتاح** — القائمة
+          الجانبية وتكبير المتصفّح وخطٌّ أعرض كلها تضيّق البطاقة دون أن يتغيّر
+          `md`. الآن شريطٌ واحد بكل العروض يلتفّ داخل بطاقته (`og-segmented-wrap`):
+          الخيارات الستة ظاهرة معاً دائماً، لا تُقصّ ولا تختبئ خلف قائمة منسدلة.
         */}
-        <Flex wrap gap={12} align="center" vertical={!screens.md} style={{ marginBottom: 16 }}>
-          {screens.md ? (
-            <Segmented
-              value={filter}
-              onChange={(value) => update({ tab: value as BirthdayFilter })}
-              options={TABS.map((value) => ({ label: BIRTHDAY_FILTER_LABELS[value], value }))}
-            />
-          ) : (
-            <Select
-              aria-label="مجموعة أعياد الميلاد"
-              value={filter}
-              style={{ width: '100%' }}
-              onChange={(value: BirthdayFilter) => update({ tab: value })}
-              options={TABS.map((value) => ({ label: BIRTHDAY_FILTER_LABELS[value], value }))}
-            />
-          )}
+        <Flex wrap gap={12} align="center" style={{ marginBottom: 16 }}>
+          <Segmented
+            className="og-segmented-wrap"
+            aria-label="مجموعة أعياد الميلاد"
+            value={filter}
+            onChange={(value) => update({ tab: value as BirthdayFilter })}
+            options={TABS.map((value) => ({ label: BIRTHDAY_FILTER_LABELS[value], value }))}
+          />
           {windowed && (
             <Segmented
+              className="og-segmented-wrap"
               block={!screens.md}
               style={screens.md ? undefined : { width: '100%' }}
               value={windowDays}

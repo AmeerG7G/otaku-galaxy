@@ -1,6 +1,7 @@
 import type { Key, ReactNode } from 'react'
 import { Card, Empty, Grid, List, Table } from 'antd'
 import type { TablePaginationConfig, TableProps } from 'antd'
+import { STICKY_TABLE, tableScrollWidth } from './tableLayout'
 
 type Props<T> = TableProps<T> & {
   /**
@@ -20,8 +21,13 @@ function keyOf<T>(row: T, index: number, rowKey: TableProps<T>['rowKey']): Key {
 
 /**
  * جدولٌ على الشاشة العريضة، وبطاقاتٌ على الهاتف — مكوّنٌ واحد للصفحات التي
- * كانت جداولها تُقصّ على الهاتف (طلبات الحساب، طلبات التوفر، أعياد الميلاد،
- * المسؤولون، سجلّ النشاط).
+ * كانت جداولها تُقصّ على الهاتف (الطلبات، طلبات الحساب، طلبات التوفر، أعياد
+ * الميلاد، المسؤولون، سجلّ النشاط).
+ *
+ * الجدول لا يُضغط أبداً دون عرضه الطبيعي (`tableScrollWidth`): حين يضيق
+ * المكان يتمرّر الجدول وحده أفقياً — بشريطٍ لاصق أسفل الشاشة ورأسٍ لاصق —
+ * واللوحة لا تتحرّك. عمودٌ بـ`fixed: 'end'` (الإجراءات) يبقى ظاهراً أثناء
+ * التمرير؛ `start`/`end` منطقيّان فيعملان في RTL كما هما.
  *
  * [CRITICAL] البطاقات تستعمل ترقيم الجدول نفسه (`pagination.onChange`)
  * وتحميله ونصّ فراغه، فلا يختلف سلوك الصفحة بين التخطيطين — والإجراءات
@@ -31,7 +37,16 @@ function keyOf<T>(row: T, index: number, rowKey: TableProps<T>['rowKey']): Key {
 export function ResponsiveTable<T extends object>({ renderCard, layout = 'auto', ...table }: Props<T>) {
   const screens = Grid.useBreakpoint()
   const cards = layout === 'cards' || (layout === 'auto' && !screens.md)
-  if (!cards) return <Table<T> {...table} />
+  if (!cards) {
+    const scrollX = tableScrollWidth(table.columns, { expandable: Boolean(table.expandable) })
+    return (
+      <Table<T>
+        {...table}
+        scroll={{ x: scrollX, ...table.scroll }}
+        sticky={table.sticky ?? STICKY_TABLE}
+      />
+    )
+  }
 
   const pagination = table.pagination === false ? false : (table.pagination as TablePaginationConfig | undefined)
   const emptyText = (table.locale?.emptyText as ReactNode) ?? <Empty />

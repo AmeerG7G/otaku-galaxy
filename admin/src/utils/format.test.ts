@@ -1,10 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import { formatCurrency, formatDateTime } from '../utils/format'
+import { formatCurrency, formatDateTime, productCountLabel } from '../utils/format'
 import { resolveMediaUrl, isValidImageRef } from '../utils/media'
 
 describe('format utils', () => {
   it('يعرض المبلغ بالدينار بأرقام لاتينية', () => {
     expect(formatCurrency(12500)).toBe('12,500 د.ع')
+  })
+
+  it('[STEP 66] عدد المنتجات بتمييزه العربي — لا «١ منتجات»', () => {
+    expect(productCountLabel(1)).toBe('منتج واحد')
+    expect(productCountLabel(2)).toBe('منتجان')
+    expect(productCountLabel(3)).toBe('3 منتجات')
+    expect(productCountLabel(10)).toBe('10 منتجات')
+    expect(productCountLabel(11)).toBe('11 منتجاً')
+    expect(productCountLabel(100)).toBe('100 منتج')
   })
 
   it('يعرض التاريخ والوقت بالعربية', () => {

@@ -146,6 +146,7 @@ export default function RestockPage() {
     {
       title: 'المنتج',
       key: 'name',
+      width: 260,
       render: (_: unknown, row: RestockDemandRow) => <ProductLink productId={row.productId} name={row.name} />,
     },
     {

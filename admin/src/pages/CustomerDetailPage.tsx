@@ -20,9 +20,11 @@ import { KeyOutlined, ReloadOutlined, WhatsAppOutlined } from '@ant-design/icons
 import { getCustomerDetail } from '../api/customersApi'
 import EmptyState from '../components/EmptyState'
 import PageLoader from '../components/PageLoader'
+import { PointsLedger } from '../components/PointsLedger'
 import SetCustomerPasswordModal from '../components/SetCustomerPasswordModal'
 import StatusBadge from '../components/StatusBadge'
 import { PageHeader } from '../components/ui/PageHeader'
+import { PhoneText } from '../components/ui/PhoneText'
 import { ProductLink } from '../components/ui/ProductLink'
 import {
   ACCOUNT_REQUEST_KIND_LABELS,
@@ -225,9 +227,7 @@ export default function CustomerDetailPage() {
                 </Descriptions.Item>
                 <Descriptions.Item label="الاسم">{profile.username}</Descriptions.Item>
                 <Descriptions.Item label="الهاتف">
-                  <Typography.Text dir="ltr" copyable>
-                    {profile.phone}
-                  </Typography.Text>
+                  <PhoneText phone={profile.phone} copyable />
                 </Descriptions.Item>
                 <Descriptions.Item label="الجنس">{customerGenderLabel(profile.gender)}</Descriptions.Item>
                 <Descriptions.Item label="حالة الحساب">
@@ -276,6 +276,15 @@ export default function CustomerDetailPage() {
         </Col>
       </Row>
 
+      {/*
+        [STEP 66] «رصيده ٣٥ — من أين؟». الصفحة كانت تعرض الرصيد وحده بلا أي
+        سجلّ، فبدا تاريخ النقاط فارغاً. الدفتر نفسه الذي يُشتقّ منه الرصيد، سطراً
+        سطراً مع الرصيد بعد كل حركة ومرجعها.
+      */}
+      <Card title="سجلّ نقاط المجرّة" variant="outlined" data-testid="customer-points-ledger">
+        <PointsLedger customerId={profile.id} />
+      </Card>
+
       <Card title="طلبات الحساب" variant="outlined">
         <Table<AccountRequest>
           rowKey="id"
@@ -283,6 +292,7 @@ export default function CustomerDetailPage() {
           dataSource={requests}
           columns={requestColumns}
           pagination={false}
+          scroll={{ x: 'max-content' }}
           locale={{ emptyText: <EmptyState description="لا طلبات حساب لهذا الزبون" /> }}
         />
       </Card>
@@ -294,6 +304,7 @@ export default function CustomerDetailPage() {
           dataSource={orders.items}
           columns={orderColumns}
           pagination={false}
+          scroll={{ x: 'max-content' }}
           locale={{ emptyText: <EmptyState description="لا طلبات بعد" /> }}
         />
       </Card>

@@ -12,7 +12,14 @@ export interface PointsLedgerEntry {
   amount: number
   reason: PointsReason
   orderId: string | null
+  /** رقم الطلب المعروض (`#10421`) — مرجع الحركة؛ `null` لحركةٍ بلا طلب. */
+  orderNumber: string | null
   reviewId: string | null
+  /**
+   * رصيد الزبون بعد هذه الحركة — محسوبٌ على الخادم على دفتره **كله**، فأقدم
+   * سطرٍ معروض صحيحٌ وإن قُصّت قبله حركات.
+   */
+  balanceAfter: number
   createdAt: string
 }
 
