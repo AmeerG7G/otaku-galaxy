@@ -8021,7 +8021,9 @@ COUNT(*) FILTER (WHERE u.gender IS NULL)    AS unknown
 ```
 
 [CRITICAL] `NULL` is displayed as «غير محدد» and counted in its own column. It is
-never folded into «ذكر». Accounts created before migration 040 have no gender and
+never folded into «ذكر». *(Superseded in STEP 64/66: «غير محدد» is gone from the
+dashboard and the API — `NULL` shows «—», is counted only in the total, and
+`gender=unknown` is rejected. See the STEP 66 section.)* Accounts created before migration 040 have no gender and
 the store does not get to invent one for them. No admin route writes the field —
 gender is set at registration and edited by its owner in Settings.
 
@@ -11205,3 +11207,128 @@ real axios with a stub adapter), `admin/src/components/ImageUpload.test.tsx` (6)
 
 **Not verified here:** staging itself (no access from the session), a physical Android/iOS device, and
 the Flutter-web upload in a browser (proved by construction: bytes API + source guard).
+
+---
+
+# STEP 66 — STAGING 0 REVIEW: TABLES, GENDER, POINTS HISTORY, BIRTHDAYS, ADMINS (2026-09-30)
+
+Reported by the owner on Staging 0 (dev @ `e1f5f05`). Work on `dev` only; no server, database or
+deployment was touched. Every root cause below was measured in a real browser (the real dashboard code
+driven by typed fixtures — see 66.8), not inferred.
+
+## 66.1 Orders and Account Requests tables — one shared root cause
+
+| Page | Measured before (1024 px, sidebar open) | Cause |
+|---|---|---|
+| Orders | `scroll.x = 1100`, container 660 → **440 px of columns off-screen** (total, status, date, actions — the left side in RTL); the table's only horizontal scrollbar sat under row 12, **484 px below a 768 fold** | a scrollable table whose scrollbar is unreachable, with the actions on the hidden side |
+| Account Requests (and Birthdays, Admins, Audit, Restock — every `ResponsiveTable`) | no `scroll` at all: `.ant-table-content` `overflow-x: visible`, table 693 px in 660 → the flexible «ما أرسله الزبون» column crushed to ~40 px (name broken letter by letter, phone «+9647 / 71234 / 5678»), overflow clipped by `main` | a table with no width budget and no scroll container |
+
+Shared contributor: `<Content>` had `overflow-x: hidden`. That silently clipped every overflow **and**
+made `main` a scroll container (`overflow-y` computes to `auto`), so any `position: sticky` inside it
+could never stick.
+
+**Fix (shared, `ResponsiveTable` + `AppLayout`):** table mode sets `scroll.x` = the sum of the column
+widths (`tableScrollWidth`, `components/ui/tableLayout.ts`) and `sticky` = header under the 64 px app bar
+plus rc-table's **sticky horizontal scrollbar at the bottom of the viewport**. `<Content>` clips with
+`overflow-x: clip` (no scroll container). Orders moved onto `ResponsiveTable` (cards below `md`), with a
+width on every column, the order number pinned at the start and the actions pinned at the end
+(`fixed: 'start' | 'end'`, logical → RTL-correct). Account Requests got widths for its two flexible
+columns and pinned actions. Measured after: at 1366/1024/992/768 every table is its own scroll container
+(`overflow-x: auto`), nothing overflows its card or the page, pinned cells stay on screen, and a real
+mouse drag of the sticky scrollbar in RTL scrolled Orders by −408/740 px with the header in sync. At 390
+both pages are cards with every field and every action.
+
+Also found while measuring: phones rendered «…9647+» — antd's `.ant-typography-rtl` sets CSS
+`direction: rtl`, which beats a `dir="ltr"` attribute. New `PhoneText` (direction in `style`,
+`unicode-bidi: isolate`) on Orders, Account Requests, Birthdays, Admins, the customer file and Points.
+«١ منتجات» → `productCountLabel` (منتج واحد / منتجان / ٣–١٠ منتجات / ١١–٩٩ منتجاً).
+
+## 66.2 Customers — «غير محدد» is not a gender
+
+The store has exactly two genders. The column has allowed only `male | female` since migration 040;
+`NULL` marks accounts created before 040 that were never asked (dev: 125, all created ≤ 2026-09-01,
+040 applied 2026-09-02). The dashboard UI stopped showing «غير محدد» in `457bd8a` (STEP 64); the
+**API** still exposed a third category: `GET /admin/users?gender=unknown` and `genderCounts.unknown`.
+Now `gender` accepts `male | female` only (`unknown` → 400 `VALIDATION_ERROR`) and `genderCounts` is
+`{ total, male, female }`. No migration: nothing to migrate, and back-filling legacy rows would invent
+data; the customer sets it in the app's Settings (two options). No route can write `NULL` back.
+
+If «غير محدد» is still visible on Staging, that dashboard bundle predates `457bd8a` (see 66.7).
+
+## 66.3 Galaxy Points — «35 points, empty history»
+
+The balance is `SUM(points_ledger)`; there is no stored balance, so a balance cannot exist without
+ledger rows and **no backfill is needed or possible** — the rows were there. Three read-path defects
+produced the empty history:
+
+1. «أعلى الأرصدة» / summary / by-reason aggregated **every** ledger row, including admin accounts
+   (admins can shop in the app — dev «مدير المتجر» holds 152), while `GET /admin/customers/:id/points`
+   has 404'd non-customers since STEP 64. The row was listed; its ledger opened empty with balance 0.
+   The same row exposed an admin's name and phone to a sub-admin holding only «النقاط».
+2. The customer file (`/customers/:id`) showed the balance with **no history at all**.
+3. Both points modals rendered a failed request as an empty table with balance 0.
+
+Fix: aggregates are customer-only; the admin ledger returns `balanceAfter` (running balance, a window
+over the customer's **whole** ledger before the 200-row cut) and `orderNumber`; one shared
+`PointsLedger` (date, movement, reason, ±points, balance after, order link for admins with «الطلبات»;
+an error state with retry instead of an empty ledger) in the customer file, the Customers modal and
+the Points modal. Every future change is already a ledger row (awards insert; there is no balance
+column). **Open decision:** revoking an approved review *deletes* its award rows — the balance still
+equals the visible history, but the revocation leaves no line of its own. Making it append-only needs
+the per-review unique index and the per-order cap redesigned.
+
+## 66.4 Birthdays — the fourth option off-screen
+
+The six-option bar was chosen by **viewport** breakpoint (`screens.md`), not by the width actually
+available, and antd's Segmented never wraps. One bar at every width now, with `og-segmented-wrap`
+(`max-width: 100%`, wrapping group, thumb hidden because it only animates horizontally): 390 px → 3+3
+rows, 992 px with the sidebar → one row, larger labels forced at 992 → 4+2 rows; no option clipped at
+any width, no page overflow. The Account Requests kind bar uses the same class.
+
+## 66.5 Admin Management — audit
+
+| Layer | Existed before STEP 66? |
+|---|---|
+| DB (068: `is_super_admin`, `admin_permissions`, `admin_audit_log`; 070 admin devices) | yes |
+| API (`/admin/me`, `/admin/admins` CRUD + `/admin/audit` behind `requireSuperAdmin`; `PATCH /admin/me` behind `can('admins')`) | yes |
+| Dashboard page `/admins` («ملفّي», «المسؤولون», «سجلّ النشاط»), route guard, menu item «المسؤولون» under «الإعدادات» | yes |
+
+What was missing was **reachability**: «المسؤولون» is the last menu item; at 1366×768 it sat 365 px
+below the sidebar's visible area, and the sidebar scrollbar was dark-on-dark (invisible). Added: a
+visible sidebar scrollbar (≥ 3:1), the open item scrolled into view (container only), and a
+«المسؤولون والصلاحيات» shortcut in the always-visible user panel — shown only when the profile holds the
+`admins` section. A sub-admin with `admins` sees «ملفّي» only; without it, no shortcut, no menu item, and
+`/admins` shows 403. Backend unchanged.
+
+## 66.6 Verification (observed in this run)
+
+| Stack | Check | Result |
+|---|---|---|
+| Backend | `tsc --noEmit` | clean |
+| Backend | full `vitest` (local test DB) | **90 files / 1692 passed**, exit 0 — incl. `authz-matrix` 173, `admin-permissions` 233 (route→guard map and unguarded-route ratchet unchanged: no route added or re-guarded) |
+| Backend | new/changed | `admin-points-ledger.test.ts` 5 (all RED before the fix: admin holder listed, aggregates incl. admin points, no `balanceAfter`/`orderNumber`, admin phone leaked to a `points` sub-admin); `admin-customer-gender-phone.test.ts` 22 (2 RED before: `gender=unknown` accepted, `unknown` count present) |
+| Dashboard | `tsc -b` · `vitest` · `build:staging` · `oxlint` | clean · **35 files / 247 passed** (225 + 22 new) · built · 7 warnings, all pre-existing, none in changed files |
+| Dashboard | mutation check (patch → targeted tests → restore, `cmp` byte-exact) | 12/12 killed: no `scroll.x`, no sticky, `overflow-x: hidden`, shortcut removed / shown to everyone, Birthdays wrap class removed, CSS wrap rule removed, ledger error swallowed, `balanceAfter` column blanked, ledger card removed from the customer file, `PhoneText` back to `dir="ltr"`, Orders actions unpinned |
+| Browser | real dashboard code + fixtures at 1366×768, 1024, 992, 800, 768, 390 | numbers in 66.1/66.4/66.5; RTL sticky-scrollbar drag verified; sub-admin menu/shortcut/403 verified for `super`, `orders+admins`, `orders` |
+
+**Not verified here:** Staging itself (no access from the session), the owner's actual data (the
+35-point account), and real login — the harness replaces the API with fixtures.
+
+## 66.7 Remaining manual Staging checks
+
+1. Before judging the fixes, confirm Staging serves the current dashboard: view the page source of
+   the staging dashboard — `<link rel="manifest" href="/manifest.webmanifest">` exists only since
+   `457bd8a`. Its absence means a pre-STEP-64 bundle (which would also explain «غير محدد» and a
+   missing «المسؤولون»).
+2. On the owner's own screen: Orders and Account Requests — drag the sticky scrollbar at the bottom of
+   the window; actions stay visible on the left.
+3. Points: open the 35-point account — if it is an **admin** account (e.g. the owner's number used in
+   the app), it no longer appears in «أعلى الأرصدة» by design; its ledger is not a customer ledger.
+
+## 66.8 How the rendering was verified without credentials
+
+Minting a session token, seeding a login admin and capturing API fixtures with a token were all refused
+by the session's permission policy. A scratchpad-only Vite harness ran the **real** `admin/src/main.tsx`
+with the axios client answered in memory from hand-written fixtures typed from `admin/src/types/*`
+(long Arabic names, full phones, a 35-point ledger) — no server, no credential. Nothing of it is
+committed.

@@ -663,11 +663,14 @@ silently lies on twenty thousand. Phone search strips non-digits, so
 order counts and last-order date; it never carries `password_hash` or
 `token_version`.
 
-`gender` accepts `male`, `female` or `unknown` (`gender IS NULL`), and every
-response also carries `genderCounts` — total / male / female / unknown, computed
-in SQL over everything matching the current search, never summed from the page
-on screen. `NULL` is shown as «غير محدد» and is never counted as male; see
-§ 11.5b. The full phone is displayed unmasked on the admin customer-management
+`gender` accepts `male` or `female` only — the store has exactly two genders
+(STEP 66; `gender=unknown` is a 400). Every response also carries
+`genderCounts` — total / male / female, computed in SQL over everything matching
+the current search, never summed from the page on screen. `NULL` is not a third
+gender: it marks an account created before migration 040 that was never asked.
+It is shown as «—», counted only in the total, never counted as male and never
+back-filled by guessing; the customer sets it from Settings in the app (male or
+female); see § 11.5b. The full phone is displayed unmasked on the admin customer-management
 screens and on the restock-demand screen — both sit behind `requireAdmin`, and
 store staff need the number to reach the customer (a «واتساب» action opens the
 chat; it never sends anything). No customer-facing or public route returns it.
