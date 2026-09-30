@@ -212,26 +212,84 @@ class ApiClient {
   Future<dynamic> patch(String path, {Object? body}) =>
       _request(() => _dio.patch<dynamic>(path, data: body));
 
-  /// DELETE — يعيد حقل `data` من المغلف الموحّد.
-  /// يرفع ملفاً واحداً كـ multipart ويعيد جسم الاستجابة.
+  /// مهلة إرسال الرفع واستقباله — لا مهلة طلبات JSON.
+  ///
+  /// [CRITICAL] `sendTimeout` في Dio على المنصّات الأصلية يحدّ **الجسم كلّه**
+  /// (`addStream(...).timeout`)، و١٥ ثانية كانت تقطع رفعاً سليماً لصورة
+  /// ٦٠٠ كيلوبايت على خطٍّ دون ٣٢٠ كيلوبت/ث — لا يظهر على `localhost` أبداً.
+  /// الصور مصغَّرة قبل الرفع (≤ ١٦٠٠ بكسل)، فدقيقةٌ تكفي خطّاً ضعيفاً جداً.
+  static const uploadTimeout = Duration(seconds: 60);
+
+  /// يرفع صورةً واحدة كـ multipart ويعيد **مرجعها المخزَّن** (`/uploads/...`).
   ///
   /// الغرض (`purpose`) يحدّد وجهة التخزين على الخادم؛ العميل مسموح له
   /// برفع صور التقييمات والصورة الشخصية فقط.
-  Future<dynamic> uploadFile(
+  ///
+  /// [CRITICAL] من **البايتات** لا من مسار ملف: `MultipartFile.fromFile`
+  /// يحتاج `dart:io` فيرمي `UnsupportedError` على الويب دائماً. والنوع
+  /// المعلَن من **توقيع البايتات** لا من امتداد الاسم: `image_picker` على
+  /// أندرويد يعيد ترميز الصورة ويُبقي امتداد الأصل (`scaled_….heic`)، فكان
+  /// Dio يعلن `image/heic` لبايتاتٍ هي JPEG. الاسم المرسَل محايد (`image.jpg`)
+  /// — اسم ملف الزبون لا يغادر جهازه.
+  ///
+  /// ردٌّ ناجح بلا مرجع صالح يرمي [AppException] (`errUnexpectedResponse`)
+  /// ولا يعيد قيمة فارغة: الصورة الشخصية كانت تُمسح حين يمرّ `null` إلى الحفظ.
+  Future<String> uploadImage(
     String path, {
-    required String filePath,
+    required Uint8List bytes,
     required String purpose,
-    String field = 'file',
-  }) {
-    return _request(() async {
+  }) async {
+    final type = _sniffImage(bytes);
+    final data = await _request(() {
       final form = FormData.fromMap({
-        field: await MultipartFile.fromFile(filePath),
+        'file': MultipartFile.fromBytes(
+          bytes,
+          filename: 'image${type?.extension ?? ''}',
+          contentType: type == null ? null : DioMediaType.parse(type.mime),
+        ),
         'purpose': purpose,
       });
-      return _dio.post<dynamic>(path, data: form);
+      return _dio.post<dynamic>(
+        path,
+        data: form,
+        options: Options(
+          sendTimeout: uploadTimeout,
+          receiveTimeout: uploadTimeout,
+        ),
+      );
     });
+    final url = data is Map<String, dynamic> ? data['url'] : null;
+    if (url is String &&
+        (url.startsWith('/uploads/') ||
+            url.startsWith('https://') ||
+            url.startsWith('http://'))) {
+      return url;
+    }
+    throw const AppException(
+      'unexpected_response',
+      messageKey: 'errUnexpectedResponse',
+    );
   }
 
+  /// النوع الحقيقي من التوقيع الثنائي — مرآة `sniffImageMime` في الخادم.
+  /// غير المعروف يُرسَل بلا نوعٍ مُدَّعى، والحكم للخادم.
+  static ({String mime, String extension})? _sniffImage(Uint8List b) {
+    if (b.length >= 3 && b[0] == 0xff && b[1] == 0xd8 && b[2] == 0xff) {
+      return (mime: 'image/jpeg', extension: '.jpg');
+    }
+    const png = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+    if (b.length >= 8 && List.generate(8, (i) => b[i] == png[i]).every((ok) => ok)) {
+      return (mime: 'image/png', extension: '.png');
+    }
+    if (b.length >= 12 &&
+        String.fromCharCodes(b.sublist(0, 4)) == 'RIFF' &&
+        String.fromCharCodes(b.sublist(8, 12)) == 'WEBP') {
+      return (mime: 'image/webp', extension: '.webp');
+    }
+    return null;
+  }
+
+  /// DELETE — يعيد حقل `data` من المغلف الموحّد.
   Future<dynamic> delete(String path) =>
       _request(() => _dio.delete<dynamic>(path));
 

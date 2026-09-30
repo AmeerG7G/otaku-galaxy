@@ -31,7 +31,10 @@ export default function ImagesEditor({
     setUploading(true)
     try {
       const url = await uploadImage(file, purpose)
-      form.setFieldValue('images', [...images, url])
+      // القائمة كما هي **الآن** لا لقطتها وقت بدء الرفع: الرفع يستغرق ثوانيَ على
+      // خطٍّ حقيقي، وصورةٌ حذفها المسؤول خلاله كانت تعود مع الإلحاق.
+      const current: string[] = form.getFieldValue('images') ?? []
+      form.setFieldValue('images', [...current, url])
       message.success('رُفعت الصورة')
     } catch (error) {
       message.error(error instanceof Error ? error.message : 'تعذر رفع الصورة')

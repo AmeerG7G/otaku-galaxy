@@ -295,12 +295,14 @@ class AccountScreen extends StatelessWidget {
 
     _avatarUploading.value = true;
     try {
-      final data = await sl<ApiClient>().uploadFile(
+      // [CRITICAL] المرجع العائد مضمونٌ غير فارغ (`uploadImage` يرمي بدلاً
+      // منه). كان `url` هنا `String?` فيمرّ `null` من ردٍّ ناقص إلى
+      // `_applyAvatar` — أي «إزالة الصورة»: فشلُ الاستبدال كان يمسح القديمة.
+      final url = await sl<ApiClient>().uploadImage(
         ApiEndpoints.uploads,
-        filePath: picked.path,
+        bytes: await picked.readAsBytes(),
         purpose: 'avatar',
       );
-      final url = (data as Map<String, dynamic>)['url'] as String?;
       if (!context.mounted) return;
       await _applyAvatar(context, url);
     } catch (e) {
@@ -328,10 +330,12 @@ class AccountScreen extends StatelessWidget {
     }
   }
 
-  String _uploadError(BuildContext context, Object e) =>
-      e is AppException && e.message.trim().isNotEmpty
-      ? e.message
-      : context.strings('avatarUploadFailed');
+  /// نصّ الخطأ بلغة الواجهة — `localizedMessage` لا `message` الخام: الأخير
+  /// لخطأ الشبكة هو جملة Dio الإنجليزية، ولردٍّ بلا مغلّف `http_413`.
+  String _uploadError(BuildContext context, Object e) {
+    final text = e is AppException ? e.localizedMessage(context).trim() : '';
+    return text.isNotEmpty ? text : context.strings('avatarUploadFailed');
+  }
 
   Future<void> _confirmLogout(BuildContext context) async {
     final auth = context.read<AuthCubit>();

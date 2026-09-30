@@ -212,17 +212,14 @@ class _WriteReviewScreenState extends State<WriteReviewScreen> {
       _uploadingPhoto = true;
     });
     try {
-      final data = await sl<ApiClient>().uploadFile(
+      // من البايتات المقروءة للمعاينة نفسها — لا مسار ملف (لا يعمل على الويب).
+      // ردٌّ بلا مرجع صالح يرمي ويصل إلى `catch` أدناه.
+      final url = await sl<ApiClient>().uploadImage(
         ApiEndpoints.uploads,
-        filePath: picked.path,
+        bytes: bytes,
         purpose: 'review',
       );
       if (!mounted) return;
-      final url = (data as Map<String, dynamic>)['url'] as String?;
-      if (url == null || url.trim().isEmpty) {
-        _snack(context.strings('photoUploadFailed'));
-        return;
-      }
       setState(() {
         // السباق ممكن: رفعان متزامنان قد ينتهيان معاً بعد بلوغ السقف.
         // ردّ الرفع مرجعٌ نسبي أصلاً — يُحفظ كما هو.

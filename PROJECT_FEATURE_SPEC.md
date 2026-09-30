@@ -121,7 +121,8 @@ There are **no local/mock repository implementations left** — every domain rep
 **API client** — `lib/core/network/api_client.dart`: single Dio instance, injects
 `Authorization: Bearer` from `AuthLocalStorage.token`, unwraps the uniform
 `{ success, data, message, error:{code} }` envelope, calls `AuthCubit.forceLogout()` on 401, exposes
-`uploadFile()` (multipart) and `probeHealth()`.
+`uploadImage()` (multipart from bytes — web-safe, MIME from the bytes' signature, 60 s upload timeout,
+returns the validated `/uploads/…` ref) and `probeHealth()`.
 
 **Base URL** — `lib/core/config/app_config.dart`: `--dart-define=API_BASE_URL` override →
 per-environment explicit URL → dev default (`http://10.0.2.2:4000/api` on Android, else
@@ -378,7 +379,7 @@ and a few titles; the rest of the app stays Arabic. The file documents this deli
 ```
 account_screen.dart
   ├─ name/avatar → AuthCubit.updateProfile → PATCH /auth/me → users.username / users.avatar_url
-  ├─ avatar upload → ImagePicker(gallery) → ApiClient.uploadFile('/uploads', purpose:'avatar')
+  ├─ avatar upload → ImagePicker(gallery) → XFile.readAsBytes → ApiClient.uploadImage('/uploads', purpose:'avatar')
   │    → POST /api/uploads → mediaController.upload → mediaService.upload
   │    → sniffImageMime + storage.save → INSERT media_files → returns { id, url }
   ├─ points card → PointsCubit → GET /points
@@ -626,7 +627,7 @@ consumed the discount.
 ```
 order_detail → RateOrderRoute (rate_order_screen.dart) → per-product state via GET /reviews/find
   → WriteReviewRoute (write_review_screen.dart)
-      photo: ApiClient.uploadFile('/uploads', purpose:'review') → POST /api/uploads
+      photo: XFile.readAsBytes → ApiClient.uploadImage('/uploads', purpose:'review') → POST /api/uploads
       submit: ReviewsCubit.submit → POST /reviews  |  resubmit: PATCH /reviews/:id
   → ReviewSubmittedRoute
 Public: product_reviews_section.dart → GET /catalog/products/:productId/reviews
@@ -11138,3 +11139,69 @@ Retry (`home_offline_retry_test`), character #38 categories (`character_art_plac
   sub-admin holding only «طلبات الحساب» should be able to reset any customer's password once that
   customer files a forgot-password request (today: yes, after the manual WhatsApp check — the role's
   purpose; flagged by the security review as a design question, not a code defect).
+
+---
+
+# STEP 65 — IMAGE UPLOAD AUDIT: EVERY FLOW, END TO END (2026-09-30)
+
+Reported: «image uploading appears broken across the project» (app and dashboard). Work on `dev` only;
+no server was touched.
+
+## 65.1 What was actually broken
+
+On `dev`, an ordinary JPEG/PNG uploaded fine in all four flows (reproduced live over real HTTP: curl,
+the real Flutter `ApiClient`, the real dashboard in a browser). There was **no single commit that broke
+multipart** — STEP 64 did not touch multer, storage or the media service, and its audit hook
+(`fieldNames`, `Object.keys`) is safe on multer's null-prototype body. The failures were independent
+defects that only real clients and real networks hit; every existing test sent a `Content-Type`
+matching ideal bytes over localhost.
+
+| # | Defect | Who it broke | Fix |
+|---|---|---|---|
+| U1 | multer `fileFilter` and `mediaService` accepted only the **declared** `image/jpeg`, `image/png`, `image/webp` | Android: `image_picker` re-encodes a HEIC/GIF source to JPEG but keeps the extension (`scaled_x.heic`) → Dio declares `image/heic`; any extension-less file / `application/octet-stream` | the filter only rejects *honestly declared* non-images; the magic-byte sniff alone decides, and the stored extension follows it |
+| U2 | `MultipartFile.fromFile(path)` is `dart:io` only | **every** Flutter-web upload (`dio_web_adapter` throws) | `ApiClient.uploadImage(bytes:)` from `XFile.readAsBytes()`; source guard forbids `fromFile` in `lib/` |
+| U3 | 15 s timeouts: Dio `sendTimeout` bounds the **whole body** on IO; axios 15 s for unresized originals up to 5 MB | slow uplinks (never localhost) — dashboard needed ≥ 2.8 Mbit/s up | app uploads 60 s (`ApiClient.uploadTimeout`), dashboard 120 s (`UPLOAD_TIMEOUT_MS`) |
+| U4 | avatar: a success body without `url` passed `null` to `_applyAvatar` = «remove photo» | a failed replacement deleted the existing avatar | `uploadImage` returns a validated `/uploads/…` ref or throws `errUnexpectedResponse` |
+| U5 | avatar errors shown via `e.message` | timeouts showed Dio's English sentence; a proxy 413 showed `http_413` | `localizedMessage` |
+| U6 | iOS `Info.plist` had no `NSPhotoLibraryUsageDescription`/`NSCameraUsageDescription` (target 13.0) | iOS 13 crashes on the gallery; App Store processing flags the binary (ITMS-90683) | both purpose strings (Arabic) + guard test |
+| U7 | dashboard: no pre-validation; `data!.url` on a bad body; 413 (nginx HTML) → «تعذر إكمال الطلب» | admins saw English JS errors or generic text | local size/signature checks, response validation, 413 message; file relabelled with its real type + neutral name |
+| U8 | `ImagesEditor` appended to the list captured at upload start | an image deleted during a slow upload came back | append to the current field value |
+| U9 | storage write failure → generic 500; failed row insert left a blob with no row | operator/customer could not tell a disk/permission fault; invisible disk leak | 500 `STORAGE_FAILED` (path only in the server log); the just-written blob is removed |
+
+**U9 and the retention rule (§8.5):** media with a `media_files` row is still never deleted. The blob
+removed here was written in the same failed request and its URL was never returned, so nothing can
+reference it. `failure-retry-audit` Phase 13 was retitled accordingly.
+
+**Security:** validation is not weaker — non-images are rejected whatever their label (HTML, SVG, a PE
+executable named `.jpg`, empty file), client filenames never reach the path (UUID keys; a traversal
+name is ignored), served `Content-Type` comes from the sniffed extension with `nosniff`. Trade-off: junk
+labelled `application/octet-stream` is now buffered (≤ 5 MB, authenticated, rate-limited) before the
+signature check rejects it.
+
+## 65.2 Audited and found correct (no change)
+
+Routes/guards (`POST /api/uploads` customer: review/avatar only; `POST /api/admin/uploads`:
+`can('products','banners')`), multer size limit → `FILE_TOO_LARGE`, UUID storage keys, relative
+`/uploads/…` refs and their validators, `express.static` (`index:false`, `redirect:false`), CORS,
+helmet CORP `cross-origin`, the dashboard SW (no `fetch` handler), media-origin resolution in both
+clients (strips `/api`, HTTPS on staging), nginx (`client_max_body_size 8m`, `/uploads/` proxied —
+staging and prod files identical), Docker (`UPLOADS_DIR=uploads` → `/app/uploads` = named volume,
+chowned to `node` in the image). Categories and anime have no image field by decision (§64.2).
+
+## 65.3 Verification (observed in this run)
+
+| Stack | Check | Result |
+|---|---|---|
+| Backend | `tsc --noEmit` | clean |
+| Backend | full `vitest` (local reused test DB) | 89 files / 1686 tests: 1685 passed, 1 failed — `push-outbox` «password-reset … account_requests»: its helper sorts `id::text`, so the newest row depends on the sequence crossing a digit boundary; passes 25/25 alone; not an upload path (filed separately) |
+| Backend | re-run of the upload/fault files after the last edit | 6 files / 133 passed |
+| Dashboard | `tsc -b` · `vitest` · `build:staging` | clean · 32 files / 225 passed (3 of 4 full runs; one run failed `ProductEditPage` «options» — no upload involved, passes 3/3 alone) · built |
+| Flutter | `flutter analyze` · `flutter test --exclude-tags integration` | no issues · 1458 passed |
+| Live | curl, real Flutter `ApiClient`, real dashboard vs `npm run dev` | HEIC-labelled JPEG, extension-less and octet-stream images → 201 with the content's extension, served back 200 with the right type; HTML-in-`.jpg` → 400; customer → `product` 403; dashboard product image saved, survived a reload and rendered; avatar upload → `PATCH /auth/me` → `GET /auth/me` returned it |
+
+New tests: `backend/tests/upload-pipeline.test.ts` (21), `admin/src/api/uploadsApi.test.ts` (11,
+real axios with a stub adapter), `admin/src/components/ImageUpload.test.tsx` (6),
+`test/image_upload_client_test.dart` (11), `test/ios_media_permissions_test.dart` (2).
+
+**Not verified here:** staging itself (no access from the session), a physical Android/iOS device, and
+the Flutter-web upload in a browser (proved by construction: bytes API + source guard).

@@ -21,6 +21,8 @@ function fallbackMessage(status: number): string {
   if (status === 401) return 'الجلسة منتهية — سجّل الدخول مجدداً'
   if (status === 403) return 'لا تملك صلاحية للقيام بهذا الإجراء'
   if (status === 404) return 'العنصر المطلوب غير موجود'
+  // nginx يردّ ٤١٣ بصفحة HTML (`client_max_body_size`) قبل أن يصل الطلب للخادم.
+  if (status === 413) return 'حجم الملف أكبر من الحدّ المسموح'
   if (status >= 500) return 'حدث خطأ غير متوقع في الخادم'
   return 'تعذر إكمال الطلب'
 }

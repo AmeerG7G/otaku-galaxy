@@ -25,8 +25,6 @@ const MIME_EXTENSIONS: Record<string, string> = {
   'image/webp': '.webp',
 };
 
-export const ALLOWED_IMAGE_MIMES = Object.keys(MIME_EXTENSIONS);
-
 export function extensionFor(mimeType: string) {
   return MIME_EXTENSIONS[mimeType] ?? '';
 }

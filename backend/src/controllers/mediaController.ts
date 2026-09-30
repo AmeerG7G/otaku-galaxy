@@ -22,7 +22,6 @@ export const mediaController = {
 
     const media = await mediaService.upload({
       buffer: file.buffer,
-      mimeType: file.mimetype,
       purpose,
       uploadedBy: req.auth?.id ?? null,
       isAdmin,

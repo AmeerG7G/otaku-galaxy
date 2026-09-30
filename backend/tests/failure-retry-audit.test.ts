@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+import path from 'node:path';
 import type pg from 'pg';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { db } from '../src/database/pool.js';
@@ -13,7 +15,7 @@ import { audienceRepo } from '../src/repositories/audienceRepo.js';
 import { loyaltyRewardsService } from '../src/services/loyaltyRewardsService.js';
 import { dispatchPushOutbox } from '../src/jobs/pushOutboxJob.js';
 import { pushProvider } from '../src/services/push/index.js';
-import { storage } from '../src/storage/index.js';
+import { storage, uploadsRoot } from '../src/storage/index.js';
 import {
   api,
   app,
@@ -1468,16 +1470,18 @@ describe('Failure / retry / idempotency audit', () => {
       api.post('/api/uploads').set(authed(token)).attach('file', PNG, { filename: 'a.png', contentType: 'image/png' }).field('purpose', 'review').then((r) => r);
     const mediaRowsOf = (userId: string) => count('FROM media_files WHERE uploaded_by = $1', [userId]);
 
-    it('file saved, DB row insert fails → orphan blob on disk, no row (retained; no cleanup by contract), retry creates a second blob + row', async () => {
+    it('file saved, DB row insert fails → the just-written blob is removed, no row; retry creates a new blob + row', async () => {
       const user = await registerAndLogin();
       const saved = vi.spyOn(storage, 'save');
       vi.spyOn(mediaRepo, 'create').mockRejectedValueOnce(new Error('injected: media row'));
       expect((await upload(user.token)).status).toBe(500);
       expect(saved).toHaveBeenCalledTimes(1);
       expect(await mediaRowsOf(user.userId)).toBe(0);
-      // الملف الأول بقي على القرص بلا صفّ (احتفاظٌ موثَّق، لا تنظيف)، والثاني
-      // ملفٌ آخر بمفتاحٍ آخر — لا يُعاد استعمال المفتاح اليتيم.
+      // STEP 65: الملف المكتوب في الطلب الفاشل نفسه يُحذف — مرجعه لم يُعَد
+      // لأي عميل فلا شيء يشير إليه (خلاف «لا حذف» لوسائط لها صفّ، §8.5).
+      // والثاني ملفٌ آخر بمفتاحٍ آخر — لا يُعاد استعمال المفتاح الفاشل.
       const orphan = await (saved.mock.results[0]!.value as Promise<{ storageKey: string }>);
+      expect(existsSync(path.join(uploadsRoot, orphan.storageKey))).toBe(false);
 
       vi.restoreAllMocks();
       const ok = await upload(user.token);
