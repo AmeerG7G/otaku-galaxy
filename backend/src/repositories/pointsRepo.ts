@@ -82,13 +82,28 @@ export const pointsRepo = {
    * يختلف عن [listActivity] عمداً: العميل يرى نصّاً معروضاً فقط، والإدارة
    * تحتاج السبب الآلي ومعرّف الطلب/التقييم للتدقيق. لا جدول ولا رصيد ثانٍ —
    * نفس الصفوف بعدسة أوسع.
+   *
+   * [STEP 66] كل سطرٍ يحمل **الرصيد بعده** ورقمَ طلبه: «كيف صار رصيده ٣٥؟»
+   * يُقرأ من السجلّ مباشرةً. الرصيد التراكمي نافذةٌ على دفتر الزبون **كله**
+   * قبل القصّ إلى `limit` — لو حُسب على الصفحة لبدأ أقدمُ سطرٍ معروض من صفر
+   * وكذب كل ما فوقه. الترتيب (`created_at`, `id`) نفسه في النافذة والعرض،
+   * فحركتان في اللحظة نفسها لا تتبادلان رصيدهما.
    */
   async listLedgerForAdmin(db: pg.Pool | pg.PoolClient, userId: string, limit = 200) {
-    const { rows } = await db.query<PointsLedgerRow>(
-      `SELECT * FROM points_ledger
-       WHERE user_id = $1
-       ORDER BY created_at DESC
-       LIMIT $2`,
+    const { rows } = await db.query<
+      PointsLedgerRow & { balance_after: string; order_number: string | null }
+    >(
+      `SELECT l.*, o.number AS order_number, l.balance_after::text AS balance_after
+         FROM (
+           SELECT pl.*,
+                  SUM(pl.amount) OVER (ORDER BY pl.created_at, pl.id
+                                       ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS balance_after
+             FROM points_ledger pl
+            WHERE pl.user_id = $1
+         ) l
+         LEFT JOIN orders o ON o.id = l.order_id
+        ORDER BY l.created_at DESC, l.id DESC
+        LIMIT $2`,
       [userId, limit],
     );
     return rows.map((row) => ({
@@ -97,7 +112,9 @@ export const pointsRepo = {
       amount: row.amount,
       reason: row.reason,
       orderId: row.order_id,
+      orderNumber: row.order_number,
       reviewId: row.review_id,
+      balanceAfter: Number(row.balance_after),
       createdAt: new Date(row.created_at).toISOString(),
     }));
   },
@@ -107,7 +124,13 @@ export const pointsRepo = {
    *
    * كلها مشتقّة من نفس الدفتر — لا عمود رصيد ولا جدول تجميع يمكن أن يتباعد
    * عن الحقيقة. `SUM` على الموجب والسالب منفصلين يفرّق بين ما مُنح وما
-   * سُحب (سحب نقاط تقييم رُفض بعد اعتماده).
+   * سُحب (حركةٌ سالبة في الدفتر).
+   *
+   * [CRITICAL] (STEP 66) **الزبائن وحدهم** — هنا وفي `byReason` و`topBalances`.
+   * نقاط المجرّة برنامج ولاءٍ للزبائن، ودفترُ غيرِ الزبون لا يُفتح من اللوحة
+   * (`GET /admin/customers/:id/points` يردّ 404 منذ STEP 64). حسابٌ مسؤول
+   * كسب نقاطاً بطلبات اختبار كان يتصدّر «أعلى الأرصدة» ثم يُفتح دفتره فارغاً،
+   * ويكشف اسمه ورقمه لمسؤولٍ فرعي يملك «النقاط» وحدها.
    */
   async summary(db: pg.Pool | pg.PoolClient) {
     const { rows } = await db.query<{
@@ -122,7 +145,8 @@ export const pointsRepo = {
               COALESCE(SUM(amount) FILTER (WHERE amount < 0), 0)::text AS revoked,
               COUNT(*)::text                                           AS entries,
               COUNT(DISTINCT user_id)::text                            AS holders
-         FROM points_ledger`,
+         FROM points_ledger
+        WHERE user_id IN (SELECT id FROM users WHERE role = 'customer')`,
     );
     const row = rows[0];
     return {
@@ -139,6 +163,7 @@ export const pointsRepo = {
     const { rows } = await db.query<{ reason: PointsReason; entries: string; total: string }>(
       `SELECT reason, COUNT(*)::text AS entries, COALESCE(SUM(amount), 0)::text AS total
          FROM points_ledger
+        WHERE user_id IN (SELECT id FROM users WHERE role = 'customer')
         GROUP BY reason
         ORDER BY SUM(amount) DESC`,
     );
@@ -167,7 +192,7 @@ export const pointsRepo = {
               SUM(l.amount)::text AS balance,
               COUNT(*)::text      AS entries
          FROM points_ledger l
-         JOIN users u ON u.id = l.user_id
+         JOIN users u ON u.id = l.user_id AND u.role = 'customer'
         GROUP BY l.user_id, u.username, u.phone
         HAVING SUM(l.amount) > 0
         ORDER BY SUM(l.amount) DESC, u.username

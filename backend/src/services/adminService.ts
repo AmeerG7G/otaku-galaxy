@@ -643,7 +643,7 @@ export const adminService = {
     hasOrders?: boolean;
     minPoints?: number;
     maxPoints?: number;
-    gender?: Gender | 'unknown';
+    gender?: Gender;
     sort?: CustomerSort;
   }) {
     // العدّادات تُحسب على كامل المطابق للبحث لا على الصفحة المعروضة، وتُرسل

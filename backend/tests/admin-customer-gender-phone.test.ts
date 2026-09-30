@@ -111,15 +111,24 @@ describe('الجنس في قائمة الإدارة', () => {
     ).toBe(true);
   });
 
-  it('ترشيح «غير محدد» يُرجع الحسابات بلا جنس', async () => {
+  it('[STEP 66] لا جنس ثالث: ترشيح «unknown» يُرفض عند الحدّ', async () => {
+    // للمتجر جنسان فقط (قيد `users.gender` منذ ٠٤٠). `NULL` حسابٌ قديم لم
+    // يُسأل — غيابُ قيمة لا فئةٌ ثالثة يُرشَّح بها أو تُعدّ.
     const res = await api
       .get('/api/admin/users?gender=unknown&limit=50')
       .set('Authorization', `Bearer ${adminToken}`)
+      .expect(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('الحساب القديم بلا جنس يبقى في القائمة غير المرشَّحة — لا يُحذف ولا يُخمَّن', async () => {
+    const legacy = await findCustomer(legacyId);
+    expect(legacy?.gender).toBeNull();
+    const males = await api
+      .get(`/api/admin/users?gender=male&search=${encodeURIComponent(legacyPhone)}`)
+      .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
-    expect(
-      res.body.data.items.every((u: { gender: null }) => u.gender === null),
-    ).toBe(true);
-    expect(res.body.data.items.some((u: { id: string }) => u.id === legacyId)).toBe(true);
+    expect(males.body.data.items.some((u: { id: string }) => u.id === legacyId)).toBe(false);
   });
 
   it('[CRITICAL] الترشيح يجري في القاعدة لا في المتصفح', async () => {
@@ -153,7 +162,10 @@ describe('تعداد الزبائن حسب الجنس', () => {
     const counts = res.body.data.genderCounts;
     expect(counts).toBeDefined();
     expect(typeof counts.total).toBe('number');
-    expect(counts.male + counts.female + counts.unknown).toBe(counts.total);
+    // [STEP 66] ذكر وأنثى فقط — لا عدّاد «غير محدد». الحسابات القديمة داخل
+    // المجموع وحده، فالمجموع ≥ الذكور + الإناث.
+    expect(Object.keys(counts).sort()).toEqual(['female', 'male', 'total']);
+    expect(counts.male + counts.female).toBeLessThanOrEqual(counts.total);
   });
 
   it('[CRITICAL] العدّاد لا يعتمد على الصفحة المعروضة', async () => {
@@ -176,15 +188,15 @@ describe('تعداد الزبائن حسب الجنس', () => {
       .get('/api/admin/users?limit=1')
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
-    const { rows } = await db.query<{ male: string; female: string; unknown: string }>(
-      `SELECT COUNT(*) FILTER (WHERE gender = 'male')::text   AS male,
-              COUNT(*) FILTER (WHERE gender = 'female')::text AS female,
-              COUNT(*) FILTER (WHERE gender IS NULL)::text    AS unknown
+    const { rows } = await db.query<{ total: string; male: string; female: string }>(
+      `SELECT COUNT(*)::text                                  AS total,
+              COUNT(*) FILTER (WHERE gender = 'male')::text   AS male,
+              COUNT(*) FILTER (WHERE gender = 'female')::text AS female
          FROM users WHERE role = 'customer'`,
     );
+    expect(res.body.data.genderCounts.total).toBe(Number(rows[0]!.total));
     expect(res.body.data.genderCounts.male).toBe(Number(rows[0]!.male));
     expect(res.body.data.genderCounts.female).toBe(Number(rows[0]!.female));
-    expect(res.body.data.genderCounts.unknown).toBe(Number(rows[0]!.unknown));
   });
 
   it('العدّادات تحترم البحث النشط', async () => {

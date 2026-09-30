@@ -454,16 +454,16 @@ export const userRepo = {
       conditions.push(`u.is_active = $${values.length}`);
     }
 
+    // [STEP 66] ذكر وأنثى والمجموع — لا عدّاد ثالث. الحسابات القديمة بلا جنس
+    // (`NULL`) داخل المجموع وحده: غيابُ قيمة لا جنسٌ يُعدّ.
     const { rows } = await db.query<{
       total: string;
       male: string;
       female: string;
-      unknown: string;
     }>(
       `SELECT COUNT(*)::text                                        AS total,
               COUNT(*) FILTER (WHERE u.gender = 'male')::text       AS male,
-              COUNT(*) FILTER (WHERE u.gender = 'female')::text     AS female,
-              COUNT(*) FILTER (WHERE u.gender IS NULL)::text        AS unknown
+              COUNT(*) FILTER (WHERE u.gender = 'female')::text     AS female
          FROM users u
         WHERE ${conditions.join(' AND ')}`,
       values,
@@ -473,7 +473,6 @@ export const userRepo = {
       total: Number(row?.total ?? 0),
       male: Number(row?.male ?? 0),
       female: Number(row?.female ?? 0),
-      unknown: Number(row?.unknown ?? 0),
     };
   },
 
@@ -535,13 +534,13 @@ export const userRepo = {
       minPoints?: number;
       maxPoints?: number;
       /**
-       * ترشيح بالجنس. `unknown` يعني الحسابات التي لم تُسأل بعد (`NULL`).
+       * ترشيح بالجنس — ذكر أو أنثى فقط (لا فئة ثالثة؛ انظر `adminCustomersQuerySchema`).
        *
        * [CRITICAL] الترشيح في القاعدة لا في المتصفح: قائمة الزبائن مرقَّمة،
        * وترشيحُ الصفحة المحمَّلة وحدها يعطي المسؤول «الذكور» في هذه العشرين
        * لا في المتجر كله — رقمٌ يبدو جواباً وهو ليس كذلك.
        */
-      gender?: Gender | 'unknown';
+      gender?: Gender;
       /** ترشيح بمستوى المجرّة — مدى نقاطٍ من السلّم الثابت. */
       levelKey?: string;
       sort?: CustomerSort;
@@ -604,11 +603,7 @@ export const userRepo = {
       conditions.push(`${POINTS_BALANCE} <= ${push(options.maxPoints)}`);
     }
     if (options.gender !== undefined) {
-      conditions.push(
-        options.gender === 'unknown'
-          ? 'u.gender IS NULL'
-          : `u.gender = ${push(options.gender)}`,
-      );
+      conditions.push(`u.gender = ${push(options.gender)}`);
     }
 
     const where = `WHERE ${conditions.join(' AND ')}`;

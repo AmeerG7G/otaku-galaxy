@@ -376,12 +376,17 @@ export const adminCustomersQuerySchema = z.object({
   minPoints: z.coerce.number().int().min(0).optional(),
   maxPoints: z.coerce.number().int().min(0).optional(),
   /**
-   * ترشيح بالجنس — تعدادٌ مغلق يشمل `unknown` للحسابات التي لم تُسأل.
+   * ترشيح بالجنس — ذكر أو أنثى فقط.
+   *
+   * [STEP 66] للمتجر جنسان (قيد `users.gender` منذ الهجرة ٠٤٠). كان هنا
+   * `unknown` ثالثاً يرشّح الحسابات القديمة التي لم تُسأل (`NULL`) — فبدا في
+   * اللوحة خيارُ «غير محدد» جنساً ثالثاً. `NULL` غيابُ قيمة لا فئة: يظهر
+   * «—» في الصفّ ويدخل المجموع، ولا يُرشَّح به ولا يُعدّ وحده.
    *
    * قيمةٌ خارجه تُرفض عند الحدّ بدل أن تُتجاهل بصمت: مسؤولٌ كتب `Male` يجب
    * أن يرى الرفض لا قائمةً كاملة يظنّها مرشَّحة.
    */
-  gender: z.enum([...GENDERS, 'unknown']).optional(),
+  gender: z.enum(GENDERS).optional(),
   /** ترشيح بمستوى المجرّة — يُحوَّل إلى مدى نقاط في القاعدة. */
   levelKey: z.enum(GALAXY_LEVEL_KEYS).optional(),
   sort: z.enum(CUSTOMER_SORTS).optional(),
