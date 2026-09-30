@@ -221,7 +221,7 @@
 | 184 | `chooseOptionsFirst` | MEDIUM | **NOT_REVIEWED** | اختر الخيارات أولاً | سەرەتا هەڵبژاردنەکان دیاری بکە | — | — | product_detail:557 نصّ الزر حين تنقص الخيارات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
 | 185 | `listSeparator` | MEDIUM | **NOT_REVIEWED** | ، | ، | — | السوراني يستعمل الفاصلة العربية نفسها — أُبقيت مفتاحاً لا محفورة | product_detail:657 فاصل بين الخيارات المختارة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
 | 186 | `addToYourCollection` | MEDIUM | **NOT_REVIEWED** | أضف إلى مجموعتك | بیخە کۆمەڵەکەتەوە | — | — | product_detail:799 زر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 187 | `deliveryDiscountPerItem` | MEDIUM | **NOT_REVIEWED** | خصم {amount} د.ع من التوصيل لكل قطعة | داشکاندنی {amount} د.ع لە گەیاندن بۆ هەر دانەیەک | — | — | anime_product_card سطر ترويج التوصيل | amount | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 187 | `deliveryDiscountAmount` | MEDIUM | **NOT_REVIEWED** | خصم {amount} د.ع من التوصيل | داشکاندنی {amount} د.ع لە گەیاندن | — | — | delivery_promo_label — بطاقة المنتج وصفحة التفاصيل، سطر مبلغ ترويج التوصيل | amount | **NEEDS_NATIVE_REVIEW** | PENDING |
 | 188 | `soldOutShort` | MEDIUM | **NOT_REVIEWED** | نفدت | تەواو بوو | — | مختصرة كما «نفدت»؛ نفس معنى outOfStock بصيغة أقصر | anime_product_card:372 شارة مختصرة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
 | 189 | `noFavoritesYet` | MEDIUM | **NOT_REVIEWED** | لم تحفظ أي منتج بعد | هێشتا هیچ بەرهەمێکت پاشەکەوت نەکردووە | — | — | عدّاد حين لا مفضلة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
 | 190 | `savedProductsCount` | MEDIUM | **NOT_REVIEWED** | {count} منتج محفوظ | {count} بەرهەمی پاشەکەوتکراو | — | — | عدّاد المفضلة | count | **NEEDS_NATIVE_REVIEW** | PENDING |

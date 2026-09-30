@@ -3211,11 +3211,11 @@
   "human_reviewer": "",
   "human_notes": ""
  },
- "deliveryDiscountPerItem": {
-  "ar": "خصم {amount} د.ع من التوصيل لكل قطعة",
-  "ckb": "داشکاندنی {amount} د.ع لە گەیاندن بۆ هەر دانەیەک",
+ "deliveryDiscountAmount": {
+  "ar": "خصم {amount} د.ع من التوصيل",
+  "ckb": "داشکاندنی {amount} د.ع لە گەیاندن",
   "feature": "product",
-  "context": "anime_product_card سطر ترويج التوصيل",
+  "context": "delivery_promo_label — بطاقة المنتج وصفحة التفاصيل، سطر مبلغ ترويج التوصيل",
   "risk": "MEDIUM",
   "placeholders": [
    "amount"

@@ -6,6 +6,7 @@ import '../../tokens/app_colors.dart';
 import '../../tokens/app_dimens.dart';
 import '../../tokens/app_theme_colors.dart';
 import '../feedback/product_photo_slot.dart';
+import '../feedback/delivery_promo_label.dart';
 import '../feedback/product_stock_pill.dart';
 
 /// بطاقة المنتج بتصميم Otaku Galaxy v2.
@@ -208,7 +209,9 @@ class AnimeProductCard extends StatelessWidget {
                         ],
                       ),
                     ],
-                    if (!compact && _deliveryPromoLabel(context) != null) ...[
+                    if (!compact &&
+                        deliveryPromoDiscountLabel(context, product) !=
+                            null) ...[
                       const SizedBox(height: 6),
                       Row(
                         children: [
@@ -216,7 +219,7 @@ class AnimeProductCard extends StatelessWidget {
                           const SizedBox(width: 4),
                           Flexible(
                             child: Text(
-                              _deliveryPromoLabel(context)!,
+                              deliveryPromoDiscountLabel(context, product)!,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: Theme.of(context).textTheme.labelSmall
@@ -249,19 +252,6 @@ class AnimeProductCard extends StatelessWidget {
       return first.isEmpty ? null : first;
     }
     return null;
-  }
-
-  /// سطر ترويج التوصيل بقيمته الحقيقية من الخادم.
-  ///
-  /// لا يُعرض ما لم يوجد مبلغ فعلي — الشارة يجب أن تُترجم دائماً إلى خصم
-  /// حقيقي يطبّقه الخادم عند إنشاء الطلب.
-  String? _deliveryPromoLabel(BuildContext context) {
-    if (!product.hasDeliveryPromo) return null;
-    final amount = product.deliveryPromoAmount;
-    if (amount <= 0) return null;
-    return context.strings.p('deliveryDiscountPerItem', {
-      'amount': amount.toStringAsFixed(0),
-    });
   }
 
   /// شارة البطاقة: نسبة الخصم الحقيقية أولاً (لا تظهر إلا بوجود سعر سابق

@@ -419,19 +419,40 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                 ),
               ],
 
-              // ترويج التوصيل — يضبطه المسؤول على المنتج.
+              // ترويج التوصيل — يضبطه المسؤول على المنتج، ومبلغ الخصم تحته
+              // في المنطقة نفسها. السطران يلتفّان ولا يُقصّان على الشاشات
+              // الضيّقة.
               if (product.hasDeliveryPromo) ...[
                 const SizedBox(height: 9),
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text('🚚', style: TextStyle(fontSize: 13)),
                     const SizedBox(width: 6),
-                    Text(
-                      context.strings('deliveryPromoProduct'),
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        fontSize: 12,
-                        fontWeight: AppDimens.weightBold,
-                        color: context.themeColors.successText,
+                    Expanded(
+                      child: Builder(
+                        builder: (context) {
+                          final style = theme.textTheme.bodySmall?.copyWith(
+                            fontSize: 12,
+                            fontWeight: AppDimens.weightBold,
+                            color: context.themeColors.successText,
+                          );
+                          final amount =
+                              deliveryPromoDiscountLabel(context, product);
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                context.strings('deliveryPromoProduct'),
+                                style: style,
+                              ),
+                              if (amount != null) ...[
+                                const SizedBox(height: 3),
+                                Text(amount, style: style),
+                              ],
+                            ],
+                          );
+                        },
                       ),
                     ),
                   ],

@@ -22,6 +22,7 @@ export 'feedback/otaku_skeleton.dart';
 export 'feedback/otaku_snack.dart';
 export 'feedback/product_photo_slot.dart';
 export 'feedback/product_stock_pill.dart';
+export 'feedback/delivery_promo_label.dart';
 export 'inputs/anime_choice_chip.dart';
 export 'inputs/anime_text_field.dart';
 export 'inputs/gender_selector.dart';
