@@ -57,7 +57,7 @@ const _slotNumbers = <String, int>{
   'order_success_character': 21,
   'points_character': 23,
   'community_header_character': 24,
-  'community_empty_character': 25,
+  'community_empty_character': 24,
   'community_gallery_character': 25,
   'product_reviews_character': 26,
   'rate_order_character': 28,
@@ -219,7 +219,7 @@ void main() {
         [VisualSlots.emptyCart, VisualSlots.searchHeader],
         [VisualSlots.categoryProductsHeader, VisualSlots.emptyCategoryProducts],
         [VisualSlots.ordersHeader, VisualSlots.onboardingSlideThree],
-        [VisualSlots.communityEmpty, VisualSlots.communityGallery],
+        [VisualSlots.communityHeader, VisualSlots.communityEmpty],
         [VisualSlots.homeHero, VisualSlots.homePromoSecondary, VisualSlots.reviewSubmitted],
       ]) {
         expect(group.map(CharacterArt.forSlot).toSet(), hasLength(1), reason: '$group');

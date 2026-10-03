@@ -190,7 +190,7 @@ class CharacterArt {
     VisualSlots.orderSuccess: 'assets/art/characters/21.png', // نجاح الطلب
     VisualSlots.points: 'assets/art/characters/23.png', // نقاط المجرّة
     VisualSlots.communityHeader: 'assets/art/characters/24.png', // المجتمع — الترويسة
-    VisualSlots.communityEmpty: 'assets/art/characters/25.png', // المجتمع — فارغ
+    VisualSlots.communityEmpty: 'assets/art/characters/24.png', // المجتمع — فارغ
     VisualSlots.communityGallery: 'assets/art/characters/25.png', // المجتمع — المعرض
     VisualSlots.productReviews: 'assets/art/characters/26.png', // تقييمات المنتج
     VisualSlots.rateOrder: 'assets/art/characters/28.png', // تقييم الطلب
