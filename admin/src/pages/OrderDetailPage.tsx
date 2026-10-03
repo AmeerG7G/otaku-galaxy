@@ -22,6 +22,7 @@ import { formatCurrency, formatDateTime } from '../utils/format'
 import StatusBadge from '../components/StatusBadge'
 import StatusTransitionButtons from '../components/StatusTransitionButtons'
 import { STATUS_LABELS } from '../constants/orders'
+import { PhoneText } from '../components/ui/PhoneText'
 import { ProductLink } from '../components/ui/ProductLink'
 import { WhatsAppButton } from '../components/ui/WhatsAppButton'
 import { ReminderControls } from '../components/ui/ReminderControls'
@@ -173,7 +174,7 @@ export default function OrderDetailPage() {
               {order.customer?.name ?? 'غير متوفر'}
             </Descriptions.Item>
             <Descriptions.Item label="الهاتف">
-              {order.customer?.phone ?? 'غير متوفر'}
+              {order.customer?.phone ? <PhoneText phone={order.customer.phone} /> : 'غير متوفر'}
             </Descriptions.Item>
           </Descriptions>
           {/* رقم الحساب أولاً، ورقم التواصل في الطلب لحسابٍ حُذف. */}
@@ -189,7 +190,7 @@ export default function OrderDetailPage() {
               {order.fullAddress}
             </Descriptions.Item>
             <Descriptions.Item label="رقم هاتف التواصل">
-              {order.phone}
+              <PhoneText phone={order.phone} />
             </Descriptions.Item>
             <Descriptions.Item label="أجور التوصيل">
               {formatCurrency(order.deliveryFee)}

@@ -216,3 +216,28 @@ describe('خصم مزيّة المستوى في تفاصيل الطلب', () => 
     expect(screen.queryByText('منه خصم عيد الميلاد')).toBeNull()
   })
 })
+
+describe('هاتفا الطلب في التفاصيل', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('هاتف الحساب وهاتف التواصل بالصيغة المحلية 07…، وواتساب على الرقم الدولي', async () => {
+    vi.mocked(getOrder).mockResolvedValue(
+      order({ phone: '+9647809876543', customer: { id: 'u1', name: 'أمير', phone: '+9647701234567' } }),
+    )
+    renderPage()
+    expect(await screen.findByText('07701234567')).toBeInTheDocument()
+    expect(screen.getByText('07809876543')).toBeInTheDocument()
+    expect(document.body.textContent).not.toContain('964')
+    // رقم الحساب أولاً — والرابط يبقى دولياً: wa.me لا يقبل 07….
+    expect(screen.getByText('واتساب').closest('a')).toHaveAttribute('href', 'https://wa.me/9647701234567')
+  })
+
+  it('حسابٌ محذوف: «غير متوفر» كما هو، وواتساب على رقم التواصل', async () => {
+    vi.mocked(getOrder).mockResolvedValue(order({ phone: '+9647809876543', customer: null }))
+    renderPage()
+    // الاسم والهاتف كلاهما «غير متوفر».
+    expect(await screen.findAllByText('غير متوفر')).toHaveLength(2)
+    expect(screen.getByText('07809876543')).toBeInTheDocument()
+    expect(screen.getByText('واتساب').closest('a')).toHaveAttribute('href', 'https://wa.me/9647809876543')
+  })
+})

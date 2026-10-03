@@ -46,14 +46,9 @@ import {
 } from '../types/adminPermissions'
 import { resyncWebPush } from '../push/webPush'
 import { formatDateTime } from '../utils/format'
-import { IRAQI_MOBILE_LENGTH, IRAQI_MOBILE_PATTERN } from '../utils/phone'
+import { IRAQI_MOBILE_LENGTH, IRAQI_MOBILE_PATTERN, formatIraqiPhone } from '../utils/phone'
 
 const errorText = (error: unknown, fallback: string) => (error instanceof ApiError ? error.message : fallback)
-
-/** `+9647701234567` → `07701234567` — الصيغة التي يكتبها المسؤول في الحقل. */
-function localPhone(phone: string) {
-  return phone.startsWith('+964') ? `0${phone.slice(4)}` : phone
-}
 
 const phoneRules = [
   { required: true, message: 'أدخل رقم الهاتف' },
@@ -133,11 +128,11 @@ function OwnProfileTab() {
       form={form}
       layout="vertical"
       style={{ maxWidth: 520 }}
-      initialValues={{ username: profile.username, phone: localPhone(profile.phone) }}
+      initialValues={{ username: profile.username, phone: formatIraqiPhone(profile.phone) }}
       onFinish={(values: { username: string; phone: string; currentPassword?: string; newPassword?: string }) => {
         const input: Parameters<typeof updateOwnProfile>[0] = {}
         if (values.username !== profile.username) input.username = values.username
-        if (values.phone !== localPhone(profile.phone)) input.phone = values.phone
+        if (values.phone !== formatIraqiPhone(profile.phone)) input.phone = values.phone
         if (values.newPassword) input.newPassword = values.newPassword
         if (input.phone || input.newPassword) input.currentPassword = values.currentPassword
         if (Object.keys(input).length === 0) {
@@ -179,7 +174,7 @@ function OwnProfileTab() {
         rules={[
           ({ getFieldValue }) => ({
             validator: (_, value) =>
-              (getFieldValue('phone') === localPhone(profile.phone) && !getFieldValue('newPassword')) || value
+              (getFieldValue('phone') === formatIraqiPhone(profile.phone) && !getFieldValue('newPassword')) || value
                 ? Promise.resolve()
                 : Promise.reject(new Error('أدخل كلمة المرور الحالية')),
           }),
@@ -239,7 +234,7 @@ function AdminEditor({ state, onClose }: { state: EditorState; onClose: () => vo
         preserve={false}
         initialValues={
           editing
-            ? { username: editing.username, phone: localPhone(editing.phone), permissions: editing.permissions, isActive: editing.isActive }
+            ? { username: editing.username, phone: formatIraqiPhone(editing.phone), permissions: editing.permissions, isActive: editing.isActive }
             : { permissions: [], isActive: true }
         }
         onFinish={(values: { username: string; phone: string; password?: string; permissions: AdminSection[]; isActive: boolean }) => {
@@ -249,7 +244,7 @@ function AdminEditor({ state, onClose }: { state: EditorState; onClose: () => vo
           }
           const input: UpdateSubAdminInput = {}
           if (values.username !== editing.username) input.username = values.username
-          if (values.phone !== localPhone(editing.phone)) input.phone = values.phone
+          if (values.phone !== formatIraqiPhone(editing.phone)) input.phone = values.phone
           if ([...values.permissions].sort().join() !== [...editing.permissions].sort().join()) input.permissions = values.permissions
           if (values.isActive !== editing.isActive) input.isActive = values.isActive
           if (values.password) input.newPassword = values.password
@@ -397,6 +392,9 @@ function describeAudit(entry: AuditEntry) {
   return entry.action
 }
 
+/** مفاتيح الإعدادات التي تحمل رقم هاتف — قيمها تُعرض بصيغة اللوحة. */
+const PHONE_SETTING_KEYS = new Set(['social_whatsapp'])
+
 function auditDetails(entry: AuditEntry) {
   const details = entry.details ?? {}
   const parts: string[] = []
@@ -409,7 +407,9 @@ function auditDetails(entry: AuditEntry) {
   if (typeof details.unlinkedProducts === 'number') parts.push(`فُكّ ارتباط ${details.unlinkedProducts} منتج`)
   if (details.changes && typeof details.changes === 'object') {
     for (const [key, change] of Object.entries(details.changes as Record<string, { before: string; after: string }>)) {
-      parts.push(`${key}: «${change.before || '—'}» ← «${change.after || '—'}»`)
+      // رقم واتساب المتجر قد يكون رقماً أو رابطاً: الرقم العراقي يُعرض `07…`، والرابط كما هو.
+      const shown = (value: string) => (PHONE_SETTING_KEYS.has(key) ? formatIraqiPhone(value) : value) || '—'
+      parts.push(`${key}: «${shown(change.before)}» ← «${shown(change.after)}»`)
     }
   }
   return parts.join(' · ')

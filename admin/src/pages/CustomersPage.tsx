@@ -34,6 +34,7 @@ import { formatDateTime } from '../utils/format'
 import EmptyState from '../components/EmptyState'
 import { PageHeader } from '../components/ui/PageHeader'
 import { SearchField } from '../components/ui/SearchField'
+import { PhoneText } from '../components/ui/PhoneText'
 import { WhatsAppButton } from '../components/ui/WhatsAppButton'
 
 const PAGE_SIZE = 12
@@ -185,11 +186,7 @@ export default function CustomersPage() {
       dataIndex: 'phone',
       key: 'phone',
       width: 170,
-      render: (phone: string) => (
-        <Typography.Text copyable style={{ direction: 'ltr', display: 'inline-block' }}>
-          {phone}
-        </Typography.Text>
-      ),
+      render: (phone: string) => <PhoneText phone={phone} copyable />,
     },
     {
       title: 'الجنس',

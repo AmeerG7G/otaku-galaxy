@@ -76,6 +76,19 @@ export function normalizeIraqiPhone(raw: unknown): string | null {
   return `${IRAQ_PHONE_PREFIX}${national}`;
 }
 
+/**
+ * الرقم كما يقرؤه المسؤول: `07XXXXXXXXX` — صيغة العرض في كل شاشات اللوحة
+ * (`admin/src/utils/phone.ts` · `formatIraqiPhone`).
+ *
+ * للنصوص المعروضة وحدها (إشعارات المسؤول). ما يُخزَّن أو يُقارَن أو يُرسَل
+ * إلى مزوّد يبقى `normalizeIraqiPhone`. ما ليس موبايلاً عراقياً صالحاً يعود
+ * كما وصل.
+ */
+export function formatIraqiPhone(raw: string): string {
+  const canonical = normalizeIraqiPhone(raw);
+  return canonical ? `0${canonical.slice(IRAQ_PHONE_PREFIX.length)}` : raw;
+}
+
 /** هل النصّ رقمٌ عراقي صالح؟ */
 export function isValidIraqiPhone(raw: unknown): boolean {
   return normalizeIraqiPhone(raw) !== null;

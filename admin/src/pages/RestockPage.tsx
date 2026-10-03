@@ -9,6 +9,7 @@ import { formatDateTime } from '../utils/format'
 import { PageHeader } from '../components/ui/PageHeader'
 import { ProductLink } from '../components/ui/ProductLink'
 import { ResponsiveTable } from '../components/ui/ResponsiveTable'
+import { PhoneText } from '../components/ui/PhoneText'
 import { WhatsAppButton } from '../components/ui/WhatsAppButton'
 
 /**
@@ -131,9 +132,7 @@ export default function RestockPage() {
         <Flex key={`${row.productId}-${i}`} justify="space-between" align="center" gap={8} wrap>
           <Space direction="vertical" size={0} style={{ minWidth: 0 }}>
             <Typography.Text>{s.username}</Typography.Text>
-            <Typography.Text type="secondary" copyable={{ text: s.phone }} style={{ direction: 'ltr' }}>
-              {s.phone}
-            </Typography.Text>
+            <PhoneText phone={s.phone} secondary copyable />
           </Space>
           {/* نفس زرّ واتساب في الزبائن والطلبات — قاعدة الرقم واحدة. */}
           <WhatsAppButton phone={s.phone} aria-label={`واتساب ${s.username}`} />

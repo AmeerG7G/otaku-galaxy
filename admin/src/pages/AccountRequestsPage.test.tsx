@@ -95,7 +95,7 @@ describe('طلب إنشاء الحساب', () => {
 
   it('يظهر معلَّقاً بما أُرسل، وبأزرار موافقة/رفض/واتساب — ولا زرّ كلمة مرور', async () => {
     renderPage()
-    const row = (await screen.findByText('+9647701234567')).closest('[data-row-key]')! as HTMLElement
+    const row = (await screen.findByText('07701234567')).closest('[data-row-key]')! as HTMLElement
     expect(within(row).getByText('قيد المراجعة')).toBeInTheDocument()
     expect(within(row).getByText('موافقة')).toBeInTheDocument()
     expect(within(row).getByText('رفض')).toBeInTheDocument()
@@ -106,9 +106,12 @@ describe('طلب إنشاء الحساب', () => {
   it('[CRITICAL] الموافقة تمرّ بتأكيدٍ يذكّر بتحقّق واتساب ثم تستدعي المسار الإداري', async () => {
     const user = userEvent.setup()
     renderPage()
-    const row = (await screen.findByText('+9647701234567')).closest('[data-row-key]')! as HTMLElement
+    const row = (await screen.findByText('07701234567')).closest('[data-row-key]')! as HTMLElement
     await user.click(within(row).getByText('موافقة'))
-    expect(await screen.findByText(/هل تحقّقت من زبون جديد/)).toBeInTheDocument()
+    const prompt = await screen.findByText(/هل تحقّقت من زبون جديد/)
+    // الرقم في نصّ التأكيد بالصيغة المعروضة في الصفّ نفسه — لا «+9647…».
+    expect(within(prompt).getByTestId('phone-text')).toHaveTextContent(/^07701234567$/)
+    expect(prompt.textContent).not.toContain('964')
     await user.click(screen.getByText('موافقة وتفعيل'))
     await waitFor(() => expect(approveAccountRequest).toHaveBeenCalledWith('req-1', undefined))
   })
@@ -116,7 +119,7 @@ describe('طلب إنشاء الحساب', () => {
   it('الرفض يمرّ بتأكيدٍ ويُرسل الملاحظة', async () => {
     const user = userEvent.setup()
     renderPage()
-    const row = (await screen.findByText('+9647701234567')).closest('[data-row-key]')! as HTMLElement
+    const row = (await screen.findByText('07701234567')).closest('[data-row-key]')! as HTMLElement
     await user.click(within(row).getByText('رفض'))
     await user.type(await screen.findByPlaceholderText(/سبب الرفض/), 'لم يردّ')
     // زرّ التأكيد في الحوار (الثاني: الأول زرّ الصفّ).
@@ -127,7 +130,7 @@ describe('طلب إنشاء الحساب', () => {
 
   it('لا كلمة مرور ولا تجزئة في ما يُعرض', async () => {
     renderPage()
-    await screen.findByText('+9647701234567')
+    await screen.findByText('07701234567')
     expect(document.body.textContent).not.toMatch(/password|hash|\$2/i)
   })
 })
@@ -219,7 +222,7 @@ describe('طلبات الحساب على الهاتف والشاشة العري�
     setViewportWidth(PHONE)
     const user = userEvent.setup()
     const { container } = renderPage()
-    const card = (await screen.findByText('+9647701234567')).closest('[data-row-key]')! as HTMLElement
+    const card = (await screen.findByText('07701234567')).closest('[data-row-key]')! as HTMLElement
     expect(container.querySelector('.ant-table')).toBeNull()
     expect(card.closest('.ant-card')).not.toBeNull()
     expect(within(card).getByText('ما أرسله الزبون')).toBeInTheDocument()
@@ -234,7 +237,7 @@ describe('طلبات الحساب على الهاتف والشاشة العري�
   it('الشاشة العريضة: الجدول نفسه كما كان', async () => {
     setViewportWidth(DESKTOP)
     const { container } = renderPage()
-    const row = (await screen.findByText('+9647701234567')).closest('[data-row-key]')! as HTMLElement
+    const row = (await screen.findByText('07701234567')).closest('[data-row-key]')! as HTMLElement
     expect(row.tagName).toBe('TR')
     expect(container.querySelector('.ant-table')).not.toBeNull()
   })
@@ -248,7 +251,7 @@ describe('طلبات الحساب على الهاتف والشاشة العري�
   it('[regression] الشاشة العريضة: الجدول بعرضه الطبيعي يتمرّر، والإجراءات مثبّتة، والرقم LTR لا يتكسّر', async () => {
     setViewportWidth(DESKTOP)
     const { container } = renderPage()
-    const row = (await screen.findByText('+9647701234567')).closest('tr')! as HTMLElement
+    const row = (await screen.findByText('07701234567')).closest('tr')! as HTMLElement
     // ٤٨ (التوسيع) + ١٣٠ + ٢٣٠ + ٢٧٠ + ١٣٠ + ١٨٠ + ٢٤٠
     expect((container.querySelector('.ant-table-body > table') as HTMLTableElement).style.width).toBe('1228px')
     expect(container.querySelector('.ant-table-sticky-holder')).not.toBeNull()

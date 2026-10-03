@@ -21,6 +21,7 @@ import {
   type AudienceSegment,
   type BroadcastAudience,
 } from '../types/notifications'
+import { formatIraqiPhone } from '../utils/phone'
 
 type Mode = 'all' | 'users' | 'segment'
 
@@ -187,7 +188,7 @@ export default function BroadcastComposer({
                 style={{ width: '100%' }}
                 options={(customers.data?.items ?? []).map((customer) => ({
                   value: customer.id,
-                  label: `${customer.username} — ${customer.phone}`,
+                  label: `${customer.username} — ${formatIraqiPhone(customer.phone)}`,
                 }))}
               />
             </Form.Item>

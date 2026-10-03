@@ -71,7 +71,7 @@ describe('هاتف مشترك إعادة التوفر في اللوحة', () => 
     await screen.findByText('حقيبة أنمي')
     await expandFirstRow()
 
-    const phone = await screen.findByText('+9647701234567')
+    const phone = await screen.findByText('07701234567')
     expect(phone).toBeInTheDocument()
     expect(document.body.textContent).not.toContain('****')
   })
@@ -80,7 +80,7 @@ describe('هاتف مشترك إعادة التوفر في اللوحة', () => 
     renderPage()
     await screen.findByText('حقيبة أنمي')
     await expandFirstRow()
-    await screen.findByText('+9647701234567')
+    await screen.findByText('07701234567')
     // لا نجوم ولا نقاط اختصار في أي موضع من الصفحة.
     expect(document.body.textContent).not.toMatch(/\*{2,}/)
   })
@@ -89,7 +89,7 @@ describe('هاتف مشترك إعادة التوفر في اللوحة', () => 
     renderPage()
     await screen.findByText('حقيبة أنمي')
     await expandFirstRow()
-    await screen.findByText('+9647701234567')
+    await screen.findByText('07701234567')
 
     const link = document.querySelector<HTMLAnchorElement>('a[href^="https://wa.me/"]')
     expect(link).not.toBeNull()
@@ -112,8 +112,8 @@ describe('هاتف مشترك إعادة التوفر في اللوحة', () => 
     await screen.findByText('حقيبة أنمي')
     await expandFirstRow()
 
-    expect(await screen.findByText('+9647701234567')).toBeInTheDocument()
-    expect(screen.getByText('+9647809876543')).toBeInTheDocument()
+    expect(await screen.findByText('07701234567')).toBeInTheDocument()
+    expect(screen.getByText('07809876543')).toBeInTheDocument()
     expect(
       document.querySelectorAll('a[href^="https://wa.me/"]'),
     ).toHaveLength(2)
@@ -126,7 +126,7 @@ describe('هاتف مشترك إعادة التوفر في اللوحة', () => 
     renderPage()
     await screen.findByText('حقيبة أنمي')
     await waitFor(() => expect(listRestockDemand).toHaveBeenCalled())
-    expect(document.body.textContent).not.toContain('+964')
+    expect(document.body.textContent).not.toMatch(/\+964|0770/)
   })
 })
 
@@ -147,7 +147,8 @@ describe('طلبات التوفر على الهاتف', () => {
     const card = (await screen.findByText('حقيبة أنمي')).closest('[data-row-key]')! as HTMLElement
     expect(container.querySelector('.ant-table')).toBeNull()
     expect(card.textContent).toContain('1 ينتظرون')
-    expect(card.textContent).toContain('+9647701234567')
+    expect(card.textContent).toContain('07701234567')
+    expect(card.textContent).not.toContain('964')
     expect(card.querySelector('a[href="https://wa.me/9647701234567"]')).not.toBeNull()
   })
 

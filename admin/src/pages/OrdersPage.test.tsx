@@ -95,11 +95,11 @@ describe('الطلبات — جدولٌ يُفحص كلّه (STEP 66)', () => {
     expect(within(cells[cells.length - 1]! as HTMLElement).getByText('واتساب').closest('a')).toHaveAttribute('href', 'https://wa.me/9647701234567')
   })
 
-  it('الهاتف LTR («+9647…» لا «…9647+») والعدد بتمييزه العربي', async () => {
+  it('الهاتف LTR بصيغته المحلية 07… (لا «+9647…» ولا «…9647+») والعدد بتمييزه العربي', async () => {
     setViewportWidth(DESKTOP)
     renderPage()
     const phone = (await screen.findAllByTestId('phone-text'))[0]!
-    expect(phone).toHaveTextContent('+9647701234567')
+    expect(phone).toHaveTextContent(/^07701234567$/)
     expect(phone.style.direction).toBe('ltr')
     expect(screen.getByText('منتج واحد')).toBeInTheDocument()
     expect(screen.queryByText('1 منتجات')).toBeNull()

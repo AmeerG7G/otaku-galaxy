@@ -119,12 +119,32 @@ describe('ResponsiveTable — جدولٌ عريض لا يُقصّ (STEP 66)', ()
 
 describe('PhoneText', () => {
   it('[STEP 66] الاتجاه في style لا في سمة dir — صنف أنتديب RTL كان يقلب «+9647…» إلى «…9647+»', () => {
-    render(<PhoneText phone="+9647701234567" />)
+    render(<PhoneText phone="+447700900123" />)
     const el = screen.getByTestId('phone-text')
-    expect(el).toHaveTextContent('+9647701234567')
+    expect(el).toHaveTextContent('+447700900123')
     expect(el.style.direction).toBe('ltr')
     expect(el.style.unicodeBidi).toBe('isolate')
     expect(el.style.whiteSpace).toBe('nowrap')
+  })
+
+  it('الموبايل العراقي المخزَّن +9647… يُعرض 07… في كل شاشة', () => {
+    render(<PhoneText phone="+9647701234567" />)
+    expect(screen.getByTestId('phone-text')).toHaveTextContent(/^07701234567$/)
+  })
+
+  it('النسخ ينسخ الرقم المعروض 07… — ما يقبله حقل الهاتف وبحث اللوحة', async () => {
+    const user = userEvent.setup()
+    render(<PhoneText phone="+9647701234567" copyable />)
+    await user.click(within(screen.getByTestId('phone-text')).getByRole('button'))
+    expect(await navigator.clipboard.readText()).toBe('07701234567')
+  })
+
+  it('ما ليس موبايلاً عراقياً يُعرض وينسخ كما وصل', async () => {
+    const user = userEvent.setup()
+    render(<PhoneText phone="غير متوفر" copyable />)
+    expect(screen.getByTestId('phone-text')).toHaveTextContent(/^غير متوفر$/)
+    await user.click(within(screen.getByTestId('phone-text')).getByRole('button'))
+    expect(await navigator.clipboard.readText()).toBe('غير متوفر')
   })
 })
 

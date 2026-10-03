@@ -100,7 +100,7 @@ describe('ملفّ الزبون', () => {
 
   it('الهوية والنقاط والمستوى والطلبات وطلبات الحساب من مكانٍ واحد', async () => {
     renderPage()
-    expect(await screen.findByText('+9647701234567')).toBeInTheDocument()
+    expect(await screen.findByText('07701234567')).toBeInTheDocument()
     expect(screen.getByText('مستكشف المجرة')).toBeInTheDocument()
     expect(screen.getByText('الكردية (سوراني)')).toBeInTheDocument()
     expect(screen.getByText('مفعَّل')).toBeInTheDocument()

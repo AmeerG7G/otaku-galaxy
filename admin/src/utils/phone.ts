@@ -2,8 +2,9 @@
  * أرقام الهاتف في لوحة التحكم.
  *
  * الشكل المخزَّن على الخادم هو E.164 دائماً (`+9647XXXXXXXXX`) — انظر
- * `backend/src/utils/phone.ts`. اللوحة لا تعيد التطبيع ولا تخفي شيئاً: شاشات
- * `/admin` خلف مصادقة المسؤول، والطاقم يحتاج الرقم كاملاً للتواصل.
+ * `backend/src/utils/phone.ts`. اللوحة لا تغيّر المخزَّن ولا تخفي شيئاً: شاشات
+ * `/admin` خلف مصادقة المسؤول، والطاقم يحتاج الرقم كاملاً للتواصل. تعرضه
+ * بصيغته المحلية `07…` في كل شاشة (`formatIraqiPhone` عبر `PhoneText`).
  */
 
 /**
@@ -35,16 +36,37 @@ export const IRAQI_MOBILE_LENGTH = 11
 export function whatsappUrl(phone: string | null | undefined): string | null {
   if (!phone || phone.includes('*')) return null
   const digits = phone.replace(/\D/g, '')
-  const iraqi = iraqiInternational(digits)
-  if (iraqi) return `https://wa.me/${iraqi}`
+  const national = iraqiNational(digits)
+  if (national) return `https://wa.me/964${national}`
   // رقمٌ عراقي يبدأ بمقدّمته لكنه ليس موبايلاً صالحاً: لا رابط.
   if (/^(00)?9647/.test(digits) || /^07/.test(digits)) return null
   if (digits.length < 8 || digits.length > 15) return null
   return `https://wa.me/${digits.replace(/^00/, '')}`
 }
 
-/** موبايل عراقي بأي صيغة (‎+964، ‎00964، ‎964، ‎07، ‎7) → `9647XXXXXXXXX`، وإلا null. */
-function iraqiInternational(digits: string): string | null {
+/**
+ * رقم الهاتف كما يُعرض في اللوحة: الموبايل العراقي بصيغته المحلية `07XXXXXXXXX`
+ * في كل شاشة، أيّاً كانت صيغته المخزَّنة (`+9647…` عادةً).
+ *
+ * [CRITICAL] للعرض وحده. ما يُرسَل إلى الخادم أو يُبنى منه رابط يبقى الرقم
+ * المخزَّن نفسه: واتساب يطلب الدولي (`whatsappUrl`)، والخادم يطبّع كل صيغة
+ * بنفسه. والنسخ ينسخ المعروض — `07…` هو ما يقبله حقل الهاتف وبحث اللوحة.
+ *
+ * يُحوَّل ما هو موبايلٌ عراقي **واضح** فقط: أرقامٌ لا غير، مع `+` في المقدّمة
+ * وفواصل مألوفة (فراغ، شَرطة، قوسان، نقطة)، وتنتهي إلى `7[5-9]` ثم ثمانية
+ * أرقام — قاعدة الخادم نفسها. ما سواه (دولي آخر، أرضي، مقنَّع، نصّ مثل
+ * «غير متوفر») يُعرض كما وصل حرفاً بحرف، والغائب نصٌّ فارغ.
+ */
+export function formatIraqiPhone(phone: string | null | undefined): string {
+  if (!phone) return ''
+  const trimmed = phone.trim()
+  if (!/^\+?[\d ()\-.]+$/.test(trimmed)) return phone
+  const national = iraqiNational(trimmed.replace(/\D/g, ''))
+  return national ? `0${national}` : phone
+}
+
+/** موبايل عراقي بأي صيغة (‎00964، ‎964، ‎0، أو بلا بادئة) → الرقم الوطني `7XXXXXXXXX`، وإلا null. */
+function iraqiNational(digits: string): string | null {
   const national = digits.startsWith('00964')
     ? digits.slice(5)
     : digits.startsWith('964')
@@ -52,5 +74,5 @@ function iraqiInternational(digits: string): string | null {
       : digits.startsWith('0')
         ? digits.slice(1)
         : digits
-  return /^7[5-9]\d{8}$/.test(national) ? `964${national}` : null
+  return /^7[5-9]\d{8}$/.test(national) ? national : null
 }

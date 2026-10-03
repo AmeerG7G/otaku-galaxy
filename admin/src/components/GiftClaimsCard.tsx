@@ -13,6 +13,7 @@ import {
 } from 'antd'
 import { fulfilGiftClaim, listGiftClaims } from '../api/pointsApi'
 import EmptyState from './EmptyState'
+import { PhoneText } from './ui/PhoneText'
 import { formatCurrency, formatDateTime } from '../utils/format'
 import type { GiftClaim } from '../types/points'
 
@@ -54,9 +55,7 @@ export default function GiftClaimsCard() {
       render: (_: unknown, row: GiftClaim) => (
         <Space direction="vertical" size={0}>
           <Typography.Text strong>{row.username}</Typography.Text>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            {row.phone}
-          </Typography.Text>
+          <PhoneText phone={row.phone} secondary style={{ fontSize: 12 }} />
         </Space>
       ),
     },

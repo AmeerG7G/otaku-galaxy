@@ -1,8 +1,14 @@
 import { Typography } from 'antd'
 import type { CSSProperties } from 'react'
+import { formatIraqiPhone } from '../../utils/phone'
 
 /**
- * رقم هاتف معروضٌ داخل واجهة RTL — «+9647…» لا «…9647+».
+ * رقم هاتف معروضٌ في اللوحة. النصوص المركّبة (خيار قائمة، سطر في السجلّ)
+ * تستدعي `formatIraqiPhone` مباشرةً — `utils/phone.guard.test.ts` يمنع الرقم الخام.
+ *
+ * الموبايل العراقي يظهر بصيغته المحلية `07XXXXXXXXX` أيّاً كانت صيغته
+ * المخزَّنة، فلا تعرض شاشةٌ `964…` وأخرى `07…`. والنسخ ينسخ المعروض نفسه.
+ * روابط واتساب لا تمرّ من هنا: تأخذ الرقم المخزَّن.
  *
  * [CRITICAL] `dir="ltr"` على `Typography.Text` لا يكفي: أنتديب يضيف صنف
  * `ant-typography-rtl` الذي يفرض `direction: rtl` في CSS، وCSS يغلب سمة
@@ -27,7 +33,7 @@ export function PhoneText({
       data-testid="phone-text"
       style={{ direction: 'ltr', unicodeBidi: 'isolate', whiteSpace: 'nowrap', ...style }}
     >
-      {phone}
+      {formatIraqiPhone(phone)}
     </Typography.Text>
   )
 }

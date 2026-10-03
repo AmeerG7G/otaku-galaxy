@@ -257,7 +257,7 @@ describe('رقم الهاتف', () => {
 
   it('[CRITICAL] يُعرض كاملاً بلا إخفاء', async () => {
     renderPage()
-    const phone = await screen.findByText('+9647701234567')
+    const phone = await screen.findByText('07701234567')
     expect(phone).toBeInTheDocument()
     expect(phone.textContent).not.toContain('*')
   })

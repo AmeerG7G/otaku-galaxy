@@ -29,6 +29,7 @@ import { formatDateTime } from '../utils/format'
 import EmptyState from '../components/EmptyState'
 import BroadcastComposer from '../components/BroadcastComposer'
 import { PageHeader } from '../components/ui/PageHeader'
+import { PhoneText } from '../components/ui/PhoneText'
 import { ReminderControls } from '../components/ui/ReminderControls'
 
 type ReadFilter = 'all' | 'unread' | 'read'
@@ -106,9 +107,7 @@ export default function NotificationsPage() {
       render: (_: unknown, row: AdminNotification) => (
         <Space direction="vertical" size={0}>
           <Typography.Text>{row.username}</Typography.Text>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            {row.phone}
-          </Typography.Text>
+          <PhoneText phone={row.phone} secondary style={{ fontSize: 12 }} />
         </Space>
       ),
     },

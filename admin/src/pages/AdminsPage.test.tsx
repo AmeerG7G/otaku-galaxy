@@ -148,3 +148,76 @@ describe('صفحة المسؤولين', () => {
     await waitFor(() => expect(updateSubAdmin).toHaveBeenCalledWith('x1', { isActive: false }))
   })
 })
+
+/**
+ * الهاتف في «المسؤولون»: يُعرض ويُملأ في الحقل بصيغته المحلية `07…`، ويبقى
+ * المخزَّن `+9647…` — الحقل لا يرسله ما لم يتغيّر فعلاً.
+ */
+describe('هاتف المسؤول', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useAuthStore.setState({ token: 't', user: null })
+    vi.mocked(listSubAdmins).mockResolvedValue({ items: [orders] })
+    vi.mocked(listAudit).mockResolvedValue({ items: [], page: 1, limit: 20, total: 0, hasMore: false })
+  })
+
+  it('القائمة وحوار التعديل بالصيغة المحلية 07…', async () => {
+    vi.mocked(fetchAdminMe).mockResolvedValue(superAdmin)
+    const user = userEvent.setup()
+    renderPage()
+    await user.click(await screen.findByRole('tab', { name: 'المسؤولون' }))
+    const row = (await screen.findByText('مشرف الطلبات')).closest('[data-row-key]') as HTMLElement
+    expect(within(row).getByTestId('phone-text')).toHaveTextContent(/^07800009910$/)
+    expect(row.textContent).not.toContain('964')
+    await user.click(within(row).getByText('تعديل'))
+    const dialog = (await screen.findByText('تعديل مشرف الطلبات')).closest('.ant-modal') as HTMLElement
+    expect(within(dialog).getByLabelText('رقم الهاتف')).toHaveValue('07800009910')
+  })
+
+  it('ملفّي يملأ الحقل 07… — حفظ الاسم وحده لا يرسل الهاتف', async () => {
+    vi.mocked(fetchAdminMe).mockResolvedValue(subAdmin)
+    vi.mocked(updateOwnProfile).mockResolvedValue({ profile: { ...subAdmin, username: 'مشرف ٢' }, token: null })
+    const user = userEvent.setup()
+    renderPage()
+    expect(await screen.findByDisplayValue('07800000005')).toBeInTheDocument()
+    const name = screen.getByDisplayValue('مشرف')
+    await user.clear(name)
+    await user.type(name, 'مشرف ٢')
+    await user.click(screen.getByText('حفظ'))
+    await waitFor(() => expect(updateOwnProfile).toHaveBeenCalledWith({ username: 'مشرف ٢' }))
+  })
+
+  it('سجلّ النشاط: رقم واتساب المتجر قبل/بعد بالصيغة المحلية، والروابط كما هي', async () => {
+    vi.mocked(fetchAdminMe).mockResolvedValue(superAdmin)
+    vi.mocked(listAudit).mockResolvedValue({
+      items: [
+        {
+          id: 'a1',
+          actorId: 's',
+          actorName: 'المدير',
+          action: 'settings.updated',
+          targetType: 'settings',
+          targetId: null,
+          details: {
+            changes: {
+              social_whatsapp: { before: '+9647701234567', after: '9647809876543' },
+              social_tiktok: { before: '', after: 'https://tiktok.com/@otaku' },
+            },
+          },
+          createdAt: '2026-09-29T10:00:00Z',
+        },
+      ],
+      page: 1,
+      limit: 20,
+      total: 1,
+      hasMore: false,
+    })
+    const user = userEvent.setup()
+    renderPage()
+    await user.click(await screen.findByRole('tab', { name: 'سجلّ النشاط' }))
+    const details = await screen.findByText(/social_whatsapp/)
+    expect(details.textContent).toContain('social_whatsapp: «07701234567» ← «07809876543»')
+    expect(details.textContent).toContain('social_tiktok: «—» ← «https://tiktok.com/@otaku»')
+    expect(details.textContent).not.toContain('964')
+  })
+})

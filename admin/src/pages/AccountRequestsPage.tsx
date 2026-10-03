@@ -130,7 +130,7 @@ export default function AccountRequestsPage() {
       content: (
         <Space direction="vertical" style={{ width: '100%' }}>
           <Typography.Text>
-            هل تحقّقت من {request.submitted.username} ({request.submitted.phone}) عبر واتساب؟
+            هل تحقّقت من {request.submitted.username} (<PhoneText phone={request.submitted.phone} />) عبر واتساب؟
             بعد الموافقة يدخل الزبون بكلمة المرور التي اختارها عند التسجيل.
           </Typography.Text>
           <Input.TextArea
