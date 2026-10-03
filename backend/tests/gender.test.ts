@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../src/database/pool.js';
-import { api, approveAsAdmin, createAdminUser, registerAndLogin } from './helpers.js';
+import { api, approveAsAdmin, createAdminUser, registerAndLogin, simulateLegacyNullGender } from './helpers.js';
 
 /**
  * حقل الجنس — مطلوب عند التسجيل الجديد، محصَّن بالقاعدة، ولا يُخمَّن أبداً.
@@ -196,7 +196,7 @@ describe('الحسابات القديمة بلا جنس', () => {
   it('يبقى `null` ولا يُخمَّن، ويعمل الحساب طبيعياً', async () => {
     const legacy = await registerAndLogin();
     // نُعيده إلى حالة ما قبل الحقل كما لو أُنشئ قبل الهجرة.
-    await db.query('UPDATE users SET gender = NULL WHERE id = $1', [legacy.userId]);
+    await simulateLegacyNullGender(legacy.userId);
 
     const me = await api
       .get('/api/auth/me')
@@ -213,7 +213,7 @@ describe('الحسابات القديمة بلا جنس', () => {
 
   it('يستطيع اختيار جنسه لاحقاً', async () => {
     const legacy = await registerAndLogin();
-    await db.query('UPDATE users SET gender = NULL WHERE id = $1', [legacy.userId]);
+    await simulateLegacyNullGender(legacy.userId);
 
     const updated = await api
       .patch('/api/auth/me')

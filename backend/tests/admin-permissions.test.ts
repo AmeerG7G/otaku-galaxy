@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../src/database/pool.js';
 import { ADMIN_SECTIONS, type AdminSection } from '../src/domain/adminPermissions.js';
@@ -164,11 +164,15 @@ describe('admin permissions — source guard and pinned map', () => {
     expect(parsed).toEqual(EXPECTED);
   });
 
-  it('sections are one list: domain, migration 068 CHECK, and dashboard types', async () => {
-    const migration = await readFile(
-      new URL('../src/database/migrations/068_admin_hierarchy_and_audit.sql', import.meta.url),
-      'utf8',
-    );
+  it('sections are one list: domain, the latest migration defining the CHECK, and dashboard types', async () => {
+    // القيد يُعاد تعريفه مع كل قسمٍ جديد (٠٦٨ ثم ٠٧١…)؛ الحاكم هو آخر هجرةٍ تعرّفه.
+    const dir = new URL('../src/database/migrations/', import.meta.url);
+    const files = (await readdir(dir)).filter((f) => f.endsWith('.sql')).sort();
+    let migration = '';
+    for (const file of files) {
+      const sql = await readFile(new URL(file, dir), 'utf8');
+      if (/ADD CONSTRAINT users_admin_permissions_known/.test(sql)) migration = sql;
+    }
     const check = /admin_permissions <@ ARRAY\[([\s\S]*?)\]::TEXT\[\]/.exec(migration)?.[1] ?? '';
     const fromSql = [...check.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
     expect(fromSql).toEqual([...ADMIN_SECTIONS]);

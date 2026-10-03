@@ -3,10 +3,11 @@
  *
  * [SECURITY] الخادم يفرض الصلاحية على كل مسار؛ ما هنا يبني القائمة ويحجب
  * الصفحات راحةً للمسؤول لا حاجزاً. `backend/tests/admin-permissions.test.ts`
- * يقارن هذه القائمة بقائمة الخادم وقيد الهجرة ٠٦٨ حرفاً بحرف.
+ * يقارن هذه القائمة بقائمة الخادم وبآخر هجرةٍ تعرّف قيدها (٠٧١) حرفاً بحرف.
  */
 export const ADMIN_SECTIONS = [
   'dashboard',
+  'analytics',
   'orders',
   'delivery',
   'products',
@@ -29,6 +30,7 @@ export type AdminSection = (typeof ADMIN_SECTIONS)[number]
 
 export const ADMIN_SECTION_LABELS: Record<AdminSection, string> = {
   dashboard: 'الرئيسية',
+  analytics: 'التحليلات',
   orders: 'الطلبات',
   delivery: 'المحافظات والتوصيل',
   products: 'المنتجات',
@@ -49,7 +51,7 @@ export const ADMIN_SECTION_LABELS: Record<AdminSection, string> = {
 
 /** مجموعات نموذج الصلاحيات — بترتيب القائمة الجانبية نفسه. */
 export const ADMIN_SECTION_GROUPS: { label: string; sections: AdminSection[] }[] = [
-  { label: 'عام', sections: ['dashboard'] },
+  { label: 'عام', sections: ['dashboard', 'analytics'] },
   { label: 'العمليات', sections: ['orders', 'delivery'] },
   { label: 'الكتالوج', sections: ['products', 'categories', 'franchises', 'offers', 'restock'] },
   { label: 'الزبائن', sections: ['customers', 'account_requests', 'points', 'birthdays', 'reviews'] },

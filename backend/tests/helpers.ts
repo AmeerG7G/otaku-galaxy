@@ -265,3 +265,26 @@ export async function registerUploadedPhoto(uploadedBy?: string) {
   );
   return url;
 }
+
+/**
+ * يعيد حساب زبونٍ إلى حالة ما قبل الهجرة ٠٤٠ (جنس NULL) — لاختبار التعامل
+ * مع الشواذّ القديمة (D5).
+ *
+ * زناد ٠٧٢ يرفض إفراغ الجنس عن قصد؛ لذلك يُعطَّل داخل معاملةٍ واحدة ثم يُعاد.
+ * هذه هي الطريقة الوحيدة لوجود صفٍّ كهذا بعد ٠٧٢: بياناتٌ سبقت الحارس.
+ */
+export async function simulateLegacyNullGender(userId: string) {
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('ALTER TABLE users DISABLE TRIGGER trg_users_customer_gender_guard');
+    await client.query('UPDATE users SET gender = NULL WHERE id = $1', [userId]);
+    await client.query('ALTER TABLE users ENABLE TRIGGER trg_users_customer_gender_guard');
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}

@@ -28,7 +28,8 @@ const REAL_HASH = `$2a$10$${'a'.repeat(53)}`;
 
 async function insertUser(client: pg.PoolClient, username: string, phone: string, hash: string) {
   const { rows } = await client.query<{ id: string }>(
-    `INSERT INTO users (username, phone, password_hash) VALUES ($1, $2, $3) RETURNING id`,
+    // الجنس إلزامي لحساب الزبون منذ ٠٧٢ — قيمته لا تمسّ هوية التطهير المختبَرة هنا.
+    `INSERT INTO users (username, phone, password_hash, gender) VALUES ($1, $2, $3, 'male') RETURNING id`,
     [username, phone, hash],
   );
   return rows[0]!.id;
@@ -191,7 +192,7 @@ describe('زرع الأداء ثم تطهيره فوق زبونٍ حقيقي ي�
     await db.query('DELETE FROM users WHERE phone = $1', [SENTINEL_PHONE]);
     sentinel = (
       await db.query<{ id: string }>(
-        `INSERT INTO users (username, phone, password_hash) VALUES ('زبون حقيقي', $1, $2) RETURNING id`,
+        `INSERT INTO users (username, phone, password_hash, gender) VALUES ('زبون حقيقي', $1, $2, 'female') RETURNING id`,
         [SENTINEL_PHONE, REAL_HASH],
       )
     ).rows[0]!.id;

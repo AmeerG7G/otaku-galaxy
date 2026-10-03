@@ -8,7 +8,7 @@
  * القيم مخزَّنة في `users.admin_permissions` ومحصورة بقيد `CHECK` في الهجرة
  * ٠٦٨ بالقائمة نفسها حرفياً. إضافة قسمٍ جديد تعني: هنا، ثم هجرةٌ توسّع القيد،
  * ثم `admin/src/types/adminPermissions.ts` — واختبار `admin-permissions`
- * يقارن الثلاثة ويسقط إن اختلفت.
+ * يقارن الثلاثة (آخر هجرةٍ تعرّف القيد: ٠٧١ اليوم) ويسقط إن اختلفت.
  *
  * المسؤول الأعلى (`is_super_admin`) لا يحمل قائمة: يملك كل شيء ضمناً، ولا
  * مسار يجعل أحداً مسؤولاً أعلى — الهجرة وحدها فعلت ذلك لمن كان مسؤولاً قبلها،
@@ -16,6 +16,7 @@
  */
 export const ADMIN_SECTIONS = [
   'dashboard',
+  'analytics',
   'orders',
   'delivery',
   'products',
@@ -39,6 +40,7 @@ export type AdminSection = (typeof ADMIN_SECTIONS)[number];
 /** أسماء الأقسام كما تظهر في قائمة اللوحة — لرسائل الرفض وسجلّ النشاط. */
 export const ADMIN_SECTION_LABELS: Record<AdminSection, string> = {
   dashboard: 'الرئيسية',
+  analytics: 'التحليلات',
   orders: 'الطلبات',
   delivery: 'المحافظات والتوصيل',
   products: 'المنتجات',

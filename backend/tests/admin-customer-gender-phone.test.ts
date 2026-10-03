@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../src/database/pool.js';
-import { api, approveAsAdmin, createAdminUser, registerAndLogin, purgeTestUsers } from './helpers.js';
+import { api, approveAsAdmin, createAdminUser, registerAndLogin, purgeTestUsers, simulateLegacyNullGender } from './helpers.js';
 
 /**
  * إدارة الزبائن: الجنس والهاتف الكامل.
@@ -69,7 +69,7 @@ beforeAll(async () => {
   const legacy = await registerAndLogin();
   legacyId = legacy.userId;
   legacyPhone = legacy.phone;
-  await db.query('UPDATE users SET gender = NULL WHERE id = $1', [legacyId]);
+  await simulateLegacyNullGender(legacyId);
 });
 
 afterAll(async () => {
