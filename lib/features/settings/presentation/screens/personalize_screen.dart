@@ -89,7 +89,13 @@ class PersonalizeScreen extends StatelessWidget {
                                     style: theme.textTheme.headlineSmall
                                         ?.copyWith(
                                           fontFamily: 'Tajawal',
-                                          fontSize: 25,
+                                          // Kurdish localisation is longer here; keep this title
+                                          // visually compact so its extra length does not grow the
+                                          // header row beyond the character-artwork height.
+                                          fontSize: context.language ==
+                                                  AppLanguage.kurdish
+                                              ? 21.0
+                                              : 25.0,
                                           letterSpacing: -0.5,
                                           fontWeight: AppDimens.weightBlack,
                                         ),

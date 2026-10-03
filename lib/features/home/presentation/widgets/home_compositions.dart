@@ -205,12 +205,13 @@ class HomeHeroCard extends StatelessWidget {
                     const SizedBox(height: AppDimens.space4),
                     Text(
                       title ?? context.strings('heroNewSeason'),
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontSize: 23,
-                        height: 1.3,
-                        fontWeight: AppDimens.weightBlack,
-                        color: Colors.white,
-                      ),
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(
+                            fontSize: 23,
+                            height: 1.3,
+                            fontWeight: AppDimens.weightBlack,
+                            color: Colors.white,
+                          ),
                     ),
                     const SizedBox(height: AppDimens.space4),
                     GestureDetector(
@@ -307,8 +308,7 @@ class HomePromoRail extends StatelessWidget {
   /// مقصوصاً، ومن لم يكبّره يدفع ثمن فراغٍ لا يحتاجه.
   static double cardHeightFor(double textScale) =>
       _cardVerticalPadding +
-      (_cardHeight - _cardVerticalPadding) *
-          textScale.clamp(1.0, maxTextScale);
+      (_cardHeight - _cardVerticalPadding) * textScale.clamp(1.0, maxTextScale);
 
   /// أعلى مقياس خطٍّ يحجز له [cardHeightFor] ارتفاعاً — ونصّ البطاقة لا
   /// يُرسم بأكبر منه، وإلا كبر النصّ فوق ارتفاعٍ توقّف عن الكبر.
@@ -360,7 +360,9 @@ class HomePromoRail extends StatelessWidget {
             : [
                 _PromoCard(
                   title: context.strings('promoActiveDiscounts'),
-                  subtitle: context.strings.p('promoUpToDiscount', {'percent': '$maxDiscount'}),
+                  subtitle: context.strings.p('promoUpToDiscount', {
+                    'percent': '$maxDiscount',
+                  }),
                   slot: VisualSlots.homePromoSecondary,
                   height: cardHeight,
                   colors: _palettes[1],
@@ -475,26 +477,54 @@ class DeliveryAssuranceStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final borderColor = Theme.of(context).colorScheme.outlineVariant;
+    final borderRadius = BorderRadius.circular(AppDimens.radiusLg);
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 26, 18, 0),
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(AppDimens.radiusLg),
-          border: Border.all(
-            color: Theme.of(context).colorScheme.outlineVariant,
-          ),
+          borderRadius: borderRadius,
         ),
-        clipBehavior: Clip.antiAlias,
+        // Border lives in foregroundDecoration so it paints after the Stack's
+        // children — including the artwork that overflows the card boundary —
+        // making the frame visually in front of the character at the edge.
+        foregroundDecoration: BoxDecoration(
+          borderRadius: borderRadius,
+          border: Border.all(color: borderColor),
+        ),
+        // Clip.none: artwork is allowed to extend below and past the card's
+        // painted area; the foregroundDecoration border still renders at the
+        // card's own edge, above everything the Stack painted.
+        clipBehavior: Clip.none,
         child: Stack(
+          // Clip.none: the PositionedDirectional artwork must be able to
+          // overflow past the Stack's bounds into the card's padding zone
+          // and beyond the card's outer edge.
+          clipBehavior: Clip.none,
           children: [
+            // The artwork intentionally extends beyond the card's painted area.
+            // bottom: −55 pushes the image 35 px past the card's outer bottom
+            // edge (55 − 20 px padding = 35 px overshoot); end: −83 likewise
+            // overshoots the card's end edge.  height: 220 is the owner-approved
+            // size that keeps the character proportional inside the card.
+            //
+            // The foregroundDecoration border paints at the card's outer edge
+            // AFTER the Stack, so the character appears to stand behind the frame
+            // rather than stopping at the inner content boundary.
+            //
+            // Reverting to the old geometry (bottom: −18 / end: −14 / height: 116)
+            // eliminates the overlap: the character stops 2 px above the border
+            // instead of extending through it, making the lower portion of the
+            // card look visually disconnected from the character art.
             PositionedDirectional(
-              bottom: -18,
-              end: -14,
+              bottom: -55,
+              end: -83,
               child: const CharacterArtwork(
                 slot: VisualSlots.homeDelivery,
-                height: 116,
+                height: 220,
               ),
             ),
             Padding(

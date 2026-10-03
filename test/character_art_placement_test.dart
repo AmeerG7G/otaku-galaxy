@@ -24,6 +24,7 @@ import 'package:otaku_galaxy/features/auth/presentation/cubit/auth_cubit.dart';
 import 'package:otaku_galaxy/features/cart/domain/entities/cart_item.dart';
 import 'package:otaku_galaxy/features/categories/presentation/screens/categories_screen.dart';
 import 'package:otaku_galaxy/features/favorites/presentation/cubit/favorites_cubit.dart';
+import 'package:otaku_galaxy/features/home/presentation/widgets/home_compositions.dart';
 import 'package:otaku_galaxy/features/orders/domain/entities/order.dart';
 import 'package:otaku_galaxy/features/orders/domain/repositories/order_repository.dart';
 import 'package:otaku_galaxy/features/orders/domain/usecases/fetch_my_orders_usecase.dart';
@@ -639,5 +640,187 @@ void main() {
         expect(tester.takeException(), isNull);
       },
     );
+  });
+
+  group('«توصيل لكل المحافظات» — delivery assurance strip composition (image 11)', () {
+    testWidgets('artwork height is 220 — intentional large-artwork design geometry', (tester) async {
+      _phone(tester);
+      await tester.pumpWidget(
+        _app(home: const Scaffold(body: DeliveryAssuranceStrip())),
+      );
+
+      final art = tester.widget<CharacterArtwork>(_art(VisualSlots.homeDelivery));
+      expect(art.height, equals(220.0),
+          reason: '220 is the owner-approved geometry; reverting to 116 breaks the design');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('artwork overflows the card — intentional design, not a clip violation', (tester) async {
+      _phone(tester);
+      await tester.pumpWidget(
+        _app(home: const Scaffold(body: DeliveryAssuranceStrip())),
+      );
+
+      final artRect = tester.getRect(_art(VisualSlots.homeDelivery));
+      final cardRect = tester.getRect(find.byType(DeliveryAssuranceStrip));
+
+      // bottom: −55 relative to a Stack inset 20 px = 35 px below the card outer
+      // edge.  Any value ≤ 0 means Clip is incorrectly suppressing the overflow.
+      expect(
+        artRect.bottom - cardRect.bottom,
+        greaterThan(0.0),
+        reason: 'artwork must extend below the card (bottom:−55, stack-inset:20 → ~35 px); '
+            'zero means Container or Stack is clipping the overflow',
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('frame is foreground-only — border in foregroundDecoration, not decoration', (tester) async {
+      _phone(tester);
+      await tester.pumpWidget(
+        _app(home: const Scaffold(body: DeliveryAssuranceStrip())),
+      );
+
+      final containers = tester.widgetList<Container>(find.descendant(
+        of: find.byType(DeliveryAssuranceStrip),
+        matching: find.byType(Container),
+      )).toList();
+
+      // The card Container must carry the border in foregroundDecoration so it
+      // is painted after the Stack's children (artwork included).
+      final hasForegroundBorder = containers.any((c) =>
+          c.foregroundDecoration is BoxDecoration &&
+          (c.foregroundDecoration! as BoxDecoration).border != null);
+      expect(hasForegroundBorder, isTrue,
+          reason: 'border must be in foregroundDecoration to render above the artwork');
+
+      // No Container may carry a border in both decoration AND foregroundDecoration
+      // — that produces a double stroke.
+      final hasDuplicate = containers.any((c) =>
+          c.decoration is BoxDecoration &&
+          (c.decoration! as BoxDecoration).border != null &&
+          c.foregroundDecoration is BoxDecoration &&
+          (c.foregroundDecoration! as BoxDecoration).border != null);
+      expect(hasDuplicate, isFalse, reason: 'duplicate border doubles the stroke width');
+
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('Container.clipBehavior is Clip.none — overflow is not suppressed', (tester) async {
+      _phone(tester);
+      await tester.pumpWidget(
+        _app(home: const Scaffold(body: DeliveryAssuranceStrip())),
+      );
+
+      final containers = tester.widgetList<Container>(find.descendant(
+        of: find.byType(DeliveryAssuranceStrip),
+        matching: find.byType(Container),
+      )).toList();
+
+      final cardContainer = containers.firstWhere(
+        (c) =>
+            c.foregroundDecoration is BoxDecoration &&
+            (c.foregroundDecoration! as BoxDecoration).border != null,
+      );
+      expect(cardContainer.clipBehavior, isNot(Clip.antiAlias),
+          reason: 'Clip.antiAlias clips the intentional overflow');
+      expect(cardContainer.clipBehavior, isNot(Clip.antiAliasWithSaveLayer),
+          reason: 'Clip.antiAliasWithSaveLayer clips the intentional overflow');
+      expect(cardContainer.clipBehavior, isNot(Clip.hardEdge),
+          reason: 'Clip.hardEdge clips the intentional overflow');
+
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('no patch widget — Stack has exactly artwork + text children', (tester) async {
+      _phone(tester);
+      await tester.pumpWidget(
+        _app(home: const Scaffold(body: DeliveryAssuranceStrip())),
+      );
+
+      final stackFinder = find.descendant(
+        of: find.byType(DeliveryAssuranceStrip),
+        matching: find.byType(Stack),
+      );
+      expect(stackFinder, findsOneWidget,
+          reason: 'DeliveryAssuranceStrip must contain exactly one Stack');
+
+      final stack = tester.widget<Stack>(stackFinder);
+      expect(stack.children.length, equals(2),
+          reason: 'Stack must have exactly 2 children (artwork + text column); '
+              'a 3rd child is the broken patch widget');
+
+      expect(tester.takeException(), isNull);
+    });
+
+    for (final width in [360.0, 390.0, 412.0]) {
+      testWidgets('artwork overflows at ${width.toInt()} dp — overflow geometry holds across phone widths',
+          (tester) async {
+        tester.view.physicalSize = Size(width, 892);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+
+        await tester.pumpWidget(
+          _app(home: const Scaffold(body: DeliveryAssuranceStrip())),
+        );
+
+        final artRect = tester.getRect(_art(VisualSlots.homeDelivery));
+        final cardRect = tester.getRect(find.byType(DeliveryAssuranceStrip));
+
+        expect(
+          artRect.bottom - cardRect.bottom,
+          greaterThan(0.0),
+          reason: 'artwork must extend below the card at ${width.toInt()} dp; '
+              'geometry is absolute (bottom:−55), not width-dependent',
+        );
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets('LTR — artwork positioned at end side (right in LTR)', (tester) async {
+      _phone(tester);
+      await tester.pumpWidget(
+        _app(
+          home: Scaffold(
+            body: Directionality(
+              textDirection: TextDirection.ltr,
+              child: const DeliveryAssuranceStrip(),
+            ),
+          ),
+        ),
+      );
+
+      final artRect = tester.getRect(_art(VisualSlots.homeDelivery));
+      final cardRect = tester.getRect(find.byType(DeliveryAssuranceStrip));
+
+      // In LTR, end = right. Artwork must be in the right half of the card.
+      expect(artRect.right, greaterThan(cardRect.center.dx),
+          reason: 'PositionedDirectional(end:−83) must place the artwork at the '
+              'right end of the card in LTR');
+
+      // Bottom overflow must still hold in LTR.
+      expect(artRect.bottom - cardRect.bottom, greaterThan(0.0),
+          reason: 'bottom overflow must be independent of text direction');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('RTL — artwork positioned at end side (left in RTL)', (tester) async {
+      _phone(tester);
+      await tester.pumpWidget(
+        _app(home: const Scaffold(body: DeliveryAssuranceStrip())),
+      );
+
+      final artRect = tester.getRect(_art(VisualSlots.homeDelivery));
+      final cardRect = tester.getRect(find.byType(DeliveryAssuranceStrip));
+
+      // In RTL (Arabic), end = left. Artwork must be in the left half of the card.
+      expect(artRect.left, lessThan(cardRect.center.dx),
+          reason: 'PositionedDirectional(end:−83) must place the artwork at the '
+              'left end of the card in RTL (Arabic)');
+
+      expect(artRect.bottom - cardRect.bottom, greaterThan(0.0),
+          reason: 'bottom overflow must hold in RTL');
+      expect(tester.takeException(), isNull);
+    });
   });
 }
