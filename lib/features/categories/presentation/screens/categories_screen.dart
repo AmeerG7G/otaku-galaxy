@@ -110,7 +110,9 @@ class _CategoriesScreenState extends State<CategoriesScreen> with LocaleRefetch 
   Widget _buildBody() {
     if (_loading) {
       return ListView.separated(
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 26),
+        padding: context.scrollPadding(
+          const EdgeInsets.fromLTRB(18, 18, 18, 26),
+        ),
         itemCount: 5,
         separatorBuilder: (_, _) => const SizedBox(height: 13),
         itemBuilder: (_, _) =>
@@ -132,7 +134,9 @@ class _CategoriesScreenState extends State<CategoriesScreen> with LocaleRefetch 
       onRefresh: _load,
       child: ListView.separated(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 104),
+        padding: context.scrollPadding(
+          const EdgeInsets.fromLTRB(18, 18, 18, OtakuBottomNav.contentGap),
+        ),
         itemCount: _categories.length,
         separatorBuilder: (_, _) => const SizedBox(height: 13),
         itemBuilder: (context, index) {

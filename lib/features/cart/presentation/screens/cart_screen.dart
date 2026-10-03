@@ -80,7 +80,9 @@ class CartScreen extends StatelessWidget {
 
   Widget _buildFilled(BuildContext context, CartState cart) {
     return ListView(
-      padding: const EdgeInsets.only(bottom: 104),
+      padding: context.scrollPadding(
+        const EdgeInsets.only(bottom: OtakuBottomNav.contentGap),
+      ),
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),

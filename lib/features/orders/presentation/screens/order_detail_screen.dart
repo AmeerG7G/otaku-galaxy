@@ -137,7 +137,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with LocaleRefetc
   /// حالة تحميل تفاصيل الطلب — هياكل متلألئة بإيقاع أقسام الشاشة.
   Widget _buildLoadingState() {
     return ListView(
-      padding: const EdgeInsets.fromLTRB(18, 8, 18, 26),
+      padding: context.scrollPadding(const EdgeInsets.fromLTRB(18, 8, 18, 26)),
       children: const [
         OtakuSkeleton.box(height: 150, radius: AppDimens.radiusXl),
         SizedBox(height: 18),
@@ -222,7 +222,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with LocaleRefetc
           ),
         ),
 
-        const SliverToBoxAdapter(child: SizedBox(height: 40)),
+        // ٤٠ التصميم فوق شريط النظام (إيماءات أو أزرار) لا خلفه.
+        SliverToBoxAdapter(child: SizedBox(height: 40 + context.bottomOverlap)),
       ],
     );
   }

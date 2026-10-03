@@ -112,7 +112,7 @@ class _CollectionDetailScreenState extends State<CollectionDetailScreen> {
     }
 
     return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(18, 12, 18, 26),
+      padding: context.scrollPadding(const EdgeInsets.fromLTRB(18, 12, 18, 26)),
       itemCount: _products.length,
       separatorBuilder: (_, _) => const SizedBox(height: 11),
       itemBuilder: (context, index) {

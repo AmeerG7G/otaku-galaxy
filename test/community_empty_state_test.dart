@@ -85,6 +85,7 @@ Future<_NoPhotos> _pump(
   AppLanguage language = AppLanguage.arabic,
   double textScale = 1.0,
   bool loggedIn = true,
+  bool underNavBar = false,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -124,13 +125,45 @@ Future<_NoPhotos> _pump(
               child: child ?? const SizedBox.shrink(),
             ),
           ),
-          home: const Scaffold(body: CommunityScreen()),
+          home: underNavBar
+              // كالغلاف الرئيسي: الشريط العائم الحقيقي والجسم يمتدّ خلفه، فيصل
+              // ارتفاعه (مع إزاحة النظام) إلى الشاشة في `MediaQuery`.
+              ? Scaffold(
+                  extendBody: true,
+                  body: const CommunityScreen(),
+                  bottomNavigationBar: OtakuBottomNav(
+                    currentIndex: 2,
+                    raisedIndex: 2,
+                    onSelected: (_) {},
+                    items: [
+                      for (final label in const ['أ', 'ب', 'ج', 'د', 'هـ'])
+                        OtakuNavItem(
+                          icon: Icons.circle,
+                          activeIcon: Icons.circle,
+                          label: label,
+                        ),
+                    ],
+                  ),
+                )
+              : const Scaffold(body: CommunityScreen()),
         ),
       ),
     ),
   );
   await tester.pumpAndSettle();
   return reviews;
+}
+
+/// أعلى ما يرسمه الشريط العائم: سطحه أو زرّ المجتمع المرفوع، أيّهما أعلى.
+double _navTop(WidgetTester tester) {
+  final row = find
+      .descendant(of: find.byType(OtakuBottomNav), matching: find.byType(Row))
+      .first;
+  final surface = tester
+      .getRect(find.ancestor(of: row, matching: find.byType(Container)).first)
+      .top;
+  final raised = tester.getRect(find.byKey(const Key('nav_shape_community')));
+  return raised.top < surface ? raised.top : surface;
 }
 
 final _state = find.byType(AnimeEmptyState);
@@ -269,7 +302,16 @@ void main() {
         '${language.name} $name: no overflow; the button scrolls clear of the floating nav bar',
         (tester) async {
           final strings = AppStrings.of(language);
-          await _pump(tester, size: size, language: language, textScale: scale);
+          // هاتفٌ بالأزرار الثلاثة: الإزاحة التي أخفت «تسجيل الخروج» في Staging.
+          tester.view.padding = const FakeViewPadding(bottom: 48);
+          tester.view.viewPadding = const FakeViewPadding(bottom: 48);
+          await _pump(
+            tester,
+            size: size,
+            language: language,
+            textScale: scale,
+            underNavBar: true,
+          );
           await tester.tap(find.text(_category.name).last);
           await tester.pumpAndSettle();
           expect(tester.takeException(), isNull);
@@ -278,7 +320,9 @@ void main() {
             of: _state,
             matching: find.text(strings('allCategories')),
           );
-          // الشريط العائم يغطّي ١٠٤ من أسفل الشاشة (`extendBody`).
+          // [CRITICAL] يُقاس على الشريط الحقيقي لا على رقم. كان الشرط
+          // `size.height - 104 + 18` — الرقم الذي نسخه التطبيق من المرجع
+          // وأخفى آخر المحتوى تحت الشريط حين تكبر إزاحة النظام.
           await tester.drag(
             find.descendant(
               of: _state,
@@ -289,7 +333,7 @@ void main() {
           await tester.pumpAndSettle();
           expect(
             tester.getRect(button).bottom,
-            lessThanOrEqualTo(size.height - 104 + 18),
+            lessThanOrEqualTo(_navTop(tester)),
             reason: 'the last action must scroll above the nav bar',
           );
           expect(tester.takeException(), isNull);

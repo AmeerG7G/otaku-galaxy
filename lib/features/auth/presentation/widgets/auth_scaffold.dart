@@ -302,16 +302,23 @@ class AuthScaffold extends StatelessWidget {
 
                     // الفراغ الزائد هنا — بين البطاقة والذيل — كما في المصدر.
                     const Spacer(),
+                    // الذيل يلامس أسفل الشاشة، والجسم يمتدّ تحت شريط النظام
+                    // (`edgeToEdge`): مسافة التصميم تُحسب فوق الشريط لا خلفه،
+                    // وإلا وقع رابط الذيل تحت الأزرار الثلاثة.
                     if (footer != null)
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 18, 20, 26),
+                        padding: context.scrollPadding(
+                          const EdgeInsets.fromLTRB(20, 18, 20, 26),
+                        ),
                         child: ResponsiveContentFrame(
                           maxWidth: kFormMaxWidth,
                           child: footer!,
                         ),
                       )
                     else
-                      const SizedBox(height: AppDimens.space6),
+                      SizedBox(
+                        height: AppDimens.space6 + context.bottomOverlap,
+                      ),
                   ],
                 ),
               ),

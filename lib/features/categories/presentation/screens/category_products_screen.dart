@@ -343,7 +343,9 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen>
     return RefreshIndicator(
       onRefresh: _load,
       child: GridView.builder(
-        padding: const EdgeInsets.fromLTRB(18, 10, 18, 26),
+        padding: context.scrollPadding(
+          const EdgeInsets.fromLTRB(18, 10, 18, 26),
+        ),
         physics: const AlwaysScrollableScrollPhysics(),
         gridDelegate: productGridDelegate(context),
         itemCount: products.length,

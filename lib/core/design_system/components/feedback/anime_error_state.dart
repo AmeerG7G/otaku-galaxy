@@ -6,6 +6,7 @@ import '../../tokens/app_theme_colors.dart';
 import '../../tokens/app_dimens.dart';
 import '../buttons/anime_primary_button.dart';
 import '../buttons/button_enums.dart';
+import '../layout/scroll_insets.dart';
 
 class AnimeErrorState extends StatelessWidget {
   const AnimeErrorState({
@@ -27,11 +28,15 @@ class AnimeErrorState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // [CRITICAL] مُمرِّرٌ بحشوةٍ تشمل ما يغطّي أسفل الجسم، لا `Padding` ثابتة.
+    // الحالة تظهر في التبويبات أيضاً (الرئيسية، الأقسام، المجتمع)، وجسمها
+    // يمتدّ خلف الشريط العائم: عمودٌ يتوسّط المساحة كلّها يضع «إعادة
+    // المحاولة» تحت الشريط على الهاتف القصير، ويفيض بلا تمرير حين لا يتّسع.
     return Center(
-      child: Padding(
-        padding: EdgeInsets.all(AppDimens.space9),
+      child: SingleChildScrollView(
+        padding: context.scrollPadding(EdgeInsets.all(AppDimens.space9)),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Container(
               width: AppDimens.iconHero * 1.5,

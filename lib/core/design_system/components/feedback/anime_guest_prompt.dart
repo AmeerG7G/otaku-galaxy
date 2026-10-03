@@ -4,6 +4,7 @@ import '../../../l10n/app_strings.dart';
 import '../../tokens/app_dimens.dart';
 import '../../tokens/app_theme_colors.dart';
 import '../buttons/anime_primary_button.dart';
+import '../layout/scroll_insets.dart';
 
 /// بطاقة «أنت تتصفح كزائر» بتصميم Otaku Galaxy v2 — لوحة مستديرة موسّطة
 /// مع هالة لونية وزر تسجيل دخول واضح.
@@ -31,7 +32,9 @@ class AnimeGuestPrompt extends StatelessWidget {
 
     return Center(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(18),
+        // ما يغطّي أسفل الجسم (الشريط العائم في السلة) يدخل الحشوة: البطاقة
+        // تتوسّط المساحة المرئية، وزرّ الدخول لا يقع تحت الشريط.
+        padding: context.scrollPadding(const EdgeInsets.all(18)),
         child: Container(
           width: double.infinity,
           decoration: BoxDecoration(

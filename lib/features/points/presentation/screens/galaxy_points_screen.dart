@@ -103,7 +103,9 @@ class _GalaxyPointsScreenState extends State<GalaxyPointsScreen> {
                   };
 
                   return ListView(
-                    padding: const EdgeInsets.fromLTRB(18, 8, 18, 26),
+                    padding: context.scrollPadding(
+                      const EdgeInsets.fromLTRB(18, 8, 18, 26),
+                    ),
                     children: [
                       // ١) المستويات أولاً.
                       _BlockTitle(context.strings('yourLevels'), top: 8),

@@ -29,6 +29,7 @@ export 'inputs/gender_selector.dart';
 export 'inputs/otaku_quantity_stepper.dart';
 export 'layout/otaku_surfaces.dart';
 export 'layout/product_grid.dart';
+export 'layout/scroll_insets.dart';
 export 'navigation/otaku_bottom_nav.dart';
 export 'navigation/otaku_screen_header.dart';
 export 'sheets/login_gate_sheet.dart';

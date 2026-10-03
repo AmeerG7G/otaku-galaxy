@@ -261,9 +261,16 @@ class _HomeScreenState extends State<HomeScreen>
                             ),
                           ),
 
-                        // مساحة أسفل للتنقل
+                        // مساحة أسفل للتنقّل: ما يغطّيه الشريط العائم فعلاً
+                        // ثم مسافة المرجع. كانت ٤٠ ثابتة — أقلّ من الشريط
+                        // نفسه، فيبقى آخر صفّ منتجات ومؤشّر «تحميل المزيد»
+                        // تحته على كل جهاز.
                         SliverToBoxAdapter(
-                          child: SizedBox(height: AppDimens.space10),
+                          child: SizedBox(
+                            height:
+                                OtakuBottomNav.contentGap +
+                                context.bottomOverlap,
+                          ),
                         ),
                       ],
                     ),
@@ -433,7 +440,9 @@ class _HomeScreenState extends State<HomeScreen>
   /// حالة تحميل الرئيسية — هياكل متلألئة بنفس إيقاع الأقسام الحقيقية.
   Widget _buildLoadingState() {
     return ListView(
-      padding: const EdgeInsets.only(bottom: 104),
+      padding: context.scrollPadding(
+        const EdgeInsets.only(bottom: OtakuBottomNav.contentGap),
+      ),
       children: const [
         Padding(
           padding: EdgeInsets.fromLTRB(18, 18, 18, 0),

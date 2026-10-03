@@ -92,7 +92,9 @@ class _RateOrderScreenState extends State<RateOrderScreen> {
                   ? const OtakuListSkeleton(count: 3, height: 140)
                   : BlocBuilder<ReviewsCubit, ReviewsState>(
                       builder: (context, state) => ListView(
-                        padding: const EdgeInsets.fromLTRB(18, 12, 18, 26),
+                        padding: context.scrollPadding(
+                          const EdgeInsets.fromLTRB(18, 12, 18, 26),
+                        ),
                         children: [
                           for (final item in widget.order.items) ...[
                             _ProductReviewCard(

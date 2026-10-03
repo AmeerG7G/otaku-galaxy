@@ -43,11 +43,14 @@ class AccountScreen extends StatelessWidget {
           _ => null,
         };
 
-        // الشريط السفلي عائم فوق المحتوى، فنترك له مساحة أسفل القائمة.
+        // الشريط السفلي عائم فوق المحتوى: ارتفاعه الفعلي (مع إزاحة النظام)
+        // يصل من `MediaQuery`، فيُمرَّر «تسجيل الخروج» فوقه على كل جهاز.
         return SafeArea(
           bottom: false,
           child: ListView(
-            padding: const EdgeInsets.only(bottom: 104),
+            padding: context.scrollPadding(
+              const EdgeInsets.only(bottom: OtakuBottomNav.contentGap),
+            ),
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(18, 20, 18, 0),

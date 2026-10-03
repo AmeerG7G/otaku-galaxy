@@ -127,7 +127,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       onRefresh: () => context.read<NotificationsCubit>().load(),
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(18, 6, 18, 26),
+        padding: context.scrollPadding(
+          const EdgeInsets.fromLTRB(18, 6, 18, 26),
+        ),
         children: [
           for (final entry in groups.entries) ...[
             Padding(

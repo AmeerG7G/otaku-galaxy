@@ -122,7 +122,9 @@ class _OrdersScreenState extends State<OrdersScreen> with LocaleRefetch {
       onRefresh: _load,
       child: ListView.separated(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(18, 8, 18, 26),
+        padding: context.scrollPadding(
+          const EdgeInsets.fromLTRB(18, 8, 18, 26),
+        ),
         itemCount: _orders.length,
         separatorBuilder: (_, _) => const SizedBox(height: 12),
         itemBuilder: (context, index) {

@@ -265,7 +265,9 @@ class _WriteReviewScreenState extends State<WriteReviewScreen> {
               child: _loading
                   ? const OtakuListSkeleton(count: 3, height: 110)
                   : ListView(
-                      padding: const EdgeInsets.fromLTRB(18, 12, 18, 26),
+                      padding: context.scrollPadding(
+                        const EdgeInsets.fromLTRB(18, 12, 18, 26),
+                      ),
                       children: [
                         if (_isEditingRejected) ...[
                           _RejectedBanner(reason: _existing!.rejectionReason),

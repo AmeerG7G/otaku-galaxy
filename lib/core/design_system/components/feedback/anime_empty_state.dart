@@ -4,6 +4,7 @@ import '../../tokens/app_colors.dart';
 import '../../tokens/app_dimens.dart';
 import '../../tokens/app_theme_colors.dart';
 import '../buttons/anime_primary_button.dart';
+import '../layout/scroll_insets.dart';
 import '../../../../features/visuals/presentation/character_artwork.dart';
 
 /// حالة فارغة بتصميم Otaku Galaxy v2 — لوحة تحريرية مستديرة مع هالة لونية
@@ -22,7 +23,6 @@ class AnimeEmptyState extends StatelessWidget {
     this.centered = false,
     this.artworkHeight = 150,
     this.fitContent = false,
-    this.bottomClearance = 18,
   });
 
   final String title;
@@ -66,10 +66,6 @@ class AnimeEmptyState extends StatelessWidget {
   /// «طلباتي» وحدها تطلبه اليوم (STEP 64 §22).
   final bool fitContent;
 
-  /// الحشوة أسفل المُمرِّر. شاشات التبويب تحت الشريط العائم (`extendBody`)
-  /// تمرّر ارتفاعه (١٠٤ كقوائمها) كي يُمرَّر الزرّ فوقه على الهاتف القصير.
-  final double bottomClearance;
-
   static const double _fitArtworkShare = 0.4;
   static const double _fitArtworkMin = 110;
 
@@ -81,23 +77,30 @@ class AnimeEmptyState extends StatelessWidget {
     // يوسّطها عمودياً. على الشاشات القصيرة تتقلّص حتى ٢٦٠ بدل أن تفيض.
     return LayoutBuilder(
       builder: (context, constraints) {
+        // [CRITICAL] المساحة **المرئية** لا المساحة كلّها: تحت الشريط العائم
+        // (أو شريط النظام) يمتدّ الجسم خلفه، فلوحةٌ تُقاس بالارتفاع كاملاً
+        // يقع أسفلها — وزرّها — تحت الشريط على الهاتف القصير. وتجاوزُه في
+        // المُمرِّر (`scrollPadding`) يُبلغ آخر اللوحة فوقه حين لا تتّسع.
+        final visibleHeight = constraints.maxHeight - context.bottomOverlap;
         final fit = centered && fitContent;
         final panelHeight = fit
             ? null
             : constraints.hasBoundedHeight
-            ? (constraints.maxHeight - 36).clamp(260.0, 380.0)
+            ? (visibleHeight - 36).clamp(260.0, 380.0)
             : 380.0;
         final fitArtworkHeight = constraints.hasBoundedHeight
             ? artworkHeight.clamp(
                 0.0,
-                (constraints.maxHeight * _fitArtworkShare).clamp(
+                (visibleHeight * _fitArtworkShare).clamp(
                   _fitArtworkMin,
                   double.infinity,
                 ),
               )
             : artworkHeight;
         return SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(18, 14, 18, bottomClearance),
+          padding: context.scrollPadding(
+            const EdgeInsets.fromLTRB(18, 14, 18, 18),
+          ),
           child: Container(
             width: double.infinity,
             height: panelHeight,

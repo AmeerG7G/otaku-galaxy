@@ -679,7 +679,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
   /// هيكل تحميل الصفحة — فتحة صورة متلألئة ثم أسطر نصية.
   Widget _buildLoadingState() {
     return ListView(
-      padding: EdgeInsets.zero,
+      padding: context.scrollPadding(EdgeInsets.zero),
       children: const [
         OtakuSkeleton.box(height: 330, radius: 0),
         Padding(

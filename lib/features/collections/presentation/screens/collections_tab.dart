@@ -107,8 +107,13 @@ class _CollectionsTabState extends State<CollectionsTab> {
           );
         }
 
+        // ١٠٤ كانت تجاوزَ شريط التبويبات العائم — ولا شريط هنا: المجموعات
+        // داخل «المفضلة» المدفوعة. حشوة الشاشات المدفوعة كشبكة المفضلة
+        // بجوارها، فوق ما يغطّي أسفل الجسم.
         return ListView(
-          padding: const EdgeInsets.fromLTRB(18, 16, 18, 104),
+          padding: context.scrollPadding(
+            const EdgeInsets.fromLTRB(18, 16, 18, 26),
+          ),
           children: [
             if (state.items.isEmpty)
               AnimeEmptyState(

@@ -20,10 +20,6 @@ import '../../../products/domain/usecases/fetch_categories_usecase.dart';
 import '../../../visuals/domain/visual_slot.dart';
 import '../../../visuals/presentation/character_artwork.dart';
 
-/// ما تحت الشريط العائم (`extendBody`) — حشوة المعرض السفلية نفسها، كي
-/// يُمرَّر آخر المحتوى فوقه.
-const double _navClearance = 104;
-
 /// المجتمع بتصميم Otaku Galaxy v2.
 ///
 /// ترويسة تحريرية بهالة بنفسجية ورسم باهت وكبسولة عدد معتمدة، ثم معرض
@@ -278,7 +274,6 @@ class _CommunityScreenState extends State<CommunityScreen> with LocaleRefetch {
           },
           centered: true,
           fitContent: true,
-          bottomClearance: _navClearance,
         );
       }
       // المجتمع شاشة تصفّح حرّة: زرّ «شارك تجربتك» يفتح «طلباتي» المحمية،
@@ -297,7 +292,6 @@ class _CommunityScreenState extends State<CommunityScreen> with LocaleRefetch {
             : null,
         centered: true,
         fitContent: true,
-        bottomClearance: _navClearance,
       );
     }
 
@@ -312,7 +306,11 @@ class _CommunityScreenState extends State<CommunityScreen> with LocaleRefetch {
       onRefresh: _load,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, _navClearance),
+        // ما يغطّيه الشريط العائم يصل من `MediaQuery` (`extendBody`)، وخارج
+        // الغلاف (المسار المستقلّ) هو إزاحة النظام وحدها.
+        padding: context.scrollPadding(
+          const EdgeInsets.fromLTRB(18, 18, 18, OtakuBottomNav.contentGap),
+        ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -566,7 +564,9 @@ class _CommunitySkeleton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, _navClearance),
+      padding: context.scrollPadding(
+        const EdgeInsets.fromLTRB(18, 18, 18, OtakuBottomNav.contentGap),
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

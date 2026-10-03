@@ -118,7 +118,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(18, 8, 18, 26),
+                padding: context.scrollPadding(
+                  const EdgeInsets.fromLTRB(18, 8, 18, 26),
+                ),
                 children: [
                   OtakuGroupLabel(label: context.strings('account')),
                   OtakuSettingRow(
