@@ -45,7 +45,7 @@ const _slotNumbers = <String, int>{
   'home_delivery_character': 11,
   'empty_cart_character': 12,
   'empty_favorites_character': 13,
-  'categories_header_character': 38,
+  'categories_header_character': 39,
   'category_products_header_character': 15,
   'empty_category_products_character': 15,
   'product_detail_character': 16,
@@ -84,7 +84,7 @@ const _retired = <int, String>{
   4: 'deleted; register form-card corner, guest prompts, first promo fallback, splash small art removed',
   9: 'copy of 29 (JPEG with a baked checkerboard); home hero now uses 29',
   10: 'copy of 29; promo cards now use 29',
-  14: 'copy of 38; categories header now uses 38',
+  14: 'copy of 38; categories header now uses 39',
   22: 'deleted; delivery-confirmation sheet has no character',
   27: 'deleted; write-review header has no character',
   36: 'copy of 32; splash backdrop now uses 32',
@@ -225,22 +225,24 @@ void main() {
         expect(group.map(CharacterArt.forSlot).toSet(), hasLength(1), reason: '$group');
       }
       expect(CharacterArt.splashBackdrop, CharacterArt.forSlot(VisualSlots.onboardingSlideOne));
-      expect(CharacterArt.emptyCollection, CharacterArt.forSlot(VisualSlots.categoriesHeader));
+      // emptyCollection (38) and categoriesHeader (39) are now distinct images.
+      expect(CharacterArt.emptyCollection, isNot(CharacterArt.forSlot(VisualSlots.categoriesHeader)));
     });
 
-    test('الاستبدالات (2026-09-28): 14→38، 2→34، 9 و10→29، 36→32 — بلا نسخةٍ ثانية', () {
-      // 14 → 38: ترويسة الأقسام تعرض 38 نفسها التي تعرضها المجموعة الفارغة.
-      expect(CharacterArt.forSlot(VisualSlots.categoriesHeader), '$_dir/38.png');
+    test('الاستبدالات الأصلية (2026-09-28) وتحديث الأقسام: 2→34، 9 و10→29، 36→32', () {
+      // categoriesHeader انتقل من 38 (كانت نسخةً من 14) إلى 39 — صورةٌ مستقلّة.
+      expect(CharacterArt.forSlot(VisualSlots.categoriesHeader), '$_dir/39.png');
+      // emptyCollection تبقى 38.
+      expect(CharacterArt.emptyCollection, '$_dir/38.png');
       // 9 و10 → 29: البطل وبطاقات الترويج وشاشة «تم إرسال التقييم» ملفٌّ واحد.
       expect(CharacterArt.forSlot(VisualSlots.homeHero), '$_dir/29.png');
       expect(CharacterArt.forSlot(VisualSlots.homePromoSecondary), '$_dir/29.png');
       // 36 → 32: خلفية البداية هي صورة الشريحة الأولى نفسها.
       expect(CharacterArt.splashBackdrop, '$_dir/32.png');
-      // 2 → 34: موضع 2 الوحيد (زاوية بطاقة الدخول بجوار الزرّ) أُزيل مع كل
-      // رسمٍ مجاورٍ للأزرار، فلا موضع يُنقل؛ 34 تبقى صورة التخصيص وحدها.
+      // 2 → 34: موضع 2 الوحيد أُزيل؛ 34 تبقى صورة التخصيص وحدها.
       expect(CharacterArt.forSlot(VisualSlots.personalize), '$_dir/34.png');
-      // ولا ملفّ جديد: الأهداف هي الملفات القديمة نفسها، وكلٌّ رقمٌ واحد.
-      for (final n in [29, 32, 34, 38]) {
+      // كل ملفٍّ هدفٍ موجود.
+      for (final n in [29, 32, 34, 38, 39]) {
         expect(File('$_dir/$n.png').existsSync(), isTrue, reason: '$n.png');
       }
     });

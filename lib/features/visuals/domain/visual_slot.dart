@@ -178,7 +178,7 @@ class CharacterArt {
     VisualSlots.homeDelivery: 'assets/art/characters/11.png', // الرئيسية — بطاقة التوصيل
     VisualSlots.emptyCart: 'assets/art/characters/12.png', // السلة — فارغة
     VisualSlots.emptyFavorites: 'assets/art/characters/13.png', // المفضلة — فارغة
-    VisualSlots.categoriesHeader: 'assets/art/characters/38.png', // الأقسام — الترويسة (كانت 14)
+    VisualSlots.categoriesHeader: 'assets/art/characters/39.png', // الأقسام — الترويسة
     VisualSlots.categoryProductsHeader: 'assets/art/characters/15.png', // منتجات القسم — لا منتجات في القسم
     VisualSlots.emptyCategoryProducts: 'assets/art/characters/15.png', // منتجات القسم — لا منتجات في القسم الفرعي
     VisualSlots.productDetail: 'assets/art/characters/16.png', // تفاصيل المنتج
