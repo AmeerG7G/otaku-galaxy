@@ -20,6 +20,9 @@ import '../../../products/domain/usecases/fetch_categories_usecase.dart';
 import '../../../visuals/domain/visual_slot.dart';
 import '../../../visuals/presentation/character_artwork.dart';
 
+/// عرض رسم الترويسة (45) — يُقاس ارتفاعه 860:702 من عرضه.
+const double _galleryArtWidth = 160;
+
 /// المجتمع بتصميم Otaku Galaxy v2.
 ///
 /// ترويسة تحريرية بهالة بنفسجية ورسم باهت وكبسولة عدد معتمدة، ثم معرض
@@ -155,13 +158,16 @@ class _CommunityScreenState extends State<CommunityScreen> with LocaleRefetch {
             ),
           ),
           PositionedDirectional(
-            top: -6,
-            end: -40,
+            // 45 نصفٌ علويّ مقصوص عند منتصف الصورة (860×702): حافّة القصّ
+            // السفلى تُلصَق بأسفل الترويسة فتبدو الشخصية خارجةً منها، أياً
+            // كان ارتفاع الترويسة (نصٌّ أكبر / كردية).
+            bottom: 0,
+            end: -30,
             child: IgnorePointer(
               // بلا شفافية — الشخصية كما صورتها (قرار 2026-09-15).
               child: const CharacterArtwork(
                 slot: VisualSlots.communityGallery,
-                width: 120,
+                width: _galleryArtWidth,
               ),
             ),
           ),
