@@ -488,37 +488,46 @@ class DeliveryAssuranceStrip extends StatelessWidget {
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
           borderRadius: borderRadius,
         ),
-        // Border lives in foregroundDecoration so it paints after the Stack's
-        // children — including the artwork that overflows the card boundary —
-        // making the frame visually in front of the character at the edge.
+        // Border lives in foregroundDecoration.  Flutter's Container.build places
+        // the foregroundDecoration DecoratedBox OUTSIDE the ClipPath it creates
+        // for clipBehavior, so the border paints after the clip is restored —
+        // it is never clipped itself and always renders on top of every child.
         foregroundDecoration: BoxDecoration(
           borderRadius: borderRadius,
           border: Border.all(color: borderColor),
         ),
-        // Clip.none: artwork is allowed to extend below and past the card's
-        // painted area; the foregroundDecoration border still renders at the
-        // card's own edge, above everything the Stack painted.
-        clipBehavior: Clip.none,
+        // Clip.antiAlias clips the Stack's children (including overflowing artwork)
+        // to the card's rounded-rectangle boundary.  The artwork's portion that
+        // extends below / past the card's outer edge is invisible — it appears to
+        // go "behind" the card — and the foregroundDecoration border (outside the
+        // clip) paints on top of the visible artwork at the card's edges.
+        //
+        // Do NOT change this to Clip.none: with Clip.none the artwork overflow is
+        // visible outside the card, so the character appears in FRONT of the frame
+        // rather than behind it.
+        clipBehavior: Clip.antiAlias,
         child: Stack(
-          // Clip.none: the PositionedDirectional artwork must be able to
-          // overflow past the Stack's bounds into the card's padding zone
-          // and beyond the card's outer edge.
+          // Clip.none on the Stack so the artwork can overflow the Stack's inner
+          // content bounds into the card's 20 px padding zone before being clipped
+          // by the outer Container's Clip.antiAlias boundary.  If this were
+          // Clip.hardEdge the artwork would be cut at the Stack edge, 20 px short
+          // of the card's actual outer edge, leaving a visible gap at the frame.
           clipBehavior: Clip.none,
           children: [
-            // The artwork intentionally extends beyond the card's painted area.
-            // bottom: −55 pushes the image 35 px past the card's outer bottom
-            // edge (55 − 20 px padding = 35 px overshoot); end: −83 likewise
-            // overshoots the card's end edge.  height: 220 is the owner-approved
-            // size that keeps the character proportional inside the card.
+            // Artwork geometry: bottom: −55 positions the character's bottom
+            // 55 px below the Stack edge = 35 px past the card's outer bottom edge.
+            // end: −83 overshoots the card's end edge by 63 px.  height: 220 is the
+            // owner-approved rendered size.
             //
-            // The foregroundDecoration border paints at the card's outer edge
-            // AFTER the Stack, so the character appears to stand behind the frame
-            // rather than stopping at the inner content boundary.
+            // With Container.clipBehavior Clip.antiAlias the overflow (35 px bottom,
+            // 63 px end) is clipped to the card's rounded-rectangle shape, making
+            // those portions invisible.  The foregroundDecoration border then paints
+            // on top of the clipped artwork at the card's edges, creating the visual
+            // of the character standing behind the card frame.
             //
             // Reverting to the old geometry (bottom: −18 / end: −14 / height: 116)
-            // eliminates the overlap: the character stops 2 px above the border
-            // instead of extending through it, making the lower portion of the
-            // card look visually disconnected from the character art.
+            // positions the artwork well inside the card; the character no longer
+            // fills the card's corner and the border-behind effect disappears.
             PositionedDirectional(
               bottom: -55,
               end: -83,

@@ -93,8 +93,12 @@ class _CategoriesScreenState extends State<CategoriesScreen> with LocaleRefetch 
         // (نصّ العنوان فقط) لا بارتفاع الرسم، فدفعُ الرسم لأسفل هناك كان
         // سيقصّ جزءاً منه بصمت. هنا يبقى آخر طفلٍ في المكدّس (أعلى الجميع)
         // ولا يُقصّ أبداً طالما بقي داخل حدود الشاشة.
+        //
+        // `top` = حافة شريط حالة النظام السفلية: الرسم يبدأ أسفل البطارية
+        // والشبكة ويمتدّ إلى ما تحت الترويسة — نفس المبدأ الذي يستخدمه
+        // `OtakuScreenHeader` حين `artworkBelowStatusBar = true`.
         PositionedDirectional(
-          top: 0,
+          top: MediaQuery.paddingOf(context).top,
           end: -10,
           child: IgnorePointer(
             child: CharacterArtwork(

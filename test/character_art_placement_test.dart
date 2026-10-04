@@ -665,12 +665,14 @@ void main() {
       final cardRect = tester.getRect(find.byType(DeliveryAssuranceStrip));
 
       // bottom: −55 relative to a Stack inset 20 px = 35 px below the card outer
-      // edge.  Any value ≤ 0 means Clip is incorrectly suppressing the overflow.
+      // edge.  getRect returns the layout rect (not the visual/clipped rect), so
+      // artRect.bottom > cardRect.bottom even though the Container's Clip.antiAlias
+      // hides that overflow visually.  A value ≤ 0 means the geometry was reverted.
       expect(
         artRect.bottom - cardRect.bottom,
         greaterThan(0.0),
-        reason: 'artwork must extend below the card (bottom:−55, stack-inset:20 → ~35 px); '
-            'zero means Container or Stack is clipping the overflow',
+        reason: 'artwork layout must extend below the card (bottom:−55, stack-inset:20 → ~35 px); '
+            'zero means the geometry was reverted to the old values',
       );
       expect(tester.takeException(), isNull);
     });
@@ -706,7 +708,14 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('Container.clipBehavior is Clip.none — overflow is not suppressed', (tester) async {
+    // Container.clipBehavior must be Clip.antiAlias so that:
+    //   (a) the artwork overflow is clipped to the card's rounded-rect shape
+    //       (character appears behind the card, not in front of it), and
+    //   (b) the foregroundDecoration border (outside the ClipPath in Flutter's
+    //       Container.build chain) is not clipped and paints on top.
+    // Do NOT change this to Clip.none: Clip.none leaves the artwork visible
+    // outside the card, making the character appear in front of the frame.
+    testWidgets('Container.clipBehavior is Clip.antiAlias — artwork is clipped to card shape', (tester) async {
       _phone(tester);
       await tester.pumpWidget(
         _app(home: const Scaffold(body: DeliveryAssuranceStrip())),
@@ -722,12 +731,77 @@ void main() {
             c.foregroundDecoration is BoxDecoration &&
             (c.foregroundDecoration! as BoxDecoration).border != null,
       );
-      expect(cardContainer.clipBehavior, isNot(Clip.antiAlias),
-          reason: 'Clip.antiAlias clips the intentional overflow');
-      expect(cardContainer.clipBehavior, isNot(Clip.antiAliasWithSaveLayer),
-          reason: 'Clip.antiAliasWithSaveLayer clips the intentional overflow');
-      expect(cardContainer.clipBehavior, isNot(Clip.hardEdge),
-          reason: 'Clip.hardEdge clips the intentional overflow');
+      // Must be Clip.antiAlias: clips artwork at the card boundary → character
+      // disappears behind the card; the foreground border paints on top.
+      expect(cardContainer.clipBehavior, equals(Clip.antiAlias),
+          reason: 'Container must use Clip.antiAlias so the artwork is clipped to '
+              'the card shape; Clip.none leaves the character visible outside the '
+              'card making it appear in front of the frame');
+
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('Stack.clipBehavior is Clip.none — artwork can overflow Stack into padding zone', (tester) async {
+      _phone(tester);
+      await tester.pumpWidget(
+        _app(home: const Scaffold(body: DeliveryAssuranceStrip())),
+      );
+
+      final stackFinder = find.descendant(
+        of: find.byType(DeliveryAssuranceStrip),
+        matching: find.byType(Stack),
+      );
+      final stack = tester.widget<Stack>(stackFinder);
+      // Stack must be Clip.none so the artwork's bottom:−55 / end:−83 can
+      // overflow the Stack's content bounds into the card's 20 px padding zone
+      // before being clipped by the Container's Clip.antiAlias boundary.
+      // Clip.hardEdge here would cut the artwork 20 px early.
+      expect(stack.clipBehavior, equals(Clip.none),
+          reason: 'Stack must be Clip.none so artwork fills the padding zone');
+
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('frame is structurally above artwork — foreground outside ClipPath guarantees occlusion', (tester) async {
+      _phone(tester);
+      await tester.pumpWidget(
+        _app(home: const Scaffold(body: DeliveryAssuranceStrip())),
+      );
+
+      final containers = tester.widgetList<Container>(find.descendant(
+        of: find.byType(DeliveryAssuranceStrip),
+        matching: find.byType(Container),
+      )).toList();
+
+      final cardContainer = containers.firstWhere(
+        (c) =>
+            c.foregroundDecoration is BoxDecoration &&
+            (c.foregroundDecoration! as BoxDecoration).border != null,
+      );
+
+      // The three structural invariants that together guarantee the frame
+      // visually covers the artwork at every card edge:
+      //   1. foregroundDecoration carries the border (not decoration)
+      //   2. clipBehavior is Clip.antiAlias (clips artwork at card shape)
+      //   3. decoration carries NO border (no background stroke)
+      //
+      // Flutter's Container.build places the foregroundDecoration DecoratedBox
+      // OUTSIDE the ClipPath it creates for clipBehavior, so the border paints
+      // after the clip is restored — it is never clipped and always on top.
+
+      // invariant 1 — border is in foreground
+      final fgDeco = cardContainer.foregroundDecoration as BoxDecoration;
+      expect(fgDeco.border, isNotNull,
+          reason: 'border must be in foregroundDecoration (paints after clip)');
+
+      // invariant 2 — container clips with antiAlias
+      expect(cardContainer.clipBehavior, equals(Clip.antiAlias),
+          reason: 'Clip.antiAlias makes artwork disappear behind the card');
+
+      // invariant 3 — no background border (would be behind artwork)
+      final bgDeco = cardContainer.decoration as BoxDecoration?;
+      expect(bgDeco?.border, isNull,
+          reason: 'no border in background decoration; it would paint behind artwork');
 
       expect(tester.takeException(), isNull);
     });
