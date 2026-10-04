@@ -75,7 +75,6 @@ const _slotNumbers = <String, int>{
 const _fixedNumbers = <String, int>{
   CharacterArt.splashBackdrop: 32,
   CharacterArt.onboardingProductPhoto: 7,
-  CharacterArt.emptyCollection: 38,
 };
 
 /// الأرقام المحذوفة (2026-09-28) — فجواتٌ مقصودة لا تُملأ ولا يُشار إليها.
@@ -89,6 +88,7 @@ const _retired = <int, String>{
   27: 'deleted; write-review header has no character',
   36: 'copy of 32; splash backdrop now uses 32',
   37: 'deleted; empty categories state has no character',
+  38: 'deleted 2026-10-04; empty collection state has no character (not replaced)',
 };
 
 /// مواضع أُزيلت رسومها (2026-09-28) — لا تعود فتحاتٍ.
@@ -225,15 +225,12 @@ void main() {
         expect(group.map(CharacterArt.forSlot).toSet(), hasLength(1), reason: '$group');
       }
       expect(CharacterArt.splashBackdrop, CharacterArt.forSlot(VisualSlots.onboardingSlideOne));
-      // emptyCollection (38) and categoriesHeader (39) are now distinct images.
-      expect(CharacterArt.emptyCollection, isNot(CharacterArt.forSlot(VisualSlots.categoriesHeader)));
     });
 
     test('الاستبدالات الأصلية (2026-09-28) وتحديث الأقسام: 2→34، 9 و10→29، 36→32', () {
       // categoriesHeader انتقل من 38 (كانت نسخةً من 14) إلى 39 — صورةٌ مستقلّة.
       expect(CharacterArt.forSlot(VisualSlots.categoriesHeader), '$_dir/39.png');
-      // emptyCollection تبقى 38.
-      expect(CharacterArt.emptyCollection, '$_dir/38.png');
+      // 38 حُذفت (2026-10-04) — لا emptyCollection بعد اليوم.
       // 9 و10 → 29: البطل وبطاقات الترويج وشاشة «تم إرسال التقييم» ملفٌّ واحد.
       expect(CharacterArt.forSlot(VisualSlots.homeHero), '$_dir/29.png');
       expect(CharacterArt.forSlot(VisualSlots.homePromoSecondary), '$_dir/29.png');
@@ -242,7 +239,7 @@ void main() {
       // 2 → 34: موضع 2 الوحيد أُزيل؛ 34 تبقى صورة التخصيص وحدها.
       expect(CharacterArt.forSlot(VisualSlots.personalize), '$_dir/34.png');
       // كل ملفٍّ هدفٍ موجود.
-      for (final n in [29, 32, 34, 38, 39]) {
+      for (final n in [29, 32, 34, 39]) {
         expect(File('$_dir/$n.png').existsSync(), isTrue, reason: '$n.png');
       }
     });

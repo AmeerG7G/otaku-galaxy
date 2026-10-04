@@ -270,7 +270,8 @@ class _EmptyReviews extends StatelessWidget {
       artworkSlot: VisualSlots.productReviews,
       margin: EdgeInsets.zero,
       minHeight: 150,
-      artHeight: 120,
+      // الرسم 26 أكبر بـ30% (120 × 1.3 = 156)؛ المرساة (أسفل/نهاية) كما هي.
+      artHeight: 156,
       contentWidthFactor: 0.7,
     );
   }

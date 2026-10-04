@@ -11,6 +11,8 @@
 // حين `artworkBelowStatusBar = true` — فيبدأ الرسم من منطقة المحتوى ويمتدّ
 // أسفل الترويسة بلا أي قصّ.
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -105,10 +107,12 @@ void main() {
     expect(CharacterArt.forSlot(VisualSlots.categoriesHeader), '$dir/39.png');
   });
 
-  // ── 2: 38 لا تزال مستعملة من emptyCollection ────────────────────────────
+  // ── 2: 38 حُذفت (2026-10-04) ─────────────────────────────────────────────
 
-  test('[CRITICAL] 2 — emptyCollection ما زالت تستخدم 38.png', () {
-    expect(CharacterArt.emptyCollection, '$dir/38.png');
+  test('[CRITICAL] 2 — 38.png لا وجود لها ولا يشير إليها موضع', () {
+    expect(File('$dir/38.png').existsSync(), isFalse);
+    expect(CharacterArt.assets.values, isNot(contains('$dir/38.png')));
+    expect(CharacterArt.fixed, isNot(contains('$dir/38.png')));
   });
 
   // ── 3: الرسم خارج OtakuScreenHeader ─────────────────────────────────────
