@@ -14,6 +14,7 @@ class OrderData {
     this.quotedTotal,
     this.zoneId,
     this.zoneName,
+    this.loyaltyGiftActivated = false,
   });
 
   /// معرّف المحافظة لدى الخادم — إلزامي لإنشاء الطلب.
@@ -49,6 +50,9 @@ class OrderData {
 
   /// اسم المنطقة للعرض في المراجعة فقط؛ الخادم يحفظ لقطته بنفسه.
   final String? zoneName;
+
+  /// هل فعَّل الزبون هديةَ مستوى مرتبطة بهذا الطلب؟ — للعرض في المراجعة فقط.
+  final bool loyaltyGiftActivated;
 
   double get productsTotal =>
       items.fold(0, (sum, item) => sum + item.lineTotal);

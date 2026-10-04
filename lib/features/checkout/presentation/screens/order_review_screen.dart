@@ -429,6 +429,14 @@ class _OrderReviewScreenState extends State<OrderReviewScreen>
             color: AppColors.success,
           ),
         ],
+        if (data.loyaltyGiftActivated) ...[
+          const SizedBox(height: 10),
+          _priceRow(
+            context.strings('loyaltyGiftLabel'),
+            context.strings('levelGiftActivatedInOrder'),
+            color: AppColors.success,
+          ),
+        ],
         Container(
           height: 1,
           margin: const EdgeInsets.symmetric(vertical: 14),

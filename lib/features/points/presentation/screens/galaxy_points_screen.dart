@@ -359,8 +359,8 @@ class _RewardRow extends StatelessWidget {
         icon: Icons.schedule_outlined,
         color: colors.infoText,
         label: reward.isGift
-            ? context.strings('giftRecorded')
-            : context.strings('discountReadyAuto'),
+            ? context.strings('giftReady')
+            : context.strings('discountReady'),
       );
     }
 
@@ -371,7 +371,11 @@ class _RewardRow extends StatelessWidget {
       child: SizedBox(
         width: double.infinity,
         child: AnimeOutlinedButton(
-          label: claiming ? context.strings('claiming') : context.strings('claimReward'),
+          label: claiming
+              ? context.strings('claiming')
+              : (reward.isGift
+                  ? context.strings('claimGift')
+                  : context.strings('claimDiscount')),
           onPressed: claiming ? null : onClaim,
           icon: Icons.redeem_outlined,
           iconPosition: IconPosition.start,
@@ -390,12 +394,14 @@ class _RewardRow extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(top: 10),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(icon, size: 15, color: color),
           const SizedBox(width: 7),
-          Expanded(
+          Flexible(
             child: Text(
               label,
+              textAlign: TextAlign.center,
               style: theme.textTheme.labelSmall?.copyWith(
                 fontSize: 11.5,
                 height: 1.5,

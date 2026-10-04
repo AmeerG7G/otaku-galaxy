@@ -18,6 +18,7 @@ class CheckoutQuote {
     this.deliveryFee,
     this.deliveryDiscount = 0,
     this.total,
+    this.loyaltyGiftActivated = false,
   });
 
   final double productsTotal;
@@ -35,6 +36,12 @@ class CheckoutQuote {
   /// الإجمالي كما سيُحفظ — `null` ما دامت الرسوم غير معروفة.
   final double? total;
 
+  /// هل فعَّل الزبون هديةَ مستوى مرتبطة بهذا الطلب؟
+  ///
+  /// [CRITICAL] هديةٌ فيزيائية — لا تأثير على الأرقام. خادمٌ أقدم لا يرسل
+  /// الحقل: غيابه = لا هدية (false).
+  final bool loyaltyGiftActivated;
+
   /// مجموع الخصم على المنتجات (الميلاد + المزيّة).
   double get discount => birthdayDiscount + loyaltyDiscount;
 
@@ -51,6 +58,7 @@ class CheckoutQuote {
       deliveryFee: (json['deliveryFee'] as num?)?.toDouble(),
       deliveryDiscount: _num(json['deliveryDiscount']),
       total: (json['total'] as num?)?.toDouble(),
+      loyaltyGiftActivated: json['loyaltyGiftActivated'] as bool? ?? false,
     );
   }
 }

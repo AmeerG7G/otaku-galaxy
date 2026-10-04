@@ -255,6 +255,7 @@ class _OrderDataScreenState extends State<OrderDataScreen> with LocaleRefetch {
       quotedTotal: quote.total,
       zoneId: _selectedZone?.id,
       zoneName: _selectedZone?.name,
+      loyaltyGiftActivated: quote.loyaltyGiftActivated,
     );
     router.push(OrderReviewRoute(orderData: orderData));
   }

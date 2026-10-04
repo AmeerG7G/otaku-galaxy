@@ -54,6 +54,7 @@ class Order {
     this.canReview = false,
     this.reviewableProductCount = 0,
     this.statusHistory = const [],
+    this.loyaltyGiftActivated = false,
   });
 
   final String id;
@@ -132,6 +133,12 @@ class Order {
   /// مسار الطلب بأوقاته كما سجّله الخادم (بلا هوية من غيّر الحالة).
   final List<OrderStatusEvent> statusHistory;
 
+  /// هل فعَّل الزبون هديةَ مستوى مرتبطة بهذا الطلب؟
+  ///
+  /// [CRITICAL] هديةٌ فيزيائية — لا تأثير على الأرقام. خادمٌ أقدم لا يرسل
+  /// الحقل: غيابه = لا هدية (false).
+  final bool loyaltyGiftActivated;
+
   factory Order.fromJson(Map<String, dynamic> json) {
     final items = (json['items'] as List? ?? const [])
         .map((e) => _mapItem(e as Map<String, dynamic>))
@@ -163,6 +170,7 @@ class Order {
       statusHistory: (json['statusHistory'] as List? ?? const [])
           .map((e) => OrderStatusEvent.fromJson(e as Map<String, dynamic>))
           .toList(),
+      loyaltyGiftActivated: json['loyaltyGiftActivated'] as bool? ?? false,
     );
   }
 
