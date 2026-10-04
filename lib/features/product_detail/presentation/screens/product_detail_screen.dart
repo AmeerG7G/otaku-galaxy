@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:auto_route/auto_route.dart';
 import '../../../../core/l10n/app_strings.dart';
 import '../../../../core/l10n/locale_refetch.dart';
@@ -10,6 +12,7 @@ import '../../../../core/auth/require_auth.dart';
 import '../../../../core/design_system/design_system.dart';
 import '../../../../core/di/injection_container.dart' show sl;
 import '../../../../core/l10n/gender.dart';
+import '../../../../core/tracking/tracking_signals.dart';
 import '../../../cart/presentation/cart_actions.dart';
 import '../../../collections/presentation/widgets/add_to_collection_sheet.dart';
 import '../../../favorites/presentation/cubit/favorites_cubit.dart';
@@ -61,17 +64,25 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
   @override
   void initState() {
     super.initState();
-    _load();
+    _load(openedNow: true);
   }
 
   /// المحتوى الخادمي يُصرَّف لحظة الجلب — يُعاد جلبه بلغة الواجهة الجديدة.
+  /// [D3] إعادة الجلب ليست فتحاً جديداً للصفحة، فلا إشارة فتح معها.
   @override
   void onLanguageChanged() => _load();
 
-  Future<void> _load() async {
+  /// إشارات القياس إن سُجّلت — شاشةٌ تُختبر بلا حاوية كاملة تبقى صامتة.
+  TrackingSignals? get _tracking =>
+      sl.isRegistered<TrackingSignals>() ? sl<TrackingSignals>() : null;
+
+  Future<void> _load({bool openedNow = false}) async {
     try {
       final fetchDetails = context.read<FetchProductDetailsUsecase>();
-      final product = await fetchDetails(widget.productId);
+      final product = await fetchDetails(
+        widget.productId,
+        track: openedNow ? _tracking?.headerFor(TrackKind.view) : null,
+      );
       if (!mounted) return;
       setState(() => _product = product);
     } catch (_) {
@@ -758,11 +769,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
         onTimeout: () => settings.links,
       )).shareUrl;
     }
-    await SharePlus.instance.share(
+    final result = await SharePlus.instance.share(
       ShareParams(
         text: productShareText(strings, name: name, storeUrl: storeUrl),
       ),
     );
+    // [D3] نتيجة الورقة كما يعيدها النظام — لا تُنتظر ولا تُظهر شيئاً.
+    unawaited(_tracking?.share(product.id, result.status));
   }
 
   /// إضافة إلى السلة: تبقي المستخدم في شاشة تفاصيل المنتج، وتُظهر تأكيداً

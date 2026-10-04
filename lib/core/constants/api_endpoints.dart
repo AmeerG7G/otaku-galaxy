@@ -64,6 +64,12 @@ class ApiEndpoints {
   static const String notifications = '/notifications';
   static const String notificationsReadAll = '/notifications/read-all';
 
+  /// لمسة إشعار الدفع التي فتحت التطبيق (D3) — يُعدّ والقياس مُشغَّل فقط.
+  static String notificationOpened(String id) => '/notifications/$id/opened';
+
+  // إشارات القياس التجميعي (D3).
+  static const String trackingShare = '/tracking/share';
+
   // عيد الميلاد.
   static const String birthday = '/birthday';
 

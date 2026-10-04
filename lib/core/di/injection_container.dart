@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:developer';
 
 import 'package:flutter/foundation.dart';
@@ -10,6 +11,7 @@ import '../../features/app_update/data/app_version_repository.dart';
 import '../../features/app_update/data/installed_version.dart';
 import '../network/media_url.dart';
 import '../router/app_router.dart';
+import '../tracking/tracking_signals.dart';
 import '../../features/auth/data/datasources/auth_local_storage.dart';
 import '../../features/auth/data/repositories/auth_repository_impl.dart';
 import '../../features/auth/domain/repositories/auth_repository.dart';
@@ -240,6 +242,14 @@ void _initEngagementFeatures() {
     ..registerLazySingleton<StoreSettingsRepository>(
       () => StoreSettingsRepository(api: sl<ApiClient>()),
     )
+    // [D3] إشارات القياس التجميعي — مطفأة ما لم يعلن الخادم `tracking.enabled`.
+    ..registerLazySingleton<TrackingSignals>(
+      () => TrackingSignals(
+        api: sl<ApiClient>(),
+        settings: sl<StoreSettingsRepository>(),
+        signedIn: () => sl<AuthLocalStorage>().isLoggedIn,
+      ),
+    )
     ..registerLazySingleton<PersonalizeStorage>(
       () => PersonalizeStorage(sl<SharedPreferences>()),
     )
@@ -255,7 +265,10 @@ void _initEngagementFeatures() {
           : const UnconfiguredPushTokenSource(),
     )
     ..registerLazySingleton<PushTapRouter>(
-      () => PushTapRouter((route) => sl<AppRouter>().push(route)),
+      () => PushTapRouter(
+        (route) => sl<AppRouter>().push(route),
+        onOpened: (id) => unawaited(sl<TrackingSignals>().notificationOpened(id)),
+      ),
     )
     ..registerLazySingleton<PushTokenRepository>(
       () => PushTokenRepository(sl<ApiClient>()),
@@ -326,6 +339,9 @@ void _initAuthFeature() {
         updateProfileUsecase: sl<UpdateProfileUsecase>(),
         changePasswordUsecase: sl<ChangePasswordUsecase>(),
         languageOf: () => sl<LocaleCubit>().state,
+        // [D3/P5] تغيير كلمة المرور يُبطل أجهزة الحساب على الخادم مع التوكن
+        // القديم؛ هذا الجهاز يعيد تسجيل رمزه بالتوكن الجديد.
+        onSessionRenewed: () => sl<PushRegistrar>().onLogin(),
       ),
     );
 }

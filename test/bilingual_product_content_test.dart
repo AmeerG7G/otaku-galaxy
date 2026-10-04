@@ -112,7 +112,7 @@ class _FakeApi extends ApiClient {
   final Object response;
 
   @override
-  Future<dynamic> get(String path, {Map<String, dynamic>? query}) async => response;
+  Future<dynamic> get(String path, {Map<String, dynamic>? query, Map<String, String>? headers}) async => response;
 }
 
 class _Products implements ProductRepository {

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -31,6 +32,7 @@ class AuthCubit extends Cubit<AuthState> {
     required this.updateProfileUsecase,
     required this.changePasswordUsecase,
     this.languageOf,
+    this.onSessionRenewed,
   }) : super(const AuthInitializing());
 
   final AuthLocalStorage localStorage;
@@ -46,6 +48,14 @@ class AuthCubit extends Cubit<AuthState> {
   /// دالّةٌ لا قيمة: اللغة تتغيّر بعد بناء المكعّب. و`null` في الاختبارات
   /// التي لا تعنيها اللغة — فلا مزامنة ولا طلب.
   final AppLanguage Function()? languageOf;
+
+  /// يُستدعى حين يجدّد الخادم الجلسة لحسابٍ مسجَّل أصلاً (تغيير كلمة المرور).
+  ///
+  /// [CRITICAL] تجديد التوكن يُبطل أجهزة الحساب على الخادم (`token_version`)،
+  /// والحالة لا يتغيّر نوعها (`AuthAuthenticated` → `AuthAuthenticated`) فلا
+  /// يعيد مستمعُ الدخول في التطبيق تسجيلَ الجهاز. بدون هذا يتوقّف الإشعار
+  /// الفوري على هذا الهاتف بعد أن يغيّر صاحبه كلمته. لا يُنتظر ولا يُفشِل.
+  final Future<void> Function()? onSessionRenewed;
 
   User? _user;
   bool _sessionLoaded = false;
@@ -187,6 +197,8 @@ class AuthCubit extends Cubit<AuthState> {
       newPassword: newPassword,
     );
     await _saveSession(session.token, session.user);
+    final renewed = onSessionRenewed;
+    if (renewed != null) unawaited(renewed().catchError((Object _) {}));
   }
 
   /// مسح الجلسة بشكل إجباري (انتهاء صلاحية التوكن / استجابة 401).

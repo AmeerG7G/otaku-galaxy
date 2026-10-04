@@ -197,8 +197,20 @@ class ApiClient {
   }
 
   /// GET — يعيد حقل `data` من المغلف الموحّد.
-  Future<dynamic> get(String path, {Map<String, dynamic>? query}) =>
-      _request(() => _dio.get<dynamic>(path, queryParameters: query));
+  ///
+  /// `headers` ترويساتٌ إضافية لهذا الطلب وحده — إشارة القياس (`X-OG-Track`)
+  /// مثلاً، ولا شيء من ترويسات الجلسة.
+  Future<dynamic> get(
+    String path, {
+    Map<String, dynamic>? query,
+    Map<String, String>? headers,
+  }) => _request(
+    () => _dio.get<dynamic>(
+      path,
+      queryParameters: query,
+      options: headers == null ? null : Options(headers: headers),
+    ),
+  );
 
   /// POST — يعيد حقل `data` من المغلف الموحّد.
   Future<dynamic> post(String path, {Object? body}) =>

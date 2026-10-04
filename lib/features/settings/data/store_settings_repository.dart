@@ -41,15 +41,31 @@ class StoreSettingsRepository {
   final ApiClient _api;
 
   StoreSocialLinks _cached = const StoreSocialLinks();
+  bool _trackingEnabled = false;
+  Future<StoreSocialLinks>? _inflight;
 
   StoreSocialLinks get links => _cached;
 
-  Future<StoreSocialLinks> refresh() async {
+  /// هل يقبل الخادم إشارات القياس التجميعي (`tracking.enabled`، D3)؟
+  ///
+  /// [CRITICAL] مطفأ حتى يقول الخادم غير ذلك: قبل أول جلبٍ ناجح، وعند فشل
+  /// الجلب. لا إشارة تُرسَل على ظنّ.
+  bool get trackingEnabled => _trackingEnabled;
+
+  /// يكتمل حين ينتهي الجلب الجاري (أو فوراً إن لم يكن ثمّة جلب) — لإشارةٍ
+  /// تقع عند الإقلاع قبل أن تصل الإعدادات (لمسة إشعارٍ تفتح التطبيق).
+  Future<void> get settled => _inflight ?? Future<void>.value();
+
+  Future<StoreSocialLinks> refresh() =>
+      _inflight ??= _fetch().whenComplete(() => _inflight = null);
+
+  Future<StoreSocialLinks> _fetch() async {
     try {
       final data = await _api.get(ApiEndpoints.storeSettings);
-      _cached = StoreSocialLinks.fromJson(
-        (data as Map<String, dynamic>?) ?? const {},
-      );
+      final json = (data as Map<String, dynamic>?) ?? const {};
+      _cached = StoreSocialLinks.fromJson(json);
+      final tracking = (json['tracking'] as Map<String, dynamic>?) ?? const {};
+      _trackingEnabled = tracking['enabled'] == true;
     } catch (_) {
       // تعذّر الجلب: تبقى الروابط فارغة فيُعرض السلوك الآمن.
     }

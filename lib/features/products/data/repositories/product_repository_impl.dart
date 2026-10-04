@@ -8,7 +8,7 @@ import '../../domain/entities/product_page.dart';
 import '../../domain/repositories/product_repository.dart';
 
 /// تنفيذ مستودع المنتجات عبر الـ API الحقيقي.
-class ProductRepositoryImpl implements ProductRepository {
+class ProductRepositoryImpl implements TrackedProductRepository {
   ProductRepositoryImpl({ApiClient? api}) : _api = api ?? ApiClient();
 
   final ApiClient _api;
@@ -69,19 +69,25 @@ class ProductRepositoryImpl implements ProductRepository {
     String query, {
     int page = 1,
     int limit = 20,
+    Map<String, String>? headers,
   }) async {
     final data = await _api.get(ApiEndpoints.search, query: {
       'q': query,
       'page': page,
       'limit': limit,
-    }) as Map<String, dynamic>;
+    }, headers: headers) as Map<String, dynamic>;
     return ProductPage.fromJson(data);
   }
 
   @override
-  Future<Product> fetchProductDetails(String id) async {
-    final data = await _api.get('${ApiEndpoints.productDetails}$id')
-        as Map<String, dynamic>;
+  Future<Product> fetchProductDetails(
+    String id, {
+    Map<String, String>? headers,
+  }) async {
+    final data = await _api.get(
+      '${ApiEndpoints.productDetails}$id',
+      headers: headers,
+    ) as Map<String, dynamic>;
     return Product.fromJson(data);
   }
 }

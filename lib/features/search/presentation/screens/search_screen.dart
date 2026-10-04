@@ -9,6 +9,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/design_system/design_system.dart';
 import '../../../../core/l10n/gender.dart';
 import '../../../../core/router/app_router.dart';
+import '../../../../core/tracking/tracking_signals.dart';
 import '../../../main_navigation/presentation/screens/main_navigation_screen.dart';
 import '../../../products/domain/entities/product.dart';
 import '../../../products/domain/usecases/search_products_usecase.dart';
@@ -64,7 +65,7 @@ class _SearchScreenState extends State<SearchScreen> with LocaleRefetch {
     _recent = sl<SearchHistoryStorage>().load();
     if (widget.initialQuery.isNotEmpty) {
       _controller.text = widget.initialQuery;
-      _search(widget.initialQuery);
+      _search(widget.initialQuery, track: true);
     }
   }
 
@@ -76,6 +77,7 @@ class _SearchScreenState extends State<SearchScreen> with LocaleRefetch {
   @override
   void onLanguageChanged() {
     final query = _controller.text.trim();
+    // [D3] إعادةٌ للاستعلام نفسه بلغةٍ أخرى — ليست بحثاً جديداً، فلا تُعدّ.
     if (query.isNotEmpty) _search(query);
   }
 
@@ -88,7 +90,9 @@ class _SearchScreenState extends State<SearchScreen> with LocaleRefetch {
   /// أحدث استعلام — نتائج استعلامٍ سابق تصل متأخّرةً تُهمَل (انظر [RequestSequence]).
   final _requests = RequestSequence();
 
-  Future<void> _search(String query) async {
+  /// `track`: بحثٌ نهائي بدأه المستخدم (إرسال، اختيارٌ من السجلّ، استعلامٌ
+  /// أوّلي، إعادة محاولة) — يُعلَن للقياس التجميعي إن كان مُشغَّلاً (D3).
+  Future<void> _search(String query, {bool track = false}) async {
     // [CRITICAL] الرقم يُلتقط قبل أي `await`: المستخدم يكتب «ناروتو» ثم
     // «لوفي» قبل وصول الأولى؛ بلا هذا كان ردّ «ناروتو» يصل متأخّراً ويطمس
     // نتائج «لوفي» — قائمةٌ لا تطابق ما في حقل البحث.
@@ -120,7 +124,12 @@ class _SearchScreenState extends State<SearchScreen> with LocaleRefetch {
     // إعادة محاولة. والفشل، كالنجاح، يُهمَل إن تجاوزه طلبٌ أحدث: لا يطمس
     // نتائج «لوفي» فشلُ «ناروتو» المتأخّر.
     try {
-      final results = await searchProducts(trimmed);
+      final tracking =
+          sl.isRegistered<TrackingSignals>() ? sl<TrackingSignals>() : null;
+      final results = await searchProducts(
+        trimmed,
+        track: track ? tracking?.headerFor(TrackKind.search) : null,
+      );
       if (!mounted || !_requests.isCurrent(token)) return;
       setState(() {
         _results = results.items;
@@ -137,7 +146,7 @@ class _SearchScreenState extends State<SearchScreen> with LocaleRefetch {
 
   void _pick(String term) {
     _controller.text = term;
-    _search(term);
+    _search(term, track: true);
   }
 
   @override
@@ -172,7 +181,7 @@ class _SearchScreenState extends State<SearchScreen> with LocaleRefetch {
               controller: _controller,
               autofocus: widget.initialQuery.isEmpty,
               textInputAction: TextInputAction.search,
-              onSubmitted: _search,
+              onSubmitted: (value) => _search(value, track: true),
               onChanged: (value) {
                 if (value.trim().isEmpty) _search('');
                 setState(() {});
@@ -238,7 +247,7 @@ class _SearchScreenState extends State<SearchScreen> with LocaleRefetch {
     if (!_searched) return _buildIdleState();
     if (_loading) return _buildSearchingState();
     if (_error != null) {
-      return AnimeErrorState(message: _error!, onAction: () => _search(_controller.text));
+      return AnimeErrorState(message: _error!, onAction: () => _search(_controller.text, track: true));
     }
     if (_results.isEmpty) return _buildNoResults();
     return _buildResults();
