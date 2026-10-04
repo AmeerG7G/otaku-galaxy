@@ -96,7 +96,8 @@ describe('[SECURITY] إقلاع الدفع لا يطبع المفتاح ولا �
   });
 
   it('مفتاحٌ موجود والبريد ناقص: المفتاح لا يظهر في أي سطر', () => {
-    const fakeKey = `${['-----BEGIN', PEM_MARKER].join(' ')}\nLEAKPROBEKEYMATERIAL\n-----END PRIVATE KEY-----`;
+    // كل سطر مُركَّب: نصٌّ حرفيّ للعلامة في هذا الملفّ كان يطابقه الماسح نفسه.
+    const fakeKey = [['-----BEGIN', PEM_MARKER].join(' '), 'LEAKPROBEKEYMATERIAL', ['-----END', PEM_MARKER].join(' ')].join('\n');
     Object.assign(config.push, { provider: 'fcm', projectId: 'p', clientEmail: '', privateKey: fakeKey });
     const output = bootOutput();
     expect(output).toContain('FCM_CLIENT_EMAIL');
