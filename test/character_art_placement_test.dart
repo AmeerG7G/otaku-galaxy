@@ -827,6 +827,80 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    // The PNG carries transparent rows under the figure (the cut edge is drawn
+    // at row 392 of 464).  What matters visually is where the FIGURE ends, not
+    // the layout box: it must reach the frame's bottom line, otherwise a strip
+    // of card colour shows between the character and the border.
+    testWidgets('character bottom edge reaches the frame — no gap above the bottom border', (tester) async {
+      _phone(tester);
+      final key = GlobalKey();
+      await tester.pumpWidget(
+        _app(
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.topCenter,
+              child: RepaintBoundary(key: key, child: const DeliveryAssuranceStrip()),
+            ),
+          ),
+        ),
+      );
+      await _decode(tester, VisualSlots.homeDelivery);
+
+      // Existing contracts stay pinned.
+      final art = tester.widget<CharacterArtwork>(_art(VisualSlots.homeDelivery));
+      expect(art.height, 220.0);
+      final positioned = tester.widget<PositionedDirectional>(find.ancestor(
+        of: _art(VisualSlots.homeDelivery),
+        matching: find.byType(PositionedDirectional),
+      ));
+      expect(positioned.bottom, -55.0);
+      expect(positioned.end, -83.0);
+
+      // 1. geometry: last opaque PNG row, scaled to the rendered box.
+      const path = 'assets/art/characters/11.png';
+      final png = _pngSize(path);
+      late int lastOpaqueRow;
+      await tester.runAsync(() async {
+        final codec = await ui.instantiateImageCodec(File(path).readAsBytesSync());
+        final image = (await codec.getNextFrame()).image;
+        final data = (await image.toByteData(format: ui.ImageByteFormat.rawRgba))!;
+        lastOpaqueRow = 0;
+        for (var y = image.height - 1; y >= 0 && lastOpaqueRow == 0; y--) {
+          for (var x = 0; x < image.width; x++) {
+            if (data.getUint8((y * image.width + x) * 4 + 3) >= 128) {
+              lastOpaqueRow = y;
+              break;
+            }
+          }
+        }
+        image.dispose();
+        codec.dispose();
+      });
+      final artRect = tester.getRect(_art(VisualSlots.homeDelivery));
+      final cardRect = tester.getRect(find.byType(DeliveryAssuranceStrip));
+      final figureBottom =
+          artRect.bottom - (png.height - 1 - lastOpaqueRow) * artRect.height / png.height;
+      expect(figureBottom, greaterThanOrEqualTo(cardRect.bottom - 1),
+          reason: 'figure must end at or behind the 1 px bottom frame line '
+              '(card bottom ${cardRect.bottom}), not above it');
+
+      // 2. pixels: the row just above the frame line is figure, not card colour,
+      //    across a real span of columns.
+      final shot = await snapshot(tester, key);
+      final bgSample = shot.at((cardRect.right - 30).round(), (cardRect.bottom - 3).round());
+      final y = (cardRect.bottom - 3).round();
+      var run = 0;
+      var longest = 0;
+      for (var x = (cardRect.left + 18).round(); x < (cardRect.right - 18).round(); x++) {
+        run = shot.at(x, y) == bgSample ? 0 : run + 1;
+        if (run > longest) longest = run;
+      }
+      expect(longest, greaterThan(60),
+          reason: 'row 3 px above the card bottom must be covered by the figure over a '
+              'wide span; a short run means a visible gap above the bottom frame');
+      expect(tester.takeException(), isNull);
+    });
+
     for (final width in [360.0, 390.0, 412.0]) {
       testWidgets('artwork overflows at ${width.toInt()} dp — overflow geometry holds across phone widths',
           (tester) async {
