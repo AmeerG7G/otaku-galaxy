@@ -78,6 +78,13 @@ export interface OrderWithItems {
   ratingReminderSentAt: Date | null;
   /** سجل انتقالات الحالة بأوقاتها (بلا هوية من غيّرها — لا تُكشف للعميل). */
   statusHistory: OrderStatusEvent[];
+  /**
+   * هل يحمل هذا الطلب هديةَ مستوى مفعَّلة من الزبون؟
+   *
+   * `true` متى كان `loyalty_gift_redemption_id` غير فارغ — أي أن الزبون فعَّل
+   * هديةً وصارت مرتبطةً بهذا الطلب. لا تأثير على المبلغ ولا على الإجمالي.
+   */
+  loyaltyGiftActivated: boolean;
 }
 
 /** حدث واحد في مسار الطلب. */
@@ -218,6 +225,7 @@ function mapOrder(row: Record<string, unknown>): OrderWithItems {
         createdAt: new Date(event.createdAt),
       };
     }),
+    loyaltyGiftActivated: row.loyalty_gift_redemption_id != null,
   };
 }
 
@@ -324,7 +332,8 @@ export const orderRepo = {
        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'PENDING_ADMIN_CONFIRMATION', $11, $12, $13, $14, $15)
        RETURNING id, number, status, province, delivery_fee, full_address,
                  phone, products_total, discount, total, created_at, zone_name,
-                 delivery_discount, loyalty_discount, delivery_discount_excess`,
+                 delivery_discount, loyalty_discount, delivery_discount_excess,
+                 loyalty_gift_redemption_id`,
       [
         orderNumber,
         input.userId,

@@ -84,6 +84,13 @@ export interface AdminOrder {
   reviewableProductCount: number
   /** مسار الطلب بأوقاته. */
   statusHistory: OrderStatusEvent[]
+  /**
+   * هل فعَّل الزبون هديةَ مستوى مرتبطةً بهذا الطلب؟
+   *
+   * [CRITICAL] هذه هديةٌ فيزيائية يسلّمها المتجر — لا خصمٌ مالي. لا تأثير
+   * على `discount` ولا على `total`. خادمٌ أقدم لا يرسل الحقل: غيابه = لا هدية.
+   */
+  loyaltyGiftActivated?: boolean
 }
 
 /** حدث واحد في مسار الطلب. */

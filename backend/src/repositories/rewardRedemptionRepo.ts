@@ -238,6 +238,80 @@ export const rewardRedemptionRepo = {
     return (rowCount ?? 0) > 0;
   },
 
+  /**
+   * أقدم هدية مطالَب بها ولم تُربط بعد بأي طلب — مرشَّحة الربط عند إنشاء طلب.
+   *
+   * `FOR UPDATE` لأن القارئ سيكتب: طلبان متزامنان من نفس الزبون كانا
+   * سيختاران نفس الهدية ويربطانها بطلبَين مختلفَين لولا القفل.
+   *
+   * [CRITICAL] الشرط `NOT EXISTS` على جدول الطلبات — لا على `consumed_at`
+   * (الذي يبقى فارغاً للهدايا دائماً بقيد migration 042). الهدية «مشغولة» متى
+   * وُجد طلبٌ يحمل `loyalty_gift_redemption_id = r.id`، لا حين تُكتَب.
+   */
+  async findOpenGift(client: pg.PoolClient, userId: string) {
+    const { rows } = await client.query<RedemptionRow>(
+      `SELECT r.*
+         FROM loyalty_reward_redemptions r
+        WHERE r.user_id = $1
+          AND r.kind = 'gift'
+          AND NOT EXISTS (
+            SELECT 1 FROM orders o
+             WHERE o.loyalty_gift_redemption_id = r.id
+          )
+        ORDER BY r.claimed_at
+        LIMIT 1
+        FOR UPDATE`,
+      [userId],
+    );
+    return rows[0] ? shapeRedemption(rows[0]) : null;
+  },
+
+  /**
+   * نفس المرشّح الذي سيختاره [findOpenGift] — **بلا قفل**.
+   *
+   * للمعاينة في شاشة الدفع وحدها: قراءةٌ تُعلم الزبون بوجود هدية نشطة قبل
+   * التأكيد، دون أن تحجز شيئاً أو تربطه بطلب لم يُنشأ بعد.
+   */
+  async peekOpenGift(db: pg.Pool | pg.PoolClient, userId: string) {
+    const { rows } = await db.query<RedemptionRow>(
+      `SELECT r.*
+         FROM loyalty_reward_redemptions r
+        WHERE r.user_id = $1
+          AND r.kind = 'gift'
+          AND NOT EXISTS (
+            SELECT 1 FROM orders o
+             WHERE o.loyalty_gift_redemption_id = r.id
+          )
+        ORDER BY r.claimed_at
+        LIMIT 1`,
+      [userId],
+    );
+    return rows[0] ? shapeRedemption(rows[0]) : null;
+  },
+
+  /**
+   * ربط هدية بطلب — الخطوة الثانية بعد إنشاء الطلب.
+   *
+   * [CRITICAL] يُنفَّذ داخل معاملة إنشاء الطلب. المؤشر الفريد الجزئي على
+   * `orders.loyalty_gift_redemption_id` هو الحارس النهائي: لو سبقنا أحدٌ
+   * إليها (`rowCount = 0`) نُسقط الطلب كاملاً. سقوط الطلب لأي سبب لاحق
+   * يُرجع الربط — الهدية تعود مفتوحةً تلقائياً لأن الطلب يُحذف أو يبقى.
+   */
+  async linkGiftToOrder(
+    client: pg.PoolClient,
+    orderId: string,
+    redemptionId: string,
+  ): Promise<boolean> {
+    const { rowCount } = await client.query(
+      `UPDATE orders
+          SET loyalty_gift_redemption_id = $2
+        WHERE id = $1
+          AND loyalty_gift_redemption_id IS NULL`,
+      [orderId, redemptionId],
+    );
+    return (rowCount ?? 0) > 0;
+  },
+
   /** عدّاد الهدايا المنتظرة — شارة لوحة التحكم. */
   async countPendingGifts(db: pg.Pool | pg.PoolClient) {
     const { rows } = await db.query<{ total: string }>(

@@ -14,7 +14,7 @@ import {
   Timeline,
   Typography,
 } from 'antd'
-import { ArrowRightOutlined } from '@ant-design/icons'
+import { ArrowRightOutlined, GiftOutlined } from '@ant-design/icons'
 import { getOrder, updateOrderStatus } from '../api/ordersApi'
 import { ApiError } from '../api/client'
 import type { OrderItem, OrderStatus } from '../types/orders'
@@ -245,6 +245,13 @@ export default function OrderDetailPage() {
               <Typography.Text type="success">
                 −{formatCurrency(order.discount - loyaltyDiscount)}
               </Typography.Text>
+            </Descriptions.Item>
+          )}
+          {order.loyaltyGiftActivated && (
+            <Descriptions.Item label="هدية المستوى">
+              <Tag color="orange" icon={<GiftOutlined />}>
+                هدية المستوى مفعلة
+              </Tag>
             </Descriptions.Item>
           )}
           <Descriptions.Item label="التوصيل">

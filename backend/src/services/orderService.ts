@@ -383,6 +383,13 @@ export const orderService = {
         }
       }
 
+      // ربط هدية المستوى النشطة بهذا الطلب — إن وُجدت.
+      // [CRITICAL] الهدية لا تُكتَب consumed_at ولا تؤثر على المبالغ؛ هي فقط
+      // مرتبطةٌ بالطلب حتى يسلّمها المسؤول. الصفّ مقفول بـFOR UPDATE داخل
+      // reserveGiftForOrder، والمؤشر الفريد على orders.loyalty_gift_redemption_id
+      // هو الحارس النهائي ضد أي سباق لم يُكشف بالقفل.
+      await loyaltyRewardsService.reserveGiftForOrder(tx, userId, order.id);
+
       await cartRepo.clear(tx, userId);
       const created = await orderRepo.findById(tx, order.id);
       // تنبيه هاتف المسؤول — في المعاملة نفسها: طلبٌ تراجع لا يرنّ هاتفاً.
@@ -444,12 +451,11 @@ export const orderService = {
       }
     }
 
-    const { birthdayDiscount, loyaltyReward, discount } = await orderDiscounts(
-      db,
-      userId,
-      productsTotal,
-      'preview',
-    );
+    const [{ birthdayDiscount, loyaltyReward, discount }, loyaltyGiftActivated] =
+      await Promise.all([
+        orderDiscounts(db, userId, productsTotal, 'preview'),
+        loyaltyRewardsService.previewGiftForOrder(db, userId),
+      ]);
     const priced = priceOrder({
       productsTotal,
       deliveryFee: deliveryFee ?? 0,
@@ -469,6 +475,7 @@ export const orderService = {
             capAmount: loyaltyReward.capAmount,
           }
         : null,
+      loyaltyGiftActivated,
       discount: priced.discount,
       deliveryFee,
       deliveryDiscount: deliveryFee === null ? 0 : priced.deliveryDiscount,

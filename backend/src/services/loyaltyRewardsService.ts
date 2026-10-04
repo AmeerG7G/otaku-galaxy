@@ -252,6 +252,48 @@ export const loyaltyRewardsService = {
   },
 
   /**
+   * هدية مستوى مفعَّلة لم تُربط بعد بطلب — للمعاينة (بلا قفل).
+   *
+   * يُعيد `true` إن كان الزبون يملك هدية نشطة لم تُربط بأي طلب، فيُعرض
+   * للزبون في شاشة المراجعة قبل التأكيد. الحكم النهائي يبقى لإنشاء الطلب.
+   */
+  async previewGiftForOrder(
+    db: pg.Pool | pg.PoolClient,
+    userId: string,
+  ): Promise<boolean> {
+    const open = await rewardRedemptionRepo.peekOpenGift(db, userId);
+    return open !== null;
+  },
+
+  /**
+   * ربط هدية مستوى نشطة بطلب جديد — داخل معاملة إنشاء الطلب.
+   *
+   * [CRITICAL] يُستدعى بعد إنشاء الطلب وبمعرّفه. يُقفل صفّ الهدية بـ`FOR
+   * UPDATE` ثم يُحدّث الطلب. المؤشر الفريد الجزئي على
+   * `orders.loyalty_gift_redemption_id` هو الحارس النهائي ضد السباق.
+   *
+   * الهدية لا تُكتَب consumed_at — تلك دلالةٌ للخصومات وحدها. الربط هنا يمنع
+   * استعمالها في طلبٍ آخر، وfulfilled_at يبقى علامةَ التسليم الفعلي.
+   *
+   * @returns معرّف الاسترداد إن نجح الربط، `null` إن لم تكن هدية نشطة.
+   */
+  async reserveGiftForOrder(
+    client: pg.PoolClient,
+    userId: string,
+    orderId: string,
+  ): Promise<string | null> {
+    const open = await rewardRedemptionRepo.findOpenGift(client, userId);
+    if (!open) return null;
+
+    const linked = await rewardRedemptionRepo.linkGiftToOrder(client, orderId, open.id);
+    if (!linked) {
+      // المؤشر الفريد أو شرط IS NULL أخفق — هدية مستخدمة في سباق.
+      throw Errors.conflict('هدية المستوى مرتبطة بطلب آخر', 'REWARD_ALREADY_USED');
+    }
+    return open.id;
+  },
+
+  /**
    * تثبيت الحجز على طلب — الخطوة الثانية.
    *
    * يستهلك **الصفّ المحجوز بعينه** لا «أول خصم مفتوح»: لو تغيّر المرشّح بين
