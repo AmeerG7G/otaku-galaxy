@@ -3,6 +3,7 @@ import { adminAccountsController } from '../controllers/adminAccountsController.
 import { adminController } from '../controllers/adminController.js';
 import { adminExtrasController } from '../controllers/adminExtrasController.js';
 import { adminPushController } from '../controllers/adminPushController.js';
+import { analyticsController } from '../controllers/analyticsController.js';
 import { productCostsController } from '../controllers/productCostsController.js';
 import { mediaController } from '../controllers/mediaController.js';
 import { config } from '../config/index.js';
@@ -131,6 +132,21 @@ adminRoutes.post('/account-requests/:id/reject', can('account_requests'), adminC
 
 // ── أرقام لوحة التحكم ──
 adminRoutes.get('/stats', can('dashboard'), adminExtrasController.dashboard);
+
+// ── التحليلات التاريخية (STEP 67) — قسم `analytics` وحده؛ قراءةٌ فقط ──
+// مؤشرات الرئيسية تبقى تحت `dashboard` (D4)؛ هذه للصفحة الجديدة وبياناتها.
+adminRoutes.get('/analytics/periods', can('analytics'), analyticsController.periods);
+adminRoutes.get('/analytics/overview', can('analytics'), analyticsController.overview);
+adminRoutes.get('/analytics/compare', can('analytics'), analyticsController.compare);
+adminRoutes.get('/analytics/sales', can('analytics'), analyticsController.sales);
+adminRoutes.get('/analytics/customers', can('analytics'), analyticsController.customers);
+adminRoutes.get('/analytics/products', can('analytics'), analyticsController.products);
+adminRoutes.get('/analytics/inventory', can('analytics'), analyticsController.inventory);
+adminRoutes.get('/analytics/categories', can('analytics'), analyticsController.categories);
+adminRoutes.get('/analytics/governorates', can('analytics'), analyticsController.governorates);
+adminRoutes.get('/analytics/marketing', can('analytics'), analyticsController.marketing);
+adminRoutes.get('/analytics/behaviour', can('analytics'), analyticsController.behaviour);
+adminRoutes.get('/analytics/notifications', can('analytics'), analyticsController.notifications);
 
 // ── مراجعة التقييمات ──
 adminRoutes.get('/reviews', can('reviews'), adminExtrasController.listReviews);

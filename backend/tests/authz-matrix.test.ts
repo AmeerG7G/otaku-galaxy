@@ -364,6 +364,19 @@ describe('Phase 3 — vertical privilege escalation (every admin endpoint)', () 
     ['patch', () => `/api/admin/customers/${U}/internal`, { isInternal: true, reason: 'حساب اختبار' }],
     ['get', () => `/api/admin/products/${U}/costs`],
     ['post', () => `/api/admin/products/${U}/costs`, { unitCost: 1000 }],
+    // STEP 67 — التحليلات (قراءةٌ فقط).
+    ['get', () => '/api/admin/analytics/periods'],
+    ['get', () => '/api/admin/analytics/overview'],
+    ['get', () => '/api/admin/analytics/compare'],
+    ['get', () => '/api/admin/analytics/sales'],
+    ['get', () => '/api/admin/analytics/customers'],
+    ['get', () => '/api/admin/analytics/products'],
+    ['get', () => '/api/admin/analytics/inventory'],
+    ['get', () => '/api/admin/analytics/categories'],
+    ['get', () => '/api/admin/analytics/governorates'],
+    ['get', () => '/api/admin/analytics/marketing'],
+    ['get', () => '/api/admin/analytics/behaviour'],
+    ['get', () => '/api/admin/analytics/notifications'],
   ];
 
   it.each(ADMIN_ENDPOINTS)('%s %s → 401 anonymous / 403 customer', async (method, path, body) => {
