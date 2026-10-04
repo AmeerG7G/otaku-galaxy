@@ -22,6 +22,11 @@ export function useTheme() {
   return context
 }
 
+/** وضع السمة لمكوّنات العرض (المخطّطات) — فاتح خارج المزوّد (الاختبارات) بدل الرمي. */
+export function useThemeMode(): ThemeMode {
+  return useContext(ThemeContext)?.theme ?? 'light'
+}
+
 const darkSuccess = '#3EE09F'
 
 const darkThemeConfig: ThemeConfig = {

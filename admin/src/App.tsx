@@ -10,6 +10,7 @@ import { canAccess, type AdminSection } from './types/adminPermissions'
 
 const LoginPage = lazy(() => import('./features/auth/LoginPage'))
 const DashboardHome = lazy(() => import('./pages/DashboardHome'))
+const AnalyticsPage = lazy(() => import('./pages/analytics/AnalyticsPage'))
 const OrdersPage = lazy(() => import('./pages/OrdersPage'))
 const OrderDetailPage = lazy(() => import('./pages/OrderDetailPage'))
 const ProductsPage = lazy(() => import('./pages/ProductsPage'))
@@ -57,6 +58,8 @@ function App() {
           <Route element={<ProtectedRoute />}>
             <Route element={<AppLayout />}>
               <Route path="/" element={<HomeRoute />} />
+              <Route path="/analytics" element={guard('analytics', <AnalyticsPage />)} />
+              <Route path="/analytics/:tab" element={guard('analytics', <AnalyticsPage />)} />
               <Route path="/orders" element={guard('orders', <OrdersPage />)} />
               <Route path="/orders/:id" element={guard('orders', <OrderDetailPage />)} />
               <Route path="/products" element={guard('products', <ProductsPage />)} />

@@ -8,6 +8,7 @@ import {
   FireOutlined,
   GiftOutlined,
   HomeOutlined,
+  LineChartOutlined,
   PictureOutlined,
   SafetyCertificateOutlined,
   SettingOutlined,
@@ -28,6 +29,12 @@ import { canAccess, type AdminProfile, type AdminSection } from '../types/adminP
  */
 export const NAV_ITEMS: MenuProps['items'] = [
   { key: '/', icon: <HomeOutlined />, label: 'الرئيسية' },
+  {
+    key: 'group-analytics',
+    type: 'group',
+    label: 'التحليلات',
+    children: [{ key: '/analytics', icon: <LineChartOutlined />, label: 'التحليلات' }],
+  },
   {
     key: 'group-operations',
     type: 'group',
@@ -89,6 +96,7 @@ export const NAV_ITEMS: MenuProps['items'] = [
  */
 export const SECTION_FOR_PATH: Record<string, AdminSection> = {
   '/': 'dashboard',
+  '/analytics': 'analytics',
   '/orders': 'orders',
   '/delivery': 'delivery',
   '/products': 'products',
@@ -145,6 +153,7 @@ export function activeMenuKey(pathname: string): string {
 export function navTitleFor(key: string): string {
   const index: Record<string, string> = {
     '/': 'الرئيسية',
+    '/analytics': 'التحليلات',
     '/orders': 'الطلبات',
     '/delivery': 'المحافظات والتوصيل',
     '/products': 'المنتجات',
