@@ -187,13 +187,33 @@ export const pushOutboxRepo = {
     return rowCount ?? 0;
   },
 
-  /** رموز أجهزة الزبون — من `device_tokens` وحده. */
+  /**
+   * رموز أجهزة الزبون — من `device_tokens` وحده، ولزبونٍ فعّال فقط.
+   *
+   * [SECURITY] حسابٌ موقوف لا يستقبل دفعاً ولو بقي له رمزٌ نشط (كما أجهزة
+   * المسؤولين)؛ الإيقاف يعطّل رموزه أيضاً، وهذا حاجزٌ ثانٍ.
+   */
   async customerTokens(db: pg.Pool | pg.PoolClient, userId: string): Promise<string[]> {
     const { rows } = await db.query<{ token: string }>(
-      'SELECT token FROM device_tokens WHERE user_id = $1 AND is_active',
+      `SELECT d.token FROM device_tokens d
+         JOIN users u ON u.id = d.user_id AND u.role = 'customer' AND u.is_active
+        WHERE d.user_id = $1 AND d.is_active`,
       [userId],
     );
     return rows.map((row) => row.token);
+  },
+
+  /**
+   * رموزٌ لم يؤكّدها تطبيقها منذ مدّة تُعطَّل (لا تُحذف). التطبيق يعيد تسجيل رمزه
+   * عند كل دخول، فالرمز الصامت ستين يوماً لم يعد في جهازٍ يُستعمل.
+   */
+  async deactivateStaleCustomerTokens(db: pg.Pool | pg.PoolClient, olderThanDays: number): Promise<number> {
+    const { rowCount } = await db.query(
+      `UPDATE device_tokens SET is_active = FALSE
+        WHERE is_active AND last_seen_at < now() - make_interval(days => $1)`,
+      [olderThanDays],
+    );
+    return rowCount ?? 0;
   },
 
   /** رموز أجهزة المسؤول — من `admin_push_devices` وحده، ولمسؤولٍ فعّال فقط. */

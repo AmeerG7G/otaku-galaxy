@@ -41,6 +41,8 @@ const PREF_FOR_TYPE: Record<string, NotificationPrefKey> = {
 export const MAX_PUSH_ATTEMPTS = 3;
 const RETRY_DELAYS_SECONDS = [30, 120, 600];
 const RETENTION_DAYS = 30;
+/** رمز زبونٍ صامتٌ هذه المدّة يُعطَّل؛ «جهازٌ نشط» في التحليلات = رأيناه خلال ٣٠ يوماً. */
+export const STALE_TOKEN_DAYS = 60;
 
 export function retryDelaySeconds(attempts: number): number {
   return RETRY_DELAYS_SECONDS[Math.min(attempts, RETRY_DELAYS_SECONDS.length) - 1] ?? 600;
@@ -212,7 +214,10 @@ export function startPushOutboxScheduler(): () => void {
     try {
       await dispatchPushOutbox();
       ticks += 1;
-      if (ticks % 720 === 0) await pushOutboxRepo.purgeFinished(db, RETENTION_DAYS);
+      if (ticks % 720 === 0) {
+        await pushOutboxRepo.purgeFinished(db, RETENTION_DAYS);
+        await pushOutboxRepo.deactivateStaleCustomerTokens(db, STALE_TOKEN_DAYS);
+      }
     } catch (error) {
       console.error('[push-outbox] dispatch failed', error);
     } finally {

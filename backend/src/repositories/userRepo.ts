@@ -227,6 +227,24 @@ export const userRepo = {
     if (sets.length === 0) {
       return (await this.findById(db, id))!;
     }
+    if (input.bumpTokenVersion) {
+      // [SECURITY] رفعُ نسخة التوكن يُسقط جلسات الحساب — وأجهزتُه تسقط معها في
+      // الجملة نفسها (ذرّياً): الإيقاف، وكلمة مرورٍ يضعها المسؤول، واستئناف
+      // تسجيلٍ يغيّر صاحبه، وتغيير الزبون كلمة مروره. جهازٌ يبقى نشطاً بعدها كان
+      // سيستقبل إشعارات حسابٍ لم يعد يملك جلسته. التطبيق يعيد تسجيل جهازه عند
+      // الدخول التالي (وبعد تغيير كلمة المرور مباشرةً).
+      const { rows } = await db.query<UserRow>(
+        `WITH updated AS (
+           UPDATE users SET ${sets.join(', ')} WHERE id = $1 RETURNING *
+         ), revoked AS (
+           UPDATE device_tokens SET is_active = FALSE
+            WHERE user_id = $1 AND is_active AND EXISTS (SELECT 1 FROM updated)
+         )
+         SELECT * FROM updated`,
+        values,
+      );
+      return rows[0]!;
+    }
     const { rows } = await db.query<UserRow>(
       `UPDATE users SET ${sets.join(', ')} WHERE id = $1 RETURNING *`,
       values,
