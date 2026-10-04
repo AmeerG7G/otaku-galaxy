@@ -11332,3 +11332,125 @@ by the session's permission policy. A scratchpad-only Vite harness ran the **rea
 with the axios client answered in memory from hand-written fixtures typed from `admin/src/types/*`
 (long Arabic names, full phones, a 35-point ledger) — no server, no credential. Nothing of it is
 committed.
+
+---
+
+# STEP 67 — HISTORICAL ANALYTICS · FCM HARDENING · GENDER INTEGRITY (2026-10-03 → 2026-10-05)
+
+Implements the approved plan (Revision 2, decisions D1–D5) on `dev`. Local commits only: nothing was
+pushed, nothing was deployed, no VPS, Cloudflare, Staging or production state was touched. Gates M–P
+(Staging deployment, verification, regression, sign-off) are owner actions and were not performed.
+
+## 67.1 Decisions as built
+
+| | Decision | Where it lives |
+|---|---|---|
+| D1 | Purchase cost: append-only `product_cost_entries`; a write-once snapshot (`order_items.unit_cost`, `cost_entry_id`, `cost_captured_at`) taken inside `consumeStockOnApproval` under the product row locks. No backfill. Profit only at 100 % snapshot coverage, super admins only | 078, `productCostsRepo`, `orderService`, `reports.ts` (`includeProfit`) |
+| D2 | Excluded = `orders.placed_by_role <> 'customer'` (trigger snapshot at insert) OR the account's `is_internal_account` (super admin, audited, reason required). One view pair: `analytics_business_orders` / `analytics_business_customers`; a source scan forbids analytics SQL reading `orders`/`users` directly. Operational lists stay unscoped | 073, 076 |
+| D3 | Seven aggregate signals, **off by default in every environment** (`ANALYTICS_TRACKING_ENABLED=true` literally to enable). Daily counters with no user id, except `user_daily_activity(user_id, date)` purged after 400 days; search terms filtered (digit runs, ≥9 digits in total, Arabic-Indic digits normalised, e-mails) and kept daily for 400 days; monthly top-50 (count ≥ 2) frozen at close. Epochs in `analytics_tracking_epochs`, synced at boot. No raw event log | 079, `trackingService`, app `TrackingSignals` |
+| D4 | Home KPIs stay under `dashboard`; revenue = business `products_total − discount` (no delivery), Baghdad month; explanatory text removed. `analytics` gates only the new section | `statsRepo.dashboard`, `DashboardHome` |
+| D5 | Gender is mandatory and exactly two-valued (male/female); NULL is an integrity anomaly, never a category. Trigger 072 blocks new/cleared/promoted/approved customers without gender; approval returns 409 `GENDER_REQUIRED`; the app gates a legacy account until it chooses; the dashboard completes it once after a WhatsApp check (`PATCH /admin/customers/:id/gender`, only while NULL). Analytics has exactly two series. A validated CHECK is a later, separate release | 072, `adminService`, `GenderRequiredGate`, `gender-integrity-diagnostic.sql` |
+
+## 67.2 Database — migrations 071–080
+
+`071_analytics_permission` · `072_customer_gender_guard` · `073_business_scope` ·
+`074_notification_campaigns` · `075_notification_daily_stats` · `076_analytics_core` ·
+`077_order_item_snapshots` · `078_purchase_costs` · `079_behaviour_tracking` · `080_inventory_snapshot`.
+All additive; each has `backend/scripts/rollback/0xx_*.down.sql` with its data-loss note, exercised by an
+up → down → up test. After real data exists, recovery is "redeploy the previous build, keep the tables".
+Closed months are immutable (`analytics_guard_closed`); only `npm run analytics:rebuild` with
+`--include-closed --reason` bypasses it, logged before/after in `analytics_rebuild_log`. No HTTP rebuild.
+
+## 67.3 Backend
+
+- **Analytics:** `domain/analyticsDefinitions.ts` (definitions v1, 7-day close grace, 3-day lookback),
+  `services/analytics/{calendar,aggregator,reports}.ts`, `jobs/analyticsJob.ts` (hourly, advisory lock,
+  watermark + dirty months), `scripts/analyticsRebuild.ts`. All buckets `AT TIME ZONE config.storeTimezone`.
+- **API** (all GET, `can('analytics')`, aggregates only; profit fields only when `req.auth.isSuperAdmin`):
+  `/admin/analytics/{periods,overview,compare,sales,customers,products,inventory,categories,governorates,marketing,behaviour,notifications}`.
+- **Costs:** `GET/POST /admin/products/:id/costs` (`requireSuperAdmin`, audited).
+- **Integrity:** `PATCH /admin/customers/:id/gender` (`can('customers')`, row-locked, only while NULL),
+  `PATCH /admin/customers/:id/internal` (`requireSuperAdmin`, reason, marks open months dirty).
+- **Push:** settle guard (`status='pending' AND attempts=$claimed`), per-device counts, bounded concurrency 4,
+  dispatch time budget, `Retry-After`, de-duplicated OAuth exchange; every customer `token_version` bump
+  deactivates that customer's devices in the same statement; stale tokens (60 days) deactivated by the
+  hourly maintenance; permanent daily roll-up into `notification_daily_stats` **before** purge (purge
+  deletes rolled-up rows only); event-dated engagement (`notification_daily_engagement`); campaigns with a
+  required `Idempotency-Key` on broadcasts (optional on manual sends), a per-admin broadcast limiter and
+  `GET /admin/notifications/campaigns[/:id]` (counts, never recipients). Wording everywhere: «مقبولة لدى
+  FCM», «قُرئت داخل التطبيق», «فُتحت بالنقر» — never "delivered".
+- **Tracking endpoints:** `X-OG-Track: view|search` on the catalog GETs, `POST /api/tracking/share`,
+  `POST /api/notifications/:id/opened` (own notification, first write wins, 204 always), `POST /cart`
+  counted server-side; `/catalog/settings` exposes `tracking.enabled`.
+
+## 67.4 Dashboard
+
+New «التحليلات» group (`/analytics/:tab?`, lazy chunk with Recharts): نظرة عامة · المبيعات · الزبائن ·
+المنتجات · المحافظات · التسويق · الإشعارات · المقارنات · الفترات; presets, custom range, compare
+(previous / same period last year), partial-month tag, table fallback for every chart, validated palette in
+light and dark, exactly two gender series. Notifications page: campaigns table + drawer, composer
+idempotency key. ProductEditPage: «تكلفة الشراء» card (super only, append-only history). CustomerDetail:
+«إكمال جنس الحساب» (only on an affected account) and the internal flag (super only). Home: all KPIs kept,
+precise revenue labels «(بدون التوصيل)», tutorial text removed from Home and 13 pages.
+
+## 67.5 Flutter
+
+- `GenderRequiredGate` (ForceUpdateGate → OfflineGate → GenderRequiredGate → app): a signed-in customer
+  with no gender sees two options and a save button — no skip, no third option, logout allowed. It
+  **covers** the tree (Offstage + TickerMode + ExcludeFocus) so the login screen's post-login navigation
+  still runs. «لم يُحدَّد» / `genderNotSet` removed; two new strings (ar + ckb) in the review queue.
+- `TrackingSignals` (off unless the server says otherwise): view header on screen open only, search header
+  for user-initiated searches only, share-sheet result, push-open reporting from `PushTapRouter` (promo taps
+  and the cold-start tap included). A self password change re-registers the device's push token.
+
+## 67.6 Never fabricated — shown as unavailable
+
+Coupons; returns/refunds; delivery expense; profit/COGS/margin for any order without a cost snapshot (every
+order approved before 078, and any period below 100 % coverage); promotional markdown before 077;
+category at sale time for pre-077 items (current category, disclosed); push "delivered/displayed";
+sessions/time in app; conversion and cart-abandonment rates; TikTok/Instagram/campaign attribution;
+customer residence; any tracking metric before its epoch; campaigns before 074.
+
+## 67.7 Findings fixed during the security and performance gates
+
+- **Gate J — search-term PII (`805f9e0`):** `\d` without the `u` flag matches ASCII only, so a phone typed
+  in Arabic-Indic (٠–٩) or Extended Arabic-Indic (۰–۹) digits, or separated by `/`, `_`, `,`, passed the
+  filter. Digits are normalised for the check, separators widened, ≥ 9 digits rejected. Tracking was off
+  everywhere, so nothing was stored.
+- **Gate J — secrets (`51f9682`):** repo-wide scan for service-account files, PEM keys and service-account
+  bodies; env examples ship `FCM_PRIVATE_KEY=` empty; push start-up warnings name variables, never values.
+- **Gate K — PERF-6 (`0dc1abb`):** the bounds CTE was materialized, hiding the day's range from the planner
+  (~556 estimated completed orders per day vs ~12 real) and choosing full scans of `orders` and
+  `order_items` for every recomputed day. `NOT MATERIALIZED` restores index nested loops; a Phase B plan
+  guard captures the aggregator's real SQL on the year-of-trading dataset.
+- **Bottom-inset guard (`63bdc25`):** the gate's scroller registered with the force-update screen's
+  `SafeArea` reason.
+
+## 67.8 Verification (observed in this run)
+
+| Stack | Check | Result |
+|---|---|---|
+| Backend | `tsc --noEmit` | clean |
+| Backend | full `vitest` on an **empty migrated** `postgres:16-alpine` (no seed) | 109 files / 1899 tests: 1898 passed. The 1 failure was the new secrets scan matching its own fake key once committed (fixed, `5197aec`); `performance-audit`'s `afterAll` dataset purge timed out at 120 s while the Flutter suite ran in parallel. Both files re-run on the same database: 2 files / 28 passed (purge well inside its limit when idle) |
+| Backend | oversell multi-instance harness (two independent server processes), empty DB | 10 racing approval rounds 200/409, stock 3 → 0; contention 3 of 6; 0 faults (harness admin fixed for 068, `3e4f187`) |
+| Dashboard | `tsc -b` · `vitest` · `build:staging` | clean · 42 files / 291 passed · built; `AnalyticsPage` lazy chunk 423.7 kB (120.5 kB gzip), main bundle 241.6 kB |
+| Flutter | `flutter analyze` | 3 warnings, all unused imports in other sessions' test files (`community_gallery_art_test`, `delivery_overlay_test`) |
+| Flutter | `flutter test --exclude-tags integration` in a clean worktree (HEAD + the unit-19 patch only) | 1922 passed, 7 failed. 1 was this STEP's (bottom-inset guard, fixed `63bdc25`). The other 6 fail identically on HEAD without this STEP's patch: 2 Sorani review-queue entries for the level-gift keys (`4a8d2c8`); `character_art_test` gaps 40/42/44, `character_art_placement_test` «الأقسام» and `empty_states_centered_test` (art commits whose PNGs are still untracked in the main tree); `kurdish_geometry_test` «لم تُبنَ الشاشة» on every screen (depends on another session's uncommitted harness and fonts) |
+| Mutation | gate overlay → replacement, gate admin exemption, search re-run tracked, re-fetch tracked, header ignoring the flag, start-up log leaking the client email | every mutant caught; PERF-6 failed before its fix; the phone filter test was red before its fix |
+| Dev copy | `pg_dump` of dev (read-only) → container; diagnostic → migrate → rebuild | diagnostic A=0, B=5, C=120, D=0, E=3; 071–081 applied on real legacy data; backfill 2026-08 → 2026-10. Hand totals from raw tables = aggregates exactly: completed 10/5, gross 357,998/332,000, discounts 0/10,000, revenue 357,998/322,000 (delivery charged 46,000/23,500 excluded), excluded admin/internal 4 → 552,000 / 1 → 149,000, placed 90/44, rejected 2/1. Customers end Sep 170 = 45 male + 5 female + 120 legacy NULL (absent from both series, in the total). Report layer: Sep vs Aug revenue −35,998 (−10.1 %), AOV 64,400, exactly two gender keys, profit unavailable (0 of 6 lines with cost), no `profit` key for non-super, tracking off with no epochs. Dev itself stayed at 070 |
+
+**Not verified here:** a visual walk of the Analytics tabs in a browser against real data (logging in
+needs a credential the session's policy does not mint; the tabs are covered by component tests and the
+report layer was exercised on the dev copy), real FCM delivery (no Firebase project), a physical device.
+
+## 67.9 Owner actions and open items
+
+- **Gates M–P (not performed):** run the diagnostic on Staging (class A must be 0) → deploy → migrate →
+  `analytics:rebuild:staging` → the Staging checklist in the plan (§19) → regression → sign-off; then the
+  same for production. Tracking stays off until the owner enables it per environment.
+- **Future release:** the validated `users_customer_gender_required` CHECK, only when the diagnostic
+  reports zero class B and C rows in dev, Staging and production.
+- **Limits accepted by design:** guest product views and searches are counted from public endpoints, so
+  only the global rate limit bounds inflation; search terms are free text shown to admins (React-escaped,
+  count ≥ 2 for the monthly list); push opens are a lower bound; CA-12 (discounts used on rejected orders)
+  stays open and is shown separately.
