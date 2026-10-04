@@ -146,14 +146,21 @@ async function api(port: number, method: string, route: string, body?: unknown, 
 const ADMIN_PHONE = '+9647800000001';
 const ADMIN_PASSWORD = 'multi-instance-admin-not-a-default';
 
-/** مسؤولٌ للسكربت: صفٌّ مباشر في القاعدة (كما في `tests/helpers.ts`) — مرةً واحدة. */
+/**
+ * مسؤولٌ للسكربت: صفٌّ مباشر في القاعدة (كما في `tests/helpers.ts`) — مرةً واحدة.
+ *
+ * **أعلى** (هجرة ٠٦٨): مسؤولٌ يُدرج بلا `is_super_admin` صار فرعياً بلا أقسام،
+ * فكان قبول طلب التسجيل يرتدّ `ADMIN_PERMISSION_DENIED` قبل أن يبدأ السباق.
+ */
 async function ensureAdmin() {
   const passwordHash = await bcrypt.hash(ADMIN_PASSWORD, 10);
   await db.query(
-    `INSERT INTO users (username, phone, password_hash, role, phone_verified_at)
-     VALUES ('مدير تزامن', $1, $2, 'admin', now())
+    `INSERT INTO users (username, phone, password_hash, role, phone_verified_at,
+                        is_super_admin, admin_permissions)
+     VALUES ('مدير تزامن', $1, $2, 'admin', now(), TRUE, '{}')
      ON CONFLICT (phone) DO UPDATE
-       SET role = 'admin', password_hash = EXCLUDED.password_hash,
+       SET role = 'admin', is_super_admin = TRUE, admin_permissions = '{}',
+           password_hash = EXCLUDED.password_hash,
            is_active = TRUE, phone_verified_at = now()`,
     [ADMIN_PHONE, passwordHash],
   );
