@@ -363,7 +363,7 @@ void main() {
     });
   });
 
-  group('«قيّم منتجات طلبك» — 15% smaller, clear of the status bar', () {
+  group('«قيّم منتجات طلبك» — character 43, clear of the status bar', () {
     testWidgets('header character', (tester) async {
       _phone(tester);
       await tester.pumpWidget(
@@ -376,14 +376,28 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      const path = 'assets/art/characters/43.png';
+      expect(CharacterArt.forSlot(VisualSlots.rateOrder), path);
+      expect(File(path).existsSync(), isTrue);
+      // PNG colour type 6 = RGBA — a real alpha channel, not a painted ground.
+      final bytes = File(path).readAsBytesSync();
+      expect(ByteData.sublistView(bytes).getUint8(25), 6);
+      expect(_pngSize(path), const Size(860, 820));
+      // Corner is the removed background; the character's own pixels remain.
       final art = tester.getRect(_art(VisualSlots.rateOrder));
-      expect(RateOrderScreen.artScale, 0.85);
-      expect(art.width, closeTo(OtakuScreenHeader.defaultArtworkWidth * 0.85, 0.01));
+      expect(art.width, RateOrderScreen.artWidth);
+      expect(RateOrderScreen.artWidth, 168);
+      expect(RateOrderScreen.artEnd, -49);
+      expect(art.left, closeTo(RateOrderScreen.artEnd, 0.01));
       // [CRITICAL] كان يبدأ عند -١٤ — تحت أيقونات البطارية والشبكة.
-      expect(art.top, greaterThanOrEqualTo(_statusBar));
-      expect(art.top, closeTo(_statusBar, 0.01), reason: 'as high as allowed — right under the status bar');
-      // الجزء نفسه من الشخصية خلف الحافة اليسرى كما كان (٤٠ من ١٢٦).
-      expect(art.left, closeTo(OtakuScreenHeader.defaultArtworkEnd * 0.85, 0.01));
+      expect(art.top, closeTo(_statusBar, 0.01), reason: 'right under the status bar');
+      // The artwork's hard-cut bottom (row 766 of 820) is hidden by the header edge.
+      final header = tester.getRect(find.byType(OtakuScreenHeader));
+      final scale = art.width / 860;
+      expect(art.top + 766 * scale, greaterThanOrEqualTo(header.bottom - 0.5));
+      // The art's hard-cut left edge (column 30) sits beyond the screen edge.
+      expect(art.left + 30 * scale, lessThanOrEqualTo(0));
+      expect(art.right, lessThan(_phoneSize.width / 2));
       expect(tester.takeException(), isNull);
     });
 

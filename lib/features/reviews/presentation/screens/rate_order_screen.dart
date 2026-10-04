@@ -23,8 +23,12 @@ class RateOrderScreen extends StatefulWidget {
 
   final Order order;
 
-  /// مقياس رسم الترويسة من مقاسه الافتراضي — أصغر ١٥٪.
-  static const double artScale = 0.85;
+  /// عرض رسم الترويسة (الصورة 43، 860×820، مقصوصة الحافة اليسرى والسفلى)
+  /// وإزاحته من النهاية. العرض يُنزل أسفل الرسم (الصف 766 من 820) عند أسفل
+  /// الترويسة فلا يظهر قصّه، والإزاحة تُخفي جزءاً من الشعر الأيسر خلف حافة
+  /// الشاشة فيبقى الوجه كاملاً (كانت 28: عرض ٠٫٨٥×126 وإزاحة ٠٫٨٥×-40).
+  static const double artWidth = 168;
+  static const double artEnd = -49;
 
   @override
   State<RateOrderScreen> createState() => _RateOrderScreenState();
@@ -74,16 +78,10 @@ class _RateOrderScreenState extends State<RateOrderScreen> {
               title: '⭐ ${context.g(GenderedStrings.rateOrderProducts)}',
               subtitle: context.strings('rateOrderSubtitle'),
               artworkSlot: VisualSlots.rateOrder,
-              // أصغر ١٥٪ من رسم الترويسة الافتراضي، ويبدأ تحت شريط الحالة
-              // (2026-09-28): كان رأس الشخصية يقع تحت أيقونات البطارية
-              // والشبكة. الإزاحة الأفقية تصغر بالنسبة نفسها فيبقى الجزء نفسه
-              // من الشخصية خلف الحافة اليسرى كما كان.
-              artworkWidth:
-                  OtakuScreenHeader.defaultArtworkWidth *
-                  RateOrderScreen.artScale,
-              artworkEnd:
-                  OtakuScreenHeader.defaultArtworkEnd *
-                  RateOrderScreen.artScale,
+              // يبدأ الرسم تحت شريط الحالة (2026-09-28): كان رأس الشخصية يقع
+              // تحت أيقونات البطارية والشبكة. العرض والإزاحة: انظر الثوابت.
+              artworkWidth: RateOrderScreen.artWidth,
+              artworkEnd: RateOrderScreen.artEnd,
               artworkBelowStatusBar: true,
               onBack: () => context.router.maybePop(),
             ),
