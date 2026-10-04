@@ -11,6 +11,7 @@ import {
   CloseCircleOutlined,
   DollarOutlined,
   GiftOutlined,
+  LineChartOutlined,
   ReloadOutlined,
   ShoppingCartOutlined,
   StarOutlined,
@@ -26,6 +27,7 @@ import { PageHeader } from '../components/ui/PageHeader'
 import { SectionHeader } from '../components/ui/SectionHeader'
 import { StatCard } from '../components/ui/StatCard'
 import { ProductLink } from '../components/ui/ProductLink'
+import { useCan } from '../hooks/useAdminProfile'
 
 function KpiCard({
   title,
@@ -56,6 +58,8 @@ function KpiCard({
  */
 export default function DashboardHome() {
   const { message } = App.useApp()
+  // [D4] المؤشرات هنا تحت «الرئيسية»؛ التحليلات التفصيلية لقسمها وحده.
+  const canAnalytics = useCan('analytics')
 
   const statsQuery = useQuery({
     queryKey: ['dashboard-stats'],
@@ -146,11 +150,17 @@ export default function DashboardHome() {
     <Space direction="vertical" size={20} style={{ width: '100%' }}>
       <PageHeader
         title="نظرة عامة على المتجر"
-        description="أرقام حقيقية مباشرة من قاعدة البيانات — لا تقديرات."
         extra={
-          <Button icon={<ReloadOutlined />} loading={anyLoading} onClick={reloadAll}>
-            تحديث الكل
-          </Button>
+          <Space wrap>
+            {canAnalytics && (
+              <Link to="/analytics">
+                <Button icon={<LineChartOutlined />}>التحليلات التفصيلية</Button>
+              </Link>
+            )}
+            <Button icon={<ReloadOutlined />} loading={anyLoading} onClick={reloadAll}>
+              تحديث الكل
+            </Button>
+          </Space>
         }
       />
 
@@ -164,7 +174,7 @@ export default function DashboardHome() {
       )}
 
       <div>
-        <SectionHeader title="ما يحتاج تدخّلاً الآن" description="طلبات وتقييمات ومخزون بانتظار قرارك." />
+        <SectionHeader title="ما يحتاج تدخّلاً الآن" />
         <Row gutter={[16, 16]}>
           <Col xs={24} sm={12} md={8} xl={4}>
             <KpiCard
@@ -172,7 +182,6 @@ export default function DashboardHome() {
               value={pending}
               icon={<ClockCircleOutlined />}
               tone={pending > 0 ? 'amber' : 'brand'}
-              tooltip="تحتاج قبولاً أو رفضاً."
               to="/orders"
             />
           </Col>
@@ -191,7 +200,6 @@ export default function DashboardHome() {
               value={stats?.reviews.pending ?? 0}
               icon={<StarOutlined />}
               tone={(stats?.reviews.pending ?? 0) > 0 ? 'amber' : 'brand'}
-              tooltip="لا تظهر في التطبيق قبل نشرها."
               to="/reviews"
             />
           </Col>
@@ -201,7 +209,7 @@ export default function DashboardHome() {
               value={stats?.products.outOfStock ?? 0}
               icon={<WarningOutlined />}
               tone={(stats?.products.outOfStock ?? 0) > 0 ? 'error' : 'brand'}
-              tooltip={`منتجات نشطة مخزونها صفر. قاربت النفاد: ${stats?.products.lowStock ?? 0}.`}
+              tooltip={`قاربت النفاد: ${stats?.products.lowStock ?? 0}`}
               to="/products"
             />
           </Col>
@@ -211,7 +219,6 @@ export default function DashboardHome() {
               value={stats?.birthdays.today ?? 0}
               icon={<GiftOutlined />}
               tone={(stats?.birthdays.today ?? 0) > 0 ? 'secondary' : 'brand'}
-              tooltip="محسوبة بتوقيت المتجر. التهنئة تُرسَل يدوياً — لا جدولة تلقائية."
               to="/birthdays"
             />
           </Col>
@@ -219,46 +226,37 @@ export default function DashboardHome() {
       </div>
 
       <div>
-        <SectionHeader
-          title="الإيرادات"
-          description="من الطلبات الفعلية — الإيراد يحسب عند التسليم."
-        />
+        <SectionHeader title="الإيرادات" />
         <Row gutter={[16, 16]}>
           <Col xs={24} sm={12} lg={8}>
             <KpiCard
-              title="إيراد الطلبات المكتملة"
+              title="إيراد المبيعات المكتملة (بدون التوصيل)"
               value={formatCurrency(stats?.revenue.completed ?? 0)}
               icon={<DollarOutlined />}
               tone="success"
-              tooltip="مجموع الطلبات التي استلمها العملاء فعلاً."
             />
           </Col>
           <Col xs={24} sm={12} lg={8}>
             <KpiCard
-              title="إيراد هذا الشهر"
+              title="إيراد هذا الشهر (بدون التوصيل)"
               value={formatCurrency(stats?.revenue.completedThisMonth ?? 0)}
               icon={<DollarOutlined />}
               tone="brand"
-              tooltip="الطلبات المكتملة منذ بداية الشهر الحالي."
             />
           </Col>
           <Col xs={24} sm={12} lg={8}>
             <KpiCard
-              title="قيمة الطلبات الجارية"
+              title="قيمة الطلبات الجارية (بدون التوصيل)"
               value={formatCurrency(stats?.revenue.inProgress ?? 0)}
               icon={<ShoppingCartOutlined />}
               tone="info"
-              tooltip="طلبات لم تكتمل ولم تُرفض بعد."
             />
           </Col>
         </Row>
       </div>
 
       <div>
-        <SectionHeader
-          title="نشاط الزبائن والتواصل"
-          description="جمهور اليوم وقنوات التواصل الداخلية."
-        />
+        <SectionHeader title="نشاط الزبائن والتواصل" />
         <Row gutter={[16, 16]}>
           <Col xs={24} sm={12} md={6}>
             <KpiCard
@@ -275,7 +273,6 @@ export default function DashboardHome() {
               value={stats?.birthdays.missing ?? 0}
               icon={<TeamOutlined />}
               tone="brand"
-              tooltip="جمهور رسالة «أكمل تاريخ ميلادك»."
               to="/birthdays"
             />
           </Col>
@@ -285,7 +282,6 @@ export default function DashboardHome() {
               value={stats?.notifications.last7Days ?? 0}
               icon={<BellOutlined />}
               tone="cyan"
-              tooltip="سجلات داخل التطبيق — لا إشعارات دفع."
               to="/notifications"
             />
           </Col>
@@ -295,7 +291,7 @@ export default function DashboardHome() {
               value={stats?.products.active ?? 0}
               icon={<AppstoreOutlined />}
               tone="cyan"
-              tooltip={`الإجمالي بما فيها المعطّلة: ${stats?.products.total ?? 0}.`}
+              tooltip={`الإجمالي: ${stats?.products.total ?? 0}`}
               to="/products"
             />
           </Col>
@@ -303,7 +299,7 @@ export default function DashboardHome() {
       </div>
 
       <div>
-        <SectionHeader title="أرقام عامة" description="حصيلة الطلبات والزبائن." />
+        <SectionHeader title="أرقام عامة" />
         <Row gutter={[16, 16]}>
           <Col xs={24} sm={12} md={6}>
             <KpiCard

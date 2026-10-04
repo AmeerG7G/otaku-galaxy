@@ -297,7 +297,6 @@ export default function CustomersPage() {
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <PageHeader
         title="الزبائن"
-        description="بحث وترشيح على الخادم — يعمل مهما كبرت القائمة."
         extra={
           <Space wrap>
             {filtersActive && <Button onClick={resetFilters}>مسح الترشيح</Button>}

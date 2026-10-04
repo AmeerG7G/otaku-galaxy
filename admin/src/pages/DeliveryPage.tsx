@@ -371,7 +371,6 @@ export default function DeliveryPage() {
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <PageHeader
         title="المحافظات والتوصيل"
-        description="رسوم التوصيل لكل محافظة، ومناطقها حين تختلف الرسوم داخلها."
         extra={
           <Space wrap>
             <Button

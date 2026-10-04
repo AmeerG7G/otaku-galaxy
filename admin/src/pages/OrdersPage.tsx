@@ -192,7 +192,6 @@ export default function OrdersPage() {
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <PageHeader
         title="الطلبات"
-        description="إدارة طلبات المتجر: مراجعتها، تغيير حالتها، وتتبع مراحل التوصيل."
         extra={
           <Button
             icon={<ReloadOutlined />}

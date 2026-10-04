@@ -192,14 +192,14 @@ describe('سلامة الحساب (D5 + D2)', () => {
     vi.mocked(getCustomerPoints).mockResolvedValue({ balance: 0, entries: [] } as never)
     const first = renderPage()
     expect(await screen.findByText('ذكر')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'إكمال جنس الحساب' })).not.toBeInTheDocument()
+    expect(screen.queryByText('إكمال جنس الحساب')).not.toBeInTheDocument()
     // غير الأعلى لا يرى تعليم الحساب الداخلي.
-    expect(screen.queryByRole('button', { name: 'تعليمه حساباً داخلياً' })).not.toBeInTheDocument()
+    expect(screen.queryByText('تعليمه حساباً داخلياً')).not.toBeInTheDocument()
     first.unmount()
 
     vi.mocked(getCustomerDetail).mockResolvedValue(detail({ profile: { ...detail().profile, gender: null } }))
     renderPage()
-    expect(await screen.findByRole('button', { name: 'إكمال جنس الحساب' })).toBeInTheDocument()
+    expect(await screen.findByText('إكمال جنس الحساب')).toBeInTheDocument()
     expect(document.body.textContent).not.toMatch(/غير محدد|لم يُحدَّد|مجهول/)
   })
 
@@ -208,7 +208,7 @@ describe('سلامة الحساب (D5 + D2)', () => {
     vi.mocked(getCustomerPoints).mockResolvedValue({ balance: 0, entries: [] } as never)
     vi.mocked(useAdminProfile).mockReturnValue({ data: { isSuperAdmin: true } } as never)
     renderPage()
-    expect(await screen.findByRole('button', { name: 'تعليمه حساباً داخلياً' })).toBeInTheDocument()
+    expect(await screen.findByText('تعليمه حساباً داخلياً')).toBeInTheDocument()
     vi.mocked(useAdminProfile).mockReturnValue({ data: { isSuperAdmin: false } } as never)
   })
 })

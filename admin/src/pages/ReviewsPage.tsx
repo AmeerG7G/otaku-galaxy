@@ -173,7 +173,6 @@ export default function ReviewsPage() {
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <PageHeader
         title="مراجعة التقييمات"
-        description="التقييم لا يظهر في التطبيق قبل نشره من هنا."
         extra={
           <Button
             icon={<ReloadOutlined />}

@@ -177,7 +177,6 @@ export default function CustomerDetailPage() {
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <PageHeader
         title={profile.username}
-        description="ملفّ الزبون — الهوية والنقاط والطلبات وطلبات الحساب من مكانٍ واحد."
         extra={
           <Space wrap>
             <Button

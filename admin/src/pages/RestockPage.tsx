@@ -168,7 +168,6 @@ export default function RestockPage() {
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <PageHeader
         title="طلبات التوفر"
-        description="المنتجات النافدة ومن ينتظر عودتها"
         extra={
           <Button icon={<ReloadOutlined />} onClick={() => demand.refetch()} loading={demand.isFetching}>
             تحديث

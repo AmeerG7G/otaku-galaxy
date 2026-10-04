@@ -95,7 +95,6 @@ export default function PointsPage() {
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
       <PageHeader
         title="نقاط المجرّة"
-        description="القواعد والسلّم والدفتر — كلها للقراءة. ما يُدار هنا هو تسليم الهدايا."
       />
 
       <GalaxyRulesCard />

@@ -191,7 +191,6 @@ export default function NotificationsPage() {
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
       <PageHeader
         title="الإشعارات والتذكيرات"
-        description="سجل الرسائل داخل التطبيق وتذكيرات تأكيد الاستلام."
         extra={
           <Button
             type="primary"

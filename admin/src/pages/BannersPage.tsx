@@ -332,7 +332,6 @@ export default function BannersPage() {
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <PageHeader
         title="البنرات"
-        description="البنرات الإعلانية المعروضة في الصفحة الرئيسية. البنر الجديد يُنشأ نشطاً."
         extra={
           <Space>
             <Button

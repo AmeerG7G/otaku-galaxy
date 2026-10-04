@@ -226,7 +226,6 @@ export default function BirthdaysPage() {
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <PageHeader
         title="أعياد الميلاد"
-        description="من له عيد اليوم، ومن يقترب عيده، ومن لم يسجّل تاريخه بعد."
         extra={
           <Space wrap>
             <Button

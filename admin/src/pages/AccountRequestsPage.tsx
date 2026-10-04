@@ -352,7 +352,6 @@ export default function AccountRequestsPage() {
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <PageHeader
         title="طلبات الحساب"
-        description="إنشاء الحسابات وإعادة تعيين كلمات المرور — تُحسم يدوياً بعد التحقّق عبر واتساب. لا رمز SMS."
         extra={
           <Button icon={<ReloadOutlined />} onClick={() => requestsQuery.refetch()} loading={requestsQuery.isFetching}>
             تحديث

@@ -196,7 +196,6 @@ export default function OffersPage() {
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <PageHeader
         title="العروض والمختارة"
-        description="إدارة منتجات العروض والمنتجات المختارة في الصفحة الرئيسية."
         extra={
           <Button
             icon={<ReloadOutlined />}

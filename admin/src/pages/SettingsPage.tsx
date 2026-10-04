@@ -42,7 +42,6 @@ export default function SettingsPage() {
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <PageHeader
         title="إعدادات المتجر"
-        description="روابط التواصل، ورابط مشاركة المنتج، وإجبار تحديث التطبيق."
       />
 
       <Card variant="outlined" loading={settingsQuery.isPending}>
