@@ -25,6 +25,7 @@ import { governorateRepo } from '../repositories/storefrontRepo.js';
 import { notificationRepo } from '../repositories/notificationsRepo.js';
 import { orderRepo, type OrderItemSnapshot, type OrderWithItems } from '../repositories/orderRepo.js';
 import { pointsRepo } from '../repositories/pointsRepo.js';
+import { productCostsRepo } from '../repositories/productCostsRepo.js';
 import { zoneRepo } from '../repositories/zonesRepo.js';
 import { ORDER_STATUSES as ALL_ORDER_STATUSES } from '../types/order-status.js';
 import { ORDER_STATUS_TRANSITIONS, type OrderStatus } from '../types/index.js';
@@ -100,6 +101,11 @@ async function consumeStockOnApproval(tx: pg.PoolClient, order: OrderWithItems) 
       );
     }
   }
+
+  // [D1] تكلفة الشراء تُلتقط هنا — لحظة خروج البضاعة من المخزون، تحت أقفال
+  // المنتجات نفسها، ومرة واحدة لكل بند. بندٌ بلا تكلفة مسجّلة يبقى بلا لقطة
+  // («الربح غير متاح»)، ولا تُكتب لاحقاً من تكلفةٍ حالية أبداً.
+  await productCostsRepo.snapshotOrderItemCosts(tx, order.id);
 }
 
 /**

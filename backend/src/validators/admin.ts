@@ -446,6 +446,21 @@ export const adminCustomerInternalSchema = z
   })
   .strict();
 
+/**
+ * تكلفة شراء جديدة للمنتج (D1) — رقمٌ موجب بدينار العراق، منزلتان عشريتان كحدٍّ
+ * أقصى. لا تأريخ في الطلب: الخادم يختم وقت الإدخال، ولا تأريخ رجعي.
+ */
+export const adminProductCostSchema = z
+  .object({
+    unitCost: z
+      .number({ message: 'أدخل تكلفة صحيحة' })
+      .positive('التكلفة يجب أن تكون أكبر من صفر')
+      .max(1_000_000_000, 'التكلفة أكبر من المسموح')
+      .refine((value) => Number.isInteger(Math.round(value * 100)) && Math.abs(value * 100 - Math.round(value * 100)) < 1e-6, 'منزلتان عشريتان كحدٍّ أقصى'),
+    note: z.string().trim().max(200, 'الملاحظة طويلة جداً').optional(),
+  })
+  .strict();
+
 export const adminBirthdayQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),

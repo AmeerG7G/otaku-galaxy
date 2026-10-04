@@ -3,6 +3,7 @@ import { adminAccountsController } from '../controllers/adminAccountsController.
 import { adminController } from '../controllers/adminController.js';
 import { adminExtrasController } from '../controllers/adminExtrasController.js';
 import { adminPushController } from '../controllers/adminPushController.js';
+import { productCostsController } from '../controllers/productCostsController.js';
 import { mediaController } from '../controllers/mediaController.js';
 import { config } from '../config/index.js';
 import { auditAdminMutations } from '../middleware/admin-audit.js';
@@ -55,6 +56,9 @@ adminRoutes.post('/products', can('products'), adminController.createProduct);
 adminRoutes.patch('/products/:id', can('products'), adminController.updateProduct);
 adminRoutes.delete('/products/:id', can('products'), adminController.deleteProduct);
 adminRoutes.patch('/offers/:id', can('offers', 'products'), adminController.updateOfferFlags);
+// [D1] تكلفة الشراء تكشف الهامش — قراءةً وكتابةً للمسؤول الأعلى وحده. إلحاقٌ فقط.
+adminRoutes.get('/products/:id/costs', requireSuperAdmin, productCostsController.list);
+adminRoutes.post('/products/:id/costs', requireSuperAdmin, productCostsController.add);
 
 adminRoutes.get('/categories', can('categories', 'products', 'banners'), adminController.listCategories);
 adminRoutes.post('/categories', can('categories'), adminController.createCategory);
