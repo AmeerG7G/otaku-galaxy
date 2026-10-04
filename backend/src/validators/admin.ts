@@ -424,6 +424,28 @@ export const adminSetCustomerPasswordSchema = z.object({
   note: z.string().trim().max(500).optional(),
 });
 
+/**
+ * إكمال جنس حسابٍ قديم (D5) — ذكر أو أنثى فقط، ولمرةٍ واحدة.
+ *
+ * يُستعمل بعد تحقّق المسؤول عبر واتساب من صاحب الحساب نفسه. لا يغيّر جنساً
+ * مضبوطاً (الخدمة ترفض)، ولا يقبل حقلاً غير معروف.
+ */
+export const adminCustomerGenderSchema = z
+  .object({ gender: z.enum(GENDERS, { message: 'اختر ذكراً أو أنثى' }) })
+  .strict();
+
+/**
+ * تعليم حساب زبونٍ داخلياً/اختبارياً (D2) — يُخرج طلباته من تحليلات المتجر.
+ *
+ * السبب مطلوب ويُحفظ في سجلّ النشاط: التعليم يغيّر أرقام الأشهر المفتوحة.
+ */
+export const adminCustomerInternalSchema = z
+  .object({
+    isInternal: z.boolean({ message: 'حدّد هل الحساب داخلي' }),
+    reason: z.string().trim().min(3, 'اكتب سبباً واضحاً').max(200, 'السبب طويل جداً'),
+  })
+  .strict();
+
 export const adminBirthdayQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),

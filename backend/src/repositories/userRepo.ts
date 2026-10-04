@@ -21,6 +21,8 @@ export interface UserRow {
   phone_verified_at: Date | null;
   /** نسخة التوكن — زيادتها تُبطل كل التوكنات المُصدَرة قبلها. */
   token_version: number;
+  /** حساب داخلي/اختباري (٠٧٣) — طلباته خارج تحليلات المتجر (D2). */
+  is_internal_account: boolean;
   created_at: Date;
 }
 

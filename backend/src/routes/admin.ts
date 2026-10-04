@@ -116,6 +116,10 @@ adminRoutes.patch('/users/:id/active', can('customers'), adminController.setUser
 // `adminService.setCustomerPassword` (`requireRequest`).
 adminRoutes.get('/customers/:id', can('customers'), adminController.customerDetail);
 adminRoutes.patch('/customers/:id/password', can('customers', 'account_requests'), adminController.setCustomerPassword);
+// [D5] إكمال جنس حسابٍ قديم (مرة واحدة، بعد تحقّق واتساب) — لا يغيّر جنساً مضبوطاً.
+adminRoutes.patch('/customers/:id/gender', can('customers'), adminController.completeCustomerGender);
+// [D2] تعليم حسابٍ داخلياً/اختبارياً يُخرج طلباته من التحليلات — للأعلى وحده.
+adminRoutes.patch('/customers/:id/internal', requireSuperAdmin, adminController.setCustomerInternal);
 adminRoutes.get('/account-requests', can('account_requests'), adminController.listAccountRequests);
 adminRoutes.get('/account-requests/:id', can('account_requests'), adminController.accountRequestDetail);
 adminRoutes.post('/account-requests/:id/approve', can('account_requests'), adminController.approveAccountRequest);

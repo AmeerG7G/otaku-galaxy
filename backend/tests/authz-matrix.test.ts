@@ -359,6 +359,9 @@ describe('Phase 3 — vertical privilege escalation (every admin endpoint)', () 
     ['get', () => '/api/admin/notification-prefs'],
     ['patch', () => '/api/admin/notification-prefs', { key: 'new_order', enabled: false }],
     ['get', () => `/api/admin/franchises/${U}/usage`],
+    // STEP 67 — إكمال الجنس القديم وتعليم الحساب الداخلي.
+    ['patch', () => `/api/admin/customers/${U}/gender`, { gender: 'male' }],
+    ['patch', () => `/api/admin/customers/${U}/internal`, { isInternal: true, reason: 'حساب اختبار' }],
   ];
 
   it.each(ADMIN_ENDPOINTS)('%s %s → 401 anonymous / 403 customer', async (method, path, body) => {

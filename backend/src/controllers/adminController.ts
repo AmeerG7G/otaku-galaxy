@@ -20,7 +20,9 @@ import {
   adminCategoryIdSchema,
   adminBirthdayQuerySchema,
   adminCategorySchema,
+  adminCustomerGenderSchema,
   adminCustomerIdSchema,
+  adminCustomerInternalSchema,
   adminCustomersQuerySchema,
   adminNotificationQuerySchema,
   adminSubcategoryIdSchema,
@@ -315,6 +317,24 @@ export const adminController = {
       requireRequest: !auth.isSuperAdmin && !auth.permissions.includes('customers'),
     });
     return ok(res, data, 'وُضعت كلمة المرور الجديدة — بلّغها الزبون عبر واتساب');
+  }) as RequestHandler,
+
+  /** إكمال جنس حسابٍ قديم بعد تحقّق واتساب — السجلّ يُكتب في معاملة الخدمة. */
+  completeCustomerGender: (async (req, res) => {
+    res.locals.auditHandled = true;
+    const { id } = parse(adminCustomerIdSchema, req.params);
+    const { gender } = parse(adminCustomerGenderSchema, req.body ?? {});
+    const data = await adminService.completeCustomerGender(id, req.auth!.id, gender);
+    return ok(res, data, 'أُكمل جنس الحساب');
+  }) as RequestHandler,
+
+  /** تعليم الحساب داخلياً/اختبارياً — للمسؤول الأعلى، بسببٍ مسجَّل. */
+  setCustomerInternal: (async (req, res) => {
+    res.locals.auditHandled = true;
+    const { id } = parse(adminCustomerIdSchema, req.params);
+    const input = parse(adminCustomerInternalSchema, req.body ?? {});
+    const data = await adminService.setCustomerInternal(id, req.auth!.id, input);
+    return ok(res, data, data.isInternalAccount ? 'عُلِّم الحساب داخلياً — خارج التحليلات' : 'أُعيد الحساب إلى التحليلات');
   }) as RequestHandler,
 
   listAccountRequests: (async (req, res) => {

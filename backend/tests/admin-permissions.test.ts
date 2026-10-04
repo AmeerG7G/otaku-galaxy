@@ -84,6 +84,8 @@ const EXPECTED: Record<string, Guard> = {
   'patch /users/:id/active': ['customers'],
   'get /customers/:id': ['customers'],
   'patch /customers/:id/password': ['customers', 'account_requests'],
+  'patch /customers/:id/gender': ['customers'],
+  'patch /customers/:id/internal': 'super',
   'get /account-requests': ['account_requests'],
   'get /account-requests/:id': ['account_requests'],
   'post /account-requests/:id/approve': ['account_requests'],

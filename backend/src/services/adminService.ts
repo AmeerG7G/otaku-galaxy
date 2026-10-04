@@ -23,6 +23,8 @@ import { orderService } from './orderService.js';
 import { restockService } from './restockService.js';
 import { renumberPlacement, type AssignedOrder, type PlacementRow } from '../utils/bannerOrder.js';
 import { franchiseRepo } from '../repositories/franchisesRepo.js';
+import { adminAuditRepo } from '../repositories/adminAuditRepo.js';
+import { analyticsPeriodsRepo } from '../repositories/analyticsPeriodsRepo.js';
 import bcrypt from 'bcryptjs';
 import {
   accountRequestRepo,
@@ -864,6 +866,11 @@ export const adminService = {
     if (!row.user_id) throw Errors.conflict('لا حساب مرتبط بهذا الطلب', 'NO_LINKED_ACCOUNT');
     const user = await userRepo.findById(db, row.user_id);
     if (!user) throw Errors.conflict('الحساب المرتبط لم يعد موجوداً', 'NO_LINKED_ACCOUNT');
+    // [D5] الجنس إلزامي: حسابٌ بلا جنس (طلبٌ سبق الهجرة ٠٤٠) لا يُفعَّل حتى يُكمَل
+    // بعد التحقّق عبر واتساب. زناد ٠٧٢ يمنع التفعيل أصلاً؛ هذه رسالته المفهومة.
+    if (user.gender === null) {
+      throw Errors.conflict('أكمل جنس الحساب (ذكر أو أنثى) بعد التحقّق عبر واتساب قبل القبول', 'GENDER_REQUIRED');
+    }
 
     return withTransaction(async (tx) => {
       const resolved = await accountRequestRepo.resolve(tx, id, { status: 'approved', resolvedBy: adminId, note });
@@ -970,6 +977,7 @@ export const adminService = {
         isVerified: user.phone_verified_at !== null,
         verifiedAt: user.phone_verified_at?.toISOString() ?? null,
         preferredLanguage: user.preferred_language,
+        isInternalAccount: user.is_internal_account,
         createdAt: user.created_at.toISOString(),
       },
       points: {
@@ -986,6 +994,68 @@ export const adminService = {
       },
       requests: await this.shapeAccountRequests(requests),
     };
+  },
+
+  /**
+   * إكمال جنس حسابٍ قديم بلا جنس (D5) — لمرةٍ واحدة، بعد تحقّق واتساب.
+   *
+   * [CRITICAL] لا يغيّر جنساً مضبوطاً: اختيار صاحب الحساب لا يُستبدل من اللوحة
+   * (`409 GENDER_ALREADY_SET`). الحساب يُقفل داخل المعاملة فلا يتسابق إكمالان،
+   * والسجلّ الدلالي يُكتب في المعاملة نفسها، والأشهر المفتوحة تُعاد حسابها.
+   */
+  async completeCustomerGender(customerId: string, actorId: string, gender: Gender) {
+    return withTransaction(async (tx) => {
+      const { rows } = await tx.query<{ role: string; gender: Gender | null }>(
+        'SELECT role, gender FROM users WHERE id = $1 FOR UPDATE',
+        [customerId],
+      );
+      const row = rows[0];
+      if (!row || row.role !== 'customer') throw Errors.notFound('الزبون غير موجود');
+      if (row.gender !== null) {
+        throw Errors.conflict('جنس هذا الحساب مضبوط ولا يُغيَّر من اللوحة', 'GENDER_ALREADY_SET');
+      }
+      await userRepo.update(tx, customerId, { gender });
+      await analyticsPeriodsRepo.markOpenMonthsDirty(tx);
+      await adminAuditRepo.record(tx, {
+        actorId,
+        action: 'customer.gender_completed',
+        targetType: 'customer',
+        targetId: customerId,
+        details: { gender },
+      });
+      return { id: customerId, gender };
+    });
+  },
+
+  /**
+   * تعليم حساب زبونٍ داخلياً/اختبارياً أو إلغاؤه (D2) — للمسؤول الأعلى وحده.
+   *
+   * يُخرج طلبات الحساب (السابقة واللاحقة) من تحليلات المتجر: الأشهر المفتوحة
+   * تُعاد حسابها في الدور التالي، والمُغلقة لا تتغيّر إلا بإعادة بناءٍ مُدقَّقة.
+   * تكراره بالقيمة نفسها لا يفعل شيئاً ولا يكتب سجلّاً.
+   */
+  async setCustomerInternal(customerId: string, actorId: string, input: { isInternal: boolean; reason: string }) {
+    return withTransaction(async (tx) => {
+      const { rows } = await tx.query<{ role: string; is_internal_account: boolean }>(
+        'SELECT role, is_internal_account FROM users WHERE id = $1 FOR UPDATE',
+        [customerId],
+      );
+      const row = rows[0];
+      if (!row || row.role !== 'customer') throw Errors.notFound('الزبون غير موجود');
+      if (row.is_internal_account === input.isInternal) {
+        return { id: customerId, isInternalAccount: row.is_internal_account, changed: false };
+      }
+      await tx.query('UPDATE users SET is_internal_account = $2 WHERE id = $1', [customerId, input.isInternal]);
+      await analyticsPeriodsRepo.markOpenMonthsDirty(tx);
+      await adminAuditRepo.record(tx, {
+        actorId,
+        action: 'customer.internal_account_set',
+        targetType: 'customer',
+        targetId: customerId,
+        details: { isInternal: input.isInternal, reason: input.reason },
+      });
+      return { id: customerId, isInternalAccount: input.isInternal, changed: true };
+    });
   },
 };
 
