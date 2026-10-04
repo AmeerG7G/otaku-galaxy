@@ -451,8 +451,8 @@ void main() {
   });
 
   group('AppStrings — الجنس والخيارات كاملة الترجمة', () {
-    test('المفاتيح الخمسة الجديدة في اللغتين، ولا مفتاح ناقص', () {
-      for (final k in ['gender', 'genderMale', 'genderFemale', 'genderRequired', 'genderNotSet']) {
+    test('مفاتيح الجنس في اللغتين، ولا مفتاح ناقص', () {
+      for (final k in ['gender', 'genderMale', 'genderFemale', 'genderRequired', 'genderGateTitle', 'genderGateMessage']) {
         expect(AppStrings.arabic(k), isNot(k), reason: '$k بلا عربية');
         expect(AppStrings.kurdish(k), isNot(AppStrings.arabic(k)), reason: '$k بلا كردية');
       }

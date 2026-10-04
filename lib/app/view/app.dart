@@ -12,6 +12,7 @@ import '../../core/l10n/locale_scope.dart';
 import '../../core/router/app_router.dart';
 import '../../features/auth/presentation/cubit/auth_cubit.dart';
 import '../../features/auth/presentation/cubit/auth_state.dart';
+import '../../features/auth/presentation/gender_required_gate.dart';
 import '../../features/cart/presentation/cubit/cart_cubit.dart';
 import '../../features/collections/presentation/cubit/collections_cubit.dart';
 import '../../features/app_update/data/app_version_repository.dart';
@@ -186,7 +187,11 @@ class OtakuGalaxyApp extends StatelessWidget {
                     child: ForceUpdateGate(
                       repository: di.sl<AppVersionRepository>(),
                       child: OfflineGate(
-                        child: child ?? const SizedBox.shrink(),
+                        // [D5] حاجز إكمال الجنس تحت حاجز الاتصال: بلا شبكة لا
+                        // حفظ، فحاجز الاتصال يُقدَّم عليه.
+                        child: GenderRequiredGate(
+                          child: child ?? const SizedBox.shrink(),
+                        ),
                       ),
                     ),
                   ),

@@ -131,7 +131,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   const SizedBox(height: 9),
                   // الجنس — يُستعمل لتصريف الخطاب العربي في التطبيق. تُعرض
-                  // القيمة الحالية، و«لم يُحدَّد» لمن أنشأ حسابه قبل الحقل.
+                  // القيمة الحالية وحدها. [D5] لا قيمة ثالثة تُعرض: الحساب بلا
+                  // جنس لا يصل إلى هنا أصلاً — `GenderRequiredGate` يحجبه أولاً.
                   BlocBuilder<AuthCubit, AuthState>(
                     builder: (context, _) {
                       final gender = AppGender.fromValue(
@@ -146,7 +147,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         value: switch (gender) {
                           AppGender.male => context.strings('genderMale'),
                           AppGender.female => context.strings('genderFemale'),
-                          AppGender.unknown => context.strings('genderNotSet'),
+                          AppGender.unknown => null,
                         },
                         onTap: _editGender,
                       );
