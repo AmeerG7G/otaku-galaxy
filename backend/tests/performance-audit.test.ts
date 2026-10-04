@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import pg from 'pg';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { config } from '../src/config/index.js';
 import { db, withTransaction } from '../src/database/pool.js';
 import { startRatingReminderScheduler } from '../src/jobs/ratingReminderJob.js';
 import { productRepo } from '../src/repositories/catalogRepo.js';
@@ -9,6 +10,7 @@ import { notificationRepo } from '../src/repositories/notificationsRepo.js';
 import { orderRepo } from '../src/repositories/orderRepo.js';
 import { pointsRepo } from '../src/repositories/pointsRepo.js';
 import { userRepo } from '../src/repositories/userRepo.js';
+import { analyticsAggregator } from '../src/services/analytics/aggregator.js';
 import {
   api,
   createAdminUser,
@@ -237,7 +239,7 @@ describe('Performance / resource audit', () => {
       // فيُسعّر المخطّط الفهرس غالياً عن حقّ ويمسح الجدول. كان PERF-4 يفشل
       // لذلك لا لعيبٍ في الاستعلام: بعد الدمج يُستعمل الفهرس (٢٧ → ١٫٩ مللي
       // ثانية). لا إجبار على خطةٍ هنا — المخطّط حرٌّ كما في الإنتاج.
-      await db.query('VACUUM ANALYZE products, product_images, orders, order_items, notifications, reviews, points_ledger, users');
+      await db.query('VACUUM ANALYZE products, product_images, orders, order_items, order_status_history, notifications, reviews, points_ledger, users');
     }, 180_000);
 
     afterAll(async () => {
@@ -302,6 +304,34 @@ describe('Performance / resource audit', () => {
       const reviewId = (await db.query<{ id: string }>("SELECT id FROM reviews WHERE comment = 'perf comment 5'")).rows[0]!.id;
       const [byReview] = await statementsOf(() => pointsRepo.revokeForReview(db, reviewId), /DELETE FROM points_ledger/);
       expect((await explain(byReview!.text, byReview!.values, false)).scansOf('points_ledger')).not.toContain('Seq Scan');
+    });
+
+    it('[PERF-6] the analytics day recompute reads one day of source rows through indexes — never a scan of every order, item or status row', async () => {
+      // تُعاد الأيام المفتوحة كل نبضة (watermark − ٣ أيام حتى اليوم). مسحُ كل
+      // الطلبات لكل يومٍ منها يكبر مع عمر المتجر؛ الفهارس الثلاثة من ٠٧٦
+      // (`delivered_at` · `status, created_at` على السجلّ) تُبقيه بحجم اليوم.
+      // الجمل تُلتقط من تشغيلٍ حقيقي داخل معاملةٍ تُلغى، وتُشرح بلا تنفيذ.
+      const tz = config.storeTimezone;
+      const { rows } = await db.query<{ d: string }>(`SELECT ((now() AT TIME ZONE $1)::date - 30)::text AS d`, [tz]);
+      const client = await db.connect();
+      let statements: Array<{ text: string; values: unknown[] }> = [];
+      try {
+        await client.query('BEGIN');
+        statements = await statementsOf(
+          () => analyticsAggregator.computeDay(client, rows[0]!.d, tz),
+          /INSERT INTO (analytics_daily_|notification_daily_engagement)/,
+        );
+      } finally {
+        await client.query('ROLLBACK');
+        client.release();
+      }
+      expect(statements.length).toBeGreaterThanOrEqual(5);
+      for (const { text, values } of statements) {
+        const plan = await explain(text, values, false);
+        for (const relation of ['orders', 'order_items', 'order_status_history']) {
+          expect(plan.scansOf(relation), `${relation} ← ${text.replace(/\s+/g, ' ').slice(0, 90)}`).not.toContain('Seq Scan');
+        }
+      }
     });
 
     it('customer-facing lists stay index-backed at this scale (regression guard for existing indexes)', async () => {

@@ -30,12 +30,17 @@ import { addDays, daysBetween, monthEnd, monthStart, monthsBetween } from './cal
 
 type Client = pg.PoolClient;
 
-const DAY_BOUNDS = `bounds AS (
+// [PERF-6] `NOT MATERIALIZED` لا زخرفة: الحدّان يُستعملان مراراً في الجملة، فكان
+// PostgreSQL يجسّد الـCTE فيخفي قيمتيهما عن المخطّط — يقدّر يوماً واحداً بـ٥٥٦
+// طلباً مكتملاً و١١١١ طلباً جديداً (الحقيقة ~١٢) ويختار ربطاً بالتجزئة يمسح كل
+// `orders` وكل `order_items` لكل يومٍ يُعاد حسابه. مدمَجاً يرى المخطّط الحدّين
+// الفعليين فيمشي فهارس 076. يحرسه `performance-audit` PERF-6.
+const DAY_BOUNDS = `bounds AS NOT MATERIALIZED (
   SELECT ($1::date)::timestamp AT TIME ZONE $2 AS lo,
          (($1::date) + 1)::timestamp AT TIME ZONE $2 AS hi
 )`;
 
-const MONTH_BOUNDS = `bounds AS (
+const MONTH_BOUNDS = `bounds AS NOT MATERIALIZED (
   SELECT ($1::date)::timestamp AT TIME ZONE $2 AS lo,
          ($3::date)::timestamp AT TIME ZONE $2 AS hi
 )`;
