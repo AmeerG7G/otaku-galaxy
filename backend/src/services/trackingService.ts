@@ -26,7 +26,13 @@ export function storeDay(now: Date = new Date(), tz: string = config.storeTimezo
 export function isTrackableSearchTerm(raw: string): boolean {
   const term = raw.trim();
   if (term.length < 2 || term.length > 60) return false;
-  if (/\d{6,}/.test(term.replace(/[\s\-.]/g, ''))) return false;
+  // [CRITICAL] `\d` بلا علم `u` يطابق 0–9 اللاتينية وحدها؛ رقمُ هاتفٍ بالأرقام
+  // العربية الهندية (٠–٩، الافتراضية على كثيرٍ من هواتف العراق) أو الفارسية/الكردية
+  // (۰–۹) كان يمرّ ويُخزَّن مصطلحاً. تُوحَّد للفحص وحده، وتُحذف الفواصل الشائعة
+  // داخل الأرقام، و٩ أرقام فأكثر في المصطلح كله تكفي للرفض (الهاتف ١١ رقماً).
+  const digits = term.replace(/[\u0660-\u0669\u06F0-\u06F9]/g, (d) => String(d.charCodeAt(0) & 0xf));
+  if (/\d{6,}/.test(digits.replace(/[\s\-./_()+,،]/g, ''))) return false;
+  if ((digits.match(/\d/g)?.length ?? 0) >= 9) return false;
   if (/@/.test(term)) return false;
   return true;
 }

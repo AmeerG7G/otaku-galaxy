@@ -136,6 +136,29 @@ describe('مُشغَّل', () => {
     expect(isTrackableSearchTerm('ون بيس')).toBe(true);
   });
 
+  it('[CRITICAL] رقم هاتفٍ بأي أرقامٍ أو فواصل لا يصل إلى مصطلحات البحث', () => {
+    // `\d` في JS بلا علم `u` يطابق 0–9 اللاتينية وحدها: رقمٌ مكتوبٌ بالأرقام
+    // العربية الهندية (لوحة المفاتيح الافتراضية لكثيرٍ من الهواتف في العراق) أو
+    // الفارسية/الكردية كان يمرّ كاملاً ويُخزَّن مصطلح بحث — بيانات شخصية.
+    for (const phone of [
+      '٠٧٧٠١٢٣٤٥٦٧',
+      '۰۷۷۰۱۲۳۴۵۶۷',
+      '٠٧٧٠ ١٢٣ ٤٥٦٧',
+      '0770/123/4567',
+      '0770_123_4567',
+      '(0770) 123 4567',
+      '+964 770 123 4567',
+      '0770,123,4567',
+      '07 70 12 34 56',
+    ]) {
+      expect(isTrackableSearchTerm(phone), phone).toBe(false);
+    }
+    // بحثٌ عاديّ فيه أرقامٌ قليلة يبقى.
+    for (const term of ['one piece 105', 'ناروتو ٢', 'ps5', 'مجلد 12 جزء 3']) {
+      expect(isTrackableSearchTerm(term), term).toBe(true);
+    }
+  });
+
   it('[CRITICAL] فتح الإشعار: أول كتابة تفوز، ولإشعار صاحبه وحده', async () => {
     mutableAnalytics.trackingEnabled = true;
     const owner = await registerAndLogin();
