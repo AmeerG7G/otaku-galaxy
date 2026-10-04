@@ -1,3 +1,4 @@
+import { trackingService } from '../services/trackingService.js';
 import type { RequestHandler } from 'express';
 import { authService } from '../services/authService.js';
 import { ok } from '../utils/response.js';
@@ -21,6 +22,8 @@ export const authController = {
   login: (async (req, res) => {
     const input = parse(loginSchema, req.body);
     const result = await authService.login(input.phone, input.password);
+    // [D3] تسجيل دخول زبون — عدّادٌ في يومه، مطفأ افتراضياً.
+    if (result.user.role === 'customer') trackingService.customerLogin(result.user.id);
     return ok(res, result, 'تم تسجيل الدخول');
   }) as RequestHandler,
 

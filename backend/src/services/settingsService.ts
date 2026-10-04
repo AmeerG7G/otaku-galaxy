@@ -1,3 +1,4 @@
+import { config } from '../config/index.js';
 import { db } from '../database/pool.js';
 import { settingsRepo, type StoreSettings } from '../repositories/settingsRepo.js';
 import { resetAppVersionCache } from './appVersionService.js';
@@ -15,6 +16,8 @@ export const settingsService = {
       },
       // رابط المتجر في رسالة مشاركة المنتج — فارغٌ = الاسم وحده (STEP 64).
       share: { storeUrl: settings.store_share_url },
+      // [D3] التطبيق لا يرسل أي إشارة تتبّع إلا والخادم يقول إنه مُشغَّل.
+      tracking: { enabled: config.analytics.trackingEnabled },
     };
   },
 

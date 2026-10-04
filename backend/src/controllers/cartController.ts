@@ -1,3 +1,4 @@
+import { trackingService } from '../services/trackingService.js';
 import type { RequestHandler } from 'express';
 import { cartService } from '../services/cartService.js';
 import { ok } from '../utils/response.js';
@@ -18,6 +19,8 @@ export const cartController = {
   add: (async (req, res) => {
     const input = parse(addCartItemSchema, req.body);
     const data = await cartService.addItem(req.auth!.id, input);
+    // [D3] الإضافة التي يقوم بها الزبون — المزامنة `GET /cart` لا تمرّ من هنا.
+    trackingService.cartAdd(input.productId, req.auth!.id);
     return ok(res, data, 'أُضيف إلى العربة');
   }) as RequestHandler,
 

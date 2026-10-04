@@ -1,3 +1,4 @@
+import { trackingService } from '../services/trackingService.js';
 import type { NextFunction, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { config } from '../config/index.js';
@@ -85,6 +86,8 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
     // [I18N] اللغة تُقرأ من الصفّ لا من التوكن: تبديلُها في الإعدادات يسري
     // على الطلب التالي مباشرةً، بلا انتظار انتهاء توكنٍ عمرُه سبعة أيام.
     req.auth = authUserFrom(state);
+    // [D3] «زبون نشط اليوم» — كتابةٌ واحدة لكل زبون في اليوم، ومطفأ افتراضياً.
+    if (req.auth.role === 'customer') trackingService.customerActive(req.auth.id);
     return next();
   } catch (error) {
     return next(error);

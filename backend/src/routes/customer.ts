@@ -1,3 +1,4 @@
+import { trackingController } from '../controllers/trackingController.js';
 import { Router } from 'express';
 import { cartController } from '../controllers/cartController.js';
 import { communityController } from '../controllers/communityController.js';
@@ -72,6 +73,10 @@ customerRoutes.patch('/notifications/prefs', notificationPrefsController.set);
 customerRoutes.get('/notifications', communityController.listNotifications);
 customerRoutes.post('/notifications/read-all', communityController.markAllNotificationsRead);
 customerRoutes.post('/notifications/:id/read', communityController.markNotificationRead);
+// [D3] نقرة إشعار الدفع — تُسجَّل فقط والتتبّع مُشغَّل (٢٠٤ دائماً).
+customerRoutes.post('/notifications/:id/opened', trackingController.notificationOpened);
+// [D3] نتيجة ورقة المشاركة — عدّادٌ يومي للمنتج بلا هوية.
+customerRoutes.post('/tracking/share', trackingController.share);
 
 // ── «أخبرني عند توفره» ──
 customerRoutes.get('/restock-subscriptions/mine', restockController.mine);

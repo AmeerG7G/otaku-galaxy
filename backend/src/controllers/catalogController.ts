@@ -1,3 +1,4 @@
+import { trackingService } from '../services/trackingService.js';
 import type { RequestHandler } from 'express';
 import { catalogService } from '../services/catalogService.js';
 import { resolveLocale } from '../utils/locale.js';
@@ -45,12 +46,19 @@ export const catalogController = {
   search: (async (req, res) => {
     const input = parse(searchSchema, { q: req.query.q, page: req.query.page, limit: req.query.limit });
     const data = await catalogService.search(input.q, input.page, input.limit, resolveLocale(req));
+    // [D3] بحثٌ نهائي يعلنه التطبيق صراحةً (إرسال/اختيار/استعلامٌ أوّلي — لا إعادة
+    // تغيير اللغة). مطفأ افتراضياً؛ تجميعيّ بلا هوية.
+    if (input.page === 1 && req.get('X-OG-Track') === 'search') {
+      trackingService.search(input.q, data.total, req.auth?.id ?? null);
+    }
     return ok(res, data);
   }) as RequestHandler,
 
   product: (async (req, res) => {
     const { id } = parse(productIdParamSchema, req.params);
     const data = await catalogService.productDetail(id, resolveLocale(req));
+    // [D3] فتح صفحة المنتج — يعلنه شاشة التفاصيل وحدها (لا كل جلبٍ للمنتج).
+    if (req.get('X-OG-Track') === 'view') trackingService.productView(id, req.auth?.id ?? null);
     return ok(res, data);
   }) as RequestHandler,
 
