@@ -115,4 +115,42 @@ export type BroadcastPayload = BroadcastAudience & {
 export interface BroadcastResult {
   recipients: number
   push: { provider: string; queued: number }
+  campaignId: string
+  /** أُعيد طلبٌ بالمفتاح نفسه — لم يُنشأ شيءٌ جديد. */
+  replayed: boolean
+}
+
+/**
+ * حملة إشعارات (٠٧٤) — «مقبولة لدى FCM» = قبلتها FCM لجهازٍ واحد على الأقل، لا
+ * «وصلت». لا أسماء مستلمين ولا أرقامهم.
+ */
+export interface Campaign {
+  id: string
+  kind: 'broadcast' | 'manual'
+  title: string
+  body: string
+  audience: { type: string; segment: string | null; windowDays: number | null; userCount: number | null }
+  recipients: number
+  createdAt: string
+  createdByName: string | null
+  frozen: boolean
+  push: {
+    pending: number
+    acceptedByFcm: number
+    failed: number
+    skippedNotConfigured: number
+    skippedPreference: number
+    skippedNoDevices: number
+    devicesAcceptedByFcm: number
+    devicesInvalid: number
+  }
+  readInApp: number
+  openedFromPush: number
+}
+
+export interface CampaignList {
+  items: Campaign[]
+  total: number
+  page: number
+  limit: number
 }

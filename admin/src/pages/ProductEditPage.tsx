@@ -10,13 +10,16 @@ import {
   Typography,
 } from 'antd'
 import { ArrowRightOutlined } from '@ant-design/icons'
+import ProductCostCard from '../components/ProductCostCard'
 import ProductForm, { type ProductFormValues } from '../components/ProductForm'
+import { useAdminProfile } from '../hooks/useAdminProfile'
 import { getProductForEdit, updateProduct } from '../api/productsApi'
 import { ApiError } from '../api/client'
 
 export default function ProductEditPage() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
+  const profile = useAdminProfile()
   const { message } = App.useApp()
   const queryClient = useQueryClient()
 
@@ -127,6 +130,9 @@ export default function ProductEditPage() {
           onCancel={() => navigate('/products')}
         />
       )}
+
+      {/* [D1] تكلفة الشراء تكشف الهامش — للمسؤول الأعلى وحده. */}
+      {editQuery.data && profile.data?.isSuperAdmin && <ProductCostCard productId={id} />}
     </div>
   )
 }

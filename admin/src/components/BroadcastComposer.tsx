@@ -128,15 +128,32 @@ export default function BroadcastComposer({
     enabled: open && mode === 'users',
   })
 
+  // [CA-7] مفتاحٌ لكل جلسة كتابة: إعادة الضغط أو إعادة المحاولة بعد انقطاع الردّ
+  // ترسله كما هو فيعيد الخادم الحملة نفسها؛ يتجدّد بعد نجاحٍ وعند كل فتح.
+  const idempotencyKey = useRef(crypto.randomUUID())
+  useEffect(() => {
+    if (open) idempotencyKey.current = crypto.randomUUID()
+  }, [open])
+
   const send = useMutation({
-    mutationFn: () => broadcastNotification({ ...audience, title, body }),
+    mutationFn: () => broadcastNotification({ ...audience, title, body }, idempotencyKey.current),
     onSuccess: async (result) => {
-      message.success(`أُنشئ الإشعار لـ${result.recipients} زبوناً داخل التطبيق`)
+      message.success(
+        result.replayed
+          ? 'هذا البثّ أُرسل مسبقاً — لم يُكرَّر'
+          : `أُنشئ الإشعار لـ${result.recipients} زبوناً داخل التطبيق`,
+      )
+      idempotencyKey.current = crypto.randomUUID()
       await queryClient.invalidateQueries({ queryKey: ['admin-notifications'] })
       await queryClient.invalidateQueries({ queryKey: ['admin-notification-stats'] })
+      await queryClient.invalidateQueries({ queryKey: ['admin-campaigns'] })
       onClose()
     },
-    onError: (error: Error) => message.error(error.message),
+    onError: (error: Error) => {
+      // لا تُعاد قيمة `message.error` (thenable يُحسم عند إغلاق الرسالة): React Query
+      // ينتظرها، فيبقى الزرّ «يُحمَّل» ثلاث ثوانٍ بعد فشلٍ انتهى فعلاً.
+      message.error(error.message)
+    },
   })
 
   const canSend = title.trim().length > 0 && audienceReady && (preview.data?.recipients ?? 0) > 0

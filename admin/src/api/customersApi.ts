@@ -1,4 +1,4 @@
-import { client, get } from './client'
+import { client, get, patch } from './client'
 import type { ApiEnvelope } from '../types/api'
 import type {
   AdminCustomerDetail,
@@ -46,6 +46,19 @@ export function listCustomers(
 /** ملفّ الزبون الكامل — لا تجزئة ولا توكن فيه أبداً. */
 export function getCustomerDetail(id: string): Promise<AdminCustomerDetail> {
   return get<AdminCustomerDetail>(`/admin/customers/${id}`)
+}
+
+/**
+ * إكمال جنس حسابٍ قديم بلا جنس (D5) — ذكر أو أنثى، مرةً واحدة، بعد التحقّق من صاحب
+ * الحساب عبر واتساب. لا يغيّر جنساً مضبوطاً (الخادم يرفض بـ409).
+ */
+export function completeCustomerGender(id: string, gender: CustomerGender) {
+  return patch<{ id: string; gender: CustomerGender }>(`/admin/customers/${id}/gender`, { gender })
+}
+
+/** تعليم الحساب داخلياً/اختبارياً (D2) — للمسؤول الأعلى، بسببٍ مسجَّل. */
+export function setCustomerInternal(id: string, input: { isInternal: boolean; reason: string }) {
+  return patch<{ id: string; isInternalAccount: boolean; changed: boolean }>(`/admin/customers/${id}/internal`, input)
 }
 
 /**

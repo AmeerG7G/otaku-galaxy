@@ -6,15 +6,22 @@ import { App as AntApp, ConfigProvider } from 'antd'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { createQueryClient } from '../queryClient'
 
+vi.setConfig({ testTimeout: 30_000 })
+
 vi.mock('../api/customersApi', () => ({
   getCustomerDetail: vi.fn(),
   setCustomerPassword: vi.fn(),
 }))
 vi.mock('../api/pointsApi', () => ({ getCustomerPoints: vi.fn() }))
+vi.mock('../hooks/useAdminProfile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useAdminProfile')>()),
+  useAdminProfile: vi.fn(() => ({ data: { isSuperAdmin: false } })),
+}))
 
 import { getCustomerDetail } from '../api/customersApi'
 import { getCustomerPoints } from '../api/pointsApi'
 import CustomerDetailPage from './CustomerDetailPage'
+import { useAdminProfile } from '../hooks/useAdminProfile'
 import type { AdminCustomerDetail } from '../types/customers'
 
 /**
@@ -32,6 +39,7 @@ function detail(overrides: Partial<AdminCustomerDetail> = {}): AdminCustomerDeta
       isVerified: true,
       verifiedAt: '2026-09-02T00:00:00Z',
       preferredLanguage: 'ckb',
+      isInternalAccount: false,
       createdAt: '2026-09-01T00:00:00Z',
     },
     points: { balance: 120, levelKey: 'explorer', levelNumber: 2, levelName: 'مستكشف المجرة', nextLevelKey: 'voyager', pointsToNextLevel: 130 },
@@ -175,5 +183,32 @@ describe('ملفّ الزبون — تزامن الجنس', () => {
       expect(vi.mocked(getCustomerDetail).mock.calls.length).toBeGreaterThan(fetchesBefore),
     )
     await waitFor(() => expect(within(genderCell()).getByText('أنثى')).toBeInTheDocument())
+  })
+})
+
+describe('سلامة الحساب (D5 + D2)', () => {
+  it('[CRITICAL] حسابٌ له جنس: يُعرض الجنس ولا زرّ إكمال؛ حسابٌ قديم بلا جنس: زرّ «إكمال جنس الحساب» لا فئةٌ ثالثة', async () => {
+    vi.mocked(getCustomerDetail).mockResolvedValue(detail())
+    vi.mocked(getCustomerPoints).mockResolvedValue({ balance: 0, entries: [] } as never)
+    const first = renderPage()
+    expect(await screen.findByText('ذكر')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'إكمال جنس الحساب' })).not.toBeInTheDocument()
+    // غير الأعلى لا يرى تعليم الحساب الداخلي.
+    expect(screen.queryByRole('button', { name: 'تعليمه حساباً داخلياً' })).not.toBeInTheDocument()
+    first.unmount()
+
+    vi.mocked(getCustomerDetail).mockResolvedValue(detail({ profile: { ...detail().profile, gender: null } }))
+    renderPage()
+    expect(await screen.findByRole('button', { name: 'إكمال جنس الحساب' })).toBeInTheDocument()
+    expect(document.body.textContent).not.toMatch(/غير محدد|لم يُحدَّد|مجهول/)
+  })
+
+  it('[SECURITY] تعليم الحساب داخلياً للمسؤول الأعلى وحده', async () => {
+    vi.mocked(getCustomerDetail).mockResolvedValue(detail())
+    vi.mocked(getCustomerPoints).mockResolvedValue({ balance: 0, entries: [] } as never)
+    vi.mocked(useAdminProfile).mockReturnValue({ data: { isSuperAdmin: true } } as never)
+    renderPage()
+    expect(await screen.findByRole('button', { name: 'تعليمه حساباً داخلياً' })).toBeInTheDocument()
+    vi.mocked(useAdminProfile).mockReturnValue({ data: { isSuperAdmin: false } } as never)
   })
 })

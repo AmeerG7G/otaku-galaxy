@@ -1,6 +1,8 @@
 import { get, post } from './client'
 import type {
   AdminNotificationList,
+  Campaign,
+  CampaignList,
   BroadcastAudience,
   BroadcastPayload,
   BroadcastResult,
@@ -27,11 +29,28 @@ export function getNotificationStats(): Promise<NotificationStats> {
   return get<NotificationStats>('/admin/notifications/stats')
 }
 
-/** بثّ إشعار إلى جمهور: الكل، زبائن محدَّدون، أو شريحة. */
+/**
+ * بثّ إشعار إلى جمهور: الكل، زبائن محدَّدون، أو شريحة.
+ *
+ * `idempotencyKey` مطلوب (CA-7): مفتاحٌ واحد لكل جلسة كتابة، يُعاد كما هو عند
+ * إعادة المحاولة — فإعادةٌ بعد انقطاع الردّ تعيد الحملة نفسها لا حملةً ثانية.
+ */
 export function broadcastNotification(
   payload: BroadcastPayload,
+  idempotencyKey: string,
 ): Promise<BroadcastResult> {
-  return post<BroadcastResult>('/admin/notifications/broadcast', payload)
+  return post<BroadcastResult>('/admin/notifications/broadcast', payload, {
+    headers: { 'Idempotency-Key': idempotencyKey },
+  })
+}
+
+/** سجلّ الحملات — أعدادٌ ووصفٌ للجمهور، لا قائمة مستلمين. */
+export function listCampaigns(params: { page?: number; limit?: number; kind?: 'broadcast' | 'manual' }) {
+  return get<CampaignList>('/admin/notifications/campaigns', { params })
+}
+
+export function getCampaign(id: string) {
+  return get<Campaign>(`/admin/notifications/campaigns/${id}`)
 }
 
 /** حجم الجمهور قبل الإرسال — لا بثّ أعمى. */

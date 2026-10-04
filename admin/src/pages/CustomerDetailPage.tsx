@@ -18,6 +18,8 @@ import {
 } from 'antd'
 import { KeyOutlined, ReloadOutlined, WhatsAppOutlined } from '@ant-design/icons'
 import { getCustomerDetail } from '../api/customersApi'
+import { CompleteGenderAction, InternalAccountAction } from '../components/CustomerIntegrityActions'
+import { useAdminProfile } from '../hooks/useAdminProfile'
 import EmptyState from '../components/EmptyState'
 import PageLoader from '../components/PageLoader'
 import { PointsLedger } from '../components/PointsLedger'
@@ -55,6 +57,7 @@ export default function CustomerDetailPage() {
   const { id = '' } = useParams<{ id: string }>()
   const [passwordOpen, setPasswordOpen] = useState(false)
 
+  const adminProfile = useAdminProfile()
   const detailQuery = useQuery({
     queryKey: ['customer-detail', id],
     queryFn: () => getCustomerDetail(id),
@@ -229,7 +232,23 @@ export default function CustomerDetailPage() {
                 <Descriptions.Item label="الهاتف">
                   <PhoneText phone={profile.phone} copyable />
                 </Descriptions.Item>
-                <Descriptions.Item label="الجنس">{customerGenderLabel(profile.gender)}</Descriptions.Item>
+                <Descriptions.Item label="الجنس">
+                  {profile.gender ? (
+                    customerGenderLabel(profile.gender)
+                  ) : (
+                    // [D5] شذوذ ما قبل ٠٤٠ — يُكمَل لا يُعرض فئةً.
+                    <CompleteGenderAction customerId={profile.id} onDone={() => void detailQuery.refetch()} />
+                  )}
+                </Descriptions.Item>
+                {adminProfile.data?.isSuperAdmin && (
+                  <Descriptions.Item label="التحليلات">
+                    <InternalAccountAction
+                      customerId={profile.id}
+                      isInternal={profile.isInternalAccount}
+                      onDone={() => void detailQuery.refetch()}
+                    />
+                  </Descriptions.Item>
+                )}
                 <Descriptions.Item label="حالة الحساب">
                   <Space size={4}>
                     <Tag color={profile.isActive ? 'green' : 'red'}>{profile.isActive ? 'نشط' : 'محظور'}</Tag>

@@ -123,6 +123,8 @@ export interface AdminCustomerDetail {
     isVerified: boolean
     verifiedAt: string | null
     preferredLanguage: string
+    /** حساب داخلي/اختباري — طلباته خارج التحليلات (D2). */
+    isInternalAccount: boolean
     createdAt: string
   }
   points: {

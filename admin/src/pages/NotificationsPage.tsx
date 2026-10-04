@@ -28,6 +28,7 @@ import type { AdminOrder } from '../types/orders'
 import { formatDateTime } from '../utils/format'
 import EmptyState from '../components/EmptyState'
 import BroadcastComposer from '../components/BroadcastComposer'
+import NotificationCampaigns from '../components/NotificationCampaigns'
 import { PageHeader } from '../components/ui/PageHeader'
 import { PhoneText } from '../components/ui/PhoneText'
 import { ReminderControls } from '../components/ui/ReminderControls'
@@ -221,6 +222,8 @@ export default function NotificationsPage() {
           </Card>
         </Col>
       </Row>
+
+      <NotificationCampaigns />
 
       <Card title="التوزيع على الأنواع" loading={stats.isPending} size="small">
         <Space wrap>
