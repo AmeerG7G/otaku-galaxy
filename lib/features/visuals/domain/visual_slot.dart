@@ -212,6 +212,13 @@ class CharacterArt {
   /// أُزيل مع الصورة (2026-09-28).
   static const String splashBackdrop = 'assets/art/characters/32.png';
 
+  /// بطاقة التوصيل (11) — نسخةٌ مشتقّة تُرسم فوق كل شيء: مطابقةٌ لـ`11.png`
+  /// بكسلاً ببكسل في نصفها العلويّ، ونصفها السفليّ (y ≥ 232 من 464) شفاف.
+  /// خارج `assets/art/characters/` عمداً (ذاك المجلّد `N.png` وحدها). تُولَّد
+  /// بـ`tool/art/make_overlay_11.py`؛ `test/delivery_overlay_test.dart` يفشل إن
+  /// استُبدلت 11.png دون إعادة التوليد.
+  static const String homeDeliveryOverlay = 'assets/art_overlays/11_overlay.png';
+
   /// الترحيب ← الشريحة الثانية — صورة المنتج داخل البطاقة التوضيحية.
   static const String onboardingProductPhoto = 'assets/art/characters/7.png';
 

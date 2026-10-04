@@ -747,8 +747,10 @@ void main() {
         _app(home: const Scaffold(body: DeliveryAssuranceStrip())),
       );
 
+      // The card's own Stack (inside the Container); the strip's outer Stack
+      // only carries the topmost overlay — see test/delivery_overlay_test.dart.
       final stackFinder = find.descendant(
-        of: find.byType(DeliveryAssuranceStrip),
+        of: find.descendant(of: find.byType(DeliveryAssuranceStrip), matching: find.byType(Container)),
         matching: find.byType(Stack),
       );
       final stack = tester.widget<Stack>(stackFinder);
@@ -812,8 +814,10 @@ void main() {
         _app(home: const Scaffold(body: DeliveryAssuranceStrip())),
       );
 
+      // The card's own Stack (inside the Container); the strip's outer Stack
+      // only carries the topmost overlay — see test/delivery_overlay_test.dart.
       final stackFinder = find.descendant(
-        of: find.byType(DeliveryAssuranceStrip),
+        of: find.descendant(of: find.byType(DeliveryAssuranceStrip), matching: find.byType(Container)),
         matching: find.byType(Stack),
       );
       expect(stackFinder, findsOneWidget,

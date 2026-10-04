@@ -91,6 +91,8 @@ flutter:
     # والمحذوف منها (2 4 9 10 14 22 27 36 37 — STEP 63) فجواتٌ مقصودة لا تُملأ.
     # الجدول موضع ← رقم في `CharacterArt`. استبدال `N.png` يغيّر مواضعه.
     - assets/art/characters/
+    # نسخٌ مشتقّة من رسوم الشخصيات (تُرسم فوق الأصل) — لا تُعدّ رسماً مرقَّماً.
+    - assets/art_overlays/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

@@ -471,6 +471,9 @@ class _PromoCard extends StatelessWidget {
   }
 }
 
+/// مفتاح طبقة النسخة العلوية لبطاقة التوصيل (للاختبارات).
+const deliveryOverlayKey = ValueKey<String>('delivery_overlay_11');
+
 /// شريط طمأنة التوصيل والدفع عند الاستلام.
 class DeliveryAssuranceStrip extends StatelessWidget {
   const DeliveryAssuranceStrip({super.key});
@@ -482,7 +485,12 @@ class DeliveryAssuranceStrip extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 26, 18, 0),
-      child: Container(
+      // Outer Stack: the card (Container) sizes it, and [_deliveryOverlay] is its
+      // LAST child so it paints above the card, its border and the artwork.
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
@@ -563,6 +571,26 @@ class DeliveryAssuranceStrip extends StatelessWidget {
             ),
           ],
         ),
+      ),
+          // Same image, same height and same anchor as the artwork above, only
+          // re-expressed against the card's OUTER box: the inner Stack is inset by
+          // the card's 20 px padding, so bottom −55 → −35 and end −83 → −63.
+          // Its bottom half is transparent (see CharacterArt.homeDeliveryOverlay).
+          // Not clipped by the card and nothing is stacked after it.
+          PositionedDirectional(
+            bottom: -35,
+            end: -63,
+            child: IgnorePointer(
+              child: Image.asset(
+                CharacterArt.homeDeliveryOverlay,
+                key: deliveryOverlayKey,
+                height: 220,
+                fit: BoxFit.contain,
+                errorBuilder: (_, _, _) => const SizedBox(height: 220),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
