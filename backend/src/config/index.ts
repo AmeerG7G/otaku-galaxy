@@ -275,6 +275,19 @@ export const config = {
     outboxBatchSize: Number(process.env.PUSH_OUTBOX_BATCH ?? 50),
   },
 
+  /**
+   * التحليلات التاريخية (STEP 67).
+   *
+   * `trackingEnabled` — التتبّع التجميعي (D3) **مطفأ افتراضياً في كل بيئة**:
+   * لا يشتغل إلا بـ`ANALYTICS_TRACKING_ENABLED=true` حرفياً. أي قيمة أخرى، أو
+   * غيابه، تعني مطفأ. التطبيق يقرأ الحالة من `/catalog/settings` فلا يرسل شيئاً
+   * وهو مطفأ، والخادم يتجاهل الإشارات أيضاً.
+   */
+  analytics: {
+    jobIntervalMs: Number(process.env.ANALYTICS_JOB_INTERVAL_MS ?? 3_600_000),
+    trackingEnabled: process.env.ANALYTICS_TRACKING_ENABLED === 'true',
+  },
+
   corsOrigins: (process.env.CORS_ORIGINS ?? '')
     .split(',')
     .map((s) => s.trim())

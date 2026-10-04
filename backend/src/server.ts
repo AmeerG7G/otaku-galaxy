@@ -1,6 +1,7 @@
 import { createApp } from './app.js';
 import { config } from './config/index.js';
 import { closePools } from './database/pool.js';
+import { startAnalyticsScheduler } from './jobs/analyticsJob.js';
 import { startPushOutboxScheduler } from './jobs/pushOutboxJob.js';
 import { startRatingReminderScheduler } from './jobs/ratingReminderJob.js';
 
@@ -15,6 +16,8 @@ const server = app.listen(config.port, () => {
 const stopRatingReminders = startRatingReminderScheduler();
 // صندوق الدفع الصادر — يرسل الإشعارات الفورية خارج الطلبات (هجرة ٠٧٠).
 const stopPushOutbox = startPushOutboxScheduler();
+// التحليلات التاريخية — ملخّصات يومية/شهرية وإغلاق الأشهر المنقضية (STEP 67).
+const stopAnalytics = startAnalyticsScheduler();
 
 /**
  * إغلاق منظَّم.
@@ -31,6 +34,7 @@ async function shutdown(reason: string, exitCode = 0) {
   console.log(`\n${reason} — shutting down...`);
   stopRatingReminders();
   stopPushOutbox();
+  stopAnalytics();
   server.close(async () => {
     await closePools();
     process.exit(exitCode);
