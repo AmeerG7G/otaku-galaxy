@@ -7,7 +7,9 @@ import {
   type DeviceCounts,
   type OutboxRow,
 } from '../repositories/pushOutboxRepo.js';
+import { analyticsAggregator } from '../services/analytics/aggregator.js';
 import { pushStatus, type PushProvider } from '../services/push/index.js';
+import { rollUpPushOutbox } from '../services/push/rollup.js';
 
 /**
  * مهمّة الدفع — ترسل صفوف `push_outbox` المستحقّة خارج الطلبات.
@@ -200,6 +202,22 @@ export async function dispatchPushOutbox(
   return summary;
 }
 
+/**
+ * صيانة الصندوق (كل ساعة تقريباً): التلخيص الدائم **أولاً**، ثم تطهير الملخَّص
+ * القديم، ثم تعطيل الرموز الصامتة. ترتيبٌ مقصود: لا يُحذف ما لم يُلخَّص.
+ */
+export async function runPushMaintenance(): Promise<void> {
+  const client = await db.connect();
+  try {
+    const today = await analyticsAggregator.today(client, config.storeTimezone);
+    await rollUpPushOutbox(client, { tz: config.storeTimezone, today });
+  } finally {
+    client.release();
+  }
+  await pushOutboxRepo.purgeFinished(db, RETENTION_DAYS);
+  await pushOutboxRepo.deactivateStaleCustomerTokens(db, STALE_TOKEN_DAYS);
+}
+
 /** جدولة المهمّة مع الخادم — تعيد دالة إيقافٍ لإغلاقٍ منظَّم. */
 export function startPushOutboxScheduler(): () => void {
   const status = pushStatus();
@@ -214,10 +232,7 @@ export function startPushOutboxScheduler(): () => void {
     try {
       await dispatchPushOutbox();
       ticks += 1;
-      if (ticks % 720 === 0) {
-        await pushOutboxRepo.purgeFinished(db, RETENTION_DAYS);
-        await pushOutboxRepo.deactivateStaleCustomerTokens(db, STALE_TOKEN_DAYS);
-      }
+      if (ticks % 720 === 0) await runPushMaintenance();
     } catch (error) {
       console.error('[push-outbox] dispatch failed', error);
     } finally {

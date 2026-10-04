@@ -146,10 +146,18 @@ export const pushOutboxRepo = {
     return rowCount ?? 0;
   },
 
-  /** المحسوم الأقدم من المدّة يُحذف — الصندوق ليس أرشيفاً. */
+  /**
+   * المحسوم **الملخَّص** الأقدم من المدّة يُحذف — الصندوق ليس أرشيفاً، والتاريخ
+   * الدائم في `notification_daily_stats`.
+   *
+   * [CRITICAL] صفٌّ لم يُلخَّص (`rolled_up_at IS NULL`) لا يُحذف أبداً، مهما قدُم:
+   * حذفه قبل التلخيص كان يمحو تاريخ الدفع (كما كان قبل STEP 67).
+   */
   async purgeFinished(db: pg.Pool | pg.PoolClient, olderThanDays: number): Promise<number> {
     const { rowCount } = await db.query(
-      `DELETE FROM push_outbox WHERE status <> 'pending' AND created_at < now() - make_interval(days => $1)`,
+      `DELETE FROM push_outbox
+        WHERE status <> 'pending' AND rolled_up_at IS NOT NULL
+          AND created_at < now() - make_interval(days => $1)`,
       [olderThanDays],
     );
     return rowCount ?? 0;
