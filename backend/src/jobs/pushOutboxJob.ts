@@ -1,7 +1,12 @@
-import { config } from '../config/index.js';
+import { config, isTest } from '../config/index.js';
 import { db } from '../database/pool.js';
 import { notificationPrefsRepo, type NotificationPrefKey } from '../repositories/notificationPrefsRepo.js';
-import { pushOutboxRepo, type OutboxRow } from '../repositories/pushOutboxRepo.js';
+import {
+  CLAIM_LEASE_SECONDS,
+  pushOutboxRepo,
+  type DeviceCounts,
+  type OutboxRow,
+} from '../repositories/pushOutboxRepo.js';
 import { pushStatus, type PushProvider } from '../services/push/index.js';
 
 /**
@@ -47,7 +52,14 @@ export interface DispatchSummary {
   skipped: number;
   retried: number;
   failed: number;
+  /** حسمٌ رُفض لأن عاملاً آخر التقط الصفّ بعد انتهاء الحجز — لا يُعدّ مرتين. */
+  stale: number;
+  /** صفوفٌ أُعيدت بلا معالجة لانقضاء ميزانية الدور (بلا استهلاك محاولة). */
+  released: number;
 }
+
+/** ميزانية الدور: نصف مهلة الحجز — لا يطول دورٌ حتى يلتقط غيرُه صفوفه. */
+export const DISPATCH_BUDGET_MS = (CLAIM_LEASE_SECONDS * 1000) / 2;
 
 /** القيم نصّية في FCM `data` — والأرقام/القيم الفارغة تُهمَل. */
 function stringData(data: Record<string, unknown>): Record<string, string> {
@@ -59,6 +71,14 @@ function stringData(data: Record<string, unknown>): Record<string, string> {
   return out;
 }
 
+/**
+ * نصّ الخطأ كما يُحفظ في `last_error`: مقتطعٌ، وأي سلسلةٍ بطول رمز جهاز أو مفتاح
+ * تُحجب — لا رمز ولا سرّ في القاعدة أو السجلّ أبداً.
+ */
+export function scrubPushError(message: string): string {
+  return message.replace(/[A-Za-z0-9_:\-]{60,}/g, '[redacted]').slice(0, 300);
+}
+
 async function allowedByCustomerPrefs(row: OutboxRow): Promise<boolean> {
   const type = typeof row.data.type === 'string' ? row.data.type : '';
   const key = PREF_FOR_TYPE[type];
@@ -67,11 +87,17 @@ async function allowedByCustomerPrefs(row: OutboxRow): Promise<boolean> {
   return prefs[key];
 }
 
+type Outcome = 'sent' | 'skipped' | 'retried' | 'failed';
+
+async function settle(summary: DispatchSummary, outcome: Outcome, applied: Promise<boolean>) {
+  if (await applied) summary[outcome] += 1;
+  else summary.stale += 1;
+}
+
 async function deliver(row: OutboxRow, provider: PushProvider, summary: DispatchSummary) {
   const isAdmin = row.audience === 'admin';
   if (!isAdmin && !(await allowedByCustomerPrefs(row))) {
-    await pushOutboxRepo.markSkipped(db, row.id, 'pref_disabled');
-    summary.skipped += 1;
+    await settle(summary, 'skipped', pushOutboxRepo.markSkipped(db, row, 'pref_disabled'));
     return;
   }
 
@@ -79,18 +105,16 @@ async function deliver(row: OutboxRow, provider: PushProvider, summary: Dispatch
     ? await pushOutboxRepo.adminTokens(db, row.user_id)
     : await pushOutboxRepo.customerTokens(db, row.user_id);
   if (tokens.length === 0) {
-    await pushOutboxRepo.markSkipped(db, row.id, 'no_devices');
-    summary.skipped += 1;
+    await settle(summary, 'skipped', pushOutboxRepo.markSkipped(db, row, 'no_devices'));
     return;
   }
 
-  const retryOrFail = async (reason: string) => {
+  const retryOrFail = async (reason: string, devices?: DeviceCounts, retryAfterSeconds?: number) => {
     if (row.attempts >= MAX_PUSH_ATTEMPTS) {
-      await pushOutboxRepo.markFailed(db, row.id, reason);
-      summary.failed += 1;
+      await settle(summary, 'failed', pushOutboxRepo.markFailed(db, row, reason, devices));
     } else {
-      await pushOutboxRepo.scheduleRetry(db, row.id, retryDelaySeconds(row.attempts), reason);
-      summary.retried += 1;
+      const delay = Math.max(retryDelaySeconds(row.attempts), retryAfterSeconds ?? 0);
+      await settle(summary, 'retried', pushOutboxRepo.scheduleRetry(db, row, delay, reason));
     }
   };
 
@@ -107,7 +131,7 @@ async function deliver(row: OutboxRow, provider: PushProvider, summary: Dispatch
       dataOnly: isAdmin,
     });
   } catch (error) {
-    await retryOrFail(error instanceof Error ? error.message.slice(0, 300) : 'push_error');
+    await retryOrFail(scrubPushError(error instanceof Error ? error.message : 'push_error'));
     return;
   }
 
@@ -117,47 +141,59 @@ async function deliver(row: OutboxRow, provider: PushProvider, summary: Dispatch
   }
 
   const transient = result.transientFailures ?? 0;
+  const devices: DeviceCounts = { accepted: result.sent, invalid: result.invalidTokens.length, transient };
   if (result.sent === 0 && transient > 0) {
-    await retryOrFail(`transient_failures:${transient}`);
+    await retryOrFail(`transient_failures:${transient}`, devices, result.retryAfterSeconds);
     return;
   }
   if (result.sent === 0 && result.invalidTokens.length === tokens.length) {
-    await pushOutboxRepo.markFailed(db, row.id, 'all_tokens_invalid');
-    summary.failed += 1;
+    await settle(summary, 'failed', pushOutboxRepo.markFailed(db, row, 'all_tokens_invalid', devices));
     return;
   }
-  // إرسالٌ جزئي لا يُعاد: إعادتُه تكرّر الإشعار على الأجهزة التي وصلها.
-  await pushOutboxRepo.markSent(db, row.id, transient > 0 ? `partial:${transient}` : null);
-  summary.sent += 1;
+  // إرسالٌ جزئي لا يُعاد: إعادتُه تكرّر الإشعار على الأجهزة التي قبلتها FCM.
+  // «sent» = قبلتها FCM لجهازٍ واحدٍ على الأقل — لا «وصلت» ولا «عُرضت».
+  await settle(summary, 'sent', pushOutboxRepo.markSent(db, row, devices, transient > 0 ? `partial:${transient}` : null));
 }
 
 /**
  * دورة واحدة: التقاط دفعة، ثم إرسالها خارج أي معاملة.
  *
  * `provider` يُمرَّر في الاختبارات؛ في التشغيل يُبنى من الإعداد، وغيابه
- * يعني `skipped: push_not_configured` لكل صفّ.
+ * يعني `skipped: push_not_configured` لكل صفّ. ما لم يُعالَج قبل انقضاء
+ * `budgetMs` يُعاد إلى الصندوق بلا استهلاك محاولة.
  */
 export async function dispatchPushOutbox(
-  options: { provider?: PushProvider | null; batchSize?: number } = {},
+  options: { provider?: PushProvider | null; batchSize?: number; budgetMs?: number; now?: () => number } = {},
 ): Promise<DispatchSummary> {
-  const summary: DispatchSummary = { claimed: 0, sent: 0, skipped: 0, retried: 0, failed: 0 };
+  const summary: DispatchSummary = { claimed: 0, sent: 0, skipped: 0, retried: 0, failed: 0, stale: 0, released: 0 };
   const rows = await pushOutboxRepo.claimDue(db, options.batchSize ?? config.push.outboxBatchSize);
   summary.claimed = rows.length;
   if (rows.length === 0) return summary;
 
+  const now = options.now ?? Date.now;
+  const started = now();
+  const budget = options.budgetMs ?? DISPATCH_BUDGET_MS;
   const provider = options.provider !== undefined ? options.provider : pushStatus().provider;
-  for (const row of rows) {
+  for (let index = 0; index < rows.length; index += 1) {
+    if (now() - started > budget) {
+      summary.released += await pushOutboxRepo.releaseClaim(db, rows.slice(index));
+      break;
+    }
+    const row = rows[index]!;
     if (!provider) {
-      await pushOutboxRepo.markSkipped(db, row.id, 'push_not_configured');
-      summary.skipped += 1;
+      await settle(summary, 'skipped', pushOutboxRepo.markSkipped(db, row, 'push_not_configured'));
       continue;
     }
     try {
       await deliver(row, provider, summary);
     } catch (error) {
       // عطلٌ في القاعدة لصفٍّ واحد لا يوقف البقية؛ الصفّ يعود مستحقاً بعد الحجز.
-      console.error('[push-outbox] row failed', { id: row.id, error });
+      console.error('[push-outbox] row failed', { id: row.id, audience: row.audience, error: scrubPushError(String(error)) });
     }
+  }
+  if (!isTest) {
+    // سجلٌّ منظَّم بلا رموز ولا محتوى: أعدادٌ فقط.
+    console.info('[push-outbox] dispatch', summary);
   }
   return summary;
 }

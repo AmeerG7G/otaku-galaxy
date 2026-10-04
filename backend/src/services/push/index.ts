@@ -27,6 +27,21 @@ export interface PushResult {
   invalidTokens: string[];
   /** رموز فشلت لعطلٍ عابر (شبكة، مهلة، 429، 5xx) — يُعاد إرسالها لاحقاً. */
   transientFailures?: number;
+  /** أكبر `Retry-After` (ثوانٍ) أعاده المزوّد مع 429/503 — تُحترم في إعادة المحاولة. */
+  retryAfterSeconds?: number;
+}
+
+/** إرسالٌ متوازٍ محدود لرموز الرسالة الواحدة — لا يتجاوز مهلة الحجز بتسلسلٍ طويل. */
+export const PUSH_SEND_CONCURRENCY = 4;
+
+/** `Retry-After`: ثوانٍ أو تاريخ HTTP — وإلا `undefined`. */
+export function parseRetryAfter(header: string | null, now: number = Date.now()): number | undefined {
+  if (!header) return undefined;
+  const seconds = Number(header);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.ceil(seconds);
+  const date = Date.parse(header);
+  if (Number.isNaN(date)) return undefined;
+  return Math.max(0, Math.ceil((date - now) / 1000));
 }
 
 export interface PushProvider {
@@ -120,12 +135,22 @@ export class FcmPushProvider implements PushProvider {
     }
   }
 
+  /** تبادلٌ جارٍ — الإرسال المتوازي ينتظره بدل أن يطلب كلٌّ رمزاً. */
+  private inflight: Promise<string> | null = null;
+
   /** رمز وصول OAuth2 لحساب الخدمة — مخبّأ حتى قبل انتهائه بستين ثانية. */
   async obtainAccessToken(): Promise<string> {
     const now = this.now();
     if (this.accessToken && now < this.accessToken.expiresAt - 60_000) {
       return this.accessToken.value;
     }
+    this.inflight ??= this.exchangeAccessToken(now).finally(() => {
+      this.inflight = null;
+    });
+    return this.inflight;
+  }
+
+  private async exchangeAccessToken(now: number): Promise<string> {
     let assertion: string;
     try {
       const iat = Math.floor(now / 1000);
@@ -198,11 +223,13 @@ export class FcmPushProvider implements PushProvider {
     const endpoint = `https://fcm.googleapis.com/v1/projects/${this.settings.projectId}/messages:send`;
     let sent = 0;
     let transientFailures = 0;
+    let retryAfterSeconds: number | undefined;
     const invalidTokens: string[] = [];
 
-    // FCM v1 يرسل رسالةً لجهاز واحد في الطلب الواحد؛ رمزٌ فاسد لا يُفشل
-    // البقية — يُسجَّل ويُكمَل.
-    for (const token of tokens) {
+    // FCM v1 يرسل رسالةً لجهاز واحد في الطلب الواحد؛ رمزٌ فاسد لا يُفشل البقية.
+    // الإرسال متوازٍ بحدٍّ (`PUSH_SEND_CONCURRENCY`) فلا يطول التسلسل حتى يتجاوز
+    // مهلة الحجز ويلتقط عاملٌ آخر الصفّ نفسه.
+    const sendOne = async (token: string) => {
       const accessToken = await this.obtainAccessToken();
       let response: Response;
       try {
@@ -214,23 +241,35 @@ export class FcmPushProvider implements PushProvider {
       } catch {
         // انقطاع شبكة أو مهلة: لا يُعطَّل الرمز — العطل في الطريق لا فيه.
         transientFailures += 1;
-        continue;
+        return;
       }
       if (response.ok) {
         sent += 1;
-        continue;
+        return;
       }
       const payload = await response.json().catch(() => null);
       if (isTokenRejection(response.status, payload)) {
         invalidTokens.push(token);
-      } else {
-        // ٤٠١: رمز الوصول انتهى أو أُلغي — يُمسح ليُطلب جديدٌ في المحاولة التالية.
-        if (response.status === 401) this.accessToken = null;
-        transientFailures += 1;
+        return;
       }
-    }
+      // ٤٠١: رمز الوصول انتهى أو أُلغي — يُمسح ليُطلب جديدٌ في المحاولة التالية.
+      if (response.status === 401) this.accessToken = null;
+      if (response.status === 429 || response.status === 503) {
+        const after = parseRetryAfter(response.headers.get('retry-after'), this.now());
+        if (after !== undefined) retryAfterSeconds = Math.max(retryAfterSeconds ?? 0, after);
+      }
+      transientFailures += 1;
+    };
 
-    return { sent, invalidTokens, transientFailures };
+    const queue = [...tokens];
+    const workers = Array.from({ length: Math.min(PUSH_SEND_CONCURRENCY, queue.length) }, async () => {
+      for (let token = queue.shift(); token !== undefined; token = queue.shift()) {
+        await sendOne(token);
+      }
+    });
+    await Promise.all(workers);
+
+    return { sent, invalidTokens, transientFailures, ...(retryAfterSeconds !== undefined ? { retryAfterSeconds } : {}) };
   }
 }
 

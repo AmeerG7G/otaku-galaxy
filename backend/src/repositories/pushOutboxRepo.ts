@@ -40,6 +40,18 @@ export const ADMIN_PUSH_EVENT_KEYS = Object.keys(ADMIN_PUSH_EVENTS) as AdminPush
  */
 export const CLAIM_LEASE_SECONDS = 120;
 
+/** هوية الالتقاط: المعرّف وعدد المحاولات لحظة الالتقاط (حارس الحسم). */
+export type ClaimedRef = Pick<OutboxRow, 'id' | 'attempts'>;
+
+/** نتيجة الإرسال لكل جهاز: قبلتها FCM / رفضت الرمز / عطلٌ عابر. */
+export interface DeviceCounts {
+  accepted: number;
+  invalid: number;
+  transient: number;
+}
+
+const NO_DEVICES: DeviceCounts = { accepted: 0, invalid: 0, transient: 0 };
+
 export const pushOutboxRepo = {
   /**
    * التقاط دفعةٍ مستحقّة وحجزها — في معاملةٍ قصيرة لا تمتدّ إلى الشبكة.
@@ -67,29 +79,71 @@ export const pushOutboxRepo = {
     return rows;
   },
 
-  async markSent(db: pg.Pool | pg.PoolClient, id: string, note: string | null = null) {
-    await db.query(
-      `UPDATE push_outbox SET status = 'sent', sent_at = now(), last_error = $2 WHERE id = $1`,
-      [id, note],
+  /*
+   * ═══ الحسم المحروس ═══
+   *
+   * [CRITICAL] كل حسمٍ مشروطٌ بـ`status = 'pending' AND attempts = <عدد الالتقاط>`.
+   * عاملٌ انتهت مهلة حجزه فالتقط عاملٌ آخر الصفّ (فارتفع `attempts`) لا يستطيع أن
+   * يكتب نتيجته فوق نتيجة الآخر — يعيد `false` ولا يُعدّ في أي ملخّص. فلا حسمٌ
+   * مزدوج، ولا عدٌّ مزدوج في التاريخ الدائم.
+   */
+
+  async markSent(db: pg.Pool | pg.PoolClient, row: ClaimedRef, devices: DeviceCounts, note: string | null = null) {
+    const { rowCount } = await db.query(
+      `UPDATE push_outbox
+          SET status = 'sent', sent_at = now(), last_error = $3,
+              devices_accepted = $4, devices_invalid = $5, devices_transient = $6
+        WHERE id = $1 AND status = 'pending' AND attempts = $2`,
+      [row.id, row.attempts, note, devices.accepted, devices.invalid, devices.transient],
     );
+    return rowCount === 1;
   },
 
-  async markSkipped(db: pg.Pool | pg.PoolClient, id: string, reason: string) {
-    await db.query(`UPDATE push_outbox SET status = 'skipped', last_error = $2 WHERE id = $1`, [id, reason]);
+  async markSkipped(db: pg.Pool | pg.PoolClient, row: ClaimedRef, reason: string) {
+    const { rowCount } = await db.query(
+      `UPDATE push_outbox SET status = 'skipped', last_error = $3
+        WHERE id = $1 AND status = 'pending' AND attempts = $2`,
+      [row.id, row.attempts, reason],
+    );
+    return rowCount === 1;
   },
 
-  async markFailed(db: pg.Pool | pg.PoolClient, id: string, reason: string) {
-    await db.query(`UPDATE push_outbox SET status = 'failed', last_error = $2 WHERE id = $1`, [id, reason]);
+  async markFailed(db: pg.Pool | pg.PoolClient, row: ClaimedRef, reason: string, devices: DeviceCounts = NO_DEVICES) {
+    const { rowCount } = await db.query(
+      `UPDATE push_outbox
+          SET status = 'failed', last_error = $3,
+              devices_accepted = $4, devices_invalid = $5, devices_transient = $6
+        WHERE id = $1 AND status = 'pending' AND attempts = $2`,
+      [row.id, row.attempts, reason, devices.accepted, devices.invalid, devices.transient],
+    );
+    return rowCount === 1;
   },
 
   /** إعادة المحاولة لاحقاً — الصفّ يبقى معلَّقاً وموعده يتباعد. */
-  async scheduleRetry(db: pg.Pool | pg.PoolClient, id: string, delaySeconds: number, reason: string) {
-    await db.query(
+  async scheduleRetry(db: pg.Pool | pg.PoolClient, row: ClaimedRef, delaySeconds: number, reason: string) {
+    const { rowCount } = await db.query(
       `UPDATE push_outbox
-          SET next_attempt_at = now() + make_interval(secs => $2), last_error = $3
-        WHERE id = $1`,
-      [id, delaySeconds, reason],
+          SET next_attempt_at = now() + make_interval(secs => $3), last_error = $4
+        WHERE id = $1 AND status = 'pending' AND attempts = $2`,
+      [row.id, row.attempts, delaySeconds, reason],
     );
+    return rowCount === 1;
+  },
+
+  /**
+   * إعادة صفوفٍ التُقطت ولم تُعالَج (انقضت ميزانية الدور) — بلا استهلاك محاولة.
+   * تعود مستحقّةً فوراً ليلتقطها الدور التالي.
+   */
+  async releaseClaim(db: pg.Pool | pg.PoolClient, rows: ClaimedRef[]): Promise<number> {
+    if (rows.length === 0) return 0;
+    const { rowCount } = await db.query(
+      `UPDATE push_outbox o
+          SET attempts = o.attempts - 1, next_attempt_at = now()
+         FROM unnest($1::bigint[], $2::int[]) AS r(id, attempts)
+        WHERE o.id = r.id AND o.status = 'pending' AND o.attempts = r.attempts`,
+      [rows.map((r) => r.id), rows.map((r) => r.attempts)],
+    );
+    return rowCount ?? 0;
   },
 
   /** المحسوم الأقدم من المدّة يُحذف — الصندوق ليس أرشيفاً. */
