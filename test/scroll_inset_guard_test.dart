@@ -28,6 +28,11 @@ const _handledElsewhere = <String, (int, String)>{
     1,
     'SafeArea',
   ),
+  // حاجز إكمال الجنس (D5) — بنية حاجز التحديث نفسها: المُمرِّر داخل `SafeArea`.
+  'lib/features/auth/presentation/gender_required_gate.dart': (
+    1,
+    'SafeArea',
+  ),
   'lib/features/checkout/presentation/widgets/order_success_view.dart': (
     1,
     'SafeArea',
