@@ -10,7 +10,7 @@ import { db } from '../src/database/pool.js';
 /**
  * سكربتات العكس (`scripts/rollback/*.down.sql`) — صعود ← نزول ← صعود.
  *
- * [CRITICAL] كل هجرةٍ من ٠٧١ فصاعداً تحمل سكربت عكسٍ مُختبَراً هنا: تُطبَّق
+ * [CRITICAL] كل هجرةٍ من ٠٧١ إلى ٠٨٠ تحمل سكربت عكسٍ مُختبَراً هنا: تُطبَّق
  * السلسلة كاملةً في مخطّطٍ معزول، ثم تُعكس هذه الهجرات بترتيبٍ معاكس، ثم تُعاد.
  * بصمة المخطّط (أعمدة، قيود، زنادات، عروض، دوال) بعد الإعادة يجب أن تطابق
  * ما قبل العكس حرفياً — عكسٌ ينسى قيداً أو زناداً يظهر هنا.
@@ -61,12 +61,17 @@ describe('سكربتات العكس — صعود ← نزول ← صعود', () 
     const before = await fingerprint();
 
     const downs = (await readdir(ROLLBACK_DIR)).filter((f) => f.endsWith('.down.sql')).sort().reverse();
-    expect(downs.length).toBeGreaterThan(0);
-    // كل هجرةٍ من ٠٧١ فصاعداً تحمل عكسها.
-    const migrations = (await readdir(path.resolve(ROOT, '../src/database/migrations')))
-      .filter((f) => f.endsWith('.sql') && f >= '071')
+    const allMigrations = (await readdir(path.resolve(ROOT, '../src/database/migrations')))
+      .filter((f) => f.endsWith('.sql'))
       .sort();
-    expect(downs.map((f) => f.replace('.down.sql', '.sql')).sort()).toEqual(migrations);
+    // كل سكربت عكسٍ يقابل هجرةً موجودة، وهجرات التحليلات والإشعارات (٠٧١–٠٨٠)
+    // تحمل كلها عكسها. هجرةٌ بلا سكربت (من خارج هذه المجموعة) تبقى مطبَّقة
+    // طوال الاختبار، والعكس والإعادة يجريان حولها.
+    const migrations = downs.map((f) => f.replace('.down.sql', '.sql')).sort();
+    for (const file of migrations) expect(allMigrations).toContain(file);
+    const featureMigrations = allMigrations.filter((f) => f >= '071' && f < '081');
+    expect(featureMigrations).toHaveLength(10);
+    for (const file of featureMigrations) expect(migrations).toContain(file);
 
     const client = new pg.Client({ connectionString: scopedUrl() });
     await client.connect();
