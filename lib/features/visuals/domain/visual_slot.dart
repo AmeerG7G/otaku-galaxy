@@ -185,7 +185,7 @@ class CharacterArt {
     VisualSlots.productDetailReviews: 'assets/art/characters/17.png', // تفاصيل المنتج — التقييمات
     VisualSlots.searchHeader: 'assets/art/characters/12.png', // البحث — الترويسة
     VisualSlots.emptySearch: 'assets/art/characters/18.png', // البحث — لا نتائج
-    VisualSlots.ordersHeader: 'assets/art/characters/19.png', // الطلبات — الترويسة
+    VisualSlots.ordersHeader: 'assets/art/characters/41.png', // الطلبات — الترويسة
     VisualSlots.emptyOrders: 'assets/art/characters/20.png', // الطلبات — لا طلبات
     VisualSlots.orderSuccess: 'assets/art/characters/21.png', // نجاح الطلب
     VisualSlots.points: 'assets/art/characters/23.png', // نقاط المجرّة

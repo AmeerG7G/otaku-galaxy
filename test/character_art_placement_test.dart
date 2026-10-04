@@ -349,10 +349,16 @@ void main() {
         ),
       );
       await tester.pump();
+      await _decode(tester, VisualSlots.ordersHeader);
       final art = tester.getRect(_art(VisualSlots.ordersHeader));
-      // ٨٠٪ من العرض الافتراضي (١٢٦ ← ١٠٠٫٨).
-      expect(OrdersScreen.artScale, 0.8);
-      expect(art.width, closeTo(OtakuScreenHeader.defaultArtworkWidth * 0.8, 0.01));
+      // ٧٥٪ من العرض الافتراضي (١٢٦ ← ٩٤٫٥) — مقاس الصورة 41 (598×739).
+      expect(OrdersScreen.artScale, 0.75);
+      expect(art.width, closeTo(OtakuScreenHeader.defaultArtworkWidth * 0.75, 0.01));
+      expect(CharacterArt.forSlot(VisualSlots.ordersHeader), endsWith('/41.png'));
+      // الشخصية كلها داخل الترويسة: لا قصّ من أسفل قدميها (كان ٢٫٦ بعرض ٠٫٨).
+      final header = tester.getRect(find.byType(OtakuScreenHeader));
+      expect(art.bottom, lessThanOrEqualTo(header.bottom));
+      expect(art.top, closeTo(_statusBar, 0.01));
       // لا يدخل من اليسار ولا يُقصّ — ويبقى ملاصقاً للحافة.
       expect(art.left, greaterThanOrEqualTo(0));
       expect(art.left, lessThanOrEqualTo(2));

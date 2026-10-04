@@ -52,7 +52,7 @@ const _slotNumbers = <String, int>{
   'product_detail_reviews_character': 17,
   'search_header_character': 12,
   'empty_search_character': 18,
-  'orders_header_character': 19,
+  'orders_header_character': 41,
   'empty_orders_character': 20,
   'order_success_character': 21,
   'points_character': 23,
@@ -219,13 +219,65 @@ void main() {
       for (final group in [
         [VisualSlots.emptyCart, VisualSlots.searchHeader],
         [VisualSlots.categoryProductsHeader, VisualSlots.emptyCategoryProducts],
-        [VisualSlots.ordersHeader, VisualSlots.onboardingSlideThree],
         [VisualSlots.communityHeader, VisualSlots.communityEmpty],
         [VisualSlots.homeHero, VisualSlots.homePromoSecondary, VisualSlots.reviewSubmitted],
       ]) {
         expect(group.map(CharacterArt.forSlot).toSet(), hasLength(1), reason: '$group');
       }
       expect(CharacterArt.splashBackdrop, CharacterArt.forSlot(VisualSlots.onboardingSlideOne));
+    });
+
+    test('«طلباتي» تعرض 41 والترحيب (الشريحة الثالثة) ما زال على 19 — ملفّان لا ملفٌّ مشترك', () {
+      expect(CharacterArt.forSlot(VisualSlots.ordersHeader), '$_dir/41.png');
+      expect(CharacterArt.forSlot(VisualSlots.onboardingSlideThree), '$_dir/19.png');
+      // 19 لم يُمسّ: موجود بمقاسه الأصلي (685×1270) وما زال مستعملاً.
+      final f = File('$_dir/19.png');
+      expect(f.existsSync(), isTrue);
+      final d = ByteData.sublistView(f.readAsBytesSync());
+      expect([d.getUint32(16), d.getUint32(20)], [685, 1270]);
+      // 19 لا يُعرض إلا من الترحيب.
+      final slotsOn19 = [
+        for (final e in CharacterArt.assets.entries)
+          if (e.value == '$_dir/19.png') e.key,
+      ];
+      expect(slotsOn19, [VisualSlots.onboardingSlideThree]);
+    });
+
+    test('41: ألفا حقيقي، خلفيته شفافة، والشخصية كاملة (شعر/ذراع معدنية/حزام/ضفيرة)', () async {
+      final codec = await ui.instantiateImageCodec(File('$_dir/41.png').readAsBytesSync());
+      final image = (await codec.getNextFrame()).image;
+      final data = (await image.toByteData(format: ui.ImageByteFormat.rawRgba))!;
+      int a(int x, int y) => data.getUint8((y * image.width + x) * 4 + 3);
+      expect([image.width, image.height], [598, 739]);
+      for (final (x, y) in [(0, 0), (image.width - 1, 0), (0, image.height - 1), (image.width - 1, image.height - 1)]) {
+        expect(a(x, y), 0, reason: 'corner ($x,$y) must be transparent');
+      }
+      // الفجوة بين الرقبة والياقة كانت خلفيةً محصورة — شفافة الآن.
+      expect(a(300, 290), 0);
+      // نقاطٌ داخل الشخصية يجب أن تبقى معتمة تماماً.
+      for (final (name, x, y) in [
+        ('eye', 182, 222),
+        ('fist', 520, 200),
+        ('belt buckle', 355, 705),
+        ('braid tip', 20, 490),
+        ('hair outline', 130, 70),
+      ]) {
+        expect(a(x, y), 255, reason: name);
+      }
+      var opaque = 0;
+      var transparent = 0;
+      for (var i = 3; i < data.lengthInBytes; i += 4) {
+        final v = data.getUint8(i);
+        if (v == 255) opaque++;
+        if (v == 0) transparent++;
+      }
+      final total = image.width * image.height;
+      // قياس التنظيف: ٢٥٤٬٠٩٧ معتمة و١٨٤٬٩٣٥ شفافة. هبوط المعتم يعني أن بكسلات
+      // شخصية مُحيت؛ وصعوده يعني أن خلفيةً بقيت.
+      expect(opaque, inInclusiveRange(250000, 258000));
+      expect(transparent / total, inInclusiveRange(0.40, 0.44));
+      image.dispose();
+      codec.dispose();
     });
 
     test('الاستبدالات الأصلية (2026-09-28) وتحديث الأقسام: 2→34، 9 و10→29، 36→32', () {
