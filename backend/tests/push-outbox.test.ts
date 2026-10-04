@@ -1,4 +1,4 @@
-import { generateKeyPairSync } from 'node:crypto';
+import { generateKeyPairSync, randomUUID } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { db } from '../src/database/pool.js';
@@ -101,6 +101,7 @@ describe('push outbox — every in-app notification is queued in its own transac
       .expect(201);
     await api
       .post('/api/admin/notifications/broadcast')
+      .set('Idempotency-Key', randomUUID())
       .set(bearer(adminToken))
       .send({ audience: 'users', userIds: [customer.userId], title: 'بثّ', body: '' })
       .expect(201);

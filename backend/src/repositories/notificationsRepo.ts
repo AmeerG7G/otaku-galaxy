@@ -171,15 +171,26 @@ export const notificationRepo = {
       title: string;
       body?: string;
       productId?: string | null;
+      /** حملة البثّ (٠٧٤) — يحملها كل سجلٍّ ويصل بها الصندوق. */
+      campaignId?: string | null;
     },
   ) {
     if (input.userIds.length === 0) return 0;
     const { rowCount } = await db.query(
-      `INSERT INTO notifications (user_id, type, title, body, product_id)
-       SELECT id, $2, $3, $4, $5 FROM UNNEST($1::uuid[]) AS t(id)`,
-      [input.userIds, input.type, input.title, input.body ?? '', input.productId ?? null],
+      `INSERT INTO notifications (user_id, type, title, body, product_id, campaign_id)
+       SELECT id, $2, $3, $4, $5, $6 FROM UNNEST($1::uuid[]) AS t(id)`,
+      [input.userIds, input.type, input.title, input.body ?? '', input.productId ?? null, input.campaignId ?? null],
     );
     return rowCount ?? 0;
+  },
+
+  /** أول سجلٍّ لحملة — ردّ الإعادة لإشعارٍ يدوي بالمفتاح نفسه. */
+  async findFirstByCampaign(db: pg.Pool | pg.PoolClient, campaignId: string) {
+    const { rows } = await db.query<NotificationRow>(
+      'SELECT * FROM notifications WHERE campaign_id = $1 ORDER BY created_at, id LIMIT 1',
+      [campaignId],
+    );
+    return rows[0] ? shapeNotification(rows[0]) : null;
   },
 
   /** إنشاء إشعار — يُستدعى من خدمات الطلبات والتقييمات. */
@@ -193,11 +204,12 @@ export const notificationRepo = {
       orderId?: string | null;
       reviewId?: string | null;
       productId?: string | null;
+      campaignId?: string | null;
     },
   ) {
     const { rows } = await db.query<NotificationRow>(
-      `INSERT INTO notifications (user_id, type, title, body, order_id, review_id, product_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO notifications (user_id, type, title, body, order_id, review_id, product_id, campaign_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING *`,
       [
         input.userId,
@@ -207,6 +219,7 @@ export const notificationRepo = {
         input.orderId ?? null,
         input.reviewId ?? null,
         input.productId ?? null,
+        input.campaignId ?? null,
       ],
     );
     return shapeNotification(rows[0]!);

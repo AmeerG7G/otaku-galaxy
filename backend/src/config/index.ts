@@ -395,5 +395,10 @@ export const config = {
      */
     uploadMaxPerCustomer: Number(process.env.RATE_LIMIT_UPLOAD_MAX ?? 20),
     uploadMaxPerAdmin: Number(process.env.RATE_LIMIT_UPLOAD_MAX_ADMIN ?? 200),
+    /**
+     * البثّ لكل مسؤول في الساعة — حدُّ إرسالٍ جماعيٍّ متكرّر بالخطأ لا خنقٌ للعمل.
+     * مفتاح عدم التكرار يمنع تكرار الطلب نفسه؛ هذا يمنع حملاتٍ متتالية مختلفة.
+     */
+    broadcastMaxPerHour: Number(process.env.RATE_LIMIT_BROADCAST_MAX ?? 10),
   },
 } as const;

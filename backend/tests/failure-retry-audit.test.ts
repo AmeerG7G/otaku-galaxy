@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import type pg from 'pg';
@@ -1362,13 +1363,19 @@ describe('Failure / retry / idempotency audit', () => {
       expect((await outbox()).rows).toEqual([{ status: 'sent', attempts: 2 }]);
     });
 
-    it('response dropped → an admin retry creates a second record and a second outbox row (at-least-once, no dedupe — CA-7)', async () => {
+    it('response dropped → a retry with the same Idempotency-Key returns the same record, no second outbox row (CA-7, STEP 67)', async () => {
       const user = await registerAndLogin();
       await register(user.token, `fra-push2-${Math.random().toString(36).slice(2)}-${Date.now()}`);
       const send = vi.spyOn(pushProvider(), 'send');
+      const key = randomUUID();
       responsePatch = failNextResponse('/api/admin/notifications', 'drop');
       await expect(
-        api.post('/api/admin/notifications').set(authed(adminToken)).send({ userId: user.userId, title: 'عرض', body: 'نص' }).then((r) => r),
+        api
+          .post('/api/admin/notifications')
+          .set(authed(adminToken))
+          .set('Idempotency-Key', key)
+          .send({ userId: user.userId, title: 'عرض', body: 'نص' })
+          .then((r) => r),
       ).rejects.toThrow();
       responsePatch.restore();
       expect(await count(`FROM notifications WHERE user_id = $1 AND type = 'promotion'`, [user.userId])).toBe(1);
@@ -1376,12 +1383,14 @@ describe('Failure / retry / idempotency audit', () => {
       const retry = await api
         .post('/api/admin/notifications')
         .set(authed(adminToken))
+        .set('Idempotency-Key', key)
         .send({ userId: user.userId, title: 'عرض', body: 'نص' });
-      expect(retry.status).toBe(201);
+      expect(retry.status).toBe(200);
+      expect(retry.body.data.replayed).toBe(true);
       expect(send).not.toHaveBeenCalled();
-      // العقد: لا مفتاح تكرار — إعادةُ الإرسال إشعارٌ ثانٍ وصفُّ دفعٍ ثانٍ (موثَّق).
-      expect(await count(`FROM notifications WHERE user_id = $1 AND type = 'promotion'`, [user.userId])).toBe(2);
-      expect(await count(`FROM push_outbox WHERE user_id = $1 AND audience = 'customer'`, [user.userId])).toBe(2);
+      // العقد (STEP 67): المفتاح نفسه = السجلّ نفسه. لا إشعارٌ ثانٍ ولا صفُّ دفعٍ ثانٍ.
+      expect(await count(`FROM notifications WHERE user_id = $1 AND type = 'promotion'`, [user.userId])).toBe(1);
+      expect(await count(`FROM push_outbox WHERE user_id = $1 AND audience = 'customer'`, [user.userId])).toBe(1);
     });
   });
 
@@ -1412,6 +1421,7 @@ describe('Failure / retry / idempotency audit', () => {
       ]);
       const failed = await api
         .post('/api/admin/notifications/broadcast')
+        .set('Idempotency-Key', randomUUID())
         .set(authed(adminToken))
         .send({ audience: 'users', userIds: [a.userId, b.userId], title: 'بثّ', body: 'نص' });
       expect(failed.status).toBe(404);
@@ -1422,6 +1432,7 @@ describe('Failure / retry / idempotency audit', () => {
       vi.restoreAllMocks();
       const ok = await api
         .post('/api/admin/notifications/broadcast')
+        .set('Idempotency-Key', randomUUID())
         .set(authed(adminToken))
         .send({ audience: 'users', userIds: [a.userId, b.userId], title: 'بثّ', body: 'نص' });
       expect(ok.status).toBe(201);
@@ -1436,6 +1447,7 @@ describe('Failure / retry / idempotency audit', () => {
       await api.post('/api/devices').set(authed(a.token)).send({ token: `fra-bc-${Date.now()}-${Math.random()}`, platform: 'android' }).expect(200);
       const res = await api
         .post('/api/admin/notifications/broadcast')
+        .set('Idempotency-Key', randomUUID())
         .set(authed(adminToken))
         .send({ audience: 'users', userIds: [a.userId], title: 'بثّ', body: 'نص' });
       expect(res.status).toBe(201);
@@ -1445,18 +1457,38 @@ describe('Failure / retry / idempotency audit', () => {
       expect(await promoCount(a.userId)).toBe(1);
     });
 
-    it('broadcast retried after a dropped response → every recipient gets a second record (at-least-once — documented contract, CA-7)', async () => {
+    it('broadcast retried after a dropped response with the same Idempotency-Key → the same campaign, no second record (CA-7, STEP 67)', async () => {
       const a = await registerAndLogin();
       const b = await registerAndLogin();
       const body = { audience: 'users', userIds: [a.userId, b.userId], title: 'بثّ', body: 'نص' };
+      const key = randomUUID();
       responsePatch = failNextResponse('/api/admin/notifications/broadcast', 'drop');
-      await expect(api.post('/api/admin/notifications/broadcast').set(authed(adminToken)).send(body).then((r) => r)).rejects.toThrow();
+      await expect(
+        api.post('/api/admin/notifications/broadcast').set(authed(adminToken)).set('Idempotency-Key', key).send(body).then((r) => r),
+      ).rejects.toThrow();
       responsePatch.restore();
       expect(await promoCount(a.userId)).toBe(1);
-      const retry = await api.post('/api/admin/notifications/broadcast').set(authed(adminToken)).send(body);
-      expect(retry.status).toBe(201);
+      const retry = await api.post('/api/admin/notifications/broadcast').set(authed(adminToken)).set('Idempotency-Key', key).send(body);
+      expect(retry.status).toBe(200);
+      expect(retry.body.data).toMatchObject({ replayed: true, recipients: 2 });
+      expect(await promoCount(a.userId)).toBe(1);
+      expect(await promoCount(b.userId)).toBe(1);
+      // مفتاحٌ جديد = حملةٌ جديدة مقصودة.
+      const fresh = await api.post('/api/admin/notifications/broadcast').set(authed(adminToken)).set('Idempotency-Key', randomUUID()).send(body);
+      expect(fresh.status).toBe(201);
+      expect(fresh.body.data.campaignId).not.toBe(retry.body.data.campaignId);
       expect(await promoCount(a.userId)).toBe(2);
-      expect(await promoCount(b.userId)).toBe(2);
+    });
+
+    it('a broadcast without an Idempotency-Key is refused (400) and writes nothing', async () => {
+      const a = await registerAndLogin();
+      const res = await api
+        .post('/api/admin/notifications/broadcast')
+        .set(authed(adminToken))
+        .send({ audience: 'users', userIds: [a.userId], title: 'بثّ', body: 'نص' });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('IDEMPOTENCY_KEY_REQUIRED');
+      expect(await promoCount(a.userId)).toBe(0);
     });
   });
 

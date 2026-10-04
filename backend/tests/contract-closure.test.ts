@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type pg from 'pg';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { config } from '../src/config/index.js';
@@ -506,6 +507,7 @@ describe('Pre-staging contract closure (STEP 57)', () => {
       const send = vi.spyOn(pushProvider(), 'send');
       const res = await api
         .post('/api/admin/notifications/broadcast')
+        .set('Idempotency-Key', randomUUID())
         .set('Authorization', `Bearer ${adminToken}`)
         .send({ audience: 'users', userIds: [customer.userId], title: 'CA-7', body: '' })
         .expect(201);

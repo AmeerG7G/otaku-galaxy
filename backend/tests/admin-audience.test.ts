@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { config } from '../src/config/index.js';
 import { db } from '../src/database/pool.js';
@@ -62,6 +63,7 @@ describe('استهداف الإشعارات وشرائح الزبائن', () => 
   function broadcast(payload: Record<string, unknown>) {
     return api
       .post('/api/admin/notifications/broadcast')
+      .set('Idempotency-Key', randomUUID())
       .set('Authorization', `Bearer ${adminToken}`)
       .send(payload);
   }
@@ -270,6 +272,7 @@ describe('استهداف الإشعارات وشرائح الزبائن', () => 
   it('العميل العادي لا يبثّ إشعارات', async () => {
     const res = await api
       .post('/api/admin/notifications/broadcast')
+      .set('Idempotency-Key', randomUUID())
       .set('Authorization', `Bearer ${today.token}`)
       .send({ audience: 'all', title: 'اختراق', body: '' });
     expect(res.status).toBe(403);

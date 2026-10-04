@@ -80,6 +80,8 @@ const EXPECTED: Record<string, Guard> = {
   'post /loyalty-rewards/:id/fulfil': ['points'],
   'get /notifications/stats': ['notifications'],
   'get /notifications': ['notifications'],
+  'get /notifications/campaigns': ['notifications'],
+  'get /notifications/campaigns/:id': ['notifications'],
   'get /customers/birthdays': ['birthdays'],
   'patch /users/:id/active': ['customers'],
   'get /customers/:id': ['customers'],

@@ -255,6 +255,19 @@ export function uploadRateLimiter(options: { limit: number }) {
   });
 }
 
+/**
+ * سقف البثّ — بالمسؤول، في ساعة (عمليةٌ واحدة: انظر ذاكرة المحدِّد في العملية).
+ */
+export function broadcastRateLimiter() {
+  return limiter({
+    limit: config.rateLimit.broadcastMaxPerHour,
+    windowMs: 60 * 60 * 1000,
+    keyGenerator: (req) => req.auth?.id ?? ipKeyGenerator(req.ip ?? ''),
+    message: 'بثٌّ كثير في وقت قصير — حاول بعد قليل',
+    code: 'BROADCAST_RATE_LIMITED',
+  });
+}
+
 export function globalRateLimiter() {
   return rateLimit({
     windowMs: config.rateLimit.windowMs,

@@ -13,7 +13,7 @@ import {
   requirePermission as can,
   requireSuperAdmin,
 } from '../middleware/auth.js';
-import { authRateLimiter, uploadRateLimiter } from '../middleware/error-handler.js';
+import { authRateLimiter, broadcastRateLimiter, uploadRateLimiter } from '../middleware/error-handler.js';
 import { uploadSingleImage } from '../middleware/upload.js';
 
 /**
@@ -182,7 +182,10 @@ adminRoutes.patch('/settings/app-version', can('settings'), adminExtrasControlle
 adminRoutes.post('/notifications', can('notifications'), adminExtrasController.createNotification);
 
 // ── بثّ إشعار لجمهور (الكل / زبائن محدَّدون / شريحة) ──
-adminRoutes.post('/notifications/broadcast', can('notifications'), adminExtrasController.broadcastNotification);
+adminRoutes.post('/notifications/broadcast', can('notifications'), broadcastRateLimiter(), adminExtrasController.broadcastNotification);
+// سجلّ الحملات (٠٧٤) — أعدادٌ لا مستلمون.
+adminRoutes.get('/notifications/campaigns', can('notifications'), adminExtrasController.listCampaigns);
+adminRoutes.get('/notifications/campaigns/:id', can('notifications'), adminExtrasController.campaignDetail);
 adminRoutes.post('/notifications/audience', can('notifications'), adminExtrasController.audiencePreview);
 
 // [PRODUCT] لا «رسوم شخصيات» في اللوحة (2026-09-27، الهجرة 065): الشخصيات

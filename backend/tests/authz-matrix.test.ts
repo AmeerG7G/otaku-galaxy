@@ -364,6 +364,8 @@ describe('Phase 3 — vertical privilege escalation (every admin endpoint)', () 
     ['patch', () => `/api/admin/customers/${U}/internal`, { isInternal: true, reason: 'حساب اختبار' }],
     ['get', () => `/api/admin/products/${U}/costs`],
     ['post', () => `/api/admin/products/${U}/costs`, { unitCost: 1000 }],
+    ['get', () => '/api/admin/notifications/campaigns'],
+    ['get', () => `/api/admin/notifications/campaigns/${U}`],
     // STEP 67 — التحليلات (قراءةٌ فقط).
     ['get', () => '/api/admin/analytics/periods'],
     ['get', () => '/api/admin/analytics/overview'],

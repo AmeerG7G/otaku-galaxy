@@ -196,3 +196,17 @@ export const setBirthdaySchema = z.object({
 export const uploadPurposeSchema = z.object({
   purpose: z.enum(MEDIA_PURPOSES).default('review'),
 });
+
+/**
+ * مفتاح عدم التكرار — ترويسة `Idempotency-Key` (UUID). مطلوبٌ للبثّ (CA-7):
+ * إعادة الطلب نفسه بعد انقطاع الردّ تعيد الحملة نفسها لا حملةً ثانية.
+ */
+export const idempotencyKeySchema = z.string().uuid('مفتاح عدم التكرار غير صالح');
+
+export const campaignListSchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  kind: z.enum(['broadcast', 'manual']).optional(),
+});
+
+export const campaignIdParamSchema = z.object({ id: z.string().uuid('معرّف غير صالح') });

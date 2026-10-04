@@ -15,7 +15,10 @@ import { Errors } from '../utils/errors.js';
 import {
   audiencePreviewSchema,
   broadcastNotificationSchema,
+  campaignIdParamSchema,
+  campaignListSchema,
   createNotificationSchema,
+  idempotencyKeySchema,
   listReviewsAdminSchema,
   moderateReviewSchema,
   redemptionIdParamSchema,
@@ -228,16 +231,17 @@ export const adminExtrasController = {
   // ── إشعار يدوي ──
 
   createNotification: (async (req, res) => {
+    res.locals.auditHandled = true;
     const body = parse(createNotificationSchema, req.body);
-    return created(
-      res,
-      await notificationsService.createForUser({
-        userId: body.userId,
-        title: body.title,
-        body: body.body,
-      }),
-      'أُرسل الإشعار',
-    );
+    const header = req.get('Idempotency-Key');
+    const result = await notificationsService.createForUser({
+      userId: body.userId,
+      title: body.title,
+      body: body.body,
+      createdBy: req.auth!.id,
+      ...(header ? { idempotencyKey: parse(idempotencyKeySchema, header) } : {}),
+    });
+    return result.replayed ? ok(res, result, 'أُرسل الإشعار مسبقاً') : created(res, result, 'أُرسل الإشعار');
   }) as RequestHandler,
 
   /**
@@ -248,16 +252,32 @@ export const adminExtrasController = {
    */
   broadcastNotification: (async (req, res) => {
     const body = parse(broadcastNotificationSchema, req.body);
+    const header = req.get('Idempotency-Key');
+    if (!header) throw Errors.badRequest('مفتاح عدم التكرار مطلوب للبثّ', 'IDEMPOTENCY_KEY_REQUIRED');
+    res.locals.auditHandled = true;
     const result = await notificationsService.broadcast({
       audience: toAudience(body),
       title: body.title,
       body: body.body,
+      createdBy: req.auth!.id,
+      idempotencyKey: parse(idempotencyKeySchema, header),
     });
+    if (result.replayed) return ok(res, result, 'هذا البثّ أُرسل مسبقاً — لم يُكرَّر');
     return created(
       res,
       result,
       `أُنشئ الإشعار لـ${result.recipients} زبوناً داخل التطبيق`,
     );
+  }) as RequestHandler,
+
+  /** سجلّ الحملات — أعدادٌ ووصفٌ للجمهور، لا قائمة مستلمين. */
+  listCampaigns: (async (req, res) => {
+    return ok(res, await notificationsService.listCampaigns(parse(campaignListSchema, req.query)));
+  }) as RequestHandler,
+
+  campaignDetail: (async (req, res) => {
+    const { id } = parse(campaignIdParamSchema, req.params);
+    return ok(res, await notificationsService.campaignDetail(id));
   }) as RequestHandler,
 
   /** حجم الجمهور قبل الإرسال — يمنع بثّاً أعمى. */

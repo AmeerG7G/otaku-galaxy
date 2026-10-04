@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../src/database/pool.js';
 import { api, createAdminUser, purgeTestUsers, registerAndLogin } from './helpers.js';
@@ -167,6 +168,7 @@ describe('بثّ الإشعارات مع الدفع', () => {
   it('[CRITICAL] غير المسؤول لا يبثّ إشعارات', async () => {
     const res = await api
       .post('/api/admin/notifications/broadcast')
+      .set('Idempotency-Key', randomUUID())
       .set({ Authorization: `Bearer ${customer.token}` })
       .send({ audience: 'all', title: 'محاولة', body: '' });
     expect(res.status).toBe(403);
@@ -181,6 +183,7 @@ describe('بثّ الإشعارات مع الدفع', () => {
 
     const res = await api
       .post('/api/admin/notifications/broadcast')
+      .set('Idempotency-Key', randomUUID())
       .set({ Authorization: `Bearer ${adminToken}` })
       .send({ audience: 'all', title: 'عرض الأسبوع', body: 'خصومات' })
       .expect(201);
