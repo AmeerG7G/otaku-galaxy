@@ -70,54 +70,64 @@ class PersonalizeScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Row(
-                        // القاع مشترك: الشخصية على الفاصل، والعنوان فوقه
-                        // بمسافته — مهما التفّ العنوان (الكردية، خطٌّ مكبَّر).
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.only(bottom: 12),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const OtakuStoreLogoSimple(size: 42),
-                                  const SizedBox(height: 12),
-                                  Text(
-                                    context.strings('personalizeTitle'),
-                                    style: theme.textTheme.headlineSmall
-                                        ?.copyWith(
-                                          fontFamily: 'Tajawal',
-                                          // Kurdish localisation is longer here; keep this title
-                                          // visually compact so its extra length does not grow the
-                                          // header row beyond the character-artwork height.
-                                          fontSize: context.language ==
-                                                  AppLanguage.kurdish
-                                              ? 21.0
-                                              : 25.0,
-                                          letterSpacing: -0.5,
-                                          fontWeight: AppDimens.weightBlack,
-                                        ),
-                                  ),
-                                ],
+                      // الارتفاع مقفول على قيمة ثابتة حتى لا يؤثّر التفاف العنوان
+                      // في أيّ لغة أو مقياس نصّ على موضع الفاصل وكل ما تحته.
+                      // 145 = 42 (شعار) + 12 + سطران بـfontSize 25 × 1.3scale × 1.1lineH
+                      //     ≈ 138 مع هامش 7 — الشخصية (129) تجلس في القاع.
+                      SizedBox(
+                        height: 145.0,
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.only(bottom: 12),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const OtakuStoreLogoSimple(size: 42),
+                                    const SizedBox(height: 12),
+                                    Text(
+                                      context.strings('personalizeTitle'),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.fade,
+                                      style: theme.textTheme.headlineSmall
+                                          ?.copyWith(
+                                            fontFamily: 'Tajawal',
+                                            // height:1.1 caps line metrics for both languages so
+                                            // the column stays within the 63 px title budget
+                                            // (129 header − 42 logo − 12 gap − 12 padding = 63 px).
+                                            // Kurdish is also smaller (21 vs 25) because its
+                                            // translation wraps to 2 lines.
+                                            fontSize: context.language ==
+                                                    AppLanguage.kurdish
+                                                ? 21.0
+                                                : 25.0,
+                                            height: 1.1,
+                                            letterSpacing: -0.5,
+                                            fontWeight: AppDimens.weightBlack,
+                                          ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          // جهة النهاية (اليسار الفيزيائي) مقابل الهالة أعلى
-                          // اليمين. صندوقٌ ثابت: ١٢٦×١٢٩ شكلُ الصورة 34، وصورةٌ
-                          // بديلة بشكلٍ آخر تُحتوى داخله قاعُها على الفاصل
-                          // (`bottomCenter`).
-                          const IgnorePointer(
-                            child: CharacterArtwork(
-                              slot: VisualSlots.personalize,
-                              width: 126,
-                              height: 129,
-                              alignment: Alignment.bottomCenter,
+                            const SizedBox(width: 8),
+                            // جهة النهاية (اليسار الفيزيائي) مقابل الهالة أعلى
+                            // اليمين. صندوقٌ ثابت: ١٢٦×١٢٩ شكلُ الصورة 34، وصورةٌ
+                            // بديلة بشكلٍ آخر تُحتوى داخله قاعُها على الفاصل
+                            // (`bottomCenter`).
+                            const IgnorePointer(
+                              child: CharacterArtwork(
+                                slot: VisualSlots.personalize,
+                                width: 126,
+                                height: 129,
+                                alignment: Alignment.bottomCenter,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                       Container(
                         key: dividerKey,

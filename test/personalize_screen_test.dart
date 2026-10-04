@@ -13,6 +13,8 @@ import 'package:otaku_galaxy/features/settings/presentation/cubit/locale_cubit.d
 import 'package:otaku_galaxy/features/settings/presentation/cubit/theme_cubit.dart';
 import 'package:otaku_galaxy/features/settings/presentation/cubit/theme_state.dart';
 import 'package:otaku_galaxy/features/settings/presentation/widgets/personalize_cards.dart';
+import 'package:otaku_galaxy/core/l10n/locale_scope.dart';
+import 'package:otaku_galaxy/features/visuals/domain/visual_slot.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// نفس تركيبة شاشة التخصيص بلا اعتماد على الراوتر أو حاوية الحقن.
@@ -204,5 +206,98 @@ void main() {
     await tester.tap(find.text(other.label));
     await tester.pump();
     expect(cubit.state, other);
+  });
+
+  // ── [GEOMETRY LOCK] الترويسة ثابتة بغضّ النظر عن اللغة ──────────────────
+  //
+  // يتحقّق هذا الجزء أن الـSizedBox(height:129) يعزل الفاصل وكل ما تحته
+  // عن طول العنوان. الهندسة هي المحور: الفن والفاصل والجسم والزر يجب أن
+  // يكونوا في نفس الإحداثيات المطلقة في العربية والكردية.
+
+  Widget geometryHost({
+    required AppLanguage language,
+    required SharedPreferences prefs,
+  }) => MultiBlocProvider(
+    providers: [
+      BlocProvider(create: (_) => LocaleCubit(prefs)..emit(language)),
+      BlocProvider(create: (_) => ThemeCubit(prefs)),
+    ],
+    child: MaterialApp(
+      theme: AppTheme.light,
+      builder: (context, child) =>
+          LocaleScope(language: language, child: child!),
+      home: const Directionality(
+        textDirection: TextDirection.rtl,
+        child: PersonalizeScreen(),
+      ),
+    ),
+  );
+
+  group('header geometry is language-independent', () {
+    final geometryCases = <(String, Size, double)>[
+      ('412×892 scale 1.0', const Size(412, 892), 1.0),
+      ('412×892 scale 1.3', const Size(412, 892), 1.3),
+      ('375×812 scale 1.0', const Size(375, 812), 1.0),
+    ];
+
+    for (final (label, size, scale) in geometryCases) {
+      testWidgets(label, (tester) async {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1.0;
+        tester.platformDispatcher.textScaleFactorTestValue = scale;
+        addTearDown(() {
+          tester.view.reset();
+          tester.platformDispatcher.clearTextScaleFactorTestValue();
+        });
+
+        final artFinder = find.byWidgetPredicate(
+          (w) => w is CharacterArtwork && w.slot == VisualSlots.personalize,
+        );
+        final dividerFinder = find.byKey(PersonalizeScreen.dividerKey);
+
+        // Arabic render.
+        await tester.pumpWidget(geometryHost(language: AppLanguage.arabic, prefs: prefs));
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(tester.takeException(), isNull);
+        final artAr = tester.getRect(artFinder);
+        final dividerAr = tester.getRect(dividerFinder);
+
+        // Kurdish render — same size, same scale.
+        await tester.pumpWidget(geometryHost(language: AppLanguage.kurdish, prefs: prefs));
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(tester.takeException(), isNull);
+        final artCkb = tester.getRect(artFinder);
+        final dividerCkb = tester.getRect(dividerFinder);
+
+        // Character artwork must be at the same position.
+        expect(artCkb.top, closeTo(artAr.top, 1.0),
+            reason: 'art.top differs between ar and ckb ($label)');
+        expect(artCkb.bottom, closeTo(artAr.bottom, 1.0),
+            reason: 'art.bottom differs between ar and ckb ($label)');
+
+        // Divider must be at the same Y — this is the key invariant.
+        expect(dividerCkb.top, closeTo(dividerAr.top, 1.0),
+            reason: 'divider.top differs between ar and ckb ($label)');
+      });
+    }
+
+    // الشاشة الضيّقة مع مقياس 1.3: لا نجبر تطابقاً (قد يلتفّ العربي أيضاً)
+    // لكن يجب ألا ينهار التخطيط.
+    testWidgets('320×568 scale 1.3 — no crash', (tester) async {
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1.0;
+      tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+      addTearDown(() {
+        tester.view.reset();
+        tester.platformDispatcher.clearTextScaleFactorTestValue();
+      });
+
+      for (final lang in AppLanguage.values) {
+        await tester.pumpWidget(geometryHost(language: lang, prefs: prefs));
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(tester.takeException(), isNull,
+            reason: 'layout crashed for ${lang.code} at 320×568 scale 1.3');
+      }
+    });
   });
 }
