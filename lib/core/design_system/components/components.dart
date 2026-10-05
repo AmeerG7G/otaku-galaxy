@@ -34,3 +34,4 @@ export 'navigation/otaku_bottom_nav.dart';
 export 'navigation/otaku_screen_header.dart';
 export 'sheets/login_gate_sheet.dart';
 export 'sheets/otaku_sheet.dart';
+export 'typography/bounded_text.dart';
