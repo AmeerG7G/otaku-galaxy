@@ -15,16 +15,17 @@ vi.mock('../api/adminAccountsApi', () => ({
 }))
 vi.mock('../push/webPush', () => ({
   disableWebPush: vi.fn(),
-  resyncWebPush: vi.fn(async () => undefined),
+  syncWebPush: vi.fn(async () => undefined),
   onForegroundPush: vi.fn(() => () => {}),
+  onWebPushResync: vi.fn(() => () => {}),
   enableWebPush: vi.fn(),
-  storedToken: vi.fn(() => null),
+  webPushEnabledFor: vi.fn(() => false),
   webPushConfigured: vi.fn(() => false),
   webPushSupported: vi.fn(() => false),
 }))
 
 import { fetchAdminMe } from '../api/adminAccountsApi'
-import { disableWebPush, resyncWebPush } from '../push/webPush'
+import { disableWebPush, onWebPushResync, syncWebPush } from '../push/webPush'
 import { useAuthStore } from '../stores/authStore'
 import { DESKTOP, PHONE, setViewportWidth } from '../test/viewport'
 import { ThemeProvider } from '../theme/ThemeProvider'
@@ -82,9 +83,19 @@ describe('AppLayout — push device and session', () => {
     setViewportWidth(PHONE)
   })
 
-  it('a session re-links this browser’s saved push token', async () => {
+  it('a session syncs this browser’s push token for the signed-in admin — never another', async () => {
     renderLayout()
-    await waitFor(() => expect(resyncWebPush).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(syncWebPush).toHaveBeenCalledWith('a1'))
+    expect(vi.mocked(syncWebPush).mock.calls.every(([owner]) => owner === 'a1')).toBe(true)
+  })
+
+  it('the service worker reporting a replaced subscription re-syncs while the dashboard is open', async () => {
+    renderLayout()
+    await waitFor(() => expect(onWebPushResync).toHaveBeenCalled())
+    const calls = vi.mocked(syncWebPush).mock.calls.length
+    vi.mocked(onWebPushResync).mock.calls.at(-1)![0]()
+    expect(syncWebPush).toHaveBeenCalledTimes(calls + 1)
+    expect(syncWebPush).toHaveBeenLastCalledWith('a1')
   })
 
   it('[SECURITY] logout unregisters this browser while the session token is still valid, then clears it', async () => {

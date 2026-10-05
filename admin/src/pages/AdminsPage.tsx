@@ -44,7 +44,7 @@ import {
   type AuditEntry,
   type SubAdmin,
 } from '../types/adminPermissions'
-import { resyncWebPush } from '../push/webPush'
+import { syncWebPush } from '../push/webPush'
 import { formatDateTime } from '../utils/format'
 import { IRAQI_MOBILE_LENGTH, IRAQI_MOBILE_PATTERN, formatIraqiPhone } from '../utils/phone'
 
@@ -112,8 +112,9 @@ function OwnProfileTab() {
       // كلمة مرورٍ جديدة ⇒ الجلسات الأخرى سقطت، وهذا الجهاز يأخذ توكناً جديداً.
       if (token && storedUser) {
         setSession(token, { ...storedUser, username: next.username, phone: next.phone })
-        // الخادم عطّل أجهزة الإشعار مع الجلسات؛ هذا المتصفّح يستعيد جهازه.
-        void resyncWebPush()
+        // الخادم عطّل أجهزة الإشعار مع الجلسات؛ هذا المتصفّح يستعيد جهازه
+        // مربوطاً بالجلسة الجديدة.
+        void syncWebPush(storedUser.id)
       }
       queryClient.setQueryData(ADMIN_ME_QUERY_KEY, next)
       form.setFieldsValue({ currentPassword: '', newPassword: '', confirmPassword: '' })

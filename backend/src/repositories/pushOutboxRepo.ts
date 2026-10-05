@@ -167,8 +167,9 @@ export const pushOutboxRepo = {
    * حدثٌ إداري — صفٌّ لكل مسؤولٍ يستحقّه، في معاملة الحدث.
    *
    * [SECURITY] المستحقّ: مسؤولٌ فعّال، أعلى أو يملك قسم الحدث، لم يُطفئ الحدث
-   * في تفضيلاته، وله جهازٌ مسجَّل في `admin_push_devices`. لا صفّ لمن لا جهاز
-   * له — فلا يتراكم الصندوق بما لا يُرسَل أبداً. والزبون لا يطابق شرط الدور.
+   * في تفضيلاته، وله جهازٌ مسجَّل في `admin_push_devices` جلستُه لم تنتهِ (٠٨٢).
+   * لا صفّ لمن لا جهاز له — فلا يتراكم الصندوق بما لا يُرسَل أبداً. والزبون لا
+   * يطابق شرط الدور.
    */
   async enqueueAdminEvent(
     db: pg.Pool | pg.PoolClient,
@@ -189,7 +190,8 @@ export const pushOutboxRepo = {
           AND (u.is_super_admin OR $5 = ANY(u.admin_permissions))
           AND COALESCE((SELECT p.enabled FROM admin_notification_prefs p
                          WHERE p.user_id = u.id AND p.key = $1), TRUE)
-          AND EXISTS (SELECT 1 FROM admin_push_devices d WHERE d.user_id = u.id AND d.is_active)`,
+          AND EXISTS (SELECT 1 FROM admin_push_devices d
+                       WHERE d.user_id = u.id AND d.is_active AND d.session_expires_at > now())`,
       [input.event, input.title, input.body, JSON.stringify({ ...input.data, event: input.event }), section],
     );
     return rowCount ?? 0;
@@ -224,12 +226,18 @@ export const pushOutboxRepo = {
     return rowCount ?? 0;
   },
 
-  /** رموز أجهزة المسؤول — من `admin_push_devices` وحده، ولمسؤولٍ فعّال فقط. */
+  /**
+   * رموز أجهزة المسؤول — من `admin_push_devices` وحده، ولمسؤولٍ فعّال فقط.
+   *
+   * [SECURITY] وجهازٍ جلستُه لم تنتهِ (هجرة ٠٨٢): متصفّحٌ انتهت جلسته واللوحة
+   * مغلقة لا يستقبل بيانات الزبائن — ولو أُدرج صفّه والجلسة صالحة. `NULL`
+   * (صفٌّ قبل ٠٨٢) لا يطابق: يُرسَل إليه بعد أن تعيد اللوحة تسجيله.
+   */
   async adminTokens(db: pg.Pool | pg.PoolClient, userId: string): Promise<string[]> {
     const { rows } = await db.query<{ token: string }>(
       `SELECT d.token FROM admin_push_devices d
          JOIN users u ON u.id = d.user_id AND u.role = 'admin' AND u.is_active
-        WHERE d.user_id = $1 AND d.is_active`,
+        WHERE d.user_id = $1 AND d.is_active AND d.session_expires_at > now()`,
       [userId],
     );
     return rows.map((row) => row.token);

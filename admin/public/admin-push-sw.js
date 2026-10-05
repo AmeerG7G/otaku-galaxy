@@ -50,6 +50,20 @@ self.addEventListener('push', (event) => {
   )
 })
 
+/*
+ * المتصفّح بدّل اشتراك Web Push أو أسقطه: رمز FCM الذي يحمله الخادم مات. عامل
+ * الخدمة لا يستطيع مخاطبة الخادم (الجلسة في الصفحة لا هنا)، فيطلب من ألواح
+ * اللوحة المفتوحة أن تعيد المزامنة الآن؛ وإن لم تكن مفتوحة فالجلسة التالية تفعل
+ * (`getToken` يلاحظ الاشتراك الجديد ويصدر رمزاً جديداً).
+ */
+self.addEventListener('pushsubscriptionchange', (event) => {
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
+      windows.forEach((w) => w.postMessage({ type: 'admin-push-resync' }))
+    }),
+  )
+})
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
   const target = new URL(safePath(event.notification.data && event.notification.data.url), self.location.origin).href

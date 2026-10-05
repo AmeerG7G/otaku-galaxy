@@ -10,10 +10,11 @@ import { ADMIN_PUSH_EVENT_LABELS, type AdminPushEvent } from '../types/adminPerm
 import {
   disableWebPush,
   enableWebPush,
-  storedToken,
   webPushConfigured,
+  webPushEnabledFor,
   webPushSupported,
 } from '../push/webPush'
+import { useAuthStore } from '../stores/authStore'
 
 const REASONS: Record<string, string> = {
   not_configured: 'إشعارات الويب غير مُعدّة في هذه النسخة من اللوحة.',
@@ -32,7 +33,9 @@ const REASONS: Record<string, string> = {
 export default function AdminPushDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { message } = App.useApp()
   const queryClient = useQueryClient()
-  const [enabledHere, setEnabledHere] = useState(() => Boolean(storedToken()))
+  const userId = useAuthStore((state) => state.user?.id ?? null)
+  // «مفعّلة» = رمزٌ لهذا المسؤول **والمتصفّح ما يزال يملك الإذن** — لا رمزٌ محفوظ وحده.
+  const [enabledHere, setEnabledHere] = useState(() => webPushEnabledFor(userId))
   const [problem, setProblem] = useState<string | null>(null)
 
   const status = useQuery({ queryKey: ['admin-push-status'], queryFn: fetchPushStatus, enabled: open })
@@ -44,7 +47,8 @@ export default function AdminPushDrawer({ open, onClose }: { open: boolean; onCl
         await disableWebPush()
         return { ok: true as const }
       }
-      return enableWebPush()
+      if (!userId) return { ok: false as const, reason: 'failed' as const }
+      return enableWebPush(userId)
     },
     onSuccess: (result, on) => {
       if (result.ok) {

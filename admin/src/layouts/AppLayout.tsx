@@ -28,7 +28,7 @@ import { APP_HEADER_HEIGHT } from './metrics'
 import { useAdminProfile } from '../hooks/useAdminProfile'
 import { canAccess } from '../types/adminPermissions'
 import AdminPushDrawer from '../components/AdminPushDrawer'
-import { disableWebPush, onForegroundPush, resyncWebPush } from '../push/webPush'
+import { disableWebPush, onForegroundPush, onWebPushResync, syncWebPush } from '../push/webPush'
 import { useAuthStore } from '../stores/authStore'
 import { ENV_BADGE } from '../config/env'
 import { useTheme } from '../theme/ThemeProvider'
@@ -90,10 +90,13 @@ export default function AppLayout() {
   const [pushOpen, setPushOpen] = useState(false)
   const { notification } = App.useApp()
 
-  // جلسةٌ جديدة: رمز هذا المتصفّح (إن فُعّل سابقاً) يُربط بها من جديد.
+  // جلسةٌ جديدة: رمز هذا المتصفّح (إن فُعّل سابقاً لهذا المسؤول) يتجدّد ويُربط
+  // بها؛ وكذلك حين يبدّل المتصفّح اشتراكه واللوحة مفتوحة.
+  const userId = useAuthStore((state) => state.user?.id)
   useEffect(() => {
-    void resyncWebPush()
-  }, [])
+    void syncWebPush(userId)
+    return onWebPushResync(() => void syncWebPush(userId))
+  }, [userId])
 
   // اللوحة مفتوحة ومرئية: عامل الخدمة يسلّم التنبيه هنا بدل إشعار النظام.
   useEffect(

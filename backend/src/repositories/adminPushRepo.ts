@@ -14,22 +14,26 @@ export const adminPushRepo = {
    *
    * [SECURITY] الرمز يُحذف من أجهزة الزبائن في المعاملة نفسها: رمزٌ واحد لا
    * يكون زبوناً ومسؤولاً معاً، فلا يصل إشعار زبونٍ متصفّحَ اللوحة.
+   *
+   * [SECURITY] `sessionExpiresAt` موعد انتهاء الجلسة التي سجّلت الجهاز (هجرة
+   * ٠٨٢): لا يُرسَل إليه بعده. كل إعادة تسجيلٍ من جلسةٍ أحدث تمدّده.
    */
   async register(
     tx: pg.PoolClient,
-    input: { userId: string; token: string; platform: AdminDevicePlatform },
+    input: { userId: string; token: string; platform: AdminDevicePlatform; sessionExpiresAt: Date | null },
   ): Promise<{ created: boolean }> {
     await tx.query('DELETE FROM device_tokens WHERE token = $1', [input.token]);
     const { rows } = await tx.query<{ created: boolean }>(
-      `INSERT INTO admin_push_devices (user_id, token, platform)
-       VALUES ($1, $2, $3)
+      `INSERT INTO admin_push_devices (user_id, token, platform, session_expires_at)
+       VALUES ($1, $2, $3, $4)
        ON CONFLICT (token) DO UPDATE
          SET user_id = EXCLUDED.user_id,
              platform = EXCLUDED.platform,
+             session_expires_at = EXCLUDED.session_expires_at,
              is_active = TRUE,
              last_seen_at = now()
        RETURNING (xmax = 0) AS created`,
-      [input.userId, input.token, input.platform],
+      [input.userId, input.token, input.platform, input.sessionExpiresAt],
     );
     return { created: rows[0]?.created ?? false };
   },
@@ -60,9 +64,11 @@ export const adminPushRepo = {
     return rowCount ?? 0;
   },
 
+  /** الأجهزة التي تستقبل فعلاً — فعّالة وجلستها لم تنتهِ (كشرط الإرسال نفسه). */
   async activeCount(db: pg.Pool | pg.PoolClient, userId: string): Promise<number> {
     const { rows } = await db.query<{ n: string }>(
-      'SELECT COUNT(*)::text AS n FROM admin_push_devices WHERE user_id = $1 AND is_active',
+      `SELECT COUNT(*)::text AS n FROM admin_push_devices
+        WHERE user_id = $1 AND is_active AND session_expires_at > now()`,
       [userId],
     );
     return Number(rows[0]?.n ?? 0);

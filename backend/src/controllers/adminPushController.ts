@@ -29,8 +29,14 @@ export const adminPushController = {
   registerDevice: (async (req, res) => {
     res.locals.auditHandled = true; // شأنٌ شخصي للمسؤول لا تغييرٌ في المتجر
     const input = parse(registerAdminDeviceSchema, req.body ?? {});
+    // [SECURITY] الجهاز يستقبل ما دامت هذه الجلسة — لا بعدها (هجرة ٠٨٢).
     const result = await withTransaction((tx) =>
-      adminPushRepo.register(tx, { userId: req.auth!.id, token: input.token, platform: input.platform }),
+      adminPushRepo.register(tx, {
+        userId: req.auth!.id,
+        token: input.token,
+        platform: input.platform,
+        sessionExpiresAt: req.auth!.sessionExpiresAt ?? null,
+      }),
     );
     return ok(res, { registered: true, created: result.created }, 'فُعّلت الإشعارات على هذا الجهاز');
   }) as RequestHandler,

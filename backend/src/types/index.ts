@@ -73,6 +73,11 @@ export interface AuthUser {
   isSuperAdmin: boolean;
   /** أقسام المسؤول الفرعي. فارغةٌ للمسؤول الأعلى (يملك كل شيء) وللزبون. */
   permissions: readonly AdminSection[];
+  /**
+   * موعد انتهاء الجلسة (`exp` التوكن الذي صادق الطلب) — يُربط به جهاز إشعار
+   * المسؤول فلا يستقبل بعد انتهائها (هجرة ٠٨٢). `null` لتوكنٍ بلا `exp`.
+   */
+  sessionExpiresAt?: Date | null;
 }
 
 /** بيانات المستخدم المكشوفة في الردود (بلا password_hash). */

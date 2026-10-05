@@ -28,6 +28,11 @@ function isUserId(sub: unknown): sub is string {
   return typeof sub === 'string' && UUID_PATTERN.test(sub);
 }
 
+/** موعد انتهاء الجلسة من `exp` (ثوانٍ) — `null` إن غاب. */
+function sessionExpiry(payload: jwt.JwtPayload): Date | null {
+  return typeof payload.exp === 'number' ? new Date(payload.exp * 1000) : null;
+}
+
 /**
  * فحص JWT وحقن بيانات المستخدم في الطلب.
  *
@@ -85,7 +90,7 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
     // يجب أن تسري فوراً، لا بعد أن يعيد المستخدم تسجيل الدخول.
     // [I18N] اللغة تُقرأ من الصفّ لا من التوكن: تبديلُها في الإعدادات يسري
     // على الطلب التالي مباشرةً، بلا انتظار انتهاء توكنٍ عمرُه سبعة أيام.
-    req.auth = authUserFrom(state);
+    req.auth = { ...authUserFrom(state), sessionExpiresAt: sessionExpiry(payload) };
     // [D3] «زبون نشط اليوم» — كتابةٌ واحدة لكل زبون في اليوم، ومطفأ افتراضياً.
     if (req.auth.role === 'customer') trackingService.customerActive(req.auth.id);
     return next();
@@ -188,7 +193,7 @@ export async function optionalAuthenticate(req: Request, _res: Response, next: N
     const tokenVersion = typeof payload.tv === 'number' ? payload.tv : 0;
     if (tokenVersion !== state.tokenVersion) return next();
 
-    req.auth = authUserFrom(state);
+    req.auth = { ...authUserFrom(state), sessionExpiresAt: sessionExpiry(payload) };
   } catch {
     // توكن غير صالح على مسار عام — يُخدَم زائراً.
   }
