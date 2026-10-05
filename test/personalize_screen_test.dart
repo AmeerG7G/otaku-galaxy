@@ -3,6 +3,7 @@
 // وأن اختيار اللغة/المظهر يطبَّق فوراً على نفس الشاشة.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otaku_galaxy/core/design_system/design_system.dart';
@@ -16,6 +17,8 @@ import 'package:otaku_galaxy/features/settings/presentation/widgets/personalize_
 import 'package:otaku_galaxy/core/l10n/locale_scope.dart';
 import 'package:otaku_galaxy/features/visuals/domain/visual_slot.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'support/render_harness.dart';
 
 /// نفس تركيبة شاشة التخصيص بلا اعتماد على الراوتر أو حاوية الحقن.
 Widget _personalizeBody() => Builder(
@@ -73,6 +76,10 @@ Widget _personalizeBody() => Builder(
 );
 
 void main() {
+  // [CRITICAL] الخطوط الحقيقية: عنوان الترويسة منطقة `BoundedText` تقيس عرض
+  // النصّ — بالخطّ البديل (كل حرفٍ مربّع) يُقاس شيءٌ لا علاقة له بالجهاز.
+  setUpAll(loadProjectFonts);
+
   late SharedPreferences prefs;
 
   setUp(() async {
@@ -254,6 +261,7 @@ void main() {
           (w) => w is CharacterArtwork && w.slot == VisualSlots.personalize,
         );
         final dividerFinder = find.byKey(PersonalizeScreen.dividerKey);
+        final logoFinder = find.byType(OtakuStoreLogoSimple);
 
         // Arabic render.
         await tester.pumpWidget(geometryHost(language: AppLanguage.arabic, prefs: prefs));
@@ -261,6 +269,7 @@ void main() {
         expect(tester.takeException(), isNull);
         final artAr = tester.getRect(artFinder);
         final dividerAr = tester.getRect(dividerFinder);
+        final logoAr = tester.getRect(logoFinder);
 
         // Kurdish render — same size, same scale.
         await tester.pumpWidget(geometryHost(language: AppLanguage.kurdish, prefs: prefs));
@@ -268,6 +277,7 @@ void main() {
         expect(tester.takeException(), isNull);
         final artCkb = tester.getRect(artFinder);
         final dividerCkb = tester.getRect(dividerFinder);
+        final logoCkb = tester.getRect(logoFinder);
 
         // Character artwork must be at the same position.
         expect(artCkb.top, closeTo(artAr.top, 1.0),
@@ -278,12 +288,21 @@ void main() {
         // Divider must be at the same Y — this is the key invariant.
         expect(dividerCkb.top, closeTo(dividerAr.top, 1.0),
             reason: 'divider.top differs between ar and ckb ($label)');
+
+        // [CRITICAL] الشعار أيضاً (2026-10-05): كان العمود يكبر بسطر العنوان
+        // الكردي الثاني فيصعد الشعار ~١٨ بكسل — ولم يكن هذا الاختبار يقيسه.
+        expect(logoCkb.top, closeTo(logoAr.top, 1.0),
+            reason: 'logo.top differs between ar and ckb ($label)');
+        expect(logoCkb.left, closeTo(logoAr.left, 1.0),
+            reason: 'logo.left differs between ar and ckb ($label)');
       });
     }
 
-    // الشاشة الضيّقة مع مقياس 1.3: لا نجبر تطابقاً (قد يلتفّ العربي أيضاً)
-    // لكن يجب ألا ينهار التخطيط.
-    testWidgets('320×568 scale 1.3 — no crash', (tester) async {
+    // [PRODUCT] الشاشة الضيّقة مع ×1.3 (قرار المالك 2026-10-05): الحدّ الأدنى
+    // ٠٫٨ يبقى، والعنوان الكردي لا يتّسع لسطرين حتى عنده (يحتاج ٠٫٦٤)،
+    // فيطول سطراً ثالثاً هنا وحده وتطول الترويسة معه. العربية تتّسع لسطرين
+    // فلا تطول. المهمّ: لا قصّ ولا انهيار، والنموّ حيث لا بدّ منه فقط.
+    testWidgets('320×568 scale 1.3 — third line only where the floor fails', (tester) async {
       tester.view.physicalSize = const Size(320, 568);
       tester.view.devicePixelRatio = 1.0;
       tester.platformDispatcher.textScaleFactorTestValue = 1.3;
@@ -292,12 +311,22 @@ void main() {
         tester.platformDispatcher.clearTextScaleFactorTestValue();
       });
 
+      final lines = <AppLanguage, int>{};
       for (final lang in AppLanguage.values) {
         await tester.pumpWidget(geometryHost(language: lang, prefs: prefs));
         await tester.pump(const Duration(milliseconds: 300));
         expect(tester.takeException(), isNull,
-            reason: 'layout crashed for ${lang.code} at 320×568 scale 1.3');
+            reason: 'layout error for ${lang.code} at 320×568 scale 1.3');
+        final title = tester.renderObject<RenderParagraph>(find.descendant(
+          of: find.byKey(const Key('personalize_title')),
+          matching: find.byType(RichText),
+        ));
+        expect(title.didExceedMaxLines, isFalse, reason: '${lang.code}: العنوان مقصوص');
+        expect(title.text.style!.fontSize!, greaterThanOrEqualTo(25 * kBoundedTextMinScale));
+        lines[lang] = title.maxLines!;
       }
+      expect(lines[AppLanguage.arabic], 2);
+      expect(lines[AppLanguage.kurdish], 3);
     });
   });
 }

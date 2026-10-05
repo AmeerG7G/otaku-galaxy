@@ -42,6 +42,7 @@ import 'package:otaku_galaxy/features/settings/presentation/cubit/locale_cubit.d
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/auth_stub.dart';
+import 'support/render_harness.dart';
 
 /// حرفٌ عربي خالص لا يُستعمل في السوراني — كاشف التسرّب.
 final RegExp _arabicOnly = RegExp('[ةكيثذصضطظً-ْ]');
@@ -188,6 +189,10 @@ Future<void> _tapButton(WidgetTester tester, String label) async {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  // [CRITICAL] الخطوط الحقيقية: رؤوس المصادقة منطقتا `BoundedText` تقيسان
+  // عرض النصّ؛ بخطّ الاختبار البديل (كل حرفٍ مربّعٌ بعرض المقاس) لا تتّسع
+  // أي جملةٍ عربية أو كردية فيُبلَّغ «لا يتّسع» عن بيئةٍ لا عن تصميم.
+  setUpAll(loadProjectFonts);
   setUpAll(() {
     if (!sl.isRegistered<AppConfig>()) sl.registerLazySingleton<AppConfig>(() => AppConfig.development);
     if (sl.isRegistered<PointsRepository>()) sl.unregister<PointsRepository>();

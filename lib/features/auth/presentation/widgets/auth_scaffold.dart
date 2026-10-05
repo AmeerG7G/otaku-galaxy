@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/design_system/design_system.dart';
-import '../../../../core/l10n/app_strings.dart';
-import '../../../settings/presentation/cubit/locale_cubit.dart';
 import '../../../visuals/presentation/character_artwork.dart';
 
 /// هيكل شاشات المصادقة بتصميم Otaku Galaxy v2.
@@ -68,29 +66,62 @@ class AuthScaffold extends StatelessWidget {
   /// شاشة «نسيت كلمة المرور» تمرّر قيمة أصغر لتحريك النص قليلاً للأعلى.
   final double? subtitleSpacing;
 
-  /// مقاس النصّ التوضيحي في الرأس — `13` للعربية كما في المرجع.
+  /// النصّ التوضيحي في الرأس: `13` بارتفاع سطر `1.7` كما في المرجع، في
+  /// منطقةٍ ثابتة من سطرين (`BoundedText`) في كل لغة.
   ///
-  /// [CRITICAL] الكردية وحدها أصغر قليلاً (2026-09-27). حروفها الخاصة
-  /// (ێ ۆ ڕ ڵ ک) لا يملكها Tajawal فتُرسم باحتياط NotoSansArabic الأطول
-  /// سطراً، وجُملها الثلاث هنا أطول من العربية: بـ١٣ كانت تنزل تحت الحدّ
-  /// الذي تغطّيه بطاقة النموذج (قيس `test/kurdish_auth_subtitle_layout_test.dart`).
-  /// العربية لا تُمسّ.
+  /// [CRITICAL] كانت الكردية وحدها أصغر (١١٫٥ / ١٫٥٥، 2026-09-27) لأن سطرها
+  /// كان أطول من العربي باحتياط Noto. باحتياط `AppFonts` المطابق صار السطر
+  /// الكردي بارتفاع العربي، وجُمل الكردية الثلاث تتّسع لسطرين بالمقاس نفسه
+  /// (أطولها — «نسيت كلمة المرور» ×١٫٣ — عند ٠٫٨ تماماً). المنطقة تقيس
+  /// المساحة لا اللغة.
   static const double _subtitleSize = 13;
-  static const double _subtitleSizeKurdish = 11.5;
   static const double _subtitleHeight = 1.7;
-  static const double _subtitleHeightKurdish = 1.55;
+
+  /// أصغر نسبةٍ للعنوان — دون ٠٫٨ الافتراضية عمداً.
+  ///
+  /// [PRODUCT] العنوان سطرٌ واحد بالتصميم: الرأس ثابت الارتفاع ([_headerHeight])، وسطرٌ
+  /// ثانٍ يدفع النصّ التوضيحي خارجه (كان هذا تجاوز «نسيت كلمة المرور»
+  /// العربي عند ×١٫٣). «وشەی نهێنی لەبیرچوو» عند ×١٫٣ يحتاج ٠٫٦٥ ليتّسع
+  /// سطراً — وهو المقاس الذي كان يُرسم به أصلاً (`FittedBox` بلا حدّ).
+  static const double _titleMinScale = 0.65;
+
+  /// ارتفاع الرأس بمقياس الخطّ ١٫٠ — كما في المرجع.
+  ///
+  /// [CRITICAL] يطول بقدر ما يضيفه تكبير خطّ النظام إلى منطقتي العنوان
+  /// والتوضيح، لا أكثر: عند ×١٫٣ كان سطر التوضيح الثاني يقع تحت البطاقة
+  /// العائمة (بكل لغة — العربية أيضاً). الزيادة من مقاييس النمطين ومقياس
+  /// الخطّ وحدها، فهي واحدةٌ لكل لغة، وصفرٌ عند ١٫٠.
+  static const double _headerHeight = 214;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.themeColors;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final isKurdish = context.language == AppLanguage.kurdish;
     final headerInk = isDark
         ? const Color(0xFFF9F6FF)
         : const Color(0xFF22133F);
     final headerInk2 = isDark
         ? const Color(0xFFBCB0E2)
         : const Color(0xFF5A4A7D);
+    final textTheme = Theme.of(context).textTheme;
+    final titleStyle = (textTheme.headlineSmall ?? const TextStyle()).copyWith(
+      fontSize: 26,
+      fontWeight: AppDimens.weightBlack,
+      color: headerInk,
+    );
+    final subtitleStyle = (textTheme.bodySmall ?? const TextStyle()).copyWith(
+      fontSize: _subtitleSize,
+      height: _subtitleHeight,
+      color: headerInk2,
+    );
+    final scaler = MediaQuery.textScalerOf(context);
+    final direction = Directionality.of(context);
+    double growth(TextStyle style, int lines) =>
+        lines *
+        (BoundedText.lineHeight(style, scaler, direction) -
+            BoundedText.lineHeight(style, TextScaler.noScaling, direction));
+    final headerHeight =
+        _headerHeight + growth(titleStyle, 1) + growth(subtitleStyle, 2);
 
     return Scaffold(
       body: Container(
@@ -130,7 +161,7 @@ class AuthScaffold extends StatelessWidget {
                         bottomRight: Radius.circular(42),
                       ),
                       child: Container(
-                        height: 214,
+                        height: headerHeight,
                         decoration: BoxDecoration(
                           gradient: isDark
                               ? AppThemeColors.authGradientDark
@@ -212,46 +243,30 @@ class AuthScaffold extends StatelessWidget {
                                         crossAxisAlignment:
                                             CrossAxisAlignment.start,
                                         children: [
-                                          _HeaderTitle(
-                                            title: title,
-                                            // الكردية: سطرٌ واحد يُصغَّر عند
-                                            // الحاجة وحدها. «وشەی نهێنی
-                                            // لەبیرچوو» كان يلتفّ سطرين
-                                            // فيدفع النصّ التوضيحي تحت
-                                            // البطاقة؛ العناوين التي تتّسع لا
-                                            // يتغيّر مقاسها.
-                                            singleLine: isKurdish,
-                                            style: Theme.of(context)
-                                                .textTheme
-                                                .headlineSmall
-                                                ?.copyWith(
-                                                  fontSize: 26,
-                                                  fontWeight:
-                                                      AppDimens.weightBlack,
-                                                  color: headerInk,
-                                                ),
+                                          // سطرٌ واحد يُصغَّر عند الحاجة وحدها —
+                                          // في كل لغة؛ العنوان الذي يتّسع لا
+                                          // يتغيّر مقاسه.
+                                          BoundedText(
+                                            title,
+                                            textKey: const Key(
+                                              'auth_header_title',
+                                            ),
+                                            minScale: _titleMinScale,
+                                            style: titleStyle,
                                           ),
                                           SizedBox(
                                             height: subtitleSpacing ??
                                                 AppDimens.space2,
                                           ),
-                                          Text(
+                                          BoundedText(
                                             subtitle,
-                                            key: const Key('auth_header_subtitle'),
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: Theme.of(context)
-                                                .textTheme
-                                                .bodySmall
-                                                ?.copyWith(
-                                                  fontSize: isKurdish
-                                                      ? _subtitleSizeKurdish
-                                                      : _subtitleSize,
-                                                  height: isKurdish
-                                                      ? _subtitleHeightKurdish
-                                                      : _subtitleHeight,
-                                                  color: headerInk2,
-                                                ),
+                                            textKey: const Key(
+                                              'auth_header_subtitle',
+                                            ),
+                                            lines: 2,
+                                            alignment:
+                                                AlignmentDirectional.topStart,
+                                            style: subtitleStyle,
                                           ),
                                         ],
                                       ),
@@ -325,43 +340,6 @@ class AuthScaffold extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-/// عنوان الرأس. [singleLine] يُبقيه سطراً واحداً ويصغّره **فقط** إن لم يتّسع
-/// له العمود (`FittedBox.scaleDown` لا يكبّر أبداً)؛ وإلا فسطران كما في المرجع.
-class _HeaderTitle extends StatelessWidget {
-  const _HeaderTitle({
-    required this.title,
-    required this.singleLine,
-    required this.style,
-  });
-
-  final String title;
-  final bool singleLine;
-  final TextStyle? style;
-
-  @override
-  Widget build(BuildContext context) {
-    if (!singleLine) {
-      return Text(
-        title,
-        key: const Key('auth_header_title'),
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-        style: style,
-      );
-    }
-    return FittedBox(
-      fit: BoxFit.scaleDown,
-      alignment: AlignmentDirectional.centerStart,
-      child: Text(
-        title,
-        key: const Key('auth_header_title'),
-        maxLines: 1,
-        style: style,
       ),
     );
   }

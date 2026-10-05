@@ -32,6 +32,8 @@ import 'package:otaku_galaxy/features/auth/domain/usecases/register_usecase.dart
 import 'package:otaku_galaxy/features/auth/domain/usecases/update_profile_usecase.dart';
 import 'package:otaku_galaxy/features/auth/presentation/cubit/auth_cubit.dart';
 
+import 'support/render_harness.dart';
+
 const _user = User(
   id: 'u1',
   username: 'مدقق',
@@ -171,6 +173,10 @@ class _PendingLevels implements PointsRepository {
 }
 
 void main() {
+  // [CRITICAL] الخطوط الحقيقية: رؤوس المصادقة منطقتا `BoundedText` تقيسان
+  // عرض النصّ؛ بخطّ الاختبار البديل (كل حرفٍ مربّعٌ بعرض المقاس) لا تتّسع
+  // أي جملةٍ عربية أو كردية فيُبلَّغ «لا يتّسع» عن بيئةٍ لا عن تصميم.
+  setUpAll(loadProjectFonts);
   setUpAll(() {
     if (!sl.isRegistered<AppConfig>()) {
       sl.registerLazySingleton<AppConfig>(() => AppConfig.development);

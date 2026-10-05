@@ -238,12 +238,11 @@ const _knownBugs = <String, int>{
   'pending-reset@412x3000@1.3': 6,
   'pending-reset@412x892@1.0': 4,
   'pending-reset@412x892@1.3': 6,
-  'personalize@320x3000@1.3': 37,
-  'personalize@320x568@1.3': 20,
-  'personalize@375x812@1.0': 3,
-  'personalize@412x3000@1.3': 3,
-  'personalize@412x892@1.0': 3,
-  'personalize@412x892@1.3': 3,
+  // البوّابة ٣: العنوان منطقة سطرين ثابتة — صفرٌ في كل مقاس إلا ٣٢٠×١٫٣،
+  // حيث يحتاج الكردي سطراً ثالثاً عند حدّ ٠٫٨ (قرار المالك «Keep 0.8, 3rd
+  // line»)، فتطول منطقة العنوان ويتبعها ما تحتها.
+  'personalize@320x3000@1.3': 39,
+  'personalize@320x568@1.3': 18,
   'product-detail@320x3000@1.3': 16,
   'product-detail@320x568@1.3': 1,
   'product-detail@375x812@1.0': 13,

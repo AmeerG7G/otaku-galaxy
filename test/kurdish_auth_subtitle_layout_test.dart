@@ -4,8 +4,11 @@
 // وفي «نسيت كلمة المرور» تحت حافة بطاقة النموذج التي تتداخل مع الرأس. القياس
 // بالخطوط الحقيقية: العنوان الكردي «وشەی نهێنی لەبیرچوو» يلتفّ سطرين بـ٢٦
 // (العربي سطرٌ واحد)، والجمل الكردية الثلاث سطران بـ١٣ مع احتياط
-// NotoSansArabic الأطول سطراً. الإصلاح كردي وحده في `AuthScaffold`؛ العربية
-// لا تُمسّ — وهذا الاختبار يحرس الاتجاهين.
+// NotoSansArabic الأطول سطراً. كان الإصلاح الأول كردياً وحده (مقاسٌ أصغر).
+//
+// العقد الآن (2026-10-05) واحدٌ للّغتين: احتياط `AppFonts` المطابق يجعل
+// السطر الكردي بارتفاع العربي، والعنوان والتوضيح منطقتا `BoundedText` ثابتتان
+// (سطر / سطران) تُصغّران النصّ عند الحاجة وحدها — في الموضع نفسه باللغتين.
 //
 // [CRITICAL] الخطوط الحقيقية شرطٌ لا تفصيل (`loadProjectFonts`): بالخط البديل
 // المتساوي العرض تُقاس الكردية بعرضٍ لا علاقة له بالجهاز.
@@ -16,7 +19,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otaku_galaxy/core/config/app_config.dart';
-import 'package:otaku_galaxy/core/design_system/themes/app_theme.dart';
+import 'package:otaku_galaxy/core/design_system/design_system.dart';
 import 'package:otaku_galaxy/core/di/injection_container.dart';
 import 'package:otaku_galaxy/core/router/app_router.dart';
 import 'package:otaku_galaxy/features/auth/presentation/cubit/auth_cubit.dart';
@@ -38,7 +41,8 @@ class _Router extends RootStackRouter {
   RouteType get defaultRouteType => const RouteType.material();
 }
 
-Future<void> _pump(WidgetTester tester, PageRouteInfo route, AppLanguage language, Size size) async {
+Future<void> _pump(WidgetTester tester, PageRouteInfo route, AppLanguage language, Size size,
+    {double textScale = 1.0}) async {
   SharedPreferences.setMockInitialValues({'app_language_code': language.code});
   final prefs = await SharedPreferences.getInstance();
   final locale = LocaleCubit(prefs)..loadPreference();
@@ -54,7 +58,15 @@ Future<void> _pump(WidgetTester tester, PageRouteInfo route, AppLanguage languag
       BlocProvider<LocaleCubit>.value(value: locale),
       BlocProvider<AuthCubit>.value(value: auth),
     ],
-    child: MaterialApp.router(theme: AppTheme.light, locale: language.locale, routerConfig: router.config()),
+    child: MaterialApp.router(
+      theme: AppTheme.light,
+      locale: language.locale,
+      routerConfig: router.config(),
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(textScale)),
+        child: child!,
+      ),
+    ),
   ));
   await tester.pump();
   router.push(route);
@@ -88,57 +100,74 @@ void main() {
     return tester.getRect(header).bottom - 28;
   }
 
+  /// منطقة `BoundedText` التي تحمل النصّ ذا المفتاح [key].
+  Rect region(WidgetTester tester, Key key) => tester.getRect(
+    find.ancestor(of: find.byKey(key), matching: find.byType(BoundedText)).first,
+  );
+
+  // ×١٫٣: كان سطر التوضيح الثاني تحت البطاقة بكل لغة — الرأس الآن يطول بقدر
+  // ما يضيفه التكبير إلى منطقتيه.
+  const scales = [1.0, 1.3];
+
+  for (final scale in scales) {
   for (final size in sizes) {
     for (final (name, route) in screens) {
-      testWidgets('[CRITICAL] كردي — $name ${size.width.toInt()}: النصّ التوضيحي فوق البطاقة ولا يُقصّ', (tester) async {
-        // شريط حالة نموذجي: الرأس ثابت الارتفاع، فالمحتوى ينزل معه.
-        tester.view.padding = const FakeViewPadding(top: 24);
-        await _pump(tester, route, AppLanguage.kurdish, size);
+      for (final language in AppLanguage.values) {
+        testWidgets('[CRITICAL] ${language.code} — $name ${size.width.toInt()} ×$scale: '
+            'العنوان سطرٌ واحد، والتوضيح سطران فوق البطاقة، ولا قصّ', (tester) async {
+          // شريط حالة نموذجي: الرأس ثابت الارتفاع، فالمحتوى ينزل معه.
+          tester.view.padding = const FakeViewPadding(top: 24);
+          await _pump(tester, route, language, size, textScale: scale);
 
-        final subtitle = paragraph(tester, const Key('auth_header_subtitle'));
-        expect(subtitle.didExceedMaxLines, isFalse, reason: 'النصّ الكردي مقصوص بعلامة حذف');
-        expect(subtitle.text.style?.fontSize, 11.5);
-        final bottom = tester.getRect(find.byKey(const Key('auth_header_subtitle'))).bottom;
-        expect(bottom, lessThanOrEqualTo(cardTop(tester) - 4),
-            reason: 'أسفل النصّ ($bottom) تحت حافة البطاقة (${cardTop(tester)})');
+          final subtitle = paragraph(tester, const Key('auth_header_subtitle'));
+          expect(subtitle.didExceedMaxLines, isFalse, reason: 'النصّ التوضيحي مقصوص');
+          expect(subtitle.maxLines, 2);
+          expect(subtitle.text.style?.height, 1.7);
+          expect(subtitle.text.style!.fontSize!, inInclusiveRange(13 * kBoundedTextMinScale, 13));
+          final bottom = region(tester, const Key('auth_header_subtitle')).bottom;
+          expect(bottom, lessThanOrEqualTo(cardTop(tester) - 4),
+              reason: 'أسفل منطقة التوضيح ($bottom) تحت حافة البطاقة (${cardTop(tester)})');
 
-        // العنوان الكردي سطرٌ واحد (يُصغَّر عند الحاجة وحدها).
-        final title = paragraph(tester, const Key('auth_header_title'));
-        expect(title.maxLines, 1);
-        expect(title.didExceedMaxLines, isFalse);
-      });
-
-      testWidgets('العربية كما كانت — $name ${size.width.toInt()}', (tester) async {
-        tester.view.padding = const FakeViewPadding(top: 24);
-        await _pump(tester, route, AppLanguage.arabic, size);
-
-        final subtitle = paragraph(tester, const Key('auth_header_subtitle'));
-        expect(subtitle.text.style?.fontSize, 13, reason: 'لا تصغير للعربية');
-        expect(subtitle.text.style?.height, 1.7);
-        expect(subtitle.didExceedMaxLines, isFalse);
-        final title = paragraph(tester, const Key('auth_header_title'));
-        expect(title.maxLines, 2, reason: 'عنوان العربية بسطرين كما في المرجع');
-        expect(title.text.style?.fontSize, 26);
-        final bottom = tester.getRect(find.byKey(const Key('auth_header_subtitle'))).bottom;
-        expect(bottom, lessThanOrEqualTo(cardTop(tester) - 4));
-      });
+          final title = paragraph(tester, const Key('auth_header_title'));
+          expect(title.maxLines, 1);
+          expect(title.didExceedMaxLines, isFalse);
+          expect(title.text.style!.fontSize!, inInclusiveRange(26 * 0.65, 26));
+        });
+      }
     }
   }
+  }
 
-  testWidgets('[CRITICAL] الكردية لا تنزل أدنى من العربية في أيّ شاشة', (tester) async {
-    Future<double> bottomOf(PageRouteInfo route, AppLanguage language) async {
-      await _pump(tester, route, language, const Size(390, 844));
-      return tester.getRect(find.byKey(const Key('auth_header_subtitle'))).bottom;
+  testWidgets('[CRITICAL] الرأس ٢١٤ تماماً عند ×١٫٠ — يطول بالتكبير وحده', (tester) async {
+    double headerHeight() => tester
+        .getRect(find.ancestor(of: find.byKey(const Key('auth_header_subtitle')), matching: find.byType(ClipRRect)).first)
+        .height;
+    for (final language in AppLanguage.values) {
+      await _pump(tester, const LoginRoute(), language, const Size(390, 844));
+      expect(headerHeight(), 214, reason: language.code);
+      await _pump(tester, const LoginRoute(), language, const Size(390, 844), textScale: 1.3);
+      expect(headerHeight(), greaterThan(214), reason: language.code);
+    }
+  });
+
+  testWidgets('[CRITICAL] منطقتا العنوان والتوضيح في الموضع نفسه باللغتين', (tester) async {
+    // الموضع = الأعلى والأسفل وحافة البداية؛ العرض يتبع النصّ داخل منطقته
+    // (نصٌّ أطول يأخذ مكاناً أعرض) فلا يُقارَن.
+    List<double> anchor(Key key) {
+      final finder = find.ancestor(of: find.byKey(key), matching: find.byType(BoundedText)).first;
+      final rect = tester.getRect(finder);
+      final rtl = Directionality.of(tester.element(finder)) == TextDirection.rtl;
+      return [rect.top, rect.bottom, rtl ? rect.right : rect.left];
     }
 
-    var arabicLowest = 0.0;
-    for (final (_, route) in screens) {
-      final b = await bottomOf(route, AppLanguage.arabic);
-      if (b > arabicLowest) arabicLowest = b;
-    }
     for (final (name, route) in screens) {
-      final b = await bottomOf(route, AppLanguage.kurdish);
-      expect(b, lessThanOrEqualTo(arabicLowest), reason: '$name: $b > $arabicLowest');
+      tester.view.padding = const FakeViewPadding(top: 24);
+      await _pump(tester, route, AppLanguage.arabic, const Size(390, 844));
+      final arTitle = anchor(const Key('auth_header_title'));
+      final arSubtitle = anchor(const Key('auth_header_subtitle'));
+      await _pump(tester, route, AppLanguage.kurdish, const Size(390, 844));
+      expect(anchor(const Key('auth_header_title')), arTitle, reason: '$name: العنوان');
+      expect(anchor(const Key('auth_header_subtitle')), arSubtitle, reason: '$name: التوضيح');
     }
   });
 }

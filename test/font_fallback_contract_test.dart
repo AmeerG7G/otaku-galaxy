@@ -184,7 +184,13 @@ void main() {
           while (j < lines.length && lines[j].trimLeft().startsWith('//')) {
             j++;
           }
-          final next = j < lines.length ? lines[j] : '';
+          var next = j < lines.length ? lines[j] : '';
+          // المُنسِّق يلفّ القيمة الطويلة إلى السطر الذي يليه:
+          // `fontFamilyFallback:` وحدها ثم `AppFonts.headingFallback,`.
+          if (RegExp(r'fontFamilyFallback:\s*$').hasMatch(next) &&
+              j + 1 < lines.length) {
+            next += lines[j + 1];
+          }
           for (final family in families) {
             if (!next.contains('fontFamilyFallback:') ||
                 !next.contains(pairs[family]!)) {

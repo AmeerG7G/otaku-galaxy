@@ -70,12 +70,20 @@ class PersonalizeScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // الارتفاع مقفول على قيمة ثابتة حتى لا يؤثّر التفاف العنوان
-                      // في أيّ لغة أو مقياس نصّ على موضع الفاصل وكل ما تحته.
-                      // 145 = 42 (شعار) + 12 + سطران بـfontSize 25 × 1.3scale × 1.1lineH
-                      //     ≈ 138 مع هامش 7 — الشخصية (129) تجلس في القاع.
-                      SizedBox(
-                        height: 145.0,
+                      // [CRITICAL] هندسةٌ لا تتبع اللغة (2026-10-05): العنوان منطقةٌ
+                      // ثابتة من سطرين (`BoundedText`) بالمقاس نفسه في كل لغة،
+                      // فالعمود [شعار ← ١٢ ← سطرا العنوان] بطولٍ واحد دائماً
+                      // والشعار في الموضع نفسه. كان المقاس كردياً أصغر (٢١)
+                      // والعمود يكبر بسطرٍ ثانٍ فيصعد الشعار ~١٨ بكسل؛ ومع
+                      // `fade` كان العنوان الكردي يُقصّ على ٣٢٠×١٫٣.
+                      //
+                      // [PRODUCT] قرار المالك: العربية أيضاً تحجز سطرين (شعارها
+                      // أعلى بسطرٍ مما كان)، والحدّ الأدنى ٠٫٨ — وسطرٌ ثالث فقط حين
+                      // لا يتّسع النصّ لسطرين حتى عنده (٣٢٠×١٫٣ بالكردية)، فتطول
+                      // الترويسة هناك وحدها. لذلك ١٤٥ حدٌّ أدنى لا ارتفاعٌ مقفول:
+                      // ٤٢ شعار + ١٢ + سطران (٢٥ × ١٫١ × ١٫٣ = ٧١٫٥) + ١٢ = ١٣٧٫٥.
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: 145),
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
@@ -88,23 +96,19 @@ class PersonalizeScreen extends StatelessWidget {
                                   children: [
                                     const OtakuStoreLogoSimple(size: 42),
                                     const SizedBox(height: 12),
-                                    Text(
+                                    BoundedText(
                                       context.strings('personalizeTitle'),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.fade,
+                                      key: const Key('personalize_title'),
+                                      lines: 2,
+                                      maxLines: 3,
+                                      alignment:
+                                          AlignmentDirectional.topStart,
                                       style: theme.textTheme.headlineSmall
                                           ?.copyWith(
                                             fontFamily: AppFonts.heading,
-                                            fontFamilyFallback: AppFonts.headingFallback,
-                                            // height:1.1 caps line metrics for both languages so
-                                            // the column stays within the 63 px title budget
-                                            // (129 header − 42 logo − 12 gap − 12 padding = 63 px).
-                                            // Kurdish is also smaller (21 vs 25) because its
-                                            // translation wraps to 2 lines.
-                                            fontSize: context.language ==
-                                                    AppLanguage.kurdish
-                                                ? 21.0
-                                                : 25.0,
+                                            fontFamilyFallback:
+                                                AppFonts.headingFallback,
+                                            fontSize: 25,
                                             height: 1.1,
                                             letterSpacing: -0.5,
                                             fontWeight: AppDimens.weightBlack,
