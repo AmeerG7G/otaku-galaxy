@@ -77,7 +77,9 @@ export default function FranchisesPage() {
       form.resetFields()
       await invalidate()
     },
-    onError: (error: Error) => message.error(error.message),
+    onError: (error: Error) => {
+      message.error(error.message)
+    },
   })
 
   const removal = useMutation({
@@ -93,7 +95,9 @@ export default function FranchisesPage() {
       await queryClient.invalidateQueries({ queryKey: ['products'] })
       await queryClient.invalidateQueries({ queryKey: ['product-edit'] })
     },
-    onError: (error: Error) => message.error(error.message),
+    onError: (error: Error) => {
+      message.error(error.message)
+    },
   })
 
   /**
@@ -125,7 +129,9 @@ export default function FranchisesPage() {
     mutationFn: (input: { id: string; isActive: boolean }) =>
       updateFranchise(input.id, { isActive: input.isActive }),
     onSuccess: invalidate,
-    onError: (error: Error) => message.error(error.message),
+    onError: (error: Error) => {
+      message.error(error.message)
+    },
   })
 
   function openCreate() {

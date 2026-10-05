@@ -110,7 +110,9 @@ export default function DeliveryPage() {
       governorateForm.resetFields()
       await refresh()
     },
-    onError: (error: Error) => message.error(error.message),
+    onError: (error: Error) => {
+      message.error(error.message)
+    },
   })
 
   const removeGovernorate = useMutation({
@@ -120,7 +122,9 @@ export default function DeliveryPage() {
       message.success(result.message || 'حُذفت المحافظة')
       await refresh()
     },
-    onError: (error: Error) => message.error(error.message),
+    onError: (error: Error) => {
+      message.error(error.message)
+    },
   })
 
   /** إيقاف المحافظة عن الواجهة أو إعادتها — بديل الحذف ما دامت مشغولة. */
@@ -130,7 +134,9 @@ export default function DeliveryPage() {
     onSuccess: async () => {
       await refresh()
     },
-    onError: (error: Error) => message.error(error.message),
+    onError: (error: Error) => {
+      message.error(error.message)
+    },
   })
 
   const saveZone = useMutation({
@@ -157,7 +163,9 @@ export default function DeliveryPage() {
       zoneForm.resetFields()
       await refresh()
     },
-    onError: (error: Error) => message.error(error.message),
+    onError: (error: Error) => {
+      message.error(error.message)
+    },
   })
 
   const removeZone = useMutation({
@@ -166,7 +174,9 @@ export default function DeliveryPage() {
       message.success('حُذفت المنطقة')
       await refresh()
     },
-    onError: (error: Error) => message.error(error.message),
+    onError: (error: Error) => {
+      message.error(error.message)
+    },
   })
 
   function openGovernorate(governorate: AdminGovernorate) {

@@ -111,7 +111,9 @@ export default function AccountRequestsPage() {
       message.success(text || 'تمت الموافقة')
       invalidate()
     },
-    onError: (error) => message.error(error instanceof ApiError ? error.message : 'تعذّرت الموافقة'),
+    onError: (error) => {
+      message.error(error instanceof ApiError ? error.message : 'تعذّرت الموافقة')
+    },
   })
 
   const rejectMutation = useMutation({
@@ -120,7 +122,9 @@ export default function AccountRequestsPage() {
       message.success(text || 'رُفض الطلب')
       invalidate()
     },
-    onError: (error) => message.error(error instanceof ApiError ? error.message : 'تعذّر الرفض'),
+    onError: (error) => {
+      message.error(error instanceof ApiError ? error.message : 'تعذّر الرفض')
+    },
   })
 
   function confirmApprove(request: AccountRequest) {

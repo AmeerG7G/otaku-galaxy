@@ -45,7 +45,9 @@ export default function GiftClaimsCard() {
       message.success('سُجّل تسليم الهدية')
       void queryClient.invalidateQueries({ queryKey: ['admin-gift-claims'] })
     },
-    onError: (error: Error) => message.error(error.message),
+    onError: (error: Error) => {
+      message.error(error.message)
+    },
   })
 
   const columns = [

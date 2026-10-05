@@ -46,7 +46,9 @@ export default function RestockPage() {
       await queryClient.invalidateQueries({ queryKey: ['restock-demand'] })
       message.success('حُفظ موعد التوفر المتوقّع')
     },
-    onError: (error: Error) => message.error(error.message),
+    onError: (error: Error) => {
+      message.error(error.message)
+    },
   })
 
   const rows = demand.data ?? []

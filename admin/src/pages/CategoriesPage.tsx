@@ -124,7 +124,9 @@ export default function CategoriesPage() {
     mutationFn: (input: { id: string; isActive: boolean }) =>
       updateCategory(input.id, { isActive: input.isActive }),
     onSuccess: () => invalidateCategories(),
-    onError: (error: Error) => message.error(error.message),
+    onError: (error: Error) => {
+      message.error(error.message)
+    },
   })
 
   const updateSubcategoryMutation = useMutation({
@@ -139,7 +141,9 @@ export default function CategoriesPage() {
       setSubcategoryEditor(null)
       invalidateCategories()
     },
-    onError: (error: Error) => message.error(error.message),
+    onError: (error: Error) => {
+      message.error(error.message)
+    },
   })
 
   const subcategoryMutation = useMutation({
@@ -161,7 +165,9 @@ export default function CategoriesPage() {
       void queryClient.invalidateQueries({ queryKey: ['admin-categories'] })
     },
     // رسالة الخادم تشرح ما الذي يمنع الحذف — نعرضها كما هي.
-    onError: (error: Error) => message.error(error.message),
+    onError: (error: Error) => {
+      message.error(error.message)
+    },
   })
 
   const deleteSubcategoryMutation = useMutation({
@@ -170,7 +176,9 @@ export default function CategoriesPage() {
       message.success(result.message || 'حُذف القسم الفرعي')
       void queryClient.invalidateQueries({ queryKey: ['admin-categories'] })
     },
-    onError: (error: Error) => message.error(error.message),
+    onError: (error: Error) => {
+      message.error(error.message)
+    },
   })
 
   // الأعمدة تطابق بطاقة القسم في التطبيق: اسمٌ وعددٌ موسَّطان، بلا صورة.

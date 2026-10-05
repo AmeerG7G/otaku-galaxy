@@ -65,7 +65,9 @@ export default function ReviewsPage() {
         queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] }),
       ])
     },
-    onError: (error: Error) => message.error(error.message),
+    onError: (error: Error) => {
+      message.error(error.message)
+    },
   })
 
   function confirmReject() {
