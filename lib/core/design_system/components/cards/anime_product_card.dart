@@ -4,6 +4,7 @@ import '../../../../features/products/domain/entities/product.dart';
 
 import '../../tokens/app_colors.dart';
 import '../../tokens/app_dimens.dart';
+import '../../tokens/app_fonts.dart';
 import '../../tokens/app_theme_colors.dart';
 import '../feedback/product_photo_slot.dart';
 import '../feedback/delivery_promo_label.dart';
@@ -146,7 +147,8 @@ class AnimeProductCard extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                             style: Theme.of(context).textTheme.labelLarge
                                 ?.copyWith(
-                                  fontFamily: 'Tajawal',
+                                  fontFamily: AppFonts.heading,
+                                  fontFamilyFallback: AppFonts.headingFallback,
                                   fontSize: 14,
                                   fontWeight: AppDimens.weightExtraBold,
                                   color: AppColors.secondary,

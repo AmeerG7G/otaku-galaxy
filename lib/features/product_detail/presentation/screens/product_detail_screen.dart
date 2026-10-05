@@ -299,7 +299,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                         Text(
                           localizedProductName(product, context.language),
                           style: theme.textTheme.headlineSmall?.copyWith(
-                            fontFamily: 'Tajawal',
+                            fontFamily: AppFonts.heading,
+                            fontFamilyFallback: AppFonts.headingFallback,
                             fontWeight: AppDimens.weightBlack,
                             fontSize: 22,
                             height: 1.35,
@@ -349,7 +350,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                     context.strings.p('priceIqd', {'amount': product.price.toStringAsFixed(0)}),
                     textDirection: TextDirection.ltr,
                     style: theme.textTheme.headlineMedium?.copyWith(
-                      fontFamily: 'Tajawal',
+                      fontFamily: AppFonts.heading,
+                      fontFamilyFallback: AppFonts.headingFallback,
                       fontWeight: AppDimens.weightBlack,
                       fontSize: 25,
                       height: 1.2,
@@ -623,7 +625,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
 
   TextStyle? _sectionStyle(ThemeData theme) =>
       theme.textTheme.titleMedium?.copyWith(
-        fontFamily: 'Tajawal',
+        fontFamily: AppFonts.heading,
+        fontFamilyFallback: AppFonts.headingFallback,
         fontWeight: AppDimens.weightExtraBold,
         fontSize: 15.5,
       );

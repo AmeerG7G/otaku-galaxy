@@ -77,7 +77,8 @@ class LanguageCard extends StatelessWidget {
                   child: Text(
                     name,
                     style: theme.textTheme.titleMedium?.copyWith(
-                      fontFamily: 'Tajawal',
+                      fontFamily: AppFonts.heading,
+                      fontFamilyFallback: AppFonts.headingFallback,
                       fontWeight: AppDimens.weightExtraBold,
                       fontSize: 16,
                     ),

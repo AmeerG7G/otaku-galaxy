@@ -104,7 +104,8 @@ class _AccountPendingScreenState extends State<AccountPendingScreen>
                           ),
                           textAlign: TextAlign.center,
                           style: theme.textTheme.headlineSmall?.copyWith(
-                            fontFamily: 'Tajawal',
+                            fontFamily: AppFonts.heading,
+                            fontFamilyFallback: AppFonts.headingFallback,
                             fontWeight: AppDimens.weightBlack,
                             fontSize: 22,
                             letterSpacing: -0.4,
@@ -142,7 +143,8 @@ class _AccountPendingScreenState extends State<AccountPendingScreen>
                               Text(
                                 context.strings('nextSteps'),
                                 style: theme.textTheme.titleSmall?.copyWith(
-                                  fontFamily: 'Tajawal',
+                                  fontFamily: AppFonts.heading,
+                                  fontFamilyFallback: AppFonts.headingFallback,
                                   fontSize: 14.5,
                                   fontWeight: AppDimens.weightExtraBold,
                                 ),

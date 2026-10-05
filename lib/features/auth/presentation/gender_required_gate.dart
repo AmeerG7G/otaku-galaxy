@@ -166,7 +166,8 @@ class _GenderRequiredScreenState extends State<GenderRequiredScreen> {
                         Text(
                           context.strings('brandName'),
                           style: theme.textTheme.titleMedium?.copyWith(
-                            fontFamily: 'Tajawal',
+                            fontFamily: AppFonts.heading,
+                            fontFamilyFallback: AppFonts.headingFallback,
                             fontSize: 15.5,
                             fontWeight: AppDimens.weightExtraBold,
                           ),
@@ -211,7 +212,8 @@ class _GenderRequiredScreenState extends State<GenderRequiredScreen> {
                                     context.strings('genderGateTitle'),
                                     style: theme.textTheme.headlineSmall
                                         ?.copyWith(
-                                          fontFamily: 'Tajawal',
+                                          fontFamily: AppFonts.heading,
+                                          fontFamilyFallback: AppFonts.headingFallback,
                                           fontSize: 22,
                                           height: 1.35,
                                           fontWeight: AppDimens.weightBlack,

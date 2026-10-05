@@ -112,21 +112,34 @@ flutter:
           weight: 800
         - asset: fonts/Tajawal-Black.ttf
           weight: 900
-    # ═══ احتياط الكردية ═══
+    # ═══ احتياط الكردية — بمقاييس خطّ العلامة ═══
     #
     # [CRITICAL] Cairo وTajawal لا يملكان حروف الكردية ێ ۆ ڕ ڵ (وTajawal
-    # ينقصه ک أيضاً، وهو في أغلب الكلمات). بدون هذا الخط تظهر الكردية
-    # مربّعات فارغة، ويقيس المحرّك النصَّ ببديل النظام فتتجاوز الأسطر.
+    # ينقصه ک أيضاً، وهو في أغلب الكلمات). بدون احتياطٍ تظهر الكردية
+    # مربّعات فارغة.
     #
-    # ليس بديلاً عن خطّ العلامة: يُسجَّل `fontFamilyFallback` في `AppTheme`
-    # فلا يُستعمل إلا للمحرف الذي يعجز عنه Cairo/Tajawal. العربية تُرسم
-    # بخطّها المعتمد حرفاً حرفاً كما كانت.
+    # [CRITICAL] الاحتياط نسختان من Noto Sans Arabic، لكلّ خطّ علامةٍ نسخةٌ
+    # بمقاييسه الرأسية هو (ارتفاع السطر)، والحروف نفسها بلا تغيير. Noto
+    # الأصلي أطول سطراً من Cairo وأطول كثيراً من Tajawal، والسطر يأخذ ارتفاع
+    # أطول خطٍّ فيه: فكان السطر الكردي أطول من نظيره العربي (Tajawal ١٤:
+    # ١٧ ← ٣٠ بكسل) وتكبر كل حاوية فيها كردية. بالنسخة المطابقة يتساوى
+    # السطران. الربط في `AppFonts` (Cairo ← CairoMetrics، Tajawal ←
+    # TajawalMetrics) — ونسخةٌ لغير خطّها تُعيد الفرق.
     #
-    # Noto Sans Arabic — رخصة SIL OFL 1.1، إعادة التوزيع مسموحة.
-    - family: NotoSansArabic
+    # العربية لا تمرّ بالاحتياط أصلاً (كل حروفها في خطّ العلامة)، فلا يتغيّر
+    # منها بكسل. النسختان من `tool/fonts/make_metric_fallbacks.py`؛ الأصلان
+    # `fonts/NotoSansArabic-*.ttf` مدخلاه، محفوظان بلا تعديل وغير مسجَّلين.
+    #
+    # Noto Sans Arabic — رخصة SIL OFL 1.1: `fonts/NotoSansArabic-OFL.txt`.
+    - family: NotoSansArabicCairoMetrics
       fonts:
-        - asset: fonts/NotoSansArabic-Regular.ttf
-        - asset: fonts/NotoSansArabic-Bold.ttf
+        - asset: fonts/NotoSansArabicCairoMetrics-Regular.ttf
+        - asset: fonts/NotoSansArabicCairoMetrics-Bold.ttf
+          weight: 700
+    - family: NotoSansArabicTajawalMetrics
+      fonts:
+        - asset: fonts/NotoSansArabicTajawalMetrics-Regular.ttf
+        - asset: fonts/NotoSansArabicTajawalMetrics-Bold.ttf
           weight: 700
     - family: Cairo
       fonts:

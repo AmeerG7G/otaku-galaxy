@@ -14,23 +14,43 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter/services.dart' show FontLoader;
 import 'package:flutter_test/flutter_test.dart';
 
-/// يحمّل Tajawal وCairo من `fonts/` داخل بيئة الاختبار.
+/// يحمّل كل عائلات الخطوط المسجَّلة في `pubspec.yaml` داخل بيئة الاختبار.
+///
+/// [CRITICAL] احتياطا الكردية (`NotoSansArabicCairoMetrics`،
+/// `NotoSansArabicTajawalMetrics`) ليسا زينة في الاختبار: بدونهما يقيس
+/// `flutter test` الكرديةَ بخطٍّ بديل للنظام بمقاييس مختلفة، فتظهر تجاوزات
+/// وهمية وتختفي فروقٌ حقيقية. تُقرأ العائلات وملفاتها من `pubspec.yaml`
+/// نفسه — لا قائمة ثانية تنسى عائلةً جديدة، ولا مطابقة أسماء ملفات تُحمّل
+/// ملفاً في عائلةٍ غير عائلته.
 Future<void> loadProjectFonts() async {
-  // [CRITICAL] NotoSansArabic ليس زينة في الاختبار: هو احتياط الكردية في
-  // `AppTheme`. بدون تحميله هنا يقيس `flutter test` الكرديةَ بخطٍّ بديل
-  // للنظام بمقاييس مختلفة، فتظهر تجاوزات وهمية لا وجود لها على الجهاز.
-  for (final family in ['Tajawal', 'Cairo', 'NotoSansArabic']) {
-    final loader = FontLoader(family);
-    for (final file in Directory('fonts').listSync().whereType<File>()) {
-      if (!file.path.contains(family)) continue;
+  for (final entry in pubspecFontFamilies().entries) {
+    final loader = FontLoader(entry.key);
+    for (final asset in entry.value) {
       loader.addFont(
-        file.readAsBytes().then(
+        File(asset).readAsBytes().then(
           (bytes) => ByteData.view(Uint8List.fromList(bytes).buffer),
         ),
       );
     }
     await loader.load();
   }
+}
+
+/// العائلات المسجَّلة في قسم `fonts:` من `pubspec.yaml` وملفّات كلٍّ منها.
+Map<String, List<String>> pubspecFontFamilies() {
+  final families = <String, List<String>>{};
+  String? current;
+  for (final line in File('pubspec.yaml').readAsLinesSync()) {
+    final family = RegExp(r'^\s*- family:\s*(\S+)\s*$').firstMatch(line);
+    if (family != null) {
+      current = family.group(1);
+      families[current!] = [];
+      continue;
+    }
+    final asset = RegExp(r'^\s*- asset:\s*(fonts/\S+)\s*$').firstMatch(line);
+    if (asset != null && current != null) families[current]!.add(asset.group(1)!);
+  }
+  return families;
 }
 
 /// لقطة بكسلية لشجرة تحت [key].

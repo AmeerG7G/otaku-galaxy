@@ -67,7 +67,8 @@ class _ProductReviewsSectionState extends State<ProductReviewsSection> {
         Text(
           context.strings('customerReviews'),
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontFamily: 'Tajawal',
+            fontFamily: AppFonts.heading,
+            fontFamilyFallback: AppFonts.headingFallback,
             fontSize: 16.5,
             fontWeight: AppDimens.weightExtraBold,
           ),
@@ -136,7 +137,8 @@ class _RatingSummary extends StatelessWidget {
                 average.toStringAsFixed(1),
                 textDirection: TextDirection.ltr,
                 style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  fontFamily: 'Tajawal',
+                  fontFamily: AppFonts.heading,
+                  fontFamilyFallback: AppFonts.headingFallback,
                   fontSize: 32,
                   height: 1,
                   fontWeight: AppDimens.weightBlack,

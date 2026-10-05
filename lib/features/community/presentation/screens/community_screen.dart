@@ -180,7 +180,8 @@ class _CommunityScreenState extends State<CommunityScreen> with LocaleRefetch {
                 Text(
                   context.strings('navCommunity'),
                   style: theme.textTheme.headlineSmall?.copyWith(
-                    fontFamily: 'Tajawal',
+                    fontFamily: AppFonts.heading,
+                    fontFamilyFallback: AppFonts.headingFallback,
                     fontWeight: AppDimens.weightBlack,
                     fontSize: 24,
                     height: 1.3,
@@ -799,7 +800,8 @@ class _CustomerPhotoViewerState extends State<CustomerPhotoViewer> {
                   Text(
                     current.productNames.of(context.language),
                     style: theme.textTheme.titleMedium?.copyWith(
-                      fontFamily: 'Tajawal',
+                      fontFamily: AppFonts.heading,
+                      fontFamilyFallback: AppFonts.headingFallback,
                       fontWeight: AppDimens.weightExtraBold,
                       fontSize: 16,
                       color: Colors.white,

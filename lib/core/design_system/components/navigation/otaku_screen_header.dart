@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../../tokens/app_dimens.dart';
+import '../../tokens/app_fonts.dart';
 import '../../tokens/app_theme_colors.dart';
 import '../../../../features/visuals/presentation/character_artwork.dart';
 
@@ -273,7 +274,8 @@ enum OtakuHeaderVariant {
                               Text(
                                 title,
                                 style: theme.textTheme.titleLarge?.copyWith(
-                                  fontFamily: 'Tajawal',
+                                  fontFamily: AppFonts.heading,
+                                  fontFamilyFallback: AppFonts.headingFallback,
                                   fontWeight: AppDimens.weightBlack,
                                   fontSize: switch (variant) {
                                     OtakuHeaderVariant.gradient => 25,
@@ -339,7 +341,8 @@ enum OtakuHeaderVariant {
           child: Text(
             title,
             style: theme.textTheme.titleLarge?.copyWith(
-              fontFamily: 'Tajawal',
+              fontFamily: AppFonts.heading,
+              fontFamilyFallback: AppFonts.headingFallback,
               fontWeight: AppDimens.weightExtraBold,
               fontSize: 19,
               height: 1.3,

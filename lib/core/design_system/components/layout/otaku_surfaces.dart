@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../tokens/app_colors.dart';
 import '../../tokens/app_dimens.dart';
+import '../../tokens/app_fonts.dart';
 import '../../tokens/app_theme_colors.dart';
 import '../../../../features/visuals/presentation/character_artwork.dart';
 
@@ -31,7 +32,8 @@ class OtakuSectionTitle extends StatelessWidget {
             child: Text(
               title,
               style: theme.textTheme.titleMedium?.copyWith(
-                fontFamily: 'Tajawal',
+                fontFamily: AppFonts.heading,
+                fontFamilyFallback: AppFonts.headingFallback,
                 fontWeight: AppDimens.weightExtraBold,
                 fontSize: 17,
                 height: 1.3,
@@ -178,7 +180,8 @@ class OtakuEditorialPanel extends StatelessWidget {
                       Text(
                         title,
                         style: theme.textTheme.titleMedium?.copyWith(
-                          fontFamily: 'Tajawal',
+                          fontFamily: AppFonts.heading,
+                          fontFamilyFallback: AppFonts.headingFallback,
                           fontWeight: AppDimens.weightExtraBold,
                           fontSize: 15.5,
                           height: 1.5,

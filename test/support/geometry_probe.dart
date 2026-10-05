@@ -257,9 +257,10 @@ Future<List<String>> captureLayoutErrors(Future<void> Function() body) async {
   return errors;
 }
 
-/// تجاوزٌ مقيسٌ مختصر: «12px right @ lib/x.dart:9» — بلا الكسور لثبات المقارنة.
+/// تجاوزٌ مختصر: «right @ lib/x.dart» — الجهة والملف، بلا المقدار ولا رقم
+/// السطر: المقدار يتغيّر بلا معنى، ورقم السطر يتحرّك مع أي تعديلٍ فوقه.
 String overflowKey(String error) {
-  final m = RegExp(r'overflowed by ([\d.]+) pixels on the (\w+)\. @ (\S+)')
+  final m = RegExp(r'overflowed by ([\d.]+) pixels on the (\w+)\. @ ([^:\s]+)')
       .firstMatch(error);
   if (m == null) return error;
   return '${m.group(2)} @ ${m.group(3)}';

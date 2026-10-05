@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../../../core/l10n/app_strings.dart';
-import '../../../../core/design_system/themes/app_theme.dart';
 
 import '../../../../core/design_system/components/branding/otaku_store_logo.dart';
 import '../../../../core/design_system/tokens/app_dimens.dart';
+import '../../../../core/design_system/tokens/app_fonts.dart';
 
 /// المحتوى المركزي لشاشة البداية: الشعار داخل هالة نابضة ثم الاسم والشعار
 /// النصّي — كلّه داخل تأثير دخول `og-pop`.
@@ -105,9 +105,9 @@ class SplashBrand extends StatelessWidget {
             Text(
               context.strings('brandName'),
               style: TextStyle(
-                fontFamily: 'Tajawal',
+                fontFamily: AppFonts.heading,
                 // نصٌّ مترجَم بـTextStyle جديد: لا يرث احتياط الثيم فيُذكر صراحةً.
-                fontFamilyFallback: kArabicScriptFallback,
+                fontFamilyFallback: AppFonts.headingFallback,
                 fontSize: 27,
                 fontWeight: AppDimens.weightBlack,
                 letterSpacing: -0.5,

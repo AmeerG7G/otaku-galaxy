@@ -77,7 +77,8 @@ class _OrderSuccessViewState extends State<OrderSuccessView>
                         context.strings('orderSent'),
                         textAlign: TextAlign.center,
                         style: theme.textTheme.headlineSmall?.copyWith(
-                          fontFamily: 'Tajawal',
+                          fontFamily: AppFonts.heading,
+                          fontFamilyFallback: AppFonts.headingFallback,
                           fontWeight: AppDimens.weightBlack,
                           fontSize: 24,
                           letterSpacing: -0.4,
@@ -143,7 +144,8 @@ class _OrderSuccessViewState extends State<OrderSuccessView>
                             Text(
                               context.strings('nextSteps'),
                               style: theme.textTheme.titleSmall?.copyWith(
-                                fontFamily: 'Tajawal',
+                                fontFamily: AppFonts.heading,
+                                fontFamilyFallback: AppFonts.headingFallback,
                                 fontSize: 14.5,
                                 fontWeight: AppDimens.weightExtraBold,
                               ),

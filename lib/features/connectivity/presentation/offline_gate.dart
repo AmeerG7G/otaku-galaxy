@@ -154,7 +154,8 @@ class _OfflineGateScreenState extends State<OfflineGateScreen>
                         Text(
                           context.strings('brandName'),
                           style: theme.textTheme.titleMedium?.copyWith(
-                            fontFamily: 'Tajawal',
+                            fontFamily: AppFonts.heading,
+                            fontFamilyFallback: AppFonts.headingFallback,
                             fontSize: 15.5,
                             fontWeight: AppDimens.weightExtraBold,
                           ),
@@ -257,7 +258,8 @@ class _OfflineCard extends StatelessWidget {
               context.strings('offlineTitle'),
               textAlign: TextAlign.center,
               style: theme.textTheme.headlineSmall?.copyWith(
-                fontFamily: 'Tajawal',
+                fontFamily: AppFonts.heading,
+                fontFamilyFallback: AppFonts.headingFallback,
                 fontSize: 23,
                 height: 1.35,
                 fontWeight: AppDimens.weightBlack,

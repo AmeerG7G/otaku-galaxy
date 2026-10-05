@@ -137,7 +137,8 @@ class CartScreen extends StatelessWidget {
                 child: Text(
                   context.strings('grandTotal'),
                   style: theme.textTheme.titleMedium?.copyWith(
-                    fontFamily: 'Tajawal',
+                    fontFamily: AppFonts.heading,
+                    fontFamilyFallback: AppFonts.headingFallback,
                     fontWeight: AppDimens.weightExtraBold,
                     fontSize: 16,
                   ),
@@ -147,7 +148,8 @@ class CartScreen extends StatelessWidget {
                 context.strings.p('priceIqd', {'amount': cart.total.toStringAsFixed(0)}),
                 textDirection: TextDirection.ltr,
                 style: theme.textTheme.titleLarge?.copyWith(
-                  fontFamily: 'Tajawal',
+                  fontFamily: AppFonts.heading,
+                  fontFamilyFallback: AppFonts.headingFallback,
                   fontWeight: AppDimens.weightBlack,
                   fontSize: 19,
                   color: AppColors.secondary,
@@ -339,7 +341,8 @@ class _CartItemCard extends StatelessWidget {
                         context.strings.p('priceIqd', {'amount': lineTotal.toStringAsFixed(0)}),
                         textDirection: TextDirection.ltr,
                         style: theme.textTheme.titleSmall?.copyWith(
-                          fontFamily: 'Tajawal',
+                          fontFamily: AppFonts.heading,
+                          fontFamilyFallback: AppFonts.headingFallback,
                           fontWeight: AppDimens.weightExtraBold,
                           fontSize: 14.5,
                           color: AppColors.secondary,

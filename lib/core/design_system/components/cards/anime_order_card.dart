@@ -7,6 +7,7 @@ import '../../../l10n/gender.dart';
 import '../../tokens/app_colors.dart';
 import '../../tokens/app_theme_colors.dart';
 import '../../tokens/app_dimens.dart';
+import '../../tokens/app_fonts.dart';
 import '../buttons/anime_primary_button.dart';
 import '../buttons/button_enums.dart';
 import '../feedback/product_photo_slot.dart';
@@ -54,7 +55,8 @@ class AnimeOrderCard extends StatelessWidget {
                 child: Text(
                   order.createdAt != null ? _formatDate(order.createdAt!) : '',
                   style: theme.textTheme.titleSmall?.copyWith(
-                    fontFamily: 'Tajawal',
+                    fontFamily: AppFonts.heading,
+                    fontFamilyFallback: AppFonts.headingFallback,
                     fontWeight: AppDimens.weightExtraBold,
                     fontSize: 14,
                   ),
@@ -169,7 +171,8 @@ class AnimeOrderCard extends StatelessWidget {
                     context.strings.p('priceIqd', {'amount': order.total.toStringAsFixed(0)}),
                     textDirection: TextDirection.ltr,
                     style: theme.textTheme.titleSmall?.copyWith(
-                      fontFamily: 'Tajawal',
+                      fontFamily: AppFonts.heading,
+                      fontFamilyFallback: AppFonts.headingFallback,
                       fontWeight: AppDimens.weightExtraBold,
                       fontSize: 14.5,
                       color: AppColors.secondary,

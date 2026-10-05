@@ -94,7 +94,8 @@ class PersonalizeScreen extends StatelessWidget {
                                       overflow: TextOverflow.fade,
                                       style: theme.textTheme.headlineSmall
                                           ?.copyWith(
-                                            fontFamily: 'Tajawal',
+                                            fontFamily: AppFonts.heading,
+                                            fontFamilyFallback: AppFonts.headingFallback,
                                             // height:1.1 caps line metrics for both languages so
                                             // the column stays within the 63 px title budget
                                             // (129 header − 42 logo − 12 gap − 12 padding = 63 px).

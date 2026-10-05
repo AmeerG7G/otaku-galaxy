@@ -241,7 +241,8 @@ class _OrderReviewScreenState extends State<OrderReviewScreen>
           Text(
             title,
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontFamily: 'Tajawal',
+              fontFamily: AppFonts.heading,
+              fontFamilyFallback: AppFonts.headingFallback,
               fontSize: 15,
               fontWeight: AppDimens.weightExtraBold,
             ),
@@ -365,7 +366,8 @@ class _OrderReviewScreenState extends State<OrderReviewScreen>
                 formatPrice(data.items[i].lineTotal),
                 textDirection: TextDirection.ltr,
                 style: theme.textTheme.titleSmall?.copyWith(
-                  fontFamily: 'Tajawal',
+                  fontFamily: AppFonts.heading,
+                  fontFamilyFallback: AppFonts.headingFallback,
                   fontSize: 14,
                   fontWeight: AppDimens.weightExtraBold,
                   color: AppColors.secondary,
@@ -448,7 +450,8 @@ class _OrderReviewScreenState extends State<OrderReviewScreen>
               child: Text(
                 context.strings('finalTotal'),
                 style: theme.textTheme.titleMedium?.copyWith(
-                  fontFamily: 'Tajawal',
+                  fontFamily: AppFonts.heading,
+                  fontFamilyFallback: AppFonts.headingFallback,
                   fontSize: 16,
                   fontWeight: AppDimens.weightExtraBold,
                 ),
@@ -458,7 +461,8 @@ class _OrderReviewScreenState extends State<OrderReviewScreen>
               formatPrice(data.total),
               textDirection: TextDirection.ltr,
               style: theme.textTheme.titleLarge?.copyWith(
-                fontFamily: 'Tajawal',
+                fontFamily: AppFonts.heading,
+                fontFamilyFallback: AppFonts.headingFallback,
                 fontSize: 20,
                 fontWeight: AppDimens.weightBlack,
                 color: AppColors.secondary,

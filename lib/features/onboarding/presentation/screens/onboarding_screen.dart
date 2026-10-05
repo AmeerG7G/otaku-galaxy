@@ -158,7 +158,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.titleSmall?.copyWith(
-                fontFamily: 'Tajawal',
+                fontFamily: AppFonts.heading,
+                fontFamilyFallback: AppFonts.headingFallback,
                 fontSize: 14.5,
                 fontWeight: AppDimens.weightExtraBold,
               ),

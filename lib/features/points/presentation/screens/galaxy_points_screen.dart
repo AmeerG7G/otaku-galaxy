@@ -165,7 +165,8 @@ class _BlockTitle extends StatelessWidget {
       child: Text(
         text,
         style: Theme.of(context).textTheme.titleMedium?.copyWith(
-          fontFamily: 'Tajawal',
+          fontFamily: AppFonts.heading,
+          fontFamilyFallback: AppFonts.headingFallback,
           fontSize: 16,
           fontWeight: AppDimens.weightExtraBold,
         ),

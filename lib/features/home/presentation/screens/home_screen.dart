@@ -327,7 +327,8 @@ class _HomeScreenState extends State<HomeScreen>
                     Text(
                       context.strings('brandName'),
                       style: theme.textTheme.titleLarge?.copyWith(
-                        fontFamily: 'Tajawal',
+                        fontFamily: AppFonts.heading,
+                        fontFamilyFallback: AppFonts.headingFallback,
                         fontSize: 18,
                         letterSpacing: -0.2,
                         fontWeight: AppDimens.weightExtraBold,

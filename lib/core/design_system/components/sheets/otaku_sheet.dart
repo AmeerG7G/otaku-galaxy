@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../tokens/app_breakpoints.dart';
 import '../../tokens/app_colors.dart';
 import '../../tokens/app_dimens.dart';
+import '../../tokens/app_fonts.dart';
 import '../buttons/anime_primary_button.dart';
 import '../inputs/anime_text_field.dart';
 
@@ -73,7 +74,8 @@ class OtakuSheet extends StatelessWidget {
                   Text(
                     title!,
                     style: theme.textTheme.titleMedium?.copyWith(
-                      fontFamily: 'Tajawal',
+                      fontFamily: AppFonts.heading,
+                      fontFamilyFallback: AppFonts.headingFallback,
                       fontWeight: AppDimens.weightExtraBold,
                       fontSize: titleSize,
                     ),
@@ -339,7 +341,8 @@ Future<bool?> showOtakuConfirm({
             Text(
               title,
               style: theme.textTheme.titleLarge?.copyWith(
-                fontFamily: 'Tajawal',
+                fontFamily: AppFonts.heading,
+                fontFamilyFallback: AppFonts.headingFallback,
                 fontWeight: AppDimens.weightBlack,
                 fontSize: 19,
               ),

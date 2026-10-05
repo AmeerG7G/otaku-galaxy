@@ -4,6 +4,7 @@ import '../../../l10n/app_strings.dart';
 import '../../../../features/products/domain/entities/product.dart';
 import '../../tokens/app_colors.dart';
 import '../../tokens/app_dimens.dart';
+import '../../tokens/app_fonts.dart';
 import '../feedback/product_photo_slot.dart';
 import '../feedback/product_stock_pill.dart';
 import '../layout/otaku_surfaces.dart';
@@ -75,7 +76,8 @@ class AnimeProductRow extends StatelessWidget {
                 context.strings.p('priceIqd', {'amount': product.price.toStringAsFixed(0)}),
                 textDirection: TextDirection.ltr,
                 style: theme.textTheme.titleSmall?.copyWith(
-                  fontFamily: 'Tajawal',
+                  fontFamily: AppFonts.heading,
+                  fontFamilyFallback: AppFonts.headingFallback,
                   fontWeight: AppDimens.weightExtraBold,
                   fontSize: 14,
                   color: AppColors.secondary,

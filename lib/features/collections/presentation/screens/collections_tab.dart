@@ -155,7 +155,8 @@ class _CollectionsTabState extends State<CollectionsTab> {
                   Text(
                     context.strings('newCollection'),
                     style: theme.textTheme.titleMedium?.copyWith(
-                      fontFamily: 'Tajawal',
+                      fontFamily: AppFonts.heading,
+                      fontFamilyFallback: AppFonts.headingFallback,
                       fontWeight: AppDimens.weightExtraBold,
                       fontSize: 15,
                     ),

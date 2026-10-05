@@ -339,11 +339,16 @@ void main() {
       );
 
       // والاحتياط يغطّي كل ما نقص.
-      final fallbackFiles = Directory('fonts')
-          .listSync()
-          .whereType<File>()
-          .where((f) => f.path.contains('NotoSansArabic'))
-          .toList();
+      // ملفات الاحتياط المسجَّلة فعلاً لخطّي العلامة (`AppFonts`).
+      final registered = pubspecFontFamilies();
+      final fallbackFiles = [
+        for (final family in [
+          ...AppFonts.bodyFallback,
+          ...AppFonts.headingFallback,
+        ])
+          for (final asset in registered[family] ?? const <String>[])
+            File(asset),
+      ];
       expect(
         fallbackFiles,
         isNotEmpty,
@@ -366,8 +371,10 @@ void main() {
     test('[CRITICAL] الاحتياط مسجَّل في طبقة الثيم لا في الودجات', () {
       // لو سُجِّل على ودجات مفردة لعادت المشكلة عند أول نصٍّ جديد.
       final theme = AppTheme.light;
-      expect(theme.textTheme.bodyMedium?.fontFamilyFallback, contains('NotoSansArabic'));
-      expect(theme.textTheme.titleLarge?.fontFamilyFallback, contains('NotoSansArabic'));
+      // كل خطّ علامةٍ مع احتياطه المطابق لمقاييسه — التفصيل في
+      // `font_fallback_contract_test.dart`.
+      expect(theme.textTheme.bodyMedium?.fontFamilyFallback, AppFonts.bodyFallback);
+      expect(theme.textTheme.titleLarge?.fontFamilyFallback, AppFonts.headingFallback);
       // والعربية ما تزال على خطّ العلامة — الاحتياط لم يزحه.
       expect(theme.textTheme.bodyMedium?.fontFamily, 'Cairo');
       expect(theme.textTheme.headlineLarge?.fontFamily, 'Tajawal');
@@ -392,38 +399,11 @@ void main() {
     });
   });
 
-  group('[TRIPWIRE] لا نصّ يفلت من احتياط الخط', () {
-    test('كل TextStyle جديد بخطّ علامة يحمل الاحتياط', () {
-      // [CRITICAL] `copyWith` على أنماط الثيم يرث الاحتياط تلقائياً (٤٩
-      // موضعاً). الخطر في `TextStyle(...)` المبني من الصفر: يفقد الاحتياط
-      // بصمت، فيظهر نصّه الكردي مربّعات بينما بقية الشاشة سليمة.
-      final offenders = <String>[];
-      for (final entity in Directory('lib').listSync(recursive: true)) {
-        if (entity is! File || !entity.path.endsWith('.dart')) continue;
-        final lines = entity.readAsLinesSync();
-        for (var i = 0; i < lines.length; i++) {
-          final isBrandFamily = RegExp(
-            r"^\s*fontFamily: '(Cairo|Tajawal)',\s*$",
-          ).hasMatch(lines[i]);
-          if (!isBrandFamily) continue;
-          final back = lines.sublist(i < 3 ? 0 : i - 3, i).join('\n');
-          if (back.contains('copyWith')) continue; // يرث من الثيم
-          final ahead = lines
-              .sublist(i, i + 4 > lines.length ? lines.length : i + 4)
-              .join('\n');
-          if (!ahead.contains('fontFamilyFallback')) {
-            offenders.add('${entity.path}:${i + 1}');
-          }
-        }
-      }
-      expect(
-        offenders,
-        isEmpty,
-        reason: 'TextStyle بلا احتياط خط — الكردية ستظهر مربّعات:\n'
-            '${offenders.join('\n')}',
-      );
-    });
-  });
+  // [TRIPWIRE] «لا نصّ يفلت من احتياط الخط» انتقل إلى
+  // `font_fallback_contract_test.dart` أشدّ: لم يعد يكفي أن يحمل النمط
+  // احتياطاً ما — `copyWith(fontFamily: 'Tajawal')` على نمط متنٍ يرث احتياط
+  // Cairo بصمت فيعود السطر الكردي أطول. كل عائلةٍ الآن من `AppFonts` مع
+  // احتياطها المطابق.
 
   group('اكتمال الترجمة', () {
     test('[CRITICAL] لكل مفتاح عربي مقابلٌ كردي غيرُ فارغ وغيرُ مطابق', () {

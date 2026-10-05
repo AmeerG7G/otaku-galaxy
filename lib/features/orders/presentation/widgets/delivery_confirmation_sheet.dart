@@ -60,7 +60,8 @@ class _DeliveryConfirmationBody extends StatelessWidget {
                     Text(
                       context.strings('receivedOrderQuestion'),
                       style: theme.textTheme.titleLarge?.copyWith(
-                        fontFamily: 'Tajawal',
+                        fontFamily: AppFonts.heading,
+                        fontFamilyFallback: AppFonts.headingFallback,
                         fontWeight: AppDimens.weightBlack,
                         fontSize: 20,
                       ),
@@ -107,7 +108,8 @@ class _DeliveryConfirmationBody extends StatelessWidget {
                   formatPrice(context, order.total),
                   textDirection: TextDirection.ltr,
                   style: theme.textTheme.titleSmall?.copyWith(
-                    fontFamily: 'Tajawal',
+                    fontFamily: AppFonts.heading,
+                    fontFamilyFallback: AppFonts.headingFallback,
                     fontWeight: AppDimens.weightExtraBold,
                     fontSize: 14.5,
                     color: colors.errorText,

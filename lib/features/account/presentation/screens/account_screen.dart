@@ -410,7 +410,8 @@ class _GuestCard extends StatelessWidget {
             context.strings('browsingAsGuest'),
             textAlign: TextAlign.center,
             style: theme.textTheme.titleLarge?.copyWith(
-              fontFamily: 'Tajawal',
+              fontFamily: AppFonts.heading,
+              fontFamilyFallback: AppFonts.headingFallback,
               fontWeight: AppDimens.weightBlack,
               fontSize: 19,
               color: Colors.white,
@@ -560,7 +561,8 @@ class _ProfileCardState extends State<_ProfileCard> {
                                       overflow: TextOverflow.ellipsis,
                                       style: theme.textTheme.titleLarge
                                           ?.copyWith(
-                                            fontFamily: 'Tajawal',
+                                            fontFamily: AppFonts.heading,
+                                            fontFamilyFallback: AppFonts.headingFallback,
                                             fontWeight:
                                                 AppDimens.weightExtraBold,
                                             fontSize: 19,
@@ -655,7 +657,8 @@ class _ProfileCardState extends State<_ProfileCard> {
                           '${state.balance}',
                           textDirection: TextDirection.ltr,
                           style: theme.textTheme.headlineMedium?.copyWith(
-                            fontFamily: 'Tajawal',
+                            fontFamily: AppFonts.heading,
+                            fontFamilyFallback: AppFonts.headingFallback,
                             fontWeight: AppDimens.weightBlack,
                             fontSize: 30,
                             height: 1,

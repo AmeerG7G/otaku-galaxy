@@ -111,7 +111,8 @@ class OnboardingSlideText extends StatelessWidget {
           child: Text(
             title,
             style: theme.textTheme.headlineMedium?.copyWith(
-              fontFamily: 'Tajawal',
+              fontFamily: AppFonts.heading,
+              fontFamilyFallback: AppFonts.headingFallback,
               fontSize: titleSize,
               height: 1.3,
               letterSpacing: -0.6,

@@ -115,7 +115,8 @@ class ForceUpdateScreen extends StatelessWidget {
                         Text(
                           context.strings('brandName'),
                           style: theme.textTheme.titleMedium?.copyWith(
-                            fontFamily: 'Tajawal',
+                            fontFamily: AppFonts.heading,
+                            fontFamilyFallback: AppFonts.headingFallback,
                             fontSize: 15.5,
                             fontWeight: AppDimens.weightExtraBold,
                           ),
@@ -198,7 +199,8 @@ class _UpdateCard extends StatelessWidget {
           Text(
             context.strings('updateRequiredTitle'),
             style: theme.textTheme.headlineSmall?.copyWith(
-              fontFamily: 'Tajawal',
+              fontFamily: AppFonts.heading,
+              fontFamilyFallback: AppFonts.headingFallback,
               fontSize: 23,
               height: 1.35,
               fontWeight: AppDimens.weightBlack,

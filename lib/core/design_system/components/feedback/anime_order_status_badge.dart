@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import '../../themes/app_theme.dart';
 
 import '../../../../features/orders/domain/entities/order.dart';
 import '../../../../features/orders/presentation/widgets/order_status_utils.dart';
 import '../../tokens/app_colors.dart';
 import '../../tokens/app_dimens.dart';
+import '../../tokens/app_fonts.dart';
 
 /// شارة حالة الطلب — أيقونة وتدرّج ونصّ.
 ///
@@ -74,9 +74,9 @@ class AnimeOrderStatusBadge extends StatelessWidget {
             // المصدر الوحيد لنصّ الحالة — لا نسخةٌ ثانية مختصرة هنا.
             orderStatusLabel(context, status),
             style: TextStyle(
-              fontFamily: 'Cairo',
+              fontFamily: AppFonts.body,
               // نصٌّ مترجَم بـTextStyle جديد: لا يرث احتياط الثيم فيُذكر صراحةً.
-              fontFamilyFallback: kArabicScriptFallback,
+              fontFamilyFallback: AppFonts.bodyFallback,
               fontSize: fontSize,
               fontWeight: AppDimens.weightBold,
               color: Colors.white,

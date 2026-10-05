@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import '../../../l10n/app_strings.dart';
-import '../../themes/app_theme.dart';
 
 import '../../../../features/products/domain/entities/category.dart';
 import '../../../../features/products/domain/entities/category_order.dart';
 import '../../tokens/app_colors.dart';
 import '../../tokens/app_dimens.dart';
+import '../../tokens/app_fonts.dart';
 import '../../tokens/app_theme_colors.dart';
 
 /// بطاقة قسم بتصميم Otaku Galaxy v2.
@@ -166,7 +166,8 @@ class AnimeCategoryCard extends StatelessWidget {
             textAlign: TextAlign.center,
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.titleLarge?.copyWith(
-              fontFamily: 'Tajawal',
+              fontFamily: AppFonts.heading,
+              fontFamilyFallback: AppFonts.headingFallback,
               fontWeight: AppDimens.weightBlack,
               fontSize: 20,
               height: 1.25,
@@ -208,7 +209,8 @@ class AnimeCategoryCard extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.titleLarge?.copyWith(
-              fontFamily: 'Tajawal',
+              fontFamily: AppFonts.heading,
+              fontFamilyFallback: AppFonts.headingFallback,
               fontWeight: AppDimens.weightExtraBold,
               fontSize: 14,
               height: 1.25,
@@ -233,9 +235,9 @@ class AnimeCategoryCard extends StatelessWidget {
     child: Text(
       mark,
       style: TextStyle(
-        fontFamily: 'Tajawal',
+        fontFamily: AppFonts.heading,
         // نصٌّ مترجَم بـTextStyle جديد: لا يرث احتياط الثيم فيُذكر صراحةً.
-        fontFamilyFallback: kArabicScriptFallback,
+        fontFamilyFallback: AppFonts.headingFallback,
         fontWeight: AppDimens.weightBlack,
         fontSize: size,
         height: 1,

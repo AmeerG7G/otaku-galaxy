@@ -2,23 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../tokens/app_colors.dart';
 import '../tokens/app_dimens.dart';
+import '../tokens/app_fonts.dart';
 import '../tokens/app_theme_colors.dart';
-
-/// احتياط الخط للمحارف التي يعجز عنها خطّ العلامة.
-///
-/// [CRITICAL] Cairo ينقصه ێ ۆ ڕ ڵ، وTajawal ينقصه معها ک ژ گ — وهي حروف
-/// أساسية في الكردية (ڕێکخستنەکان، خاڵەکانی گەلاکسی، دڵخوازەکان). بدون
-/// احتياط يرسم المحرّك مربّعاً لكل حرف ناقص، **ويقيسه بمقاييس خطّ النظام**
-/// فيخرج السطر أعرض مما يتوقّعه التخطيط ويتجاوز الحاوية. أي أن العطل
-/// البصري والعطل التخطيطي سببهما واحد.
-///
-/// الاحتياط لا يبدّل خطّ العلامة: المحرّك يستعمله **للمحرف الواحد** الذي
-/// لا يجده في الخطّ الأساسي فقط. العربية والإنجليزية تُرسمان بـCairo
-/// وTajawal حرفاً حرفاً كما كانتا — لا تتغيّر بكسلاً.
-///
-/// يُسجَّل هنا مرّةً واحدة على `base` و`heading` وعلى `ThemeData` نفسها،
-/// فترثه كلُّ `copyWith` في التطبيق (٤٩ موضعاً) بلا لمسها.
-const List<String> kArabicScriptFallback = <String>['NotoSansArabic'];
 
 class AppTheme {
   AppTheme._();
@@ -39,8 +24,9 @@ class AppTheme {
       brightness: brightness,
       colorScheme: colors,
       scaffoldBackgroundColor: isLight ? AppColors.background : colors.surface,
-      fontFamily: 'Cairo',
-      fontFamilyFallback: kArabicScriptFallback,
+      // خطّ العلامة واحتياط الكردية المطابق له — زوجٌ واحد من `AppFonts`.
+      fontFamily: AppFonts.body,
+      fontFamilyFallback: AppFonts.bodyFallback,
       textTheme: text,
       extensions: [brand],
       appBarTheme: AppBarTheme(
@@ -275,14 +261,16 @@ class AppTheme {
   static TextTheme _textTheme(ColorScheme colors) {
     const base = TextStyle(
       height: AppDimens.lineHeightNormal,
-      fontFamily: 'Cairo',
-      fontFamilyFallback: kArabicScriptFallback,
+      fontFamily: AppFonts.body,
+      fontFamilyFallback: AppFonts.bodyFallback,
     );
     // العناوين تستخدم Tajawal بخط أثقل — تطابق الهوية الجديدة.
+    // [CRITICAL] `merge` يستبدل الاحتياط مع العائلة: عنوانٌ بـTajawal واحتياط
+    // Cairo يعيد فرق ارتفاع السطر الكردي (انظر `AppFonts`).
     const heading = TextStyle(
-      fontFamily: 'Tajawal',
+      fontFamily: AppFonts.heading,
+      fontFamilyFallback: AppFonts.headingFallback,
       letterSpacing: -0.3,
-      fontFamilyFallback: kArabicScriptFallback,
     );
     return TextTheme(
       headlineLarge: base

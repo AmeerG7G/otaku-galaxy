@@ -15,5 +15,6 @@ export 'themes/app_theme.dart';
 export 'tokens/app_breakpoints.dart';
 export 'tokens/app_colors.dart';
 export 'tokens/app_dimens.dart';
+export 'tokens/app_fonts.dart';
 export 'tokens/app_icons.dart';
 export 'tokens/app_theme_colors.dart';

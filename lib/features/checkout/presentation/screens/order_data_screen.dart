@@ -345,7 +345,8 @@ class _OrderDataScreenState extends State<OrderDataScreen> with LocaleRefetch {
           Text(
             title,
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontFamily: 'Tajawal',
+              fontFamily: AppFonts.heading,
+              fontFamilyFallback: AppFonts.headingFallback,
               fontSize: 15,
               fontWeight: AppDimens.weightExtraBold,
             ),
@@ -785,7 +786,8 @@ class _OrderDataScreenState extends State<OrderDataScreen> with LocaleRefetch {
             value,
             textDirection: TextDirection.ltr,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              fontFamily: isTotal ? 'Tajawal' : null,
+              fontFamily: isTotal ? AppFonts.heading : null,
+              fontFamilyFallback: isTotal ? AppFonts.headingFallback : null,
               fontSize: isTotal ? 20 : 13.5,
               fontWeight: isTotal
                   ? AppDimens.weightBlack
@@ -826,7 +828,8 @@ class _OrderDataScreenState extends State<OrderDataScreen> with LocaleRefetch {
                     formatPrice(total),
                     textDirection: TextDirection.ltr,
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontFamily: 'Tajawal',
+                      fontFamily: AppFonts.heading,
+                      fontFamilyFallback: AppFonts.headingFallback,
                       fontSize: 20,
                       fontWeight: AppDimens.weightBlack,
                       color: AppColors.secondary,
