@@ -17,6 +17,9 @@ const double kBoundedTextMinScale = 0.8;
 ///   تُصغَّر كالكردية الطويلة، والكردية القصيرة لا تُمسّ.
 /// - **لا سطر زائد خلسة**: [lines] هو عدد الأسطر المصمَّم. منطقةٌ من سطرين
 ///   تُعلن `lines: 2` صراحةً، فتحجز سطرين دائماً.
+/// - **النموّ قرارٌ صريح**: [maxLines] (افتراضه [lines]) يسمح للمنطقة أن
+///   تطول سطراً فسطراً **فقط** حين لا يتّسع النصّ لـ[lines] حتى عند
+///   [minScale] — مقاسٌ ضيّق مع خطٍّ مكبَّر. ما دام يتّسع فالمنطقة [lines].
 /// - **لا قطع صامت**: نصٌّ لا يتّسع حتى عند [minScale] يُبلَّغ خطأً في
 ///   وضع التطوير (`FlutterError.reportError`، كما يُبلَّغ التجاوز) فتلتقطه
 ///   الاختبارات. يُرسم حينها بالحدّ الأدنى مقصوصاً — ويبقى الإطار ثابتاً.
@@ -31,11 +34,14 @@ class BoundedText extends StatelessWidget {
     super.key,
     this.style,
     this.lines = 1,
+    int? maxLines,
     this.minScale = kBoundedTextMinScale,
     this.textAlign,
     this.alignment = AlignmentDirectional.centerStart,
     this.textKey,
-  }) : assert(lines >= 1),
+  }) : maxLines = maxLines ?? lines,
+       assert(lines >= 1),
+       assert(maxLines == null || maxLines >= lines),
        assert(minScale > 0 && minScale <= 1);
 
   final String data;
@@ -43,6 +49,9 @@ class BoundedText extends StatelessWidget {
 
   /// عدد الأسطر المصمَّم للمنطقة — يحدّد ارتفاعها، وأقصى ما يلتفّ إليه النصّ.
   final int lines;
+
+  /// أقصى ما تطول إليه المنطقة حين لا يتّسع النصّ لـ[lines] عند [minScale].
+  final int maxLines;
 
   /// أصغر نسبةٍ من المقاس الأصلي يُسمح بها.
   final double minScale;
@@ -61,31 +70,37 @@ class BoundedText extends StatelessWidget {
     final scaler = MediaQuery.textScalerOf(context);
     final direction = Directionality.of(context);
     final align = textAlign ?? TextAlign.start;
-    final regionHeight =
-        BoundedText.lineHeight(style, scaler, direction) * lines;
+    final lineHeight = BoundedText.lineHeight(style, scaler, direction);
 
     return LayoutBuilder(
       builder: (context, constraints) {
         var scale = 1.0;
+        var usedLines = lines;
         final maxWidth = constraints.maxWidth;
         if (maxWidth.isFinite) {
-          bool fits(double s) => _fits(
+          bool fits(double s, int n) => _fits(
             style,
             s,
+            n,
             maxWidth: maxWidth,
-            maxHeight: regionHeight,
+            maxHeight: lineHeight * n,
             scaler: scaler,
             direction: direction,
             align: align,
           );
-          if (!fits(1)) {
-            if (fits(minScale)) {
+          // أقلّ عدد أسطرٍ (من [lines] إلى [maxLines]) يتّسع فيه النصّ عند
+          // الحدّ الأدنى؛ وإلا فـ[maxLines] مع إبلاغ.
+          while (usedLines < maxLines && !fits(minScale, usedLines)) {
+            usedLines++;
+          }
+          if (!fits(1, usedLines)) {
+            if (fits(minScale, usedLines)) {
               // بحثٌ ثنائي عن أكبر مقاسٍ يتّسع — ثمانية تكرارات تكفي لدقّة
               // أقلّ من جزءٍ من مئتين بين الحدّين.
               var low = minScale, high = 1.0;
               for (var i = 0; i < 8; i++) {
                 final mid = (low + high) / 2;
-                if (fits(mid)) {
+                if (fits(mid, usedLines)) {
                   low = mid;
                 } else {
                   high = mid;
@@ -94,10 +109,11 @@ class BoundedText extends StatelessWidget {
               scale = low;
             } else {
               scale = minScale;
-              _reportUnfit(maxWidth);
+              _reportUnfit(maxWidth, usedLines);
             }
           }
         }
+        final regionHeight = lineHeight * usedLines;
 
         final fontSize = style.fontSize ?? 14;
         return SizedBox(
@@ -111,8 +127,8 @@ class BoundedText extends StatelessWidget {
               style: scale == 1
                   ? style
                   : style.copyWith(fontSize: fontSize * scale),
-              maxLines: lines,
-              softWrap: lines > 1,
+              maxLines: usedLines,
+              softWrap: usedLines > 1,
               overflow: TextOverflow.clip,
               textAlign: align,
             ),
@@ -141,7 +157,8 @@ class BoundedText extends StatelessWidget {
 
   bool _fits(
     TextStyle style,
-    double scale, {
+    double scale,
+    int lines, {
     required double maxWidth,
     required double maxHeight,
     required TextScaler scaler,
@@ -166,7 +183,7 @@ class BoundedText extends StatelessWidget {
     return fits;
   }
 
-  void _reportUnfit(double maxWidth) {
+  void _reportUnfit(double maxWidth, int lines) {
     if (!kDebugMode) return;
     FlutterError.reportError(
       FlutterErrorDetails(

@@ -40,6 +40,7 @@ Future<List<FlutterErrorDetails>> _pump(
   double textScale = 1,
   TextDirection direction = TextDirection.rtl,
   double minScale = kBoundedTextMinScale,
+  int? maxLines,
   TextStyle style = _base,
 }) async {
   final errors = <FlutterErrorDetails>[];
@@ -64,6 +65,7 @@ Future<List<FlutterErrorDetails>> _pump(
                     key: _probe,
                     style: style,
                     lines: lines,
+                    maxLines: maxLines,
                     minScale: minScale,
                   ),
                   Container(key: _below, height: 1, color: const Color(0xFF000000)),
@@ -182,6 +184,43 @@ void main() {
       expect(errors, isEmpty);
       expect(_renderedSize(tester), lessThan(25));
       expect(_paragraph(tester).didExceedMaxLines, isFalse);
+      expect(tester.getSize(find.byKey(_probe)).height, 2 * _lineHeight(1));
+    });
+  });
+
+  group('maxLines — نموٌّ صريح عند الضرورة وحدها', () {
+    testWidgets('يتّسع عند الحدّ الأدنى: لا نموّ ولو سُمح به', (tester) async {
+      final errors = await _pump(tester, 'بۆ ئەزموونەکەت', maxLines: 3);
+      expect(errors, isEmpty);
+      expect(tester.getSize(find.byKey(_probe)).height, _lineHeight(1));
+      expect(_renderedSize(tester), lessThan(25));
+    });
+
+    testWidgets('لا يتّسع عند الحدّ الأدنى: يطول بأقلّ عدد أسطر يكفي', (tester) async {
+      final errors = await _pump(tester, _longKurdish, maxLines: 8);
+      expect(errors, isEmpty);
+      final height = tester.getSize(find.byKey(_probe)).height;
+      final n = (height / _lineHeight(1)).round();
+      expect(height, closeTo(n * _lineHeight(1), 0.01));
+      expect(n, inInclusiveRange(2, 8));
+      expect(_renderedSize(tester), greaterThanOrEqualTo(25 * kBoundedTextMinScale));
+      expect(_paragraph(tester).didExceedMaxLines, isFalse);
+      // سطرٌ أقلّ ما كان ليكفي عند الحدّ الأدنى.
+      final fewer = TextPainter(
+        text: TextSpan(
+          text: _longKurdish,
+          style: _base.copyWith(fontSize: 25 * kBoundedTextMinScale),
+        ),
+        textDirection: TextDirection.rtl,
+        maxLines: n - 1,
+      )..layout(maxWidth: 140);
+      expect(fewer.didExceedMaxLines, isTrue);
+      fewer.dispose();
+    });
+
+    testWidgets('لا يتجاوز maxLines: ما لا يتّسع فيه يُبلَّغ', (tester) async {
+      final errors = await _pump(tester, _longKurdish, maxLines: 2);
+      expect(errors, hasLength(1));
       expect(tester.getSize(find.byKey(_probe)).height, 2 * _lineHeight(1));
     });
   });
