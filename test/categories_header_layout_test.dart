@@ -1,15 +1,16 @@
 // ترويسة الأقسام — رسم الشخصية (39)، موضعه، وعدم قصّه بالترويسة.
 //
 // الثوابت المحكومة:
-//   characterTop  >= statusBarBottom   (لا تداخل مع شريط حالة النظام)
-//   characterBottom > categoriesHeaderBottom  (الرسم يمتدّ أسفل الترويسة)
+//   0 <= characterTop < statusBarBottom (الرسم يمتدّ إلى منطقة شريط الحالة — قرار المالك لهذه الشاشة وحدها)
+//   العنوان تحت شريط الحالة                (لا نصَّ تحت أيقونات النظام)
+//   characterBottom > categoriesHeaderBottom  (الرسم يمتدّ أسفل الترويسة عند 390px فأكثر؛ عند 360px ينتهي قبل حافتها بثلاثة بكسلات)
 //   الرسم خارج صندوق OtakuScreenHeader        (لا قصّ بـ Clip.hardEdge)
 //   الرسم آخر طفلٍ في المكدّس                  (يُرسم فوق الجميع)
 //
-// [CRITICAL] top = MediaQuery.paddingOf(context).top يضع قمّة الرسم عند
-// أسفل شريط حالة النظام تماماً — نفس المبدأ الذي يستخدمه OtakuScreenHeader
-// حين `artworkBelowStatusBar = true` — فيبدأ الرسم من منطقة المحتوى ويمتدّ
-// أسفل الترويسة بلا أي قصّ.
+// [CRITICAL] `top: 0`: الرسم والترويسة يمتدّان إلى منطقة شريط الحالة في هذه
+// الشاشة وحدها، ويبقى النصّ التفاعلي تحت شريط الحالة (SafeArea الترويسة) والرسم
+// IgnorePointer فلا يعترض لمساً. `a83fdf9` أنزل الرسم إلى أسفل شريط الحالة وهذا
+// ناقض القرار ولاختبار `character_art_placement_test`.
 
 import 'dart:io';
 
@@ -18,6 +19,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otaku_galaxy/core/design_system/design_system.dart';
+import 'package:otaku_galaxy/core/l10n/app_strings.dart';
 import 'package:otaku_galaxy/features/categories/presentation/screens/categories_screen.dart';
 import 'package:otaku_galaxy/features/products/domain/entities/category.dart';
 import 'package:otaku_galaxy/features/products/domain/entities/home_data.dart';
@@ -146,16 +148,13 @@ void main() {
     );
   });
 
-  // ── 5: قمّة الرسم أسفل شريط حالة النظام ─────────────────────────────────
+  // ── 5: الرسم يمتدّ إلى منطقة شريط الحالة ─────────────────────────────────
 
-  testWidgets('[CRITICAL] 5 — قمّة الرسم ≥ ارتفاع شريط الحالة', (tester) async {
+  testWidgets('[CRITICAL] 5 — الرسم يمتدّ إلى منطقة شريط الحالة ولا يخرج من الشاشة', (tester) async {
     await _pump(tester);
     final charTop = tester.getRect(_charFinder()).top;
-    expect(
-      charTop,
-      greaterThanOrEqualTo(_statusBarHeight),
-      reason: 'الرسم يدخل منطقة شريط حالة النظام',
-    );
+    expect(charTop, greaterThanOrEqualTo(0), reason: 'الرسم خرج من أعلى الشاشة');
+    expect(charTop, lessThan(_statusBarHeight), reason: 'الرسم لا يستعمل منطقة شريط الحالة');
   });
 
   // ── 6 & 7: الرسم يمتدّ أسفل الترويسة ولا يُقصّ ──────────────────────────
@@ -186,16 +185,21 @@ void main() {
   for (final width in [360.0, 390.0, 412.0]) {
     final size = Size(width, 892);
 
-    testWidgets('[CRITICAL] ${width.toInt()}px — قمّة أسفل شريط الحالة، قاع أسفل الترويسة', (tester) async {
+    testWidgets('[CRITICAL] ${width.toInt()}px — الرسم في منطقة شريط الحالة غير مقصوص، والعنوان تحتها', (tester) async {
       await _pump(tester, viewSize: size);
 
       final charRect   = tester.getRect(_charFinder());
       final headerRect = tester.getRect(find.byType(OtakuScreenHeader));
 
-      expect(charRect.top, greaterThanOrEqualTo(_statusBarHeight),
-          reason: '${width.toInt()}px: الرسم يدخل شريط الحالة');
-      expect(charRect.bottom, greaterThan(headerRect.bottom),
-          reason: '${width.toInt()}px: الرسم لا يمتدّ أسفل الترويسة');
+      expect(charRect.top, inInclusiveRange(0.0, _statusBarHeight - 0.01),
+          reason: '${width.toInt()}px: الرسم لا يستعمل منطقة شريط الحالة');
+      expect(tester.getRect(find.text(AppStrings.arabic('navCategories'))).top,
+          greaterThanOrEqualTo(_statusBarHeight),
+          reason: '${width.toInt()}px: العنوان تحت أيقونات النظام');
+      // لا يُشترط امتداده أسفل الترويسة: `top: 0` يرفعه، وعند 360px ينتهي قبل حافتها
+      // بثلاثة بكسلات. المهمّ أنه خارج صندوقها (فلا يقصّه) وداخل الشاشة.
+      expect(charRect.bottom, greaterThan(headerRect.top),
+          reason: '${width.toInt()}px: الرسم خارج الشاشة');
 
       expect(
         find.ancestor(of: _charFinder(), matching: find.byType(OtakuScreenHeader)),
