@@ -580,16 +580,25 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(
+                          // [CRITICAL] (البوّابة ٧، 2026-10-10) سطر الدفع
+                          // وتوضيحه يحجزان ما تحتاجه أطول ترجماتهما: التوضيح
+                          // الكردي أطول بسطر فكانت اللوحة تطول ١٨.
+                          BoundedText(
                             context.strings('cashOnDelivery'),
+                            maxLines: 2,
+                            reserveFor: AppStrings.across('cashOnDelivery'),
                             style: theme.textTheme.bodyMedium?.copyWith(
                               fontSize: 13,
                               fontWeight: AppDimens.weightBold,
                             ),
                           ),
                           const SizedBox(height: 2),
-                          Text(
+                          BoundedText(
                             context.strings('cashOnDeliveryNote'),
+                            maxLines: 8,
+                            minScale: 1,
+                            reserveFor: AppStrings.across('cashOnDeliveryNote'),
+                            alignment: AlignmentDirectional.topStart,
                             style: theme.textTheme.bodySmall?.copyWith(
                               fontSize: 11.5,
                               height: 1.6,

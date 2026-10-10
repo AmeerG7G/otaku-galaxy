@@ -77,6 +77,11 @@ class _RateOrderScreenState extends State<RateOrderScreen> {
             OtakuScreenHeader(
               title: '⭐ ${context.g(GenderedStrings.rateOrderProducts)}',
               subtitle: context.strings('rateOrderSubtitle'),
+              titleTranslations: [
+                for (final t in context.gAcross(GenderedStrings.rateOrderProducts))
+                  '⭐ $t',
+              ],
+              subtitleTranslations: AppStrings.across('rateOrderSubtitle'),
               artworkSlot: VisualSlots.rateOrder,
               // يبدأ الرسم تحت شريط الحالة (2026-09-28): كان رأس الشخصية يقع
               // تحت أيقونات البطارية والشبكة. العرض والإزاحة: انظر الثوابت.
@@ -114,8 +119,13 @@ class _RateOrderScreenState extends State<RateOrderScreen> {
                             const SizedBox(height: 12),
                           ],
                           const SizedBox(height: 4),
-                          Text(
+                          // فقرة تحجز أسطر أطول ترجماتها (البوّابة ٧).
+                          BoundedText(
                             context.strings('oneReviewPerProductReviewed'),
+                            maxLines: 8,
+                            minScale: 1,
+                            reserveFor: AppStrings.across('oneReviewPerProductReviewed'),
+                            alignment: Alignment.topCenter,
                             textAlign: TextAlign.center,
                             style: theme.textTheme.bodySmall?.copyWith(
                               fontSize: 11.5,

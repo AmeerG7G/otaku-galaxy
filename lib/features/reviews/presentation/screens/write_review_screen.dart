@@ -16,6 +16,7 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/errors/app_exception.dart';
 import '../../../../core/di/injection_container.dart';
 import '../../../../core/constants/api_endpoints.dart';
+import '../../../settings/presentation/cubit/locale_cubit.dart';
 import 'package:image_picker/image_picker.dart';
 
 /// كتابة تقييم جديد أو تعديل تقييم مرفوض وإعادة إرساله.
@@ -300,8 +301,16 @@ class _WriteReviewScreenState extends State<WriteReviewScreen> {
                               ?.copyWith(fontWeight: AppDimens.weightBold),
                         ),
                         SizedBox(height: AppDimens.space2),
-                        Text(
+                        // فقرة تحجز أسطر أطول ترجماتها (البوّابة ٧).
+                        BoundedText(
                           context.strings.p('photoBonusNote', {'max': '$_maxPhotos'}),
+                          maxLines: 8,
+                          minScale: 1,
+                          reserveFor: [
+                            for (final l in AppLanguage.values)
+                              AppStrings.of(l).p('photoBonusNote', {'max': '$_maxPhotos'}),
+                          ],
+                          alignment: AlignmentDirectional.topStart,
                           style: Theme.of(context).textTheme.bodySmall
                               ?.copyWith(
                                 color: Theme.of(
@@ -330,8 +339,12 @@ class _WriteReviewScreenState extends State<WriteReviewScreen> {
                           height: AppDimens.buttonHeightXl,
                         ),
                         SizedBox(height: AppDimens.space3),
-                        Text(
+                        BoundedText(
                           context.strings('oneReviewPerProductPublished'),
+                          maxLines: 8,
+                          minScale: 1,
+                          reserveFor: AppStrings.across('oneReviewPerProductPublished'),
+                          alignment: Alignment.topCenter,
                           textAlign: TextAlign.center,
                           style: Theme.of(context).textTheme.bodySmall
                               ?.copyWith(

@@ -45,6 +45,8 @@ enum OtakuHeaderVariant {
       this.variant = OtakuHeaderVariant.plain,
       this.leading,
       this.bottom,
+      this.titleTranslations = const [],
+      this.subtitleTranslations = const [],
     });
 
   /// ترويسة متدرّجة اللون — تُستخدم لشاشات الأقسام وصفحات البطل.
@@ -63,6 +65,8 @@ enum OtakuHeaderVariant {
     this.artworkBelowStatusBar = false,
     this.leading,
     this.bottom,
+    this.titleTranslations = const [],
+    this.subtitleTranslations = const [],
   }) : variant = OtakuHeaderVariant.gradient;
 
   /// ترويسة تبويب رئيسي — عنوان بحجم ٢٦ بلا زر رجوع.
@@ -78,6 +82,8 @@ enum OtakuHeaderVariant {
     this.artworkEnd,
     this.artworkBelowStatusBar = false,
     this.bottom,
+    this.titleTranslations = const [],
+    this.subtitleTranslations = const [],
   }) : variant = OtakuHeaderVariant.tab,
        onBack = null,
        leading = null,
@@ -97,8 +103,10 @@ enum OtakuHeaderVariant {
     this.artworkBelowStatusBar = false,
     this.leading,
     this.bottom,
+    this.titleTranslations = const [],
   }) : variant = OtakuHeaderVariant.compact,
        subtitle = null,
+       subtitleTranslations = const [],
        gradient = null;
 
   final String title;
@@ -156,6 +164,15 @@ enum OtakuHeaderVariant {
 
   /// محتوى إضافي أسفل العنوان داخل الترويسة.
   final Widget? bottom;
+
+  /// ترجمات [title] و[subtitle] بكل اللغات (`AppStrings.across` / `gAcross`).
+  ///
+  /// [CRITICAL] (البوّابة ٧، 2026-10-10) عنوانٌ لا يتّسع لسطره حتى عند الحدّ
+  /// كان يطيل الترويسة بلغته وحدها (عنوان «تقييم منتجات طلبك» الكردي: +٣٣ على
+  /// ٣٢٠×١٫٣). بالترجمات تحجز المنطقة سطرها الثاني بكل لغة. بلا ترجمات: كما
+  /// كان (يُصغَّر ثم يطول).
+  final List<String> titleTranslations;
+  final List<String> subtitleTranslations;
 
   bool get _onGradient => variant == OtakuHeaderVariant.gradient;
 
@@ -291,6 +308,7 @@ enum OtakuHeaderVariant {
                                 title,
                                 maxLines: 2,
                                 floorAtDesignSize: true,
+                                reserveFor: titleTranslations,
                                 alignment: AlignmentDirectional.topStart,
                                 style: theme.textTheme.titleLarge?.copyWith(
                                   fontFamily: AppFonts.heading,
@@ -321,6 +339,7 @@ enum OtakuHeaderVariant {
                                   subtitle!,
                                   maxLines: 3,
                                   floorAtDesignSize: true,
+                                  reserveFor: subtitleTranslations,
                                   alignment: AlignmentDirectional.topStart,
                                   style: theme.textTheme.bodySmall?.copyWith(
                                     fontSize: switch (variant) {
@@ -370,6 +389,7 @@ enum OtakuHeaderVariant {
             title,
             maxLines: 2,
             floorAtDesignSize: true,
+            reserveFor: titleTranslations,
             style: theme.textTheme.titleLarge?.copyWith(
               fontFamily: AppFonts.heading,
               fontFamilyFallback: AppFonts.headingFallback,

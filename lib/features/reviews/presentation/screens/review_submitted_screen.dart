@@ -81,8 +81,14 @@ class ReviewSubmittedScreen extends StatelessWidget {
                         const SizedBox(height: 14),
                         ConstrainedBox(
                           constraints: const BoxConstraints(maxWidth: 270),
-                          child: Text(
+                          // فقرة تحجز أسطر أطول ترجماتها (البوّابة ٧): الكردية
+                          // سطران فكانت البطاقة تحتها تنزل ٢٧.
+                          child: BoundedText(
                             context.strings('reviewWillBeChecked'),
+                            maxLines: 8,
+                            minScale: 1,
+                            reserveFor: AppStrings.across('reviewWillBeChecked'),
+                            alignment: Alignment.topCenter,
                             textAlign: TextAlign.center,
                             style: theme.textTheme.bodyMedium?.copyWith(
                               fontSize: 14,

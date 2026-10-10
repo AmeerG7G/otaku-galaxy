@@ -1,5 +1,6 @@
 import 'package:auto_route/auto_route.dart';
 import '../../../../core/l10n/app_strings.dart';
+import '../../../settings/presentation/cubit/locale_cubit.dart';
 import '../../../../core/l10n/locale_refetch.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -528,12 +529,22 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with LocaleRefetc
         children: [
           Padding(
             padding: EdgeInsets.all(AppDimens.cardPadding),
+            // [CRITICAL] (البوّابة ٧، 2026-10-10) كان `Text` بلا حدّ في `Row`،
+            // فيتجاوز ٩٫٨ يميناً بالكردية على ٣٢٠×١٫٣. منطقة سطرٍ تُصغَّر
+            // أولاً وتحجز ما تحتاجه أطول ترجماتها.
             child: Row(
               children: [
-                Text(
-                  context.strings.p('orderItemsCount', {'count': '${order.items.length}'}),
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: AppDimens.weightBold,
+                Expanded(
+                  child: BoundedText(
+                    context.strings.p('orderItemsCount', {'count': '${order.items.length}'}),
+                    maxLines: 2,
+                    reserveFor: [
+                      for (final l in AppLanguage.values)
+                        AppStrings.of(l).p('orderItemsCount', {'count': '${order.items.length}'}),
+                    ],
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: AppDimens.weightBold,
+                    ),
                   ),
                 ),
               ],
@@ -751,39 +762,40 @@ class _OrderStatusCard extends StatelessWidget {
     final colors = context.themeColors;
     final rejected = order.status == OrderStatus.rejected;
 
+    // مفاتيح لا نصوص: النصّ وترجماته كلها من المفتاح (`AppStrings.across`).
     final (
-      String title,
-      String body,
+      String titleKey,
+      String bodyKey,
       IconData icon,
       List<Color> gradient,
     ) = switch (order.status) {
       OrderStatus.pending || OrderStatus.waitingAdmin => (
-        context.strings('statusPendingApproval'),
-        context.strings('statusPendingApprovalBody'),
+        'statusPendingApproval',
+        'statusPendingApprovalBody',
         Icons.hourglass_top_rounded,
         [AppColors.warningLight, AppColors.secondary],
       ),
       OrderStatus.confirmed || OrderStatus.processing => (
-        context.strings('statusAcceptedTitle'),
-        context.strings('statusAcceptedBody'),
+        'statusAcceptedTitle',
+        'statusAcceptedBody',
         Icons.verified_rounded,
         [AppColors.success, AppColors.accentCyan],
       ),
       OrderStatus.delivering => (
-        context.strings('statusDelivering'),
-        context.strings('statusDeliveringBody'),
+        'statusDelivering',
+        'statusDeliveringBody',
         Icons.local_shipping_rounded,
         [AppColors.accentCyan, AppColors.primary],
       ),
       OrderStatus.completed => (
-        context.strings('statusReceived'),
-        context.strings('statusReceivedBody'),
+        'statusReceived',
+        'statusReceivedBody',
         Icons.check_circle_rounded,
         [AppColors.success, AppColors.primary],
       ),
       OrderStatus.rejected => (
-        context.strings('statusRejected'),
-        context.strings('statusRejectedBody'),
+        'statusRejected',
+        'statusRejectedBody',
         Icons.cancel_rounded,
         [colors.error, colors.errorLight],
       ),
@@ -843,8 +855,16 @@ class _OrderStatusCard extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            title,
+                          // [CRITICAL] (البوّابة ٧، 2026-10-10) العنوان سطرٌ
+                          // يُصغَّر أولاً، والتوضيح فقرة — كلاهما يحجز ما تحتاجه
+                          // أطول ترجماته، فالبطاقة بارتفاعٍ واحد في كل لغة (كان
+                          // التوضيح الكردي أطول بسطر: +١٨ إلى +٣٢ وكل ما تحته
+                          // ينزل).
+                          BoundedText(
+                            context.strings(titleKey),
+                            maxLines: 2,
+                            reserveFor: AppStrings.across(titleKey),
+                            alignment: AlignmentDirectional.topStart,
                             style: Theme.of(context).textTheme.titleLarge
                                 ?.copyWith(
                                   fontSize: 20,
@@ -868,8 +888,12 @@ class _OrderStatusCard extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: AppDimens.space4),
-                Text(
-                  body,
+                BoundedText(
+                  context.strings(bodyKey),
+                  maxLines: 12,
+                  minScale: 1,
+                  reserveFor: AppStrings.across(bodyKey),
+                  alignment: AlignmentDirectional.topStart,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     height: 1.75,
                     color: Colors.white.withValues(alpha: 0.95),
@@ -987,8 +1011,8 @@ class _OrderJourney extends StatelessWidget {
           const SizedBox(height: AppDimens.space4),
           for (var i = 0; i < _stepKeys.length; i++)
             _JourneyStep(
-              title: context.strings(_stepKeys[i].$1),
-              body: context.strings(_stepKeys[i].$2),
+              titleKey: _stepKeys[i].$1,
+              bodyKey: _stepKeys[i].$2,
               done: i < current,
               active: i == current,
               isLast: i == _stepKeys.length - 1,
@@ -1038,16 +1062,21 @@ class _OrderJourney extends StatelessWidget {
 
 class _JourneyStep extends StatelessWidget {
   const _JourneyStep({
-    required this.title,
-    required this.body,
+    required this.titleKey,
+    required this.bodyKey,
     required this.done,
     required this.active,
     required this.isLast,
     this.occurredAt,
   });
 
-  final String title;
-  final String body;
+  /// مفتاحا العنوان والتوضيح — منهما النصّ وترجماته كلها.
+  ///
+  /// [CRITICAL] (البوّابة ٧، 2026-10-10) العنوان سطرٌ يُصغَّر أولاً، والتوضيح
+  /// فقرة؛ كلاهما يحجز ما تحتاجه أطول ترجماته — التوضيح الكردي كان أطول بسطر
+  /// فتطول المحطة ويطول خطّها وتنزل المحطات بعدها.
+  final String titleKey;
+  final String bodyKey;
   final bool done;
   final bool active;
   final bool isLast;
@@ -1118,8 +1147,11 @@ class _JourneyStep extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    title,
+                  BoundedText(
+                    context.strings(titleKey),
+                    maxLines: 2,
+                    reserveFor: AppStrings.across(titleKey),
+                    alignment: AlignmentDirectional.topStart,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       fontSize: 14,
                       fontWeight: reached
@@ -1131,8 +1163,12 @@ class _JourneyStep extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 3),
-                  Text(
-                    body,
+                  BoundedText(
+                    context.strings(bodyKey),
+                    maxLines: 8,
+                    minScale: 1,
+                    reserveFor: AppStrings.across(bodyKey),
+                    alignment: AlignmentDirectional.topStart,
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
                       fontSize: 11.5,
                       height: 1.6,
@@ -1196,11 +1232,19 @@ class _ReviewInvite extends StatelessWidget {
             children: [
               Icon(Icons.star_rounded, color: colors.warning, size: 22),
               const SizedBox(width: AppDimens.space2),
+              // [CRITICAL] (البوّابة ٧، 2026-10-10) العنوان سطرٌ يُصغَّر أولاً
+              // والتوضيح فقرة، وكلاهما يحجز أطول ترجماته — البطاقة وزرّها في
+              // الموضع نفسه بكل لغة.
               Expanded(
-                child: Text(
+                child: BoundedText(
                   available
                       ? context.g(GenderedStrings.rateOrderProducts)
                       : context.strings('reviewOpensAfterReceipt'),
+                  maxLines: 2,
+                  reserveFor: available
+                      ? context.gAcross(GenderedStrings.rateOrderProducts)
+                      : AppStrings.across('reviewOpensAfterReceipt'),
+                  alignment: AlignmentDirectional.topStart,
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
                     fontSize: 16,
                     fontWeight: AppDimens.weightExtraBold,
@@ -1210,10 +1254,16 @@ class _ReviewInvite extends StatelessWidget {
             ],
           ),
           const SizedBox(height: AppDimens.space2),
-          Text(
+          BoundedText(
             available
                 ? context.strings('reviewInviteBody')
                 : context.strings('confirmReceiptToOpenReview'),
+            maxLines: 12,
+            minScale: 1,
+            reserveFor: AppStrings.across(
+              available ? 'reviewInviteBody' : 'confirmReceiptToOpenReview',
+            ),
+            alignment: AlignmentDirectional.topStart,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
               height: 1.7,
               color: Theme.of(context).colorScheme.onSurfaceVariant,

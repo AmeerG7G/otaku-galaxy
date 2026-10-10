@@ -117,6 +117,8 @@ class OtakuEditorialPanel extends StatelessWidget {
     this.contentWidthFactor = 0.62,
     this.artHeight = 104,
     this.minHeight = 0,
+    this.titleTranslations = const [],
+    this.bodyTranslations = const [],
   });
 
   final String title;
@@ -140,9 +142,30 @@ class OtakuEditorialPanel extends StatelessWidget {
   final double artHeight;
   final double minHeight;
 
+  /// ترجمات [title] و[body] بكل اللغات (`AppStrings.across` / `gAcross`).
+  ///
+  /// [CRITICAL] (البوّابة ٧، 2026-10-10) اللوحة بارتفاع نصّها، ورسمها مثبَّتٌ
+  /// بأسفلها: عنوانٌ أو فقرةٌ كردية أطول بسطر كانت تطيلها وتُنزل الرسم وما
+  /// تحتها. بالترجمات يصير العنوان سطراً يُصغَّر أولاً والفقرة تحجز أسطر
+  /// أطولها — اللوحة بارتفاعٍ واحد في كل لغة. بلا ترجمات: كما كانت.
+  final List<String> titleTranslations;
+  final List<String> bodyTranslations;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final titleStyle = theme.textTheme.titleMedium?.copyWith(
+      fontFamily: AppFonts.heading,
+      fontFamilyFallback: AppFonts.headingFallback,
+      fontWeight: AppDimens.weightExtraBold,
+      fontSize: 15.5,
+      height: 1.5,
+    );
+    final bodyStyle = theme.textTheme.bodySmall?.copyWith(
+      fontSize: 12,
+      height: 1.7,
+      color: theme.colorScheme.onSurfaceVariant,
+    );
     return Padding(
       padding: margin,
       child: Container(
@@ -178,26 +201,29 @@ class OtakuEditorialPanel extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        title,
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontFamily: AppFonts.heading,
-                          fontFamilyFallback: AppFonts.headingFallback,
-                          fontWeight: AppDimens.weightExtraBold,
-                          fontSize: 15.5,
-                          height: 1.5,
+                      if (titleTranslations.isEmpty)
+                        Text(title, style: titleStyle)
+                      else
+                        BoundedText(
+                          title,
+                          maxLines: 3,
+                          reserveFor: titleTranslations,
+                          alignment: AlignmentDirectional.topStart,
+                          style: titleStyle,
                         ),
-                      ),
                       if (body != null) ...[
                         const SizedBox(height: 6),
-                        Text(
-                          body!,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            fontSize: 12,
-                            height: 1.7,
-                            color: theme.colorScheme.onSurfaceVariant,
+                        if (bodyTranslations.isEmpty)
+                          Text(body!, style: bodyStyle)
+                        else
+                          BoundedText(
+                            body!,
+                            maxLines: 12,
+                            minScale: 1,
+                            reserveFor: bodyTranslations,
+                            alignment: AlignmentDirectional.topStart,
+                            style: bodyStyle,
                           ),
-                        ),
                       ],
                       if (action != null) ...[
                         const SizedBox(height: 14),
