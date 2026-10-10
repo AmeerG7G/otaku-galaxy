@@ -176,9 +176,17 @@ class _CommunityScreenState extends State<CommunityScreen> with LocaleRefetch {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
+              // [CRITICAL] (البوّابة ٦، 2026-10-10) ارتفاع الترويسة يتبع نصّها،
+              // ورسم المعرض مثبَّتٌ بأسفلها — توضيحٌ كردي أطول بسطرٍ كان يطيلها
+              // ٢٧ عند ×١٫٣ (٢١ على ٣٧٥) ويُنزل الرسم والشرائح. العنوان نصّ
+              // ترويسة (الحدّ من مقاس التصميم)، والتوضيح فقرة تحجز أسطر أطول
+              // ترجماتها.
               children: [
-                Text(
+                BoundedText(
                   context.strings('navCommunity'),
+                  maxLines: 2,
+                  floorAtDesignSize: true,
+                  reserveFor: AppStrings.across('navCommunity'),
                   style: theme.textTheme.headlineSmall?.copyWith(
                     fontFamily: AppFonts.heading,
                     fontFamilyFallback: AppFonts.headingFallback,
@@ -191,8 +199,12 @@ class _CommunityScreenState extends State<CommunityScreen> with LocaleRefetch {
                 const SizedBox(height: 7),
                 FractionallySizedBox(
                   widthFactor: 0.82,
-                  child: Text(
+                  child: BoundedText(
                     context.strings('communitySubtitle'),
+                    maxLines: 8,
+                    minScale: 1,
+                    reserveFor: AppStrings.across('communitySubtitle'),
+                    alignment: AlignmentDirectional.topStart,
                     style: theme.textTheme.bodyMedium?.copyWith(
                       fontSize: 13,
                       height: 1.6,

@@ -149,13 +149,6 @@ final _cases = <String, _Pump>{
 
 /// [RATCHET] عدد فروق «bug» القائمة لكل شاشة×مقاس. الغائب = صفر.
 const _knownBugs = <String, int>{
-  'account-guest@320x3000@1.3': 18,
-  'account-guest@320x568@1.3': 10,
-  'account@320x3000@1.3': 32,
-  'account@320x568@1.3': 19,
-  'community@375x812@1.0': 23, // +2 من cbefc7d: رسم 45 مثبَّت بأسفل الترويسة فيتبع نموّها
-  'community@412x3000@1.3': 23, // +2 من cbefc7d: رسم 45 مثبَّت بأسفل الترويسة فيتبع نموّها
-  'community@412x892@1.3': 23, // +2 من cbefc7d: رسم 45 مثبَّت بأسفل الترويسة فيتبع نموّها
   'favorites@320x3000@1.3': 2,
   'favorites@320x568@1.3': 2,
   'favorites@375x812@1.0': 2,
