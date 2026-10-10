@@ -42,6 +42,9 @@ Future<List<FlutterErrorDetails>> _pump(
   double minScale = kBoundedTextMinScale,
   int? maxLines,
   TextStyle style = _base,
+  bool floorAtDesignSize = false,
+  Widget? whenUnfit,
+  List<String> reserveFor = const [],
 }) async {
   final errors = <FlutterErrorDetails>[];
   final previous = FlutterError.onError;
@@ -67,6 +70,9 @@ Future<List<FlutterErrorDetails>> _pump(
                     lines: lines,
                     maxLines: maxLines,
                     minScale: minScale,
+                    floorAtDesignSize: floorAtDesignSize,
+                    whenUnfit: whenUnfit,
+                    reserveFor: reserveFor,
                   ),
                   Container(key: _below, height: 1, color: const Color(0xFF000000)),
                 ],
@@ -218,6 +224,12 @@ void main() {
       fewer.dispose();
     });
 
+    testWidgets('لا كسر داخل كلمة: كلمةٌ أعرض من المنطقة لا تلتفّ حرفاً حرفاً', (tester) async {
+      // كلمةٌ واحدة أعرض من ١٠٠ حتى عند ٠٫٨: النموّ لا يُنقذها.
+      final errors = await _pump(tester, 'ئاگادارکردنەوەکان', width: 100, maxLines: 3);
+      expect(errors, hasLength(1), reason: 'يُبلَّغ بدل أن يُكسر داخل الكلمة');
+    });
+
     testWidgets('لا يتجاوز maxLines: ما لا يتّسع فيه يُبلَّغ', (tester) async {
       final errors = await _pump(tester, _longKurdish, maxLines: 2);
       expect(errors, hasLength(1));
@@ -260,6 +272,144 @@ void main() {
         }
       });
     }
+  });
+
+  group('floorAtDesignSize — الحدّ من مقاس التصميم', () {
+    // «بۆ ئەزموونەکەت» ×١٫٣ في ١٤٠: يحتاج أقلّ من ٠٫٨ من المقاس المكبَّر،
+    // ولا يحتاج أقلّ من ٠٫٨ من مقاس التصميم.
+    testWidgets('×1.3: يُصغَّر تحت ٠٫٨ من المكبَّر، لا تحت ٠٫٨ من التصميم', (tester) async {
+      final strict = await _pump(tester, 'بۆ ئەزموونەکەت', textScale: 1.3);
+      expect(strict, hasLength(1), reason: 'بالحدّ العادي لا يتّسع');
+
+      final errors = await _pump(tester, 'بۆ ئەزموونەکەت', textScale: 1.3, floorAtDesignSize: true);
+      expect(errors, isEmpty);
+      final size = _renderedSize(tester);
+      expect(size, lessThan(25 * kBoundedTextMinScale));
+      // المقاس المرسوم فعلاً (بعد التكبير) لا يقلّ عن ٠٫٨ من التصميم.
+      expect(size * 1.3, greaterThanOrEqualTo(25 * kBoundedTextMinScale - 0.01));
+      expect(tester.getSize(find.byKey(_probe)).height, _lineHeight(1.3));
+    });
+
+    testWidgets('×1.0: لا فرق — الحدّ ٠٫٨ كما هو', (tester) async {
+      final errors = await _pump(tester, _longKurdish, floorAtDesignSize: true);
+      expect(errors, hasLength(1));
+      expect(_renderedSize(tester), 25 * kBoundedTextMinScale);
+    });
+  });
+
+  group('whenUnfit — بديلٌ مصمَّم بدل النصّ المقصوص', () {
+    const fallback = SizedBox(key: Key('fallback'), width: 20, height: 20);
+
+    testWidgets('لا يتّسع: البديل داخل المنطقة نفسها، بلا خطأ', (tester) async {
+      final errors = await _pump(tester, _longKurdish, whenUnfit: fallback);
+      expect(errors, isEmpty);
+      expect(find.byKey(const Key('fallback')), findsOneWidget);
+      expect(find.descendant(of: find.byKey(_probe), matching: find.byType(Text)), findsNothing);
+      expect(tester.getSize(find.byKey(_probe)).height, _lineHeight(1));
+    });
+
+    testWidgets('يتّسع (ولو مصغَّراً): النصّ لا البديل', (tester) async {
+      final errors = await _pump(tester, 'بۆ ئەزموونەکەت', whenUnfit: fallback);
+      expect(errors, isEmpty);
+      expect(find.byKey(const Key('fallback')), findsNothing);
+      expect(_renderedSize(tester), lessThan(25));
+    });
+  });
+
+  group('reserveFor — فقرةٌ تحجز أسطر أطول نصوصها', () {
+    // قصيرٌ (سطر) وطويلٌ (عدّة أسطر) في المنطقة نفسها: الهندسة واحدة.
+    testWidgets('القصير يحجز أسطر الطويل، بمقاسه الأصلي، والطويل كذلك', (tester) async {
+      final errors = await _pump(tester, _shortArabic, width: 200, reserveFor: [_longKurdish], maxLines: 8, minScale: 1);
+      expect(errors, isEmpty);
+      final shortRegion = tester.getSize(find.byKey(_probe)).height;
+      final shortBelow = tester.getTopLeft(find.byKey(_below)).dy;
+      expect(_renderedSize(tester), 25);
+      expect(shortRegion, greaterThan(_lineHeight(1) * 1.5));
+
+      await _pump(tester, _longKurdish, width: 200, reserveFor: [_shortArabic], maxLines: 8, minScale: 1);
+      expect(tester.getSize(find.byKey(_probe)).height, shortRegion);
+      expect(tester.getTopLeft(find.byKey(_below)).dy, shortBelow);
+      expect(_renderedSize(tester), 25, reason: 'الفقرة لا تُصغَّر');
+      expect(_paragraph(tester).didExceedMaxLines, isFalse);
+    });
+
+    testWidgets('قيمةٌ ذات سطر: يُصغَّر الطويل أولاً، ولا سطر محجوز ما دام يتّسع', (tester) async {
+      // «بۆ ئەزموونەکەت» يتّسع لسطرٍ عند ≥٠٫٨ في ١٤٠: لا حجز.
+      await _pump(tester, _shortArabic, maxLines: 2, reserveFor: ['بۆ ئەزموونەکەت']);
+      expect(tester.getSize(find.byKey(_probe)).height, _lineHeight(1));
+      expect(_renderedSize(tester), 25);
+      // _longKurdish لا يتّسع لسطر حتى عند ٠٫٨: السطران محجوزان للعربي أيضاً.
+      await _pump(tester, _shortArabic, maxLines: 2, reserveFor: ['با ئەزموونەکەت ڕێک بخەین بۆ']);
+      expect(tester.getSize(find.byKey(_probe)).height, 2 * _lineHeight(1));
+      expect(_renderedSize(tester), 25);
+    });
+
+    testWidgets('نصوصٌ بالطول نفسه: لا سطر زائد', (tester) async {
+      await _pump(tester, _shortArabic, reserveFor: ['لنُهيّئ تجربتك']);
+      expect(tester.getSize(find.byKey(_probe)).height, _lineHeight(1));
+    });
+  });
+
+  group('الأبعاد الذاتية — تحت IntrinsicHeight', () {
+    // [CRITICAL] نموذج المصادقة كلّه داخل `IntrinsicHeight`؛ بـ`LayoutBuilder`
+    // العادي كانت المنطقة ترمي («does not support returning intrinsic
+    // dimensions») فتسقط الشاشة. ما تُعلنه يجب أن يساوي ما ترسمه.
+    for (final (name, text, maxLines) in [
+      ('يتّسع', _shortArabic, null),
+      ('يُصغَّر', 'بۆ ئەزموونەکەت', null),
+      ('يطول', _longKurdish, 8),
+    ]) {
+      testWidgets('$name: الحجم الذاتي والجافّ = الحجم المرسوم', (tester) async {
+        final errors = await _pump(tester, text, maxLines: maxLines);
+        expect(errors, isEmpty);
+        final box = tester.renderObject<RenderBox>(find.byKey(_probe));
+        final size = box.size;
+        expect(box.getMaxIntrinsicHeight(140), closeTo(size.height, 0.01));
+        expect(box.getMinIntrinsicHeight(140), closeTo(size.height, 0.01));
+        final dry = box.getDryLayout(box.constraints);
+        final loose = box.getDryLayout(const BoxConstraints(maxWidth: 140));
+        expect(loose.width, lessThanOrEqualTo(140));
+        expect(loose.height, closeTo(size.height, 0.01));
+        expect(dry.height, closeTo(size.height, 0.01));
+        expect(dry.width, closeTo(size.width, 0.5));
+      });
+    }
+
+    testWidgets('داخل IntrinsicHeight: لا خطأ، والصفّ بارتفاع المنطقة', (tester) async {
+      final errors = <FlutterErrorDetails>[];
+      final previous = FlutterError.onError;
+      FlutterError.onError = errors.add;
+      try {
+        await tester.pumpWidget(
+          const Directionality(
+            textDirection: TextDirection.rtl,
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: SizedBox(
+                width: 140,
+                child: IntrinsicHeight(
+                  key: Key('row'),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(
+                        child: BoundedText(_longKurdish, key: Key('in'), style: _base, maxLines: 8),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      } finally {
+        FlutterError.onError = previous;
+      }
+      expect(errors, isEmpty);
+      final region = tester.getSize(find.byKey(const Key('in')));
+      expect(region.height, greaterThan(_lineHeight(1)));
+      expect(tester.getSize(find.byKey(const Key('row'))).height, closeTo(region.height, 0.01));
+    });
   });
 
   testWidgets('عرضٌ غير محدود: المقاس الأصلي وعرضٌ ملتفّ — لا قياس بلا مساحة', (tester) async {

@@ -5,6 +5,7 @@ import '../../tokens/app_dimens.dart';
 import '../../tokens/app_theme_colors.dart';
 import '../buttons/anime_primary_button.dart';
 import '../layout/scroll_insets.dart';
+import '../typography/bounded_text.dart';
 
 /// بطاقة «أنت تتصفح كزائر» بتصميم Otaku Galaxy v2 — لوحة مستديرة موسّطة
 /// مع هالة لونية وزر تسجيل دخول واضح.
@@ -19,12 +20,22 @@ class AnimeGuestPrompt extends StatelessWidget {
     required this.body,
     required this.onLogin,
     this.icon = Icons.person_outline,
+    this.titleTranslations = const [],
+    this.bodyTranslations = const [],
   });
 
   final String title;
   final String body;
   final VoidCallback onLogin;
   final IconData icon;
+
+  /// ترجمات [title] و[body] بكل اللغات (`AppStrings.across`/`gAcross`).
+  ///
+  /// [CRITICAL] (2026-10-05) العنوان سطرٌ يُصغَّر أولاً، والنصّ فقرة؛ كلاهما
+  /// يحجز ما تحتاجه أطول ترجماته (`BoundedText.reserveFor`) فلا تطول البطاقة
+  /// ولا ينزل زرّ الدخول بتغيّر اللغة (كان العنوان الكردي يلتفّ: +٣٩).
+  final List<String> titleTranslations;
+  final List<String> bodyTranslations;
 
   @override
   Widget build(BuildContext context) {
@@ -87,8 +98,11 @@ class AnimeGuestPrompt extends StatelessWidget {
                       child: Icon(icon, color: Colors.white, size: 27),
                     ),
                     const SizedBox(height: AppDimens.space5),
-                    Text(
+                    BoundedText(
                       title,
+                      maxLines: 2,
+                      reserveFor: titleTranslations,
+                      alignment: Alignment.topCenter,
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                         fontSize: 20,
@@ -96,8 +110,12 @@ class AnimeGuestPrompt extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: AppDimens.space3),
-                    Text(
+                    BoundedText(
                       body,
+                      maxLines: 8,
+                      minScale: 1,
+                      reserveFor: bodyTranslations,
+                      alignment: Alignment.topCenter,
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         height: 1.8,

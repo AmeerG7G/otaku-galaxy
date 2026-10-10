@@ -12,6 +12,7 @@ import '../buttons/anime_primary_button.dart';
 import '../buttons/button_enums.dart';
 import '../feedback/product_photo_slot.dart';
 import '../layout/otaku_surfaces.dart';
+import '../typography/bounded_text.dart';
 
 /// بطاقة طلب بتصميم Otaku Galaxy v2.
 ///
@@ -35,6 +36,9 @@ class AnimeOrderCard extends StatelessWidget {
   /// يُستدعى عند طلب تقييم **هذا** الطلب. `null` يُخفي الزرّ تماماً.
   final VoidCallback? onReview;
 
+  /// أقصى ما تأخذه كبسولة الحالة من سطر التاريخ.
+  static const double statusMaxFraction = 0.75;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -47,27 +51,38 @@ class AnimeOrderCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                // لا يُعرض رقم الطلب للعميل — التاريخ للتعريف البصري فقط.
-                child: Text(
-                  order.createdAt != null ? _formatDate(order.createdAt!) : '',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontFamily: AppFonts.heading,
-                    fontFamilyFallback: AppFonts.headingFallback,
-                    fontWeight: AppDimens.weightExtraBold,
-                    fontSize: 14,
+          // [CRITICAL] (2026-10-05) الكبسولة لا تتجاوز [statusMaxFraction] من
+          // السطر: «چاوەڕوانی…» الكردية كانت أعرض من البطاقة على ٣٢٠×١٫٣ —
+          // تجاوزٌ يميناً، والتاريخ ينضغط فيلتفّ حرفاً حرفاً (+١٨٩).
+          LayoutBuilder(
+            builder: (context, constraints) => Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  // لا يُعرض رقم الطلب للعميل — التاريخ للتعريف البصري فقط.
+                  child: BoundedText(
+                    order.createdAt != null ? _formatDate(order.createdAt!) : '',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontFamily: AppFonts.heading,
+                      fontFamilyFallback: AppFonts.headingFallback,
+                      fontWeight: AppDimens.weightExtraBold,
+                      fontSize: 14,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 10),
-              OtakuStatusPill(
-                label: orderStatusLabel(context, order.status),
-                color: statusColor,
-              ),
-            ],
+                const SizedBox(width: 10),
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: constraints.maxWidth * statusMaxFraction,
+                  ),
+                  child: OtakuStatusPill(
+                    label: orderStatusLabel(context, order.status),
+                    labelTranslations: orderStatusLabels(order.status),
+                    color: statusColor,
+                  ),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 10),
           Text(

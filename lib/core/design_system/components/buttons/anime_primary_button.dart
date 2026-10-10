@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../tokens/app_dimens.dart';
 import '../../tokens/app_theme_colors.dart';
+import '../typography/bounded_text.dart';
 import 'button_enums.dart';
 
 class AnimePrimaryButton extends StatelessWidget {
@@ -100,7 +101,12 @@ class AnimePrimaryButton extends StatelessWidget {
   }
 
   Widget _buildContent(BuildContext context) {
-    if (icon == null) return Text(label);
+    // [CRITICAL] التسمية سطرٌ واحد في منطقةٍ محدودة (`BoundedText`): أطول من
+    // الزرّ تُصغَّر بدل أن تلتفّ أو تتجاوز (كان الزرّ يتجاوز ٦٢ بكسل بالكردية
+    // على ٣٢٠×١٫٣). الحدّ ٠٫٨ من مقاس التصميم ([PRODUCT] 2026-10-05): عند
+    // ×١٫٣ نحو ٠٫٦٢ من المكبَّر. تسميةٌ تتّسع لا تتغيّر.
+    final text = BoundedText(label, floorAtDesignSize: true);
+    if (icon == null) return text;
 
     final iconWidget = Icon(icon, size: AppDimens.iconMd);
 
@@ -111,14 +117,14 @@ class AnimePrimaryButton extends StatelessWidget {
           children: [
             iconWidget,
             SizedBox(width: AppDimens.space3),
-            Text(label),
+            Flexible(child: text),
           ],
         );
       case IconPosition.end:
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(label),
+            Flexible(child: text),
             SizedBox(width: AppDimens.space3),
             iconWidget,
           ],

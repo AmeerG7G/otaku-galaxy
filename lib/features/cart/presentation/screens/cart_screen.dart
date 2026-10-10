@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:auto_route/auto_route.dart';
 import '../../../../core/l10n/app_strings.dart';
 import 'package:flutter/material.dart';
@@ -51,6 +53,9 @@ class CartScreen extends StatelessWidget {
                         title: context.strings('browsingAsGuest'),
                         body:
                             context.g(GenderedStrings.loginToAddToCart),
+                        titleTranslations: AppStrings.across('browsingAsGuest'),
+                        bodyTranslations:
+                            context.gAcross(GenderedStrings.loginToAddToCart),
                         icon: Icons.shopping_cart_outlined,
                         onLogin: () => context.router.push(const LoginRoute()),
                       )
@@ -112,18 +117,21 @@ class CartScreen extends StatelessWidget {
         children: [
           _SummaryRow(
             label: context.strings('subtotal'),
+            labelTranslations: AppStrings.across('subtotal'),
             value: context.strings.p('priceIqd', {'amount': cart.total.toStringAsFixed(0)}),
           ),
           const SizedBox(height: 10),
           _SummaryRow(
             label: context.strings('deliveryFee'),
+            labelTranslations: AppStrings.across('deliveryFee'),
             // التوصيل يُحتسب في الخطوة التالية حسب المحافظة والمنطقة.
-            valueWidget: Text(
-              context.strings('deliveryFeeAtAddress'),
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontSize: 12,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+            value: context.strings('deliveryFeeAtAddress'),
+            // سطرٌ يُصغَّر أولاً؛ وسطرٌ ثانٍ محجوز بكل لغة حيث لا تتّسع إحدى
+            // ترجماته حتى عند الحدّ (الكردية على ٣٢٠×١٫٣).
+            reserveFor: AppStrings.across('deliveryFeeAtAddress'),
+            valueStyle: theme.textTheme.bodySmall?.copyWith(
+              fontSize: 12,
+              color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
           Container(
@@ -206,37 +214,100 @@ class _CheckoutButtonState extends State<_CheckoutButton> {
   );
 }
 
+/// سطرٌ في ملخّص السلة: تسميةٌ عند البداية وقيمةٌ عند النهاية.
+///
+/// [CRITICAL] (2026-10-05) التسمية والقيمة منطقتا `BoundedText`، والقيمة لا
+/// تأخذ ما تحتاجه التسمية ([labelTranslations]) ولا الفاصل بينهما: «لە کاتی نووسینی ناونیشان دیاری
+/// دەکرێت» الكردية كانت تأخذ عرضها كاملاً فتلتفّ التسمية تحتها وتطول البطاقة
+/// (+٢٥ عند ×١٫٣، +٢٢٥ وتجاوزٌ عند ٣٢٠×١٫٣).
 class _SummaryRow extends StatelessWidget {
-  const _SummaryRow({required this.label, this.value, this.valueWidget});
+  const _SummaryRow({
+    required this.label,
+    required this.value,
+    this.labelTranslations = const [],
+    this.valueStyle,
+    this.reserveFor = const [],
+  });
 
   final String label;
-  final String? value;
-  final Widget? valueWidget;
+  final String value;
+
+  /// نمط القيمة؛ الافتراضي رقمٌ عريض من اليسار إلى اليمين (مبلغ).
+  final TextStyle? valueStyle;
+
+  /// ترجمات القيمة حين تكون نصّاً لا مبلغاً (`BoundedText.reserveFor`).
+  final List<String> reserveFor;
+
+  /// ترجمات التسمية بكل اللغات: القيمة تأخذ كل ما لا تحتاجه أعرضُها عند
+  /// الحدّ الأدنى — قياسٌ لا نسبةٌ ثابتة (نسبةٌ تتّسع لـ٣٢٠ تحجز سطراً
+  /// ثانياً بلا داعٍ على ٤١٢×١٫٣، والعكس يقصّ التسمية).
+  final List<String> labelTranslations;
+
+  static const double _gap = 12;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            label,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontSize: 13,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-        valueWidget ??
-            Text(
-              value!,
-              textDirection: TextDirection.ltr,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontSize: 13,
-                fontWeight: AppDimens.weightBold,
+    final isAmount = valueStyle == null;
+    final labelStyle = theme.textTheme.bodyMedium?.copyWith(
+      fontSize: 13,
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    final scaler = MediaQuery.textScalerOf(context);
+    final direction = Directionality.of(context);
+    double labelNeed() {
+      // يُقاس بمقاس الحدّ نفسه كما يقيس `BoundedText` (عرض الخطّ لا يتناسب
+      // مع المقاس تماماً)، ويُقرَّب لأعلى ببكسل.
+      final base = DefaultTextStyle.of(context).style.merge(labelStyle);
+      final atFloor = base.copyWith(
+        fontSize: (base.fontSize ?? 14) * kBoundedTextMinScale,
+      );
+      var widest = 0.0;
+      for (final text in [label, ...labelTranslations]) {
+        final painter = TextPainter(
+          text: TextSpan(text: text, style: atFloor),
+          textScaler: scaler,
+          textDirection: direction,
+          maxLines: 1,
+        )..layout();
+        widest = math.max(widest, painter.width);
+        painter.dispose();
+      }
+      return widest.ceilToDouble() + 1;
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) => Row(
+        children: [
+          Expanded(child: BoundedText(label, style: labelStyle)),
+          const SizedBox(width: _gap),
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: math.max(
+                0,
+                constraints.maxWidth - _gap - labelNeed(),
               ),
             ),
-      ],
+            child: Directionality(
+              textDirection: isAmount
+                  ? TextDirection.ltr
+                  : Directionality.of(context),
+              child: BoundedText(
+                value,
+                maxLines: 2,
+                reserveFor: reserveFor,
+                alignment: AlignmentDirectional.topStart,
+                style:
+                    valueStyle ??
+                    theme.textTheme.bodyMedium?.copyWith(
+                      fontSize: 13,
+                      fontWeight: AppDimens.weightBold,
+                    ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

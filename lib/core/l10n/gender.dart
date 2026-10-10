@@ -445,6 +445,12 @@ extension GenderedContext on BuildContext {
   /// لأنه يستدعي `ofLocale` مباشرةً — المسار الذي لا تسلكه الودجات.
   String g(Gendered text) => text.ofLocale(gender, language);
 
+  /// [g] بكل لغات الواجهة — لمنطقة نصٍّ تحجز ما يحتاجه أطولها
+  /// (`BoundedText.reserveFor`) فلا تتغيّر هندستها بتغيّر اللغة.
+  List<String> gAcross(Gendered text) => [
+    for (final l in AppLanguage.values) text.ofLocale(gender, l),
+  ];
+
   /// جنس صاحب الجلسة بلا إصغاء — للاستعمال **خارج** `build`.
   ///
   /// [CRITICAL] `watch` خارج `build` يرمي. معالِجُ الضغط الذي يفتح بوابة

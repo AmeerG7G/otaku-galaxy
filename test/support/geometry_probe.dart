@@ -11,10 +11,16 @@
 //   تسميته) تغيّر عرضُه وحده وارتفاعُه ثابت — مسموحٌ بالعقد: النصّ الأطول
 //   يأخذ مكاناً أعرض داخل منطقته. ما بداخله يتبعه (النقطة في الكبسولة،
 //   أيقونة الزرّ).
+// - **button-label**: عنصرٌ داخل زرٍّ لم يتغيّر مستطيله، تحرّك أفقياً وحده —
+//   محتوى تسمية الزرّ نفسه (أيقونةٌ بجوار نصٍّ موسَّط فيه).
+// - **text-flow**: عنصرٌ تحرّك أفقياً وحده بمقدار ما اتّسعت مناطق النصّ
+//   الشقيقة له تماماً (±التسامح) — شريحةٌ تلي شريحةً أطول تسميةً في الصفّ.
 // - **bug**: كل ما عدا ذلك — عنصرٌ تحرّك أو تغيّر حجمه لأن نصّاً خارجه طال.
 //
 // القياس يقع على ما يُرسم فعلاً: عناصر التبويبات المخفية في `IndexedStack`
 // وما تحت `Offstage` لا تُعدّ.
+
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -135,7 +141,7 @@ class GeoDiff {
   final GeoNode a;
   final GeoNode b;
 
-  /// `text-region` أو `bug`.
+  /// `text-region` أو `button-label` أو `text-flow` أو `bug`.
   final String category;
 
   double get dTop => b.rect.top - a.rect.top;
@@ -166,6 +172,10 @@ class GeoComparison {
   Iterable<GeoDiff> get bugs => diffs.where((d) => d.category == 'bug');
   Iterable<GeoDiff> get textRegions =>
       diffs.where((d) => d.category == 'text-region');
+  Iterable<GeoDiff> get buttonLabels =>
+      diffs.where((d) => d.category == 'button-label');
+  Iterable<GeoDiff> get textFlows =>
+      diffs.where((d) => d.category == 'text-flow');
 }
 
 /// يقارن [ar] بـ[ckb] ويصنّف كل فرقٍ أكبر من [tolerance].
@@ -191,21 +201,64 @@ GeoComparison compareGeometry(
     if ((b.rect.width - a.rect.width).abs() > tolerance) regions.add(entry.key);
   }
 
+  // أزرارٌ لم يتغيّر مستطيلها: ما يتحرّك داخلها أفقياً محتوى تسميتها.
+  final steadyButtons = <String>[
+    for (final entry in ar.entries)
+      if (entry.value.kind == 'button' &&
+          ckb[entry.key] != null &&
+          !changed(entry.value, ckb[entry.key]!))
+        entry.key,
+  ];
+
+  bool near(double v, double target) => (v - target).abs() <= tolerance;
+
+  // انزياحٌ أفقي بحت = مجموع اتّساع مناطق النصّ الشقيقة (أكبرها في كل شقيق).
+  bool isTextFlow(String path, double dLeft) {
+    final segments = path.split('/');
+    for (var i = segments.length - 1; i > 0; i--) {
+      final parent = segments.sublist(0, i).join('/');
+      final own = segments[i];
+      final perSibling = <String, double>{};
+      for (final r in regions) {
+        if (!r.startsWith('$parent/')) continue;
+        final sibling = r.substring(parent.length + 1).split('/').first;
+        if (sibling == own) continue;
+        final dw = (ckb[r]!.rect.width - ar[r]!.rect.width).abs();
+        perSibling[sibling] = math.max(perSibling[sibling] ?? 0, dw);
+      }
+      final total = perSibling.values.fold<double>(0, (a, b) => a + b);
+      if (total > tolerance && near(dLeft.abs(), total)) return true;
+    }
+    return false;
+  }
+
   final diffs = <GeoDiff>[];
   var unmatched = 0;
   for (final entry in ar.entries) {
+    final a = entry.value;
     final b = ckb[entry.key];
     if (b == null) {
       unmatched++;
       continue;
     }
-    if (!changed(entry.value, b)) continue;
+    if (!changed(a, b)) continue;
     final insideRegion = regions.any(
       (r) => entry.key == r || entry.key.startsWith('$r/'),
     );
-    diffs.add(
-      GeoDiff(entry.key, entry.value, b, insideRegion ? 'text-region' : 'bug'),
-    );
+    final dLeft = b.rect.left - a.rect.left;
+    final horizontalOnly =
+        near(b.rect.top, a.rect.top) &&
+        near(b.rect.width, a.rect.width) &&
+        near(b.rect.height, a.rect.height);
+    final category = insideRegion
+        ? 'text-region'
+        : horizontalOnly &&
+              steadyButtons.any((btn) => entry.key.startsWith('$btn/'))
+        ? 'button-label'
+        : horizontalOnly && isTextFlow(entry.key, dLeft)
+        ? 'text-flow'
+        : 'bug';
+    diffs.add(GeoDiff(entry.key, a, b, category));
   }
   unmatched += ckb.keys.where((k) => !ar.containsKey(k)).length;
   return GeoComparison(diffs, unmatched: unmatched);

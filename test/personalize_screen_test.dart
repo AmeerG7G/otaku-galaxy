@@ -298,11 +298,10 @@ void main() {
       });
     }
 
-    // [PRODUCT] الشاشة الضيّقة مع ×1.3 (قرار المالك 2026-10-05): الحدّ الأدنى
-    // ٠٫٨ يبقى، والعنوان الكردي لا يتّسع لسطرين حتى عنده (يحتاج ٠٫٦٤)،
-    // فيطول سطراً ثالثاً هنا وحده وتطول الترويسة معه. العربية تتّسع لسطرين
-    // فلا تطول. المهمّ: لا قصّ ولا انهيار، والنموّ حيث لا بدّ منه فقط.
-    testWidgets('320×568 scale 1.3 — third line only where the floor fails', (tester) async {
+    // [PRODUCT] الشاشة الضيّقة مع ×1.3 (قرارا المالك 2026-10-05): الحدّ ٠٫٨ من
+    // مقاس التصميم لعناوين الترويسة، فيتّسع العنوان الكردي لسطريه (يحتاج
+    // ٠٫٦٤ من المكبَّر). كان يطول سطراً ثالثاً بكسرٍ داخل «ئەزموونەکەت».
+    testWidgets('320×568 scale 1.3 — two lines in both languages, no word broken', (tester) async {
       tester.view.physicalSize = const Size(320, 568);
       tester.view.devicePixelRatio = 1.0;
       tester.platformDispatcher.textScaleFactorTestValue = 1.3;
@@ -322,11 +321,12 @@ void main() {
           matching: find.byType(RichText),
         ));
         expect(title.didExceedMaxLines, isFalse, reason: '${lang.code}: العنوان مقصوص');
-        expect(title.text.style!.fontSize!, greaterThanOrEqualTo(25 * kBoundedTextMinScale));
+        // لا أصغر من ٠٫٨ من مقاس التصميم (المرسوم = المقاس × ١٫٣).
+        expect(title.text.style!.fontSize! * 1.3, greaterThanOrEqualTo(25 * kBoundedTextMinScale - 0.01));
         lines[lang] = title.maxLines!;
       }
       expect(lines[AppLanguage.arabic], 2);
-      expect(lines[AppLanguage.kurdish], 3);
+      expect(lines[AppLanguage.kurdish], 2);
     });
   });
 }

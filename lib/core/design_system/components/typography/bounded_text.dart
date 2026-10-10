@@ -1,4 +1,7 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
 /// أصغر نسبةٍ يُصغَّر إليها نصٌّ لا يتّسع لمنطقته — ٠٫٨ من مقاسه الأصلي.
@@ -39,6 +42,9 @@ class BoundedText extends StatelessWidget {
     this.textAlign,
     this.alignment = AlignmentDirectional.centerStart,
     this.textKey,
+    this.floorAtDesignSize = false,
+    this.whenUnfit,
+    this.reserveFor = const <String>[],
   }) : maxLines = maxLines ?? lines,
        assert(lines >= 1),
        assert(maxLines == null || maxLines >= lines),
@@ -64,74 +70,74 @@ class BoundedText extends StatelessWidget {
   /// مفتاح `Text` الداخلي — للاختبارات التي تبحث عن النصّ نفسه.
   final Key? textKey;
 
+  /// الحدّ الأدنى نسبةٌ من مقاس **التصميم** لا من المقاس المكبَّر.
+  ///
+  /// [PRODUCT] (2026-10-05، لتسميات الأزرار ونصوص الترويسة): مع تكبير خطّ النظام ×١٫٣ يصير
+  /// الحدّ [minScale] ÷ ١٫٣ من المقاس المكبَّر — فلا يصغر النصّ أبداً عن
+  /// [minScale] من مقاسه بلا تكبير. بلا تكبير (أو بتصغير) لا فرق.
+  final bool floorAtDesignSize;
+
+  /// ما يُرسم بدل النصّ حين لا يتّسع حتى عند الحدّ الأدنى.
+  ///
+  /// [PRODUCT] (2026-10-05): بديلٌ مصمَّم (أيقونة الإجراء نفسه) لا نصٌّ مقصوص،
+  /// فلا يُبلَّغ خطأ. القرار بالمساحة المقيسة وحدها، لا باللغة. يُرسم داخل
+  /// المنطقة نفسها (الارتفاع نفسه)، وعرضه عرضه. الأبعاد الذاتية تبقى أبعاد
+  /// منطقة النصّ — البديل لا يُقاس ذاتياً.
+  final Widget? whenUnfit;
+
+  /// نصوصٌ أخرى قد تشغل المنطقة نفسها (ترجمات النصّ نفسه عادةً).
+  ///
+  /// [PRODUCT] (2026-10-05): المنطقة تحجز أكثر ما يحتاجه **أيٌّ** منها (ومن
+  /// [data]) من أسطر بقواعدها هي ([lines] و[maxLines] و[minScale]) في العرض
+  /// الحالي — فهندستها واحدةٌ أيّاً كان النصّ المعروض، وأقصرُها يترك سطراً
+  /// فارغاً. الفقرة تمرّر `minScale: 1` و`maxLines` كبيراً: أسطرٌ طبيعية بلا
+  /// تصغير (قرار الفقرات). القيمة ذات السطر تُصغَّر أولاً حتى الحدّ ولا تحجز
+  /// سطراً ثانياً إلا لنصٍّ لا يتّسع حتى عنده. لا يعرف اللغة: يقيس نصوصاً.
+  final List<String> reserveFor;
+
   @override
   Widget build(BuildContext context) {
-    final style = DefaultTextStyle.of(context).style.merge(this.style);
     final scaler = MediaQuery.textScalerOf(context);
-    final direction = Directionality.of(context);
-    final align = textAlign ?? TextAlign.start;
-    final lineHeight = BoundedText.lineHeight(style, scaler, direction);
+    final fit = _Fit(
+      data: data,
+      style: DefaultTextStyle.of(context).style.merge(style),
+      scaler: scaler,
+      direction: Directionality.of(context),
+      align: textAlign ?? TextAlign.start,
+      lines: lines,
+      maxLines: maxLines,
+      reserveFor: reserveFor,
+      minScale: floorAtDesignSize
+          ? math.min(minScale, minScale / scaler.scale(1))
+          : minScale,
+    );
 
-    return LayoutBuilder(
+    return _BoundedLayout(
+      fit: fit,
       builder: (context, constraints) {
-        var scale = 1.0;
-        var usedLines = lines;
-        final maxWidth = constraints.maxWidth;
-        if (maxWidth.isFinite) {
-          bool fits(double s, int n) => _fits(
-            style,
-            s,
-            n,
-            maxWidth: maxWidth,
-            maxHeight: lineHeight * n,
-            scaler: scaler,
-            direction: direction,
-            align: align,
-          );
-          // أقلّ عدد أسطرٍ (من [lines] إلى [maxLines]) يتّسع فيه النصّ عند
-          // الحدّ الأدنى؛ وإلا فـ[maxLines] مع إبلاغ.
-          while (usedLines < maxLines && !fits(minScale, usedLines)) {
-            usedLines++;
-          }
-          if (!fits(1, usedLines)) {
-            if (fits(minScale, usedLines)) {
-              // بحثٌ ثنائي عن أكبر مقاسٍ يتّسع — ثمانية تكرارات تكفي لدقّة
-              // أقلّ من جزءٍ من مئتين بين الحدّين.
-              var low = minScale, high = 1.0;
-              for (var i = 0; i < 8; i++) {
-                final mid = (low + high) / 2;
-                if (fits(mid, usedLines)) {
-                  low = mid;
-                } else {
-                  high = mid;
-                }
-              }
-              scale = low;
-            } else {
-              scale = minScale;
-              _reportUnfit(maxWidth, usedLines);
-            }
-          }
+        final result = fit.resolve(constraints.maxWidth);
+        final fallback = result.unfit ? whenUnfit : null;
+        if (result.unfit && fallback == null) {
+          _reportUnfit(constraints.maxWidth, result.lines, fit.minScale);
         }
-        final regionHeight = lineHeight * usedLines;
-
-        final fontSize = style.fontSize ?? 14;
         return SizedBox(
-          height: regionHeight,
+          height: fit.lineHeight * result.lines,
           child: Align(
             alignment: alignment,
             widthFactor: 1,
-            child: Text(
-              data,
-              key: textKey,
-              style: scale == 1
-                  ? style
-                  : style.copyWith(fontSize: fontSize * scale),
-              maxLines: usedLines,
-              softWrap: usedLines > 1,
-              overflow: TextOverflow.clip,
-              textAlign: align,
-            ),
+            child:
+                fallback ??
+                Text(
+                  data,
+                  key: textKey,
+                  style: fit.styleAt(result.scale),
+                  maxLines: result.lines,
+                  // `softWrap` يبقى مفعّلاً حتى للسطر الواحد: نصٌّ يتّسع يُرسم إذن
+                  // كما يرسمه `Text` تماماً (بلا التفافٍ يُطفئه، يُخطَّط السطر بعرضٍ
+                  // غير محدود فتنزاح حروف RTL كسرَ بكسل). `maxLines` يحدّ الأسطر.
+                  overflow: TextOverflow.clip,
+                  textAlign: fit.align,
+                ),
           ),
         );
       },
@@ -155,35 +161,7 @@ class BoundedText extends StatelessWidget {
     return height;
   }
 
-  bool _fits(
-    TextStyle style,
-    double scale,
-    int lines, {
-    required double maxWidth,
-    required double maxHeight,
-    required TextScaler scaler,
-    required TextDirection direction,
-    required TextAlign align,
-  }) {
-    final painter = TextPainter(
-      text: TextSpan(
-        text: data,
-        style: style.copyWith(fontSize: (style.fontSize ?? 14) * scale),
-      ),
-      textScaler: scaler,
-      textDirection: direction,
-      textAlign: align,
-      maxLines: lines,
-    )..layout(maxWidth: maxWidth);
-    final fits =
-        !painter.didExceedMaxLines &&
-        painter.width <= maxWidth + 0.01 &&
-        painter.height <= maxHeight + 0.01;
-    painter.dispose();
-    return fits;
-  }
-
-  void _reportUnfit(double maxWidth, int lines) {
+  void _reportUnfit(double maxWidth, int lines, double minScale) {
     if (!kDebugMode) return;
     FlutterError.reportError(
       FlutterErrorDetails(
@@ -195,5 +173,209 @@ class BoundedText extends StatelessWidget {
         library: 'otaku design system',
       ),
     );
+  }
+}
+
+/// نتيجة القياس لعرضٍ واحد: المقاس، وعدد الأسطر، وهل بقي النصّ لا يتّسع.
+typedef _FitResult = ({double scale, int lines, bool unfit});
+
+/// حساب المنطقة كلّه، بلا شجرة: يُستعمل في التخطيط وفي الأبعاد الذاتية معاً
+/// فلا يختلف ما تُعلنه المنطقة عمّا ترسمه.
+class _Fit {
+  _Fit({
+    required this.data,
+    required this.style,
+    required this.scaler,
+    required this.direction,
+    required this.align,
+    required this.lines,
+    required this.maxLines,
+    required this.minScale,
+    this.reserveFor = const <String>[],
+  }) : lineHeight = BoundedText.lineHeight(style, scaler, direction);
+
+  final String data;
+  final TextStyle style;
+  final TextScaler scaler;
+  final TextDirection direction;
+  final TextAlign align;
+  final int lines;
+  final int maxLines;
+  final double minScale;
+  final List<String> reserveFor;
+  final double lineHeight;
+
+  TextStyle styleAt(double scale) => scale == 1
+      ? style
+      : style.copyWith(fontSize: (style.fontSize ?? 14) * scale);
+
+  TextPainter _painter(double scale, int? maxLines, [String? text]) =>
+      TextPainter(
+        text: TextSpan(text: text ?? data, style: styleAt(scale)),
+        textScaler: scaler,
+        textDirection: direction,
+        textAlign: align,
+        maxLines: maxLines,
+      );
+
+  bool _fits(double scale, int n, double maxWidth, [String? text]) {
+    final painter = _painter(scale, n, text)..layout(maxWidth: maxWidth);
+    // [CRITICAL] لا كسر داخل كلمة: كلمةٌ أعرض من المنطقة لا «تتّسع» بالتفافها
+    // حرفاً حرفاً («ئاگادارکردنەوە / کان»)، فالتصغير أو البديل أولى.
+    final fits =
+        !painter.didExceedMaxLines &&
+        painter.width <= maxWidth + 0.01 &&
+        painter.minIntrinsicWidth <= maxWidth + 0.01 &&
+        painter.height <= lineHeight * n + 0.01;
+    painter.dispose();
+    return fits;
+  }
+
+  /// أقلّ عدد أسطرٍ (من [lines] إلى [maxLines]) يتّسع فيه [text] عند الحدّ
+  /// الأدنى؛ وإلا فـ[maxLines].
+  int _linesFor(String? text, double maxWidth) {
+    var used = lines;
+    while (used < maxLines && !_fits(minScale, used, maxWidth, text)) {
+      used++;
+    }
+    return used;
+  }
+
+  /// المقاس وعدد الأسطر لعرض [maxWidth]. عرضٌ غير محدود: المقاس الأصلي.
+  ///
+  /// مع [reserveFor]: عدد الأسطر أكثرُ ما يحتاجه أيٌّ من النصوص بقواعد المنطقة
+  /// نفسها، ثم يُوضَع [data] فيه كالمعتاد (أصلياً إن اتّسع، وإلا مصغَّراً).
+  _FitResult resolve(double maxWidth) {
+    if (!maxWidth.isFinite) return (scale: 1.0, lines: lines, unfit: false);
+    var used = _linesFor(null, maxWidth);
+    for (final text in reserveFor) {
+      used = math.max(used, _linesFor(text, maxWidth));
+    }
+    if (_fits(1, used, maxWidth)) {
+      return (scale: 1.0, lines: used, unfit: false);
+    }
+    if (!_fits(minScale, used, maxWidth)) {
+      return (scale: minScale, lines: used, unfit: true);
+    }
+    // بحثٌ ثنائي عن أكبر مقاسٍ يتّسع — ثمانية تكرارات تكفي لدقّة أقلّ من
+    // جزءٍ من مئتين بين الحدّين.
+    var low = minScale, high = 1.0;
+    for (var i = 0; i < 8; i++) {
+      final mid = (low + high) / 2;
+      if (_fits(mid, used, maxWidth)) {
+        low = mid;
+      } else {
+        high = mid;
+      }
+    }
+    return (scale: low, lines: used, unfit: false);
+  }
+
+  /// حجم المنطقة كما ترسمها الشجرة: ارتفاعها ثابت، وعرضها عرض النصّ.
+  Size sizeFor(BoxConstraints constraints) {
+    final result = resolve(constraints.maxWidth);
+    final painter = _painter(result.scale, result.lines)
+      ..layout(maxWidth: constraints.maxWidth);
+    final width = painter.width;
+    painter.dispose();
+    return constraints.constrain(Size(width, lineHeight * result.lines));
+  }
+
+  /// أعرض ما يأخذه النصّ: سطره الطبيعي بمقاسه الأصلي.
+  double get maxIntrinsicWidth {
+    final painter = _painter(1, null)..layout();
+    final width = painter.maxIntrinsicWidth;
+    painter.dispose();
+    return width;
+  }
+
+  /// أضيق ما يتّسع فيه: أطول كلمةٍ عند الحدّ الأدنى (أو السطر كلّه عند
+  /// الحدّ الأدنى إن كانت المنطقة سطراً واحداً لا يلتفّ).
+  double get minIntrinsicWidth {
+    final painter = _painter(minScale, null)..layout();
+    final width = maxLines > 1
+        ? painter.minIntrinsicWidth
+        : painter.maxIntrinsicWidth;
+    painter.dispose();
+    return width;
+  }
+
+  double heightFor(double width) => lineHeight * resolve(width).lines;
+}
+
+/// `LayoutBuilder` يُجيب عن الأبعاد الذاتية من [_Fit].
+///
+/// [CRITICAL] `LayoutBuilder` العادي يرمي حين يُسأل عن أبعاده الذاتية
+/// (`IntrinsicHeight` حول نموذج المصادقة كلّه)، فكانت المنطقة تُسقط أيّ
+/// شاشةٍ تقيس محتواها ذاتياً. الحساب نفسه بلا شجرة يكفي للإجابة.
+class _BoundedLayout extends ConstrainedLayoutBuilder<BoxConstraints> {
+  const _BoundedLayout({required this.fit, required super.builder});
+
+  final _Fit fit;
+
+  @override
+  _RenderBoundedLayout createRenderObject(BuildContext context) =>
+      _RenderBoundedLayout(fit);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderBoundedLayout renderObject,
+  ) => renderObject.fit = fit;
+}
+
+class _RenderBoundedLayout extends RenderBox
+    with
+        RenderObjectWithChildMixin<RenderBox>,
+        RenderObjectWithLayoutCallbackMixin,
+        RenderAbstractLayoutBuilderMixin<BoxConstraints, RenderBox> {
+  _RenderBoundedLayout(this._fit);
+
+  _Fit _fit;
+  set fit(_Fit value) {
+    if (identical(value, _fit)) return;
+    _fit = value;
+    markNeedsLayout();
+  }
+
+  @override
+  double computeMinIntrinsicWidth(double height) => _fit.minIntrinsicWidth;
+
+  @override
+  double computeMaxIntrinsicWidth(double height) => _fit.maxIntrinsicWidth;
+
+  @override
+  double computeMinIntrinsicHeight(double width) => _fit.heightFor(width);
+
+  @override
+  double computeMaxIntrinsicHeight(double width) => _fit.heightFor(width);
+
+  @override
+  Size computeDryLayout(BoxConstraints constraints) =>
+      _fit.sizeFor(constraints);
+
+  @override
+  void performLayout() {
+    runLayoutCallback();
+    if (child != null) {
+      child!.layout(constraints, parentUsesSize: true);
+      size = constraints.constrain(child!.size);
+    } else {
+      size = constraints.biggest;
+    }
+  }
+
+  @override
+  double? computeDistanceToActualBaseline(TextBaseline baseline) =>
+      child?.getDistanceToActualBaseline(baseline) ??
+      super.computeDistanceToActualBaseline(baseline);
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) =>
+      child?.hitTest(result, position: position) ?? false;
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    if (child != null) context.paintChild(child!, offset);
   }
 }

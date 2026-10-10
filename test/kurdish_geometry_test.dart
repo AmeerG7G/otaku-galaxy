@@ -151,24 +151,10 @@ final _cases = <String, _Pump>{
 const _knownBugs = <String, int>{
   'account-guest@320x3000@1.3': 18,
   'account-guest@320x568@1.3': 10,
-  'account-guest@412x3000@1.3': 18,
-  'account-guest@412x892@1.0': 18,
-  'account-guest@412x892@1.3': 18,
   'account@320x3000@1.3': 32,
   'account@320x568@1.3': 19,
-  'cart-guest@320x3000@1.3': 6,
-  'cart-guest@320x568@1.3': 3,
-  'cart@320x3000@1.3': 3,
-  'cart@320x568@1.3': 1,
-  'cart@412x3000@1.3': 3,
-  'cart@412x892@1.3': 3,
-  'categories@320x3000@1.3': 7,
-  'categories@320x568@1.3': 5,
-  'community@320x3000@1.3': 6,
-  'community@320x568@1.3': 6,
   'community@375x812@1.0': 23, // +2 من cbefc7d: رسم 45 مثبَّت بأسفل الترويسة فيتبع نموّها
   'community@412x3000@1.3': 23, // +2 من cbefc7d: رسم 45 مثبَّت بأسفل الترويسة فيتبع نموّها
-  'community@412x892@1.0': 6,
   'community@412x892@1.3': 23, // +2 من cbefc7d: رسم 45 مثبَّت بأسفل الترويسة فيتبع نموّها
   'favorites@320x3000@1.3': 2,
   'favorites@320x568@1.3': 2,
@@ -198,13 +184,6 @@ const _knownBugs = <String, int>{
   'home@320x568@1.3': 17,
   'home@412x3000@1.3': 79,
   'home@412x892@1.3': 28,
-  'login@320x3000@1.3': 1,
-  'notifications@320x3000@1.3': 8,
-  'notifications@320x568@1.3': 4,
-  'notifications@375x812@1.0': 8,
-  'notifications@412x3000@1.3': 8,
-  'notifications@412x892@1.0': 5,
-  'notifications@412x892@1.3': 8,
   'offline@320x3000@1.3': 7,
   'offline@320x568@1.3': 1,
   'offline@375x812@1.0': 7,
@@ -220,12 +199,6 @@ const _knownBugs = <String, int>{
   'order-detail@412x3000@1.3': 31,
   'order-detail@412x892@1.0': 16,
   'order-detail@412x892@1.3': 12,
-  'orders@320x3000@1.3': 31,
-  'orders@320x568@1.3': 14,
-  'orders@375x812@1.0': 3,
-  'orders@412x3000@1.3': 3,
-  'orders@412x892@1.0': 3,
-  'orders@412x892@1.3': 3,
   'pending-register@320x3000@1.3': 6,
   'pending-register@320x568@1.3': 2,
   'pending-register@375x812@1.0': 4,
@@ -238,11 +211,11 @@ const _knownBugs = <String, int>{
   'pending-reset@412x3000@1.3': 6,
   'pending-reset@412x892@1.0': 4,
   'pending-reset@412x892@1.3': 6,
-  // البوّابة ٣: العنوان منطقة سطرين ثابتة — صفرٌ في كل مقاس إلا ٣٢٠×١٫٣،
-  // حيث يحتاج الكردي سطراً ثالثاً عند حدّ ٠٫٨ (قرار المالك «Keep 0.8, 3rd
-  // line»)، فتطول منطقة العنوان ويتبعها ما تحتها.
-  'personalize@320x3000@1.3': 39,
-  'personalize@320x568@1.3': 18,
+  // البوّابة ٣ ثم ٤: العنوان سطران ثابتان بكل لغة (حدّ ٠٫٨ من مقاس التصميم
+  // لعناوين الترويسة). الباقي على ٣٢٠×١٫٣ فقرة التعريف تحته: الكردية
+  // سطرٌ أكثر — سياسة الفقرات (reserveFor) لم تُطبَّق عليها بعد.
+  'personalize@320x3000@1.3': 34,
+  'personalize@320x568@1.3': 17,
   'product-detail@320x3000@1.3': 16,
   'product-detail@320x568@1.3': 1,
   'product-detail@375x812@1.0': 13,
@@ -251,10 +224,6 @@ const _knownBugs = <String, int>{
   'product-detail@412x892@1.3': 13,
   'rate-order@320x3000@1.3': 13,
   'rate-order@320x568@1.3': 13,
-  'rate-order@375x812@1.0': 13,
-  'rate-order@412x3000@1.3': 13,
-  'rate-order@412x892@1.0': 13,
-  'rate-order@412x892@1.3': 13,
   'register@320x3000@1.3': 2,
   'register@320x568@1.3': 2,
   'register@375x812@1.0': 1,
@@ -273,22 +242,20 @@ const _knownBugs = <String, int>{
   'search@412x3000@1.3': 4,
   'search@412x892@1.0': 1,
   'search@412x892@1.3': 4,
-  'write-review@320x3000@1.3': 11,
-  'write-review@320x568@1.3': 7,
+  'write-review@320x3000@1.3': 4,
+  'write-review@320x568@1.3': 1,
   'write-review@412x892@1.0': 4,
 };
 
 /// [RATCHET] تجاوزاتٌ كردية لا تقع بالعربية: «شاشة@مقاس: جهة @ ملف».
 const _knownKurdishOverflows = <String>{
-  'account-guest@320x3000@1.3: right @ lib/features/home/presentation/screens/home_screen.dart',
+'account-guest@320x3000@1.3: right @ lib/features/home/presentation/screens/home_screen.dart',
   'account-guest@320x568@1.3: right @ lib/features/home/presentation/screens/home_screen.dart',
   'account@320x3000@1.3: right @ lib/features/home/presentation/screens/home_screen.dart',
   'account@320x568@1.3: right @ lib/features/home/presentation/screens/home_screen.dart',
   'cart-guest@320x3000@1.3: right @ lib/features/home/presentation/screens/home_screen.dart',
   'cart-guest@320x568@1.3: right @ lib/features/home/presentation/screens/home_screen.dart',
-  'cart@320x3000@1.3: right @ lib/features/cart/presentation/screens/cart_screen.dart',
   'cart@320x3000@1.3: right @ lib/features/home/presentation/screens/home_screen.dart',
-  'cart@320x568@1.3: right @ lib/features/cart/presentation/screens/cart_screen.dart',
   'cart@320x568@1.3: right @ lib/features/home/presentation/screens/home_screen.dart',
   'categories@320x3000@1.3: right @ lib/features/home/presentation/screens/home_screen.dart',
   'categories@320x568@1.3: right @ lib/features/home/presentation/screens/home_screen.dart',
@@ -296,14 +263,7 @@ const _knownKurdishOverflows = <String>{
   'community@320x568@1.3: right @ lib/features/home/presentation/screens/home_screen.dart',
   'home@320x3000@1.3: right @ lib/features/home/presentation/screens/home_screen.dart',
   'home@320x568@1.3: right @ lib/features/home/presentation/screens/home_screen.dart',
-  'notifications@320x3000@1.3: right @ lib/core/design_system/components/navigation/otaku_screen_header.dart',
-  'notifications@320x568@1.3: bottom @ lib/features/notifications/presentation/screens/notifications_screen.dart',
-  'notifications@320x568@1.3: right @ lib/core/design_system/components/navigation/otaku_screen_header.dart',
   'order-detail@320x3000@1.3: right @ lib/features/orders/presentation/screens/order_detail_screen.dart',
-  'orders@320x3000@1.3: right @ lib/core/design_system/components/buttons/anime_primary_button.dart',
-  'orders@320x3000@1.3: right @ lib/core/design_system/components/cards/anime_order_card.dart',
-  'orders@320x568@1.3: right @ lib/core/design_system/components/buttons/anime_primary_button.dart',
-  'orders@320x568@1.3: right @ lib/core/design_system/components/cards/anime_order_card.dart',
 };
 
 final _geometry = <String, Map<String, GeoNode>>{};

@@ -10,21 +10,28 @@ import '../../domain/entities/order.dart';
 /// «تم تأكيده» و«قيد التجهيز»، فبدت الأخيرة مرحلةً داخلية لا تعني العميل.
 /// بعد دمج التأكيد في التجهيز صار التجهيز هو مرحلة القبول نفسها، وعرضه
 /// «قيد التوصيل» كان سيَعِد العميل بشاحنة لم تتحرك بعد.
-String orderStatusLabel(BuildContext context, OrderStatus status) {
+String orderStatusLabel(BuildContext context, OrderStatus status) =>
+    context.strings(_statusKey(status));
+
+/// [orderStatusLabel] بكل لغات الواجهة — لكبسولةٍ تحجز ما يحتاجه أطولها.
+List<String> orderStatusLabels(OrderStatus status) =>
+    AppStrings.across(_statusKey(status));
+
+String _statusKey(OrderStatus status) {
   switch (status) {
     case OrderStatus.pending:
     case OrderStatus.waitingAdmin:
-      return context.strings('statusWaitingAdmin');
+      return 'statusWaitingAdmin';
     // حالة موروثة: طلبات قديمة توقّفت عند «تم تأكيده» قبل الدمج.
     case OrderStatus.confirmed:
     case OrderStatus.processing:
-      return context.strings('statusProcessing');
+      return 'statusProcessing';
     case OrderStatus.delivering:
-      return context.strings('statusDelivering');
+      return 'statusDelivering';
     case OrderStatus.completed:
-      return context.strings('statusCompleted');
+      return 'statusCompleted';
     case OrderStatus.rejected:
-      return context.strings('statusRejected');
+      return 'statusRejected';
   }
 }
 

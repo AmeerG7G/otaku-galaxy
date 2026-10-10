@@ -1208,6 +1208,12 @@ class AppStrings {
   static AppStrings of(AppLanguage language) =>
       language == AppLanguage.kurdish ? kurdish : arabic;
 
+  /// نصّ [key] بكل لغات الواجهة — لمنطقة نصٍّ تحجز ما يحتاجه أطولها
+  /// (`BoundedText.reserveFor`) فلا تتغيّر هندستها بتغيّر اللغة.
+  static List<String> across(String key) => [
+    for (final l in AppLanguage.values) of(l)(key),
+  ];
+
   /// يعيد النص المترجم، أو النص العربي كاحتياط إن لم تتوفر ترجمة بعد.
   String call(String key) => _values[key] ?? _ar[key] ?? key;
 }

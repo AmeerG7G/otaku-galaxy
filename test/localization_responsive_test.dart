@@ -54,6 +54,12 @@ Future<List<String>> _pumpAt(
     final text = details.exceptionAsString();
     if (text.contains('overflowed')) {
       errors.add(text.split('\n').first);
+    } else if (text.startsWith('BoundedText: ')) {
+      // [NOTE] (2026-10-05) هنا تُوضع أطول نصوص التطبيق — فقراتٌ كاملة — في
+      // تسمية زرٍّ من سطر. كان الزرّ يلفّها داخل ارتفاعه الثابت ويقصّها بصمت؛
+      // `BoundedText` يُبلّغ القصّ بدل إخفائه، وهذا ليس تجاوزاً. التسميات
+      // الحقيقية في شاشاتها يحرسها `kurdish_geometry_test` الذي يسقط عند أي
+      // بلاغٍ كهذا.
     } else {
       previous?.call(details);
     }

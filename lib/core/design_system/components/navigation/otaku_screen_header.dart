@@ -6,6 +6,7 @@ import '../../tokens/app_dimens.dart';
 import '../../tokens/app_fonts.dart';
 import '../../tokens/app_theme_colors.dart';
 import '../../../../features/visuals/presentation/character_artwork.dart';
+import '../typography/bounded_text.dart';
 
 /// نمط ترويسة الشاشة في تصميم Otaku Galaxy v2.
 enum OtakuHeaderVariant {
@@ -158,6 +159,14 @@ enum OtakuHeaderVariant {
 
   bool get _onGradient => variant == OtakuHeaderVariant.gradient;
 
+  /// أقصى ما يأخذه [trailing] في الترويسة المضغوطة من عرض السطر.
+  ///
+  /// [CRITICAL] كان الإجراء الجانبي يأخذ عرض تسميته كاملاً ويُعطى العنوان
+  /// ما يبقى: «هەمووی وەک خوێندراوە نیشان بکە» الكردية تركت للعنوان بضع
+  /// بكسلات فالتفّ حرفاً حرفاً (+٢٠٨ عند ×١٫٣). الحدّ للمساحة لا للغة:
+  /// تسميةٌ أقصر منه لا تتغيّر، وأطول منه تُصغَّر داخله (`AnimeTextButton`).
+  static const double compactTrailingMaxFraction = 0.45;
+
   // [CRITICAL] لا ستارة داكنة فوق التدرّج — أُزيلت عمداً.
   //
   // كانت `ColoredBox(Colors.black @ 0.28)` تملأ الترويسة فوق تدرّج القسم،
@@ -271,8 +280,18 @@ enum OtakuHeaderVariant {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text(
+                              // [CRITICAL] العنوان والسطر الوصفي منطقتا سطرٍ واحد
+                              // (`BoundedText`): نصٌّ أطول يُصغَّر داخل سطره حتى
+                              // ٠٫٨ بدل أن يلتفّ فيُطيل الترويسة ويدفع الشاشة
+                              // كلها — بكل لغة. سطرٌ ثانٍ فقط حين لا يتّسع حتى
+                              // عند الحدّ. الحدّ من مقاس التصميم ([PRODUCT]
+                              // 2026-10-05): عند ×١٫٣ لا يصغر عن ٠٫٨ من مقاسه
+                              // بلا تكبير — كتسميات الأزرار.
+                              BoundedText(
                                 title,
+                                maxLines: 2,
+                                floorAtDesignSize: true,
+                                alignment: AlignmentDirectional.topStart,
                                 style: theme.textTheme.titleLarge?.copyWith(
                                   fontFamily: AppFonts.heading,
                                   fontFamilyFallback: AppFonts.headingFallback,
@@ -298,8 +317,11 @@ enum OtakuHeaderVariant {
                                     _ => 2,
                                   },
                                 ),
-                                Text(
+                                BoundedText(
                                   subtitle!,
+                                  maxLines: 3,
+                                  floorAtDesignSize: true,
+                                  alignment: AlignmentDirectional.topStart,
                                   style: theme.textTheme.bodySmall?.copyWith(
                                     fontSize: switch (variant) {
                                       OtakuHeaderVariant.gradient => 12.5,
@@ -328,7 +350,13 @@ enum OtakuHeaderVariant {
     );
   }
 
-  Widget _buildCompactRow(BuildContext context, Color onInk) {
+  Widget _buildCompactRow(BuildContext context, Color onInk) =>
+      LayoutBuilder(
+        builder: (context, constraints) =>
+            _compactRow(context, onInk, constraints.maxWidth),
+      );
+
+  Widget _compactRow(BuildContext context, Color onInk, double rowWidth) {
     final theme = Theme.of(context);
     return Row(
       children: [
@@ -338,8 +366,10 @@ enum OtakuHeaderVariant {
           OtakuHeaderButton.back(onTap: onBack!, onGradient: _onGradient),
         if (onBack != null || leading != null) const SizedBox(width: 12),
         Expanded(
-          child: Text(
+          child: BoundedText(
             title,
+            maxLines: 2,
+            floorAtDesignSize: true,
             style: theme.textTheme.titleLarge?.copyWith(
               fontFamily: AppFonts.heading,
               fontFamilyFallback: AppFonts.headingFallback,
@@ -351,7 +381,13 @@ enum OtakuHeaderVariant {
           ),
         ),
         for (final action in actions) ...[const SizedBox(width: 8), action],
-        ?trailing,
+        if (trailing != null)
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: rowWidth * compactTrailingMaxFraction,
+            ),
+            child: trailing,
+          ),
       ],
     );
   }

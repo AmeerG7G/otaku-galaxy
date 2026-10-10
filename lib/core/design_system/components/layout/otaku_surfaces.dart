@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../typography/bounded_text.dart';
 import '../../tokens/app_colors.dart';
 import '../../tokens/app_dimens.dart';
 import '../../tokens/app_fonts.dart';
@@ -222,6 +223,7 @@ class OtakuStatusPill extends StatelessWidget {
     required this.color,
     this.showDot = true,
     this.fontSize = 10.5,
+    this.labelTranslations = const [],
   });
 
   final String label;
@@ -229,37 +231,89 @@ class OtakuStatusPill extends StatelessWidget {
   final bool showDot;
   final double fontSize;
 
+  /// ترجمات [label] بكل اللغات. الكبسولة تلتفّ على تسميتها؛ حين يحدّها أبٌ
+  /// تُصغَّر التسمية حتى ٠٫٨، وتحجز سطراً ثانياً — بكل لغة — حيث لا تتّسع
+  /// إحدى ترجماتها حتى عنده (`BoundedText.reserveFor`).
+  final List<String> labelTranslations;
+
   @override
   Widget build(BuildContext context) {
+    final style = Theme.of(context).textTheme.labelSmall?.copyWith(
+      fontSize: fontSize,
+      height: 1.2,
+      fontWeight: AppDimens.weightBold,
+      color: color,
+    );
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(AppDimens.radiusFull),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (showDot) ...[
-            Container(
-              width: 6,
-              height: 6,
-              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-            ),
-            const SizedBox(width: 5),
-          ],
-          Text(
-            label,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              fontSize: fontSize,
-              height: 1.2,
-              fontWeight: AppDimens.weightBold,
-              color: color,
-            ),
-          ),
-        ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final available = constraints.maxWidth - (showDot ? 11 : 0);
+          // التسمية تتّسع بمقاسها، وكل ترجمةٍ تتّسع لسطرٍ عند الحدّ الأدنى (فلا
+          // سطر محجوز): النصّ كما كان (`Text` بلا حدّ) — بكسلاً بكسل. وإلا
+          // فمنطقةٌ مرنة تُصغَّر أو تحجز على العرض المتاح.
+          final fitsAsIs =
+              !constraints.hasBoundedWidth ||
+              (_naturalWidth(context, label, style) <= available &&
+                  labelTranslations.every(
+                    (t) =>
+                        _naturalWidth(context, t, style) *
+                            kBoundedTextMinScale <=
+                        available,
+                  ));
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (showDot) ...[
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: color,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 5),
+              ],
+              if (fitsAsIs)
+                Text(label, style: style)
+              else
+                Flexible(
+                  child: BoundedText(
+                    label,
+                    maxLines: 2,
+                    reserveFor: labelTranslations,
+                    style: style,
+                  ),
+                ),
+            ],
+          );
+        },
       ),
     );
+  }
+
+  static double _naturalWidth(
+    BuildContext context,
+    String text,
+    TextStyle? style,
+  ) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: DefaultTextStyle.of(context).style.merge(style),
+      ),
+      textScaler: MediaQuery.textScalerOf(context),
+      textDirection: Directionality.of(context),
+      maxLines: 1,
+    )..layout();
+    final width = painter.width;
+    painter.dispose();
+    return width;
   }
 }
 

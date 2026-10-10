@@ -62,6 +62,9 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                         title: context.strings('browsingAsGuest'),
                         body:
                             context.g(GenderedStrings.loginToFollow),
+                        titleTranslations: AppStrings.across('browsingAsGuest'),
+                        bodyTranslations:
+                            context.gAcross(GenderedStrings.loginToFollow),
                         icon: Icons.favorite_outline,
                         onLogin: () => context.router.push(const LoginRoute()),
                       ),

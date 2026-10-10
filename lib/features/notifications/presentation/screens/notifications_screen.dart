@@ -88,6 +88,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   trailing: state.hasUnread
                       ? AnimeTextButton(
                           label: context.strings('markAllRead'),
+                          // حيث لا تتّسع التسمية بجوار العنوان حتى عند الحدّ
+                          // (الكردية): الإجراء نفسه أيقونةً ([PRODUCT]
+                          // 2026-10-05). القرار بالمساحة لا باللغة.
+                          fallbackIcon: Icons.done_all_rounded,
                           onPressed: () =>
                               context.read<NotificationsCubit>().markAllRead(),
                         )

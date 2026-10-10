@@ -418,8 +418,14 @@ class _GuestCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          Text(
+          // [PRODUCT] فقرةٌ تحجز أسطر أطول ترجماتها (2026-10-05): الكردية أطول
+          // بسطرٍ أو اثنين، فكانت البطاقة تطول بها وتدفع كل ما تحتها.
+          BoundedText(
             context.g(GenderedStrings.loginToFollow),
+            reserveFor: context.gAcross(GenderedStrings.loginToFollow),
+            maxLines: 8,
+            minScale: 1,
+            alignment: Alignment.topCenter,
             textAlign: TextAlign.center,
             style: theme.textTheme.bodySmall?.copyWith(
               fontSize: 12.5,
