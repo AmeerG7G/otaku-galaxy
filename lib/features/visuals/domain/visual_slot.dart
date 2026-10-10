@@ -223,12 +223,15 @@ class CharacterArt {
   static const String onboardingProductPhoto = 'assets/art/characters/7.png';
 
   // الأقسام حين لا أقسام إطلاقاً: بلا رسم منذ حذف الصورة 37 (2026-09-28).
-  // تفاصيل مجموعة فارغة: بلا رسم منذ حذف الصورة 38 (2026-10-04).
+
+  /// تفاصيل مجموعة — حين لا منتجات فيها.
+  static const String emptyCollection = 'assets/art/characters/38.png';
 
   /// كل رسمٍ ثابت خارج [assets] — تستعملها الاختبارات للتحقق من التغطية.
   static const List<String> fixed = [
     splashBackdrop,
     onboardingProductPhoto,
+    emptyCollection,
   ];
 
   /// أصل الموضع الثابت. كل مفاتيح `VisualSlots` في [assets] (يحرسه

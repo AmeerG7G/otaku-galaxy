@@ -109,12 +109,11 @@ void main() {
     expect(CharacterArt.forSlot(VisualSlots.categoriesHeader), '$dir/39.png');
   });
 
-  // ── 2: 38 حُذفت (2026-10-04) ─────────────────────────────────────────────
+  // ── 2: 38 مستعملة من emptyCollection ────────────────────────────────────
 
-  test('[CRITICAL] 2 — 38.png لا وجود لها ولا يشير إليها موضع', () {
-    expect(File('$dir/38.png').existsSync(), isFalse);
-    expect(CharacterArt.assets.values, isNot(contains('$dir/38.png')));
-    expect(CharacterArt.fixed, isNot(contains('$dir/38.png')));
+  test('[CRITICAL] 2 — emptyCollection تستخدم 38.png وهي موجودة', () {
+    expect(CharacterArt.emptyCollection, '$dir/38.png');
+    expect(File('$dir/38.png').existsSync(), isTrue);
   });
 
   // ── 3: الرسم خارج OtakuScreenHeader ─────────────────────────────────────
