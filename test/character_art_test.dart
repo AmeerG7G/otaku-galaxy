@@ -91,6 +91,9 @@ const _retired = <int, String>{
   36: 'copy of 32; splash backdrop now uses 32',
   37: 'deleted; empty categories state has no character',
   38: 'deleted 2026-10-04; empty collection state has no character (not replaced)',
+  40: 'never committed: a fully opaque 860x951 image (background not removed) was untracked in the working tree on 2026-10-04 21:30 and is not in the tree now; no slot used it; not the source of 41/43/45',
+  42: 'never committed: a fully opaque 860x957 image (background not removed) was untracked in the working tree on 2026-10-04 21:30 and is not in the tree now; no slot used it; not the source of 41/43/45',
+  44: 'no file found in any commit, branch or worktree; no slot uses it',
 };
 
 /// مواضع أُزيلت رسومها (2026-09-28) — لا تعود فتحاتٍ.
