@@ -180,10 +180,6 @@ const _knownBugs = <String, int>{
   'galaxy-points@412x3000@1.3': 7,
   'galaxy-points@412x892@1.0': 5,
   'galaxy-points@412x892@1.3': 5,
-  'home@320x3000@1.3': 92,
-  'home@320x568@1.3': 17,
-  'home@412x3000@1.3': 79,
-  'home@412x892@1.3': 28,
   'offline@320x3000@1.3': 7,
   'offline@320x568@1.3': 1,
   'offline@375x812@1.0': 7,
@@ -249,20 +245,6 @@ const _knownBugs = <String, int>{
 
 /// [RATCHET] تجاوزاتٌ كردية لا تقع بالعربية: «شاشة@مقاس: جهة @ ملف».
 const _knownKurdishOverflows = <String>{
-'account-guest@320x3000@1.3: right @ lib/features/home/presentation/screens/home_screen.dart',
-  'account-guest@320x568@1.3: right @ lib/features/home/presentation/screens/home_screen.dart',
-  'account@320x3000@1.3: right @ lib/features/home/presentation/screens/home_screen.dart',
-  'account@320x568@1.3: right @ lib/features/home/presentation/screens/home_screen.dart',
-  'cart-guest@320x3000@1.3: right @ lib/features/home/presentation/screens/home_screen.dart',
-  'cart-guest@320x568@1.3: right @ lib/features/home/presentation/screens/home_screen.dart',
-  'cart@320x3000@1.3: right @ lib/features/home/presentation/screens/home_screen.dart',
-  'cart@320x568@1.3: right @ lib/features/home/presentation/screens/home_screen.dart',
-  'categories@320x3000@1.3: right @ lib/features/home/presentation/screens/home_screen.dart',
-  'categories@320x568@1.3: right @ lib/features/home/presentation/screens/home_screen.dart',
-  'community@320x3000@1.3: right @ lib/features/home/presentation/screens/home_screen.dart',
-  'community@320x568@1.3: right @ lib/features/home/presentation/screens/home_screen.dart',
-  'home@320x3000@1.3: right @ lib/features/home/presentation/screens/home_screen.dart',
-  'home@320x568@1.3: right @ lib/features/home/presentation/screens/home_screen.dart',
   'order-detail@320x3000@1.3: right @ lib/features/orders/presentation/screens/order_detail_screen.dart',
 };
 

@@ -7,6 +7,7 @@ import '../../../../core/design_system/design_system.dart';
 import '../../../visuals/domain/visual_slot.dart';
 import '../../../visuals/presentation/character_artwork.dart';
 import '../../../products/domain/entities/banner.dart' as model;
+import '../../../settings/presentation/cubit/locale_cubit.dart';
 
 /// عنوان قسم بتصميم v2: عنوان عريض بخط Tajawal + رابط «عرض الكل» اختياري.
 class SectionHeader extends StatelessWidget {
@@ -136,6 +137,19 @@ class HomeHeroCard extends StatelessWidget {
     // نصّ البنر بلغة الواجهة الآن — الكردية الناقصة تسقط إلى العربية والعكس.
     final title = banner?.titleIn(context.language);
     final subtitle = banner?.subtitleIn(context.language);
+    // [CRITICAL] (البوّابة ٥، 2026-10-10) نصّا البطل منطقتان تحجزان ما تحتاجه
+    // أطول ترجمتيهما (`BoundedText.reserveFor`): ارتفاع البطاقة يتبع النصّ،
+    // والشخصية موسَّطةٌ فيها — عنوانٌ كردي أطول بسطرٍ كان يطيلها ٣٩ ويُنزل
+    // الشخصية ١٩٫٥ عند ×١٫٣. الأطول يُصغَّر أولاً حتى ٠٫٨، ولا يُحجز سطرٌ
+    // زائد بكل لغة إلا لما لا يتّسع حتى عنده.
+    final titles = [
+      for (final l in AppLanguage.values)
+        banner?.titleIn(l) ?? AppStrings.of(l)('heroNewSeason'),
+    ];
+    final subtitles = [
+      for (final l in AppLanguage.values)
+        banner?.subtitleIn(l) ?? AppStrings.of(l)('heroNewCollection'),
+    ];
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
       child: Container(
@@ -193,8 +207,10 @@ class HomeHeroCard extends StatelessWidget {
                           AppDimens.radiusFull,
                         ),
                       ),
-                      child: Text(
+                      child: BoundedText(
                         subtitle ?? context.strings('heroNewCollection'),
+                        maxLines: 2,
+                        reserveFor: subtitles,
                         style: Theme.of(context).textTheme.labelSmall?.copyWith(
                           fontSize: 10.5,
                           fontWeight: AppDimens.weightExtraBold,
@@ -203,8 +219,11 @@ class HomeHeroCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: AppDimens.space4),
-                    Text(
+                    BoundedText(
                       title ?? context.strings('heroNewSeason'),
+                      maxLines: 6,
+                      reserveFor: titles,
+                      alignment: AlignmentDirectional.topStart,
                       style: Theme.of(context).textTheme.headlineSmall
                           ?.copyWith(
                             fontSize: 23,
@@ -550,16 +569,29 @@ class DeliveryAssuranceStrip extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
+                  // [CRITICAL] (البوّابة ٥، 2026-10-10) ارتفاع البطاقة يتبع
+                  // نصّها، والرسم 11 ونسخته العلوية مثبَّتان بأسفلها — نصٌّ
+                  // كردي أطول كان يطيلها +٥٩ ويُنزل الشخصية ٩٨ عند ×١٫٣.
+                  // العنوان سطرٌ يُصغَّر أولاً، والتوضيح فقرة: كلاهما يحجز ما
+                  // تحتاجه أطول ترجماته، فالبطاقة — ومعها 11 — بارتفاعٍ واحد
+                  // في كل لغة. الرسم ونسخته وموضعاهما كما هي.
+                  BoundedText(
                     context.strings('deliveryAllGovernorates'),
+                    maxLines: 3,
+                    reserveFor: AppStrings.across('deliveryAllGovernorates'),
+                    alignment: AlignmentDirectional.topStart,
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
                       fontSize: 16,
                       fontWeight: AppDimens.weightExtraBold,
                     ),
                   ),
                   const SizedBox(height: AppDimens.space2),
-                  Text(
+                  BoundedText(
                     context.strings('deliveryCodWhatsapp'),
+                    maxLines: 8,
+                    minScale: 1,
+                    reserveFor: AppStrings.across('deliveryCodWhatsapp'),
+                    alignment: AlignmentDirectional.topStart,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       fontSize: 12.5,
                       height: 1.7,

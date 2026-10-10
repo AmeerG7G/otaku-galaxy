@@ -344,6 +344,15 @@ void main() {
       expect(_renderedSize(tester), 25);
     });
 
+    testWidgets('لا تصغير بلا داعٍ: المنطقة لا تقلّ عن أسطر أقصر النصوص الطبيعية', (tester) async {
+      // كلاهما يلتفّ سطرين بمقاسه في ١٣٥، وكلاهما يتّسع لسطرٍ عند ٠٫٨: لا نصّ
+      // أطول من أقصرهما، فلا يُصغَّر أيٌّ منهما.
+      final errors = await _pump(tester, 'لنُهيّئ تجربتكم', width: 135, maxLines: 3, reserveFor: ['بۆ ئەزموونەکەت']);
+      expect(errors, isEmpty);
+      expect(_renderedSize(tester), 25);
+      expect(tester.getSize(find.byKey(_probe)).height, 2 * _lineHeight(1));
+    });
+
     testWidgets('نصوصٌ بالطول نفسه: لا سطر زائد', (tester) async {
       await _pump(tester, _shortArabic, reserveFor: ['لنُهيّئ تجربتك']);
       expect(tester.getSize(find.byKey(_probe)).height, _lineHeight(1));

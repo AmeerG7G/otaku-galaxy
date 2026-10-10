@@ -231,6 +231,14 @@ class _Fit {
     return fits;
   }
 
+  /// أسطر [text] بمقاسه الأصلي في [maxWidth] بلا حدّ.
+  int _naturalLines(String text, double maxWidth) {
+    final painter = _painter(1, null, text)..layout(maxWidth: maxWidth);
+    final count = painter.computeLineMetrics().length;
+    painter.dispose();
+    return count;
+  }
+
   /// أقلّ عدد أسطرٍ (من [lines] إلى [maxLines]) يتّسع فيه [text] عند الحدّ
   /// الأدنى؛ وإلا فـ[maxLines].
   int _linesFor(String? text, double maxWidth) {
@@ -244,10 +252,24 @@ class _Fit {
   /// المقاس وعدد الأسطر لعرض [maxWidth]. عرضٌ غير محدود: المقاس الأصلي.
   ///
   /// مع [reserveFor]: عدد الأسطر أكثرُ ما يحتاجه أيٌّ من النصوص بقواعد المنطقة
-  /// نفسها، ثم يُوضَع [data] فيه كالمعتاد (أصلياً إن اتّسع، وإلا مصغَّراً).
+  /// نفسها، ولا يقلّ عن أسطر **أقصرها** بمقاسه الأصلي — ثم يُوضَع [data] فيه
+  /// كالمعتاد (أصلياً إن اتّسع، وإلا مصغَّراً).
+  ///
+  /// [CRITICAL] (2026-10-10) الحدّ الأدنى «أسطر الأقصر الطبيعية»: بدونه تُحسب
+  /// المنطقة بالمقاس الأدنى لكل نصّ، فعنوانٌ يلتفّ طبيعياً ثلاثة أسطر ويتّسع
+  /// لسطرين عند ٠٫٨ كان سيُصغَّر إلى سطرين وإن لم تحتج أيّ ترجمة إلى ذلك. الآن
+  /// لا يُصغَّر إلا النصّ الأطول من أقصر الترجمات، ولا يُحجز سطرٌ زائد إلا لما
+  /// لا يتّسع حتى عند الحدّ. للفقرة (`minScale: 1`) لا فرق: أسطرها الطبيعية.
   _FitResult resolve(double maxWidth) {
     if (!maxWidth.isFinite) return (scale: 1.0, lines: lines, unfit: false);
     var used = _linesFor(null, maxWidth);
+    if (reserveFor.isNotEmpty) {
+      var shortest = maxLines;
+      for (final text in [data, ...reserveFor]) {
+        shortest = math.min(shortest, _naturalLines(text, maxWidth));
+      }
+      used = math.max(used, shortest);
+    }
     for (final text in reserveFor) {
       used = math.max(used, _linesFor(text, maxWidth));
     }
