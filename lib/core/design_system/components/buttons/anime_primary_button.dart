@@ -111,7 +111,16 @@ class AnimePrimaryButton extends StatelessWidget {
     // الزرّ تُصغَّر بدل أن تلتفّ أو تتجاوز (كان الزرّ يتجاوز ٦٢ بكسل بالكردية
     // على ٣٢٠×١٫٣). الحدّ ٠٫٨ من مقاس التصميم ([PRODUCT] 2026-10-05): عند
     // ×١٫٣ نحو ٠٫٦٢ من المكبَّر. تسميةٌ تتّسع لا تتغيّر.
-    final text = BoundedText(label, floorAtDesignSize: true);
+    //
+    // (2026-10-12) تسميةٌ لا تتّسع لسطرٍ حتى عند الحدّ تأخذ سطراً ثانياً
+    // موسَّطاً — داخل ارتفاع الزرّ الثابت وحده (`BoundedText` لا يطول أبعد مما
+    // يمنحه الأب)، كما كان `Text` يلتفّ قبل البوّابة ٤؛ وإلا فتُبلَّغ.
+    final text = BoundedText(
+      label,
+      floorAtDesignSize: true,
+      maxLines: 2,
+      textAlign: TextAlign.center,
+    );
     if (icon == null) return text;
 
     final iconWidget = Icon(icon, size: AppDimens.iconMd);

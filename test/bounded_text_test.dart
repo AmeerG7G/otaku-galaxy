@@ -230,6 +230,52 @@ void main() {
       expect(errors, hasLength(1), reason: 'يُبلَّغ بدل أن يُكسر داخل الكلمة');
     });
 
+    testWidgets('لا يطول أبعد مما يمنحه الأب: سطرٌ لا يتّسع له يُبلَّغ لا يُقصّ', (tester) async {
+      final lineHeight = _lineHeight(1);
+      final free = await _pump(tester, _longKurdish, maxLines: 8);
+      expect(free, isEmpty);
+      final n = (tester.getSize(find.byKey(_probe)).height / lineHeight).round();
+
+      Future<List<FlutterErrorDetails>> inParent(double height) async {
+        final errors = <FlutterErrorDetails>[];
+        final previous = FlutterError.onError;
+        FlutterError.onError = errors.add;
+        try {
+          await tester.pumpWidget(
+            Directionality(
+              textDirection: TextDirection.rtl,
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: SizedBox(
+                  width: 140,
+                  height: height,
+                  child: Align(
+                    child: BoundedText(
+                      _longKurdish,
+                      key: _probe,
+                      style: _base,
+                      maxLines: 8,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        } finally {
+          FlutterError.onError = previous;
+        }
+        return errors;
+      }
+
+      // أبٌ يتّسع لـn سطراً: النموّ نفسه.
+      expect(await inParent(n * lineHeight), isEmpty);
+      expect(tester.getSize(find.byKey(_probe)).height, closeTo(n * lineHeight, 0.01));
+      // أبٌ أقصر بنصف سطر: يقف عند n − 1، ولا يتّسع فيه النصّ فيُبلَّغ.
+      expect(await inParent((n - 0.5) * lineHeight), hasLength(1));
+      expect(tester.getSize(find.byKey(_probe)).height, closeTo((n - 1) * lineHeight, 0.01));
+      expect(_paragraph(tester).maxLines, n - 1);
+    });
+
     testWidgets('لا يتجاوز maxLines: ما لا يتّسع فيه يُبلَّغ', (tester) async {
       final errors = await _pump(tester, _longKurdish, maxLines: 2);
       expect(errors, hasLength(1));
