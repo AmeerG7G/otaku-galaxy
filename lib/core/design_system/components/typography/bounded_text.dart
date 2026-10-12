@@ -23,6 +23,8 @@ const double kBoundedTextMinScale = 0.8;
 /// - **النموّ قرارٌ صريح**: [maxLines] (افتراضه [lines]) يسمح للمنطقة أن
 ///   تطول سطراً فسطراً **فقط** حين لا يتّسع النصّ لـ[lines] حتى عند
 ///   [minScale] — مقاسٌ ضيّق مع خطٍّ مكبَّر. ما دام يتّسع فالمنطقة [lines].
+///   ولا تطول أبعد من الارتفاع الذي يمنحه الأب (زرٌّ ثابت الارتفاع): سطرٌ لا
+///   يتّسع له الأب ليس نموّاً بل قصّ، فيبقى النصّ «لا يتّسع» ويُبلَّغ.
 /// - **لا قطع صامت**: نصٌّ لا يتّسع حتى عند [minScale] يُبلَّغ خطأً في
 ///   وضع التطوير (`FlutterError.reportError`، كما يُبلَّغ التجاوز) فتلتقطه
 ///   الاختبارات. يُرسم حينها بالحدّ الأدنى مقصوصاً — ويبقى الإطار ثابتاً.
@@ -115,7 +117,7 @@ class BoundedText extends StatelessWidget {
     return _BoundedLayout(
       fit: fit,
       builder: (context, constraints) {
-        final result = fit.resolve(constraints.maxWidth);
+        final result = fit.resolve(constraints.maxWidth, constraints.maxHeight);
         final fallback = result.unfit ? whenUnfit : null;
         if (result.unfit && fallback == null) {
           _reportUnfit(constraints.maxWidth, result.lines, fit.minScale);
@@ -231,11 +233,19 @@ class _Fit {
     return fits;
   }
 
-  /// أقلّ عدد أسطرٍ (من [lines] إلى [maxLines]) يتّسع فيه [text] عند الحدّ
-  /// الأدنى؛ وإلا فـ[maxLines].
-  int _linesFor(String? text, double maxWidth) {
+  /// أقصى ما تطوله المنطقة: [maxLines]، ولا أكثر مما يتّسع له [maxHeight]
+  /// (ولا أقلّ من [lines] — المنطقة المصمَّمة لا تُقصّ).
+  int _capFor(double maxHeight) {
+    if (!maxHeight.isFinite) return maxLines;
+    final room = (maxHeight / lineHeight + 0.001).floor();
+    return math.max(lines, math.min(maxLines, room));
+  }
+
+  /// أقلّ عدد أسطرٍ (من [lines] إلى [cap]) يتّسع فيه [text] عند الحدّ
+  /// الأدنى؛ وإلا فـ[cap].
+  int _linesFor(String? text, double maxWidth, int cap) {
     var used = lines;
-    while (used < maxLines && !_fits(minScale, used, maxWidth, text)) {
+    while (used < cap && !_fits(minScale, used, maxWidth, text)) {
       used++;
     }
     return used;
@@ -245,11 +255,14 @@ class _Fit {
   ///
   /// مع [reserveFor]: عدد الأسطر أكثرُ ما يحتاجه أيٌّ من النصوص بقواعد المنطقة
   /// نفسها، ثم يُوضَع [data] فيه كالمعتاد (أصلياً إن اتّسع، وإلا مصغَّراً).
-  _FitResult resolve(double maxWidth) {
+  ///
+  /// [maxHeight] (ما يمنحه الأب) يحدّ النموّ: انظر [_capFor].
+  _FitResult resolve(double maxWidth, [double maxHeight = double.infinity]) {
     if (!maxWidth.isFinite) return (scale: 1.0, lines: lines, unfit: false);
-    var used = _linesFor(null, maxWidth);
+    final cap = _capFor(maxHeight);
+    var used = _linesFor(null, maxWidth, cap);
     for (final text in reserveFor) {
-      used = math.max(used, _linesFor(text, maxWidth));
+      used = math.max(used, _linesFor(text, maxWidth, cap));
     }
     if (_fits(1, used, maxWidth)) {
       return (scale: 1.0, lines: used, unfit: false);
@@ -273,7 +286,7 @@ class _Fit {
 
   /// حجم المنطقة كما ترسمها الشجرة: ارتفاعها ثابت، وعرضها عرض النصّ.
   Size sizeFor(BoxConstraints constraints) {
-    final result = resolve(constraints.maxWidth);
+    final result = resolve(constraints.maxWidth, constraints.maxHeight);
     final painter = _painter(result.scale, result.lines)
       ..layout(maxWidth: constraints.maxWidth);
     final width = painter.width;

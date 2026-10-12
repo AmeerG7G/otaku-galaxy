@@ -6,6 +6,7 @@
 // القياس بالخطوط الحقيقية (`loadProjectFonts`).
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otaku_galaxy/core/design_system/design_system.dart';
 
@@ -138,6 +139,63 @@ void main() {
       final base = AppTheme.light.textTheme.labelLarge!.fontSize!;
       expect(size, lessThan(base * kBoundedTextMinScale));
       expect(size * 1.3, greaterThanOrEqualTo(base * kBoundedTextMinScale - 0.01));
+    });
+
+    // (2026-10-12) تسميةٌ لا تتّسع لسطرٍ حتى عند الحدّ تأخذ سطراً ثانياً —
+    // داخل ارتفاع الزرّ الثابت وحده. ١٦٠ عرضاً: ١١٢ للتسمية، وهي ~١٤١ عند ٠٫٨.
+    const longLabel = 'إتمام الطلب الآن مع التوصيل';
+    Finder labelText() => find.descendant(
+      of: find.byType(BoundedText),
+      matching: find.byType(RichText),
+    );
+
+    testWidgets('لا تتّسع لسطرٍ عند الحدّ: سطران موسَّطان والزرّ بارتفاعه', (tester) async {
+      final errors = await _pump(
+        tester,
+        SizedBox(
+          width: 160,
+          child: AnimePrimaryButton(label: longLabel, onPressed: () {}),
+        ),
+      );
+      expect(errors, isEmpty);
+      final button = tester.getRect(find.byType(AnimePrimaryButton));
+      expect(button.height, AppDimens.buttonHeightLg);
+      final paragraph = tester.renderObject<RenderParagraph>(labelText());
+      expect(paragraph.maxLines, 2);
+      expect(paragraph.textAlign, TextAlign.center);
+      expect(paragraph.didExceedMaxLines, isFalse);
+      final label = tester.getRect(find.byType(BoundedText));
+      expect(button.intersect(label), label, reason: 'التسمية داخل الزرّ');
+    });
+
+    testWidgets('×1.3: سطران أطول من ارتفاع الزرّ — يُبلَّغ ولا يُقصّ خلسة', (tester) async {
+      // سطران بـ×١٫٣ = ٥٤ > ٥٢: لا نموّ، فيبقى سطراً واحداً لا يتّسع.
+      final errors = await _pump(
+        tester,
+        SizedBox(
+          width: 160,
+          child: AnimePrimaryButton(label: longLabel, onPressed: () {}),
+        ),
+        textScale: 1.3,
+      );
+      expect(errors, hasLength(1));
+      expect(tester.renderObject<RenderParagraph>(labelText()).maxLines, 1);
+      expect(
+        tester.getSize(find.byType(AnimePrimaryButton)).height,
+        AppDimens.buttonHeightLg,
+      );
+    });
+
+    testWidgets('تتّسع لسطر: سطرٌ واحد كما كان', (tester) async {
+      final errors = await _pump(
+        tester,
+        SizedBox(
+          width: 284,
+          child: AnimePrimaryButton(label: longLabel, onPressed: () {}),
+        ),
+      );
+      expect(errors, isEmpty);
+      expect(tester.renderObject<RenderParagraph>(labelText()).maxLines, 1);
     });
   });
 
