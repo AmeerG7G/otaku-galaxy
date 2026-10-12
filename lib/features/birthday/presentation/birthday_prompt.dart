@@ -7,6 +7,7 @@ import '../../../core/design_system/design_system.dart';
 import '../../../core/di/injection_container.dart';
 import '../../../core/errors/app_exception.dart';
 import '../data/birthday_storage.dart';
+import '../../settings/presentation/cubit/locale_cubit.dart';
 
 /// ورقة إدخال تاريخ الميلاد — التنفيذ الوحيد في التطبيق.
 ///
@@ -111,11 +112,25 @@ class _BirthdayFormState extends State<_BirthdayForm> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              // [CRITICAL] (البوّابة ٨، 2026-10-10) فقرةٌ تحجز أسطر أطول
+              // ترجماتها: الكردية أطول بسطر عند ×١٫٣ فكانت الورقة تطول ٣٠.
+              // مقدّمةٌ يمرّرها المستدعي: بلغته وحدها.
+              BoundedText(
                 widget.intro ??
                     context.strings.p('birthdayPromptShort', {
                       'percent': '${birthday.discountPercent}',
                     }),
+                maxLines: 12,
+                minScale: 1,
+                reserveFor: widget.intro != null
+                    ? const []
+                    : [
+                        for (final l in AppLanguage.values)
+                          AppStrings.of(l).p('birthdayPromptShort', {
+                            'percent': '${birthday.discountPercent}',
+                          }),
+                      ],
+                alignment: AlignmentDirectional.topStart,
                 style: theme.textTheme.bodySmall?.copyWith(
                   fontSize: 13,
                   height: 1.75,

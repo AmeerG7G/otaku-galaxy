@@ -98,6 +98,8 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
       return AnimeEmptyState(
         title: context.strings('favoritesEmptyTitle'),
         subtitle: context.g(GenderedStrings.tapHeartToSave),
+        titleTranslations: AppStrings.across('favoritesEmptyTitle'),
+        subtitleTranslations: context.gAcross(GenderedStrings.tapHeartToSave),
         artworkSlot: VisualSlots.emptyFavorites,
         actionLabel: context.strings('discover'),
         onAction: () {

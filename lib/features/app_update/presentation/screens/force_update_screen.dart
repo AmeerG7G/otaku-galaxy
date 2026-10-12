@@ -196,8 +196,14 @@ class _UpdateCard extends StatelessWidget {
             color: AppColors.secondary,
           ),
           const SizedBox(height: 20),
-          Text(
+          // [CRITICAL] (البوّابة ٨، 2026-10-10) عنوانٌ يُصغَّر أولاً ورسالةٌ
+          // فقرة، وكلاهما يحجز أطول ترجماته: نصٌّ كردي أطول كان يطيل البطاقة
+          // ٥٧–٧٤ ويُنزل زرّ التحديث.
+          BoundedText(
             context.strings('updateRequiredTitle'),
+            maxLines: 3,
+            reserveFor: AppStrings.across('updateRequiredTitle'),
+            alignment: AlignmentDirectional.topStart,
             style: theme.textTheme.headlineSmall?.copyWith(
               fontFamily: AppFonts.heading,
               fontFamilyFallback: AppFonts.headingFallback,
@@ -207,8 +213,12 @@ class _UpdateCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          Text(
+          BoundedText(
             message,
+            maxLines: 12,
+            minScale: 1,
+            reserveFor: AppStrings.across(ForceUpdateScreen.defaultMessageKey),
+            alignment: AlignmentDirectional.topStart,
             style: theme.textTheme.bodyMedium?.copyWith(
               fontSize: 14,
               height: 1.85,

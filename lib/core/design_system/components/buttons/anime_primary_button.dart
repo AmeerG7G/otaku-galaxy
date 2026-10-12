@@ -18,6 +18,7 @@ class AnimePrimaryButton extends StatelessWidget {
     this.gradient,
     this.glowEnabled = true,
     this.borderRadius,
+    this.horizontalPadding = AppDimens.space7,
   });
 
   final String label;
@@ -33,6 +34,11 @@ class AnimePrimaryButton extends StatelessWidget {
   /// نصف قطر مخصّص. الافتراضي [AppDimens.radiusLg] كما هو في بقية الشاشات؛
   /// شاشات التصميم التي تطلب r-m (٢٢) تمرّره صراحةً.
   final double? borderRadius;
+
+  /// حشوة التسمية الأفقية. الافتراضي ٢٤؛ صفٌّ ضيّق (زرٌّ بجوار المجموع في
+  /// شريطٍ سفلي) يمرّر أقلّ ليتّسع لتسميته. التسمية موسَّطة، فتسميةٌ تتّسع لا
+  /// يتغيّر موضعها بتغيّر الحشوة.
+  final double horizontalPadding;
 
   @override
   Widget build(BuildContext context) {
@@ -76,7 +82,7 @@ class AnimePrimaryButton extends StatelessWidget {
             disabledForegroundColor: disabledInk,
             shadowColor: Colors.transparent,
             elevation: 0,
-            padding: EdgeInsets.symmetric(horizontal: AppDimens.space7),
+            padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(radius),
             ),

@@ -13,8 +13,12 @@
 //   أيقونة الزرّ).
 // - **button-label**: عنصرٌ داخل زرٍّ لم يتغيّر مستطيله، تحرّك أفقياً وحده —
 //   محتوى تسمية الزرّ نفسه (أيقونةٌ بجوار نصٍّ موسَّط فيه).
-// - **text-flow**: عنصرٌ تحرّك أفقياً وحده بمقدار ما اتّسعت مناطق النصّ
-//   الشقيقة له تماماً (±التسامح) — شريحةٌ تلي شريحةً أطول تسميةً في الصفّ.
+// - **text-flow**: عنصرٌ تحرّك أفقياً وحده بمقدارٍ يفسّره النصّ المجاور تماماً
+//   (±التسامح): مجموع اتّساع الشرائح **السابقة له في سطره** (شريحةٌ تلي شريحةً
+//   أطول تسميةً)، أو **نصف** اتّساع نصٍّ شقيق (أيقونة/نقطة موسَّطة مع
+//   تسميتها في مجموعةٍ واحدة). الدفع الكامل بنصٍّ شقيق ليس منها: bug.
+//
+// النصّ نفسه (`RichText`) يُسجَّل للمحاسبة وحدها — لا يُقارَن ولا يُعدّ.
 // - **bug**: كل ما عدا ذلك — عنصرٌ تحرّك أو تغيّر حجمه لأن نصّاً خارجه طال.
 //
 // القياس يقع على ما يُرسم فعلاً: عناصر التبويبات المخفية في `IndexedStack`
@@ -51,6 +55,7 @@ String? _kindOf(Widget w) {
   }
   if (w is EditableText) return 'input';
   if (w is Switch || w is Checkbox || w is Radio) return 'control';
+  if (w is RichText) return 'text';
   return null;
 }
 
@@ -95,14 +100,15 @@ bool _containsText(Element element) {
 /// كل العناصر غير النصّية المرسومة داخل الإطار [view]، مفهرسةً بمسارها.
 Map<String, GeoNode> collectGeometry(WidgetTester tester, {required Size view}) {
   final out = <String, GeoNode>{};
-  void visit(Element element, String path) {
+  void visit(Element element, String path, {bool inIcon = false}) {
     final counts = <String, int>{};
     element.visitChildren((child) {
       final type = child.widget.runtimeType.toString();
       final n = counts[type] = (counts[type] ?? -1) + 1;
       final childPath = '$path/$type#$n';
       final kind = _kindOf(child.widget);
-      if (kind != null) {
+      // نصّ الأيقونة (`Icon` يرسم بـ`RichText`) ليس نصّاً.
+      if (kind != null && !(kind == 'text' && inIcon)) {
         final ro = child.renderObject;
         if (ro is RenderBox && ro.attached && ro.hasSize && _painted(ro)) {
           final rect = MatrixUtils.transformRect(
@@ -125,7 +131,7 @@ Map<String, GeoNode> collectGeometry(WidgetTester tester, {required Size view}) 
           }
         }
       }
-      visit(child, childPath);
+      visit(child, childPath, inIcon: inIcon || child.widget is Icon);
     });
   }
 
@@ -213,21 +219,49 @@ GeoComparison compareGeometry(
   bool near(double v, double target) => (v - target).abs() <= tolerance;
 
   // انزياحٌ أفقي بحت = مجموع اتّساع مناطق النصّ الشقيقة (أكبرها في كل شقيق).
-  bool isTextFlow(String path, double dLeft) {
+  // اتّساع النصوص (للمحاسبة وحدها).
+  final textWidth = <String, double>{
+    for (final e in ar.entries)
+      if (e.value.kind == 'text' && ckb[e.key] != null)
+        e.key: (ckb[e.key]!.rect.width - e.value.rect.width).abs(),
+  };
+
+  (String, int) segment(String s) {
+    final i = s.lastIndexOf('#');
+    return (s.substring(0, i), int.parse(s.substring(i + 1)));
+  }
+
+  bool isTextFlow(String path, double dLeft, double top) {
     final segments = path.split('/');
+    final shift = dLeft.abs();
     for (var i = segments.length - 1; i > 0; i--) {
       final parent = segments.sublist(0, i).join('/');
       final own = segments[i];
-      final perSibling = <String, double>{};
+      final (ownType, ownIndex) = segment(own);
+      // (أ) شقيقاتٌ من النوع نفسه سابقةٌ له في سطره اتّسعت.
+      final preceding = <String, double>{};
       for (final r in regions) {
         if (!r.startsWith('$parent/')) continue;
         final sibling = r.substring(parent.length + 1).split('/').first;
         if (sibling == own) continue;
+        final (type, index) = segment(sibling);
+        if (type != ownType || index >= ownIndex) continue;
+        if ((ar[r]!.rect.top - top).abs() > tolerance) continue;
         final dw = (ckb[r]!.rect.width - ar[r]!.rect.width).abs();
-        perSibling[sibling] = math.max(perSibling[sibling] ?? 0, dw);
+        preceding[sibling] = math.max(preceding[sibling] ?? 0, dw);
       }
-      final total = perSibling.values.fold<double>(0, (a, b) => a + b);
-      if (total > tolerance && near(dLeft.abs(), total)) return true;
+      final pushed = preceding.values.fold<double>(0, (a, b) => a + b);
+      if (pushed > tolerance && near(shift, pushed)) return true;
+      // (ب) مجموعةٌ موسَّطة: نصف اتّساع نصٍّ شقيق.
+      final texts = <String, double>{};
+      for (final e in textWidth.entries) {
+        if (!e.key.startsWith('$parent/')) continue;
+        final sibling = e.key.substring(parent.length + 1).split('/').first;
+        if (sibling == own) continue;
+        texts[sibling] = math.max(texts[sibling] ?? 0, e.value);
+      }
+      final grown = texts.values.fold<double>(0, (a, b) => a + b);
+      if (grown / 2 > tolerance && near(shift, grown / 2)) return true;
     }
     return false;
   }
@@ -236,6 +270,7 @@ GeoComparison compareGeometry(
   var unmatched = 0;
   for (final entry in ar.entries) {
     final a = entry.value;
+    if (a.kind == 'text') continue;
     final b = ckb[entry.key];
     if (b == null) {
       unmatched++;
@@ -255,12 +290,14 @@ GeoComparison compareGeometry(
         : horizontalOnly &&
               steadyButtons.any((btn) => entry.key.startsWith('$btn/'))
         ? 'button-label'
-        : horizontalOnly && isTextFlow(entry.key, dLeft)
+        : horizontalOnly && isTextFlow(entry.key, dLeft, a.rect.top)
         ? 'text-flow'
         : 'bug';
     diffs.add(GeoDiff(entry.key, a, b, category));
   }
-  unmatched += ckb.keys.where((k) => !ar.containsKey(k)).length;
+  unmatched += ckb.entries
+      .where((e) => e.value.kind != 'text' && !ar.containsKey(e.key))
+      .length;
   return GeoComparison(diffs, unmatched: unmatched);
 }
 

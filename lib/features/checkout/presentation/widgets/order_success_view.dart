@@ -73,8 +73,14 @@ class _OrderSuccessViewState extends State<OrderSuccessView>
                         ),
                       ),
                       const SizedBox(height: 8),
-                      Text(
+                      // [CRITICAL] (البوّابة ٨، 2026-10-10) العنوان سطرٌ يُصغَّر
+                      // أولاً، والتوضيح فقرة، والخطوات أسطرٌ — كلٌّ يحجز أطول
+                      // ترجماته، فلا تنزل الخطوات والأزرار بالكردية.
+                      BoundedText(
                         context.strings('orderSent'),
+                        maxLines: 3,
+                        reserveFor: AppStrings.across('orderSent'),
+                        alignment: Alignment.topCenter,
                         textAlign: TextAlign.center,
                         style: theme.textTheme.headlineSmall?.copyWith(
                           fontFamily: AppFonts.heading,
@@ -125,8 +131,12 @@ class _OrderSuccessViewState extends State<OrderSuccessView>
                       const SizedBox(height: 16),
                       ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 290),
-                        child: Text(
+                        child: BoundedText(
                           context.strings('orderSuccessNote'),
+                          maxLines: 12,
+                          minScale: 1,
+                          reserveFor: AppStrings.across('orderSuccessNote'),
+                          alignment: Alignment.topCenter,
                           textAlign: TextAlign.center,
                           style: theme.textTheme.bodyMedium?.copyWith(
                             fontSize: 13.5,
@@ -151,13 +161,13 @@ class _OrderSuccessViewState extends State<OrderSuccessView>
                               ),
                             ),
                             const SizedBox(height: 14),
-                            for (final (index, label) in [
-                              context.strings('stepAdminReview'),
-                              context.strings('stepWhatsappConfirm'),
-                              context.strings('stepPrepareDeliver'),
+                            for (final (index, key) in const [
+                              'stepAdminReview',
+                              'stepWhatsappConfirm',
+                              'stepPrepareDeliver',
                             ].indexed) ...[
                               if (index > 0) const SizedBox(height: 13),
-                              _StepRow(number: index + 1, label: label),
+                              _StepRow(number: index + 1, labelKey: key),
                             ],
                           ],
                         ),
@@ -194,10 +204,10 @@ class _OrderSuccessViewState extends State<OrderSuccessView>
 }
 
 class _StepRow extends StatelessWidget {
-  const _StepRow({required this.number, required this.label});
+  const _StepRow({required this.number, required this.labelKey});
 
   final int number;
-  final String label;
+  final String labelKey;
 
   @override
   Widget build(BuildContext context) {
@@ -227,8 +237,11 @@ class _StepRow extends StatelessWidget {
         ),
         const SizedBox(width: 12),
         Expanded(
-          child: Text(
-            label,
+          child: BoundedText(
+            context.strings(labelKey),
+            maxLines: 3,
+            reserveFor: AppStrings.across(labelKey),
+            alignment: AlignmentDirectional.topStart,
             style: theme.textTheme.bodyMedium?.copyWith(
               fontSize: 13,
               height: 1.5,

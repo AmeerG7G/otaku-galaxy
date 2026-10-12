@@ -254,8 +254,15 @@ class _OfflineCard extends StatelessWidget {
               color: theme.colorScheme.onSurfaceVariant,
             ),
             const SizedBox(height: 18),
-            Text(
+            // [CRITICAL] (البوّابة ٨، 2026-10-10) البطاقة موسَّطة ورسمها في
+            // أعلاها: عنوانٌ أو نصٌّ كردي أطول بسطر كان يطيلها ٣١–٤٠ فيصعد
+            // الرسم والأيقونة نصفها. العنوان سطرٌ يُصغَّر أولاً والنصّ فقرة،
+            // وكلاهما يحجز أطول ترجماته.
+            BoundedText(
               context.strings('offlineTitle'),
+              maxLines: 3,
+              reserveFor: AppStrings.across('offlineTitle'),
+              alignment: Alignment.topCenter,
               textAlign: TextAlign.center,
               style: theme.textTheme.headlineSmall?.copyWith(
                 fontFamily: AppFonts.heading,
@@ -266,8 +273,12 @@ class _OfflineCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 10),
-            Text(
+            BoundedText(
               context.strings('offlineBody'),
+              maxLines: 12,
+              minScale: 1,
+              reserveFor: AppStrings.across('offlineBody'),
+              alignment: Alignment.topCenter,
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium?.copyWith(
                 fontSize: 14,

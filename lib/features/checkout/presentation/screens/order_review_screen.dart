@@ -12,6 +12,7 @@ import '../../../main_navigation/presentation/screens/main_navigation_screen.dar
 import '../../../orders/domain/entities/order_data.dart';
 import '../../../orders/domain/usecases/place_order_usecase.dart';
 import '../../../products/domain/entities/product.dart';
+import '../../../settings/presentation/cubit/locale_cubit.dart';
 import '../widgets/order_success_view.dart';
 
 /// مراجعة الطلب بتصميم Otaku Galaxy v2.
@@ -446,9 +447,16 @@ class _OrderReviewScreenState extends State<OrderReviewScreen>
         ),
         Row(
           children: [
+            // [CRITICAL] (البوّابة ٨، 2026-10-10) التسمية والتنبيهان مناطق تحجز
+            // أطول ترجماتها: «المجموع النهائي» يلتفّ بالعربية لا الكردية،
+            // والعدّ التنازلي والتنبيه أطول بالكردية — فتطول البطاقة بلغةٍ
+            // دون أخرى.
             Expanded(
-              child: Text(
+              child: BoundedText(
                 context.strings('finalTotal'),
+                maxLines: 2,
+                reserveFor: AppStrings.across('finalTotal'),
+                alignment: AlignmentDirectional.topStart,
                 style: theme.textTheme.titleMedium?.copyWith(
                   fontFamily: AppFonts.heading,
                   fontFamilyFallback: AppFonts.headingFallback,
@@ -529,10 +537,18 @@ class _OrderReviewScreenState extends State<OrderReviewScreen>
                   // عليه، ولا يتغيّر بين إطارات الثانية الواحدة.
                   Semantics(
                     liveRegion: _secondsLeft == confirmDelay.inSeconds,
-                    child: Text(
+                    child: BoundedText(
                       context.strings.p('confirmCountdown', {
                         'seconds': '$_secondsLeft',
                       }),
+                      maxLines: 3,
+                      reserveFor: [
+                        for (final l in AppLanguage.values)
+                          AppStrings.of(l).p('confirmCountdown', {
+                            'seconds': '$_secondsLeft',
+                          }),
+                      ],
+                      alignment: Alignment.topCenter,
                       textAlign: TextAlign.center,
                       style: theme.textTheme.labelMedium?.copyWith(
                         fontWeight: AppDimens.weightSemiBold,
@@ -557,8 +573,12 @@ AnimeLinearProgress(
                   height: AppDimens.buttonHeightXl,
                 ),
                 const SizedBox(height: 10),
-                Text(
+                BoundedText(
                   context.strings('confirmSendOrderNote'),
+                  maxLines: 12,
+                  minScale: 1,
+                  reserveFor: AppStrings.across('confirmSendOrderNote'),
+                  alignment: Alignment.topCenter,
                   textAlign: TextAlign.center,
                   style: theme.textTheme.bodySmall?.copyWith(
                     fontSize: 11.5,

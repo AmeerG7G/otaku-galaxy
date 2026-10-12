@@ -20,7 +20,17 @@ import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otaku_galaxy/core/router/app_router.dart';
+import 'package:otaku_galaxy/core/design_system/design_system.dart';
 import 'package:otaku_galaxy/features/app_update/domain/app_version_config.dart';
+import 'package:otaku_galaxy/features/birthday/presentation/birthday_prompt.dart';
+import 'package:otaku_galaxy/features/checkout/presentation/screens/order_data_screen.dart';
+import 'package:otaku_galaxy/features/checkout/presentation/screens/order_review_screen.dart';
+import 'package:otaku_galaxy/features/checkout/presentation/widgets/order_success_view.dart';
+import 'package:otaku_galaxy/features/collections/presentation/screens/collection_detail_screen.dart';
+import 'package:otaku_galaxy/features/collections/presentation/screens/collections_tab.dart';
+import 'package:otaku_galaxy/features/collections/presentation/widgets/add_to_collection_sheet.dart';
+import 'package:otaku_galaxy/features/orders/presentation/widgets/delivery_confirmation_sheet.dart';
+import 'package:otaku_galaxy/features/splash/presentation/screens/splash_screen.dart';
 import 'package:otaku_galaxy/features/app_update/presentation/screens/force_update_screen.dart';
 import 'package:otaku_galaxy/features/auth/domain/entities/account_request.dart';
 import 'package:otaku_galaxy/features/auth/presentation/screens/account_pending_screen.dart';
@@ -142,63 +152,58 @@ final _cases = <String, _Pump>{
   'category-products': _screen(
     () => const CategoryProductsScreen(categoryId: 'c1', categoryName: 'قسم 1'),
   ),
+  // [NOTE] (البوّابة ٨، 2026-10-10) شاشاتٌ وأوراق لم تُقَس في التدقيق الأول.
+  'order-data': _screen(() => const OrderDataScreen()),
+  'order-review': _screen(
+    () => OrderReviewScreen(orderData: fixtureOrderData()),
+  ),
+  'order-success': _screen(
+    () => Scaffold(
+      body: OrderSuccessView(onOpenOrders: () {}, onKeepShopping: () {}),
+    ),
+  ),
+  'collections': _screen(() => const Scaffold(body: CollectionsTab())),
+  'collection-detail': _screen(
+    () => const CollectionDetailScreen(
+      collectionId: 'col1',
+      collectionName: 'مجموعتي',
+    ),
+  ),
+  'splash': _screen(() => const SplashScreen(), loggedIn: false),
+  // التوفّر: لا ورقة ولا حوار — زرّ «أعلمني عند توفره» في تفاصيل منتجٍ نافد.
+  'product-restock': _screen(
+    () => const ProductDetailScreen(productId: fixtureOutOfStockId),
+  ),
+  'sheet-login-gate': _screen(
+    () => FixtureSheetHost(open: (context) => showLoginGate(context)),
+    loggedIn: false,
+  ),
+  'sheet-add-to-collection': _screen(
+    () => FixtureSheetHost(
+      open: (context) => showAddToCollectionSheet(context, productId: 'p1'),
+    ),
+  ),
+  'sheet-delivery-confirmation': _screen(
+    () => FixtureSheetHost(
+      open: (context) => showDeliveryConfirmationSheet(
+        context,
+        order: fixtureOrder(OrderStatus.delivering),
+      ),
+    ),
+  ),
+  'sheet-birthday': _screen(
+    () => FixtureSheetHost(open: (context) => showBirthdayPrompt(context)),
+  ),
   'login': _auth(const LoginRoute()),
   'register': _auth(const RegisterRoute()),
   'forgot-password': _auth(const ForgotPasswordRoute()),
 };
 
 /// [RATCHET] عدد فروق «bug» القائمة لكل شاشة×مقاس. الغائب = صفر.
-const _knownBugs = <String, int>{
-  'favorites@320x3000@1.3': 2,
-  'favorites@320x568@1.3': 2,
-  'favorites@375x812@1.0': 2,
-  'favorites@412x3000@1.3': 2,
-  'favorites@412x892@1.0': 2,
-  'favorites@412x892@1.3': 2,
-  'force-update@320x3000@1.3': 3,
-  'force-update@320x568@1.3': 1,
-  'force-update@375x812@1.0': 3,
-  'force-update@412x3000@1.3': 3,
-  'force-update@412x892@1.0': 3,
-  'force-update@412x892@1.3': 3,
-  'forgot-password@320x3000@1.3': 7,
-  'forgot-password@320x568@1.3': 3,
-  'forgot-password@375x812@1.0': 7,
-  'forgot-password@412x3000@1.3': 7,
-  'forgot-password@412x892@1.0': 7,
-  'forgot-password@412x892@1.3': 8,
-  'galaxy-points@320x3000@1.3': 9,
-  'galaxy-points@320x568@1.3': 5,
-  'galaxy-points@375x812@1.0': 7,
-  'galaxy-points@412x3000@1.3': 7,
-  'galaxy-points@412x892@1.0': 5,
-  'galaxy-points@412x892@1.3': 5,
-  'offline@320x3000@1.3': 7,
-  'offline@320x568@1.3': 1,
-  'offline@375x812@1.0': 7,
-  'offline@412x3000@1.3': 7,
-  'offline@412x892@1.0': 7,
-  'offline@412x892@1.3': 7,
-  'onboarding@320x3000@1.3': 1,
-  'onboarding@320x568@1.3': 1,
-  'onboarding@375x812@1.0': 1,
-  'register@320x3000@1.3': 2,
-  'register@320x568@1.3': 2,
-  'register@375x812@1.0': 1,
-  'register@412x3000@1.3': 1,
-  'register@412x892@1.0': 2,
-  'register@412x892@1.3': 1,
-  'search@320x3000@1.3': 4,
-  'search@320x568@1.3': 4,
-  'search@375x812@1.0': 4,
-  'search@412x3000@1.3': 4,
-  'search@412x892@1.0': 1,
-  'search@412x892@1.3': 4,
-};
+const _knownBugs = <String, int>{};
 
 /// [RATCHET] تجاوزاتٌ كردية لا تقع بالعربية: «شاشة@مقاس: جهة @ ملف».
-const _knownKurdishOverflows = <String>{
-};
+const _knownKurdishOverflows = <String>{};
 
 final _geometry = <String, Map<String, GeoNode>>{};
 final _errors = <String, List<String>>{};

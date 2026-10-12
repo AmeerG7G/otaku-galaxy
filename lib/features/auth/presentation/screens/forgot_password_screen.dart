@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -244,6 +246,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
                 _LevelField(
                   label: context.strings('accountLevel'),
                   hint: context.strings('accountLevelHint'),
+                  hintTranslations: AppStrings.across('accountLevelHint'),
                   value: _level == null
                       ? null
                       : context.strings.p('levelNumberAndName', {
@@ -290,6 +293,7 @@ class _LevelField extends StatelessWidget {
   const _LevelField({
     required this.label,
     required this.hint,
+    this.hintTranslations = const [],
     required this.value,
     required this.placeholder,
     required this.loading,
@@ -301,6 +305,9 @@ class _LevelField extends StatelessWidget {
 
   final String label;
   final String hint;
+
+  /// ترجمات [hint] — يحجز السطر تحت الحقل ما تحتاجه أطولها.
+  final List<String> hintTranslations;
   final String? value;
   final String placeholder;
   final bool loading;
@@ -354,8 +361,13 @@ class _LevelField extends StatelessWidget {
                           ),
                         )
                       : failed
-                      ? Text(
+                      // رسالة الفشل جملة: فقرةٌ تحجز أسطر أطول ترجماتها.
+                      ? BoundedText(
                           context.strings('levelsLoadFailed'),
+                          maxLines: 12,
+                          minScale: 1,
+                          reserveFor: AppStrings.across('levelsLoadFailed'),
+                          alignment: AlignmentDirectional.topStart,
                           // `errorText` لا `error`: الأول رمز نصّ بتباينٍ مقيس،
                           // والثاني رمز مؤشِّر (حدود/أيقونات) — يحرسه
                           // `semantic_text_colors_test.dart`.
@@ -372,10 +384,28 @@ class _LevelField extends StatelessWidget {
                           ),
                         ),
                 ),
+                // [CRITICAL] (البوّابة ٨، 2026-10-10) «إعادة المحاولة» في خانةٍ
+                // بعرض أعرض ترجماتها (لا تتجاوز ثلث الشاشة): كانت تسميتها
+                // الكردية بعرضها الكامل تترك للرسالة شريطاً ضيّقاً فتلتفّ ٣٤
+                // سطراً (+٧٥٠ على ٣٢٠×١٫٣)، والرسالة بجوارها الآن بعرضٍ واحد
+                // في كل لغة فتحجز الأسطر نفسها.
                 if (failed)
-                  AnimeTextButton(
-                    label: context.strings('retry'),
-                    onPressed: onRetry,
+                  SizedBox(
+                    width: math.min(
+                      MediaQuery.sizeOf(context).width * 0.3,
+                      AnimeTextButton.slotWidthFor(
+                        context,
+                        AppStrings.across('retry'),
+                      ),
+                    ),
+                    child: Align(
+                      alignment: AlignmentDirectional.centerEnd,
+                      child: AnimeTextButton(
+                        label: context.strings('retry'),
+                        onPressed: onRetry,
+                        fallbackIcon: Icons.refresh_rounded,
+                      ),
+                    ),
                   )
                 else if (loading)
                   const SizedBox(
@@ -393,8 +423,11 @@ class _LevelField extends StatelessWidget {
           ),
         ),
         SizedBox(height: AppDimens.space1),
-        Text(
+        BoundedText(
           errorText ?? hint,
+          maxLines: 4,
+          reserveFor: errorText != null ? const [] : hintTranslations,
+          alignment: AlignmentDirectional.topStart,
           style: theme.textTheme.labelSmall?.copyWith(
             color: errorText != null
                 ? colors.errorText
