@@ -137,6 +137,11 @@ void main() {
           expect(title.maxLines, 1);
           expect(title.didExceedMaxLines, isFalse);
           expect(title.text.style!.fontSize!, inInclusiveRange(26 * 0.65, 26));
+          // (البوّابة ١٣، 2026-10-12) حدّ عناوين الشاشات: ٠٫٨ من مقاس التصميم.
+          expect(
+            title.text.style!.fontSize! * scale,
+            greaterThanOrEqualTo(26 * kBoundedTextMinScale - 0.01),
+          );
         });
       }
     }
