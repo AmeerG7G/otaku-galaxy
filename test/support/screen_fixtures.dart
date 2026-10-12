@@ -165,8 +165,16 @@ class FixtureGovernorates implements GovernorateRepository {
     Governorate(id: 'g1', name: 'بغداد', deliveryFee: 5000),
     Governorate(id: 'g2', name: 'البصرة', deliveryFee: 7000),
   ];
+  /// بغداد مقسّمةٌ إلى مناطق — لتُقاس ورقة المنطقة؛ المحافظة غير مختارة عند
+  /// فتح الشاشة، فلا يتغيّر شيءٌ قبل اختيارها.
   @override
-  Future<List<DeliveryZone>> fetchZones(String governorateId) async => const [];
+  Future<List<DeliveryZone>> fetchZones(String governorateId) async =>
+      governorateId == 'g1'
+      ? const [
+          DeliveryZone(id: 'z1', name: 'الكرادة', deliveryFee: 5000),
+          DeliveryZone(id: 'z2', name: 'المنصور', deliveryFee: 6000),
+        ]
+      : const [];
 }
 
 List<Category> fixtureCategories(int n) => [

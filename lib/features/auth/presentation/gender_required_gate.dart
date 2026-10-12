@@ -208,8 +208,18 @@ class _GenderRequiredScreenState extends State<GenderRequiredScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Text(
+                                  // [CRITICAL] (البوّابة ١٠، 2026-10-12) العنوان
+                                  // سطرٌ يُصغَّر أولاً، والرسالة والتنبيه فقرات،
+                                  // وكلٌّ يحجز أطول ترجماته: الكردية أطول بسطر
+                                  // أو اثنين فكانت البطاقة تطول ٢٣–٦٢ وتُنزل
+                                  // البطاقتين والزرّين.
+                                  BoundedText(
                                     context.strings('genderGateTitle'),
+                                    maxLines: 3,
+                                    reserveFor: AppStrings.across(
+                                      'genderGateTitle',
+                                    ),
+                                    alignment: AlignmentDirectional.topStart,
                                     style: theme.textTheme.headlineSmall
                                         ?.copyWith(
                                           fontFamily: AppFonts.heading,
@@ -220,8 +230,14 @@ class _GenderRequiredScreenState extends State<GenderRequiredScreen> {
                                         ),
                                   ),
                                   const SizedBox(height: 10),
-                                  Text(
+                                  BoundedText(
                                     context.strings('genderGateMessage'),
+                                    maxLines: 12,
+                                    minScale: 1,
+                                    reserveFor: AppStrings.across(
+                                      'genderGateMessage',
+                                    ),
+                                    alignment: AlignmentDirectional.topStart,
                                     style: theme.textTheme.bodyMedium?.copyWith(
                                       fontSize: 14,
                                       height: 1.85,
@@ -232,6 +248,9 @@ class _GenderRequiredScreenState extends State<GenderRequiredScreen> {
                                   GenderSelector(
                                     value: _picked,
                                     label: context.strings('genderPickerNote'),
+                                    labelTranslations: AppStrings.across(
+                                      'genderPickerNote',
+                                    ),
                                     errorText: _showRequired && _picked == null
                                         ? context.strings('genderRequired')
                                         : null,

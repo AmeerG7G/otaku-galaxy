@@ -350,6 +350,8 @@ class AccountScreen extends StatelessWidget {
       confirmLabel: context.strings('logout'),
       cancelLabel: context.strings('cancel'),
       destructive: true,
+      titleTranslations: AppStrings.across('logout'),
+      messageTranslations: AppStrings.across('logoutConfirm'),
     );
     if (confirmed != true) return;
     await auth.logout();

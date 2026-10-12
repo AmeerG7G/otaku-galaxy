@@ -10,6 +10,8 @@
 // [RATCHET] `_knownBugs` و`_knownKurdishOverflows` هما الفروق القائمة يوم كُتب
 // الاختبار. العدد **دقيق**: يفشل الاختبار إن زاد (تراجع) وإن نقص (إصلاحٌ لم
 // يُسجَّل). بعد كل إصلاح: أنقص الرقم أو احذف السطر. لا يُرفع رقمٌ أبداً.
+// و`_knownUnmatched` (البوّابة ١٠) عناصر لغةٍ دون أخرى، دقيقةٌ مثلها: البديل
+// المصمَّم المعتمد وحده. وأيّ تجاوز — بالعربية أيضاً — يُفشل الاختبار.
 //
 // للتشخيص: `GEOMETRY_REPORT=/path/report.txt flutter test test/kurdish_geometry_test.dart`
 // يكتب كل فرقٍ بعناصره ومساراته.
@@ -21,6 +23,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otaku_galaxy/core/router/app_router.dart';
 import 'package:otaku_galaxy/core/design_system/design_system.dart';
+import 'package:otaku_galaxy/core/l10n/app_strings.dart';
 import 'package:otaku_galaxy/features/app_update/domain/app_version_config.dart';
 import 'package:otaku_galaxy/features/birthday/presentation/birthday_prompt.dart';
 import 'package:otaku_galaxy/features/checkout/presentation/screens/order_data_screen.dart';
@@ -33,6 +36,7 @@ import 'package:otaku_galaxy/features/orders/presentation/widgets/delivery_confi
 import 'package:otaku_galaxy/features/splash/presentation/screens/splash_screen.dart';
 import 'package:otaku_galaxy/features/app_update/presentation/screens/force_update_screen.dart';
 import 'package:otaku_galaxy/features/auth/domain/entities/account_request.dart';
+import 'package:otaku_galaxy/features/auth/presentation/gender_required_gate.dart';
 import 'package:otaku_galaxy/features/auth/presentation/screens/account_pending_screen.dart';
 import 'package:otaku_galaxy/features/categories/presentation/screens/category_products_screen.dart';
 import 'package:otaku_galaxy/features/connectivity/presentation/offline_gate.dart';
@@ -81,6 +85,45 @@ _Pump _screen(Widget Function() build, {bool loggedIn = true}) =>
       textScale: scale,
       loggedIn: loggedIn,
     );
+
+/// شاشةٌ ثم نقراتٌ تفتح ورقتها من مستدعيها الحقيقي — فتُقاس الورقة بما
+/// يمرّره مستدعيها فعلاً (التأكيد والإدخال والاختيار، والأوراق الخاصة).
+_Pump _opened(_Pump screen, List<Finder Function(AppLanguage)> taps) =>
+    (tester, language, scale) async {
+      await screen(tester, language, scale);
+      for (final tap in taps) {
+        final finder = tap(language);
+        // قائمةٌ كسولة لا تبني ما تحت الطيّة: تُمرَّر حتى يُبنى الهدف.
+        if (finder.evaluate().isEmpty) {
+          await tester.scrollUntilVisible(
+            finder,
+            200,
+            scrollable: find
+                .byWidgetPredicate(
+                  (w) =>
+                      w is Scrollable && w.axisDirection == AxisDirection.down,
+                )
+                .first,
+          );
+        }
+        final target = finder.first;
+        await tester.ensureVisible(target);
+        await tester.pump();
+        await tester.tap(target);
+        await settleFixture(tester);
+      }
+    };
+
+Finder Function(AppLanguage) _text(String key) =>
+    (language) => find.text(AppStrings.of(language)(key));
+
+Finder Function(AppLanguage) _literal(String text) =>
+    (_) => find.text(text);
+
+Finder Function(AppLanguage) _icon(IconData icon) =>
+    (_) => find.byIcon(icon);
+
+_Pump _collections() => _screen(() => const Scaffold(body: CollectionsTab()));
 
 _Pump _auth(PageRouteInfo route) =>
     (tester, language, scale) => pumpFixtureAuth(
@@ -194,6 +237,50 @@ final _cases = <String, _Pump>{
   'sheet-birthday': _screen(
     () => FixtureSheetHost(open: (context) => showBirthdayPrompt(context)),
   ),
+  // [NOTE] (البوّابة ١٠، 2026-10-12) ما فات البوّابة ٨: حاجز الجنس، وكل ورقة
+  // تأكيدٍ وإدخالٍ واختيار تُفتح من مستدعيها الحقيقي بالنقر.
+  'gender-required': _screen(() => const GenderRequiredScreen()),
+  'sheet-confirm-logout': _opened(_tab(MainTab.account), [_text('logout')]),
+  'sheet-confirm-remove-product': _opened(_tab(MainTab.cart), [
+    _icon(Icons.close_rounded),
+  ]),
+  'sheet-collection-actions': _opened(_collections(), [
+    _icon(Icons.more_horiz_rounded),
+  ]),
+  'sheet-confirm-delete-collection': _opened(_collections(), [
+    _icon(Icons.more_horiz_rounded),
+    _text('deleteCollection'),
+  ]),
+  'sheet-prompt-rename-collection': _opened(_collections(), [
+    _icon(Icons.more_horiz_rounded),
+    _text('rename'),
+  ]),
+  'sheet-confirm-remove-from-collection': _opened(
+    _screen(
+      () => const CollectionDetailScreen(
+        collectionId: 'k1',
+        collectionName: 'مجموعتي',
+      ),
+    ),
+    [_icon(Icons.close_rounded)],
+  ),
+  'sheet-prompt-display-name': _opened(_screen(() => const SettingsScreen()), [
+    _text('editDisplayName'),
+  ]),
+  'sheet-settings-gender': _opened(_screen(() => const SettingsScreen()), [
+    _text('gender'),
+  ]),
+  'sheet-change-password': _opened(_screen(() => const SettingsScreen()), [
+    _text('resetPassword'),
+  ]),
+  'sheet-province': _opened(_screen(() => const OrderDataScreen()), [
+    _text('chooseProvince'),
+  ]),
+  'sheet-zone': _opened(_screen(() => const OrderDataScreen()), [
+    _text('chooseProvince'),
+    _literal('بغداد'),
+    _text('chooseZone'),
+  ]),
   'login': _auth(const LoginRoute()),
   'register': _auth(const RegisterRoute()),
   'forgot-password': _auth(const ForgotPasswordRoute()),
@@ -204,6 +291,22 @@ const _knownBugs = <String, int>{};
 
 /// [RATCHET] تجاوزاتٌ كردية لا تقع بالعربية: «شاشة@مقاس: جهة @ ملف».
 const _knownKurdishOverflows = <String>{};
+
+/// [RATCHET] عدد العناصر غير النصّية الموجودة بلغةٍ دون الأخرى، لكل شاشة×مقاس.
+/// الغائب = صفر. كلّها بديلٌ مصمَّم معتمد ([PRODUCT] 2026-10-05: تسميةٌ لا تتّسع
+/// حتى عند حدّها تصير أيقونةً بتلميح، في خانةٍ لا يتغيّر مستطيلها):
+/// - notifications: «تعليم الكل كمقروء» الكردية أيقونة في كل مقاس.
+/// - forgot-password@320x3000@1.3: «إعادة المحاولة» الكردية أيقونة في خانة
+///   أعرض ترجماتها (البوّابة ٨).
+const _knownUnmatched = <String, int>{
+  'notifications@412x892@1.0': 1,
+  'notifications@412x892@1.3': 1,
+  'notifications@375x812@1.0': 1,
+  'notifications@320x568@1.3': 1,
+  'notifications@412x3000@1.3': 1,
+  'notifications@320x3000@1.3': 1,
+  'forgot-password@320x3000@1.3': 1,
+};
 
 final _geometry = <String, Map<String, GeoNode>>{};
 final _errors = <String, List<String>>{};
@@ -257,6 +360,10 @@ void main() {
         for (final o in overflows('ckb').difference(arOverflows)) {
           actualOverflows.add('$caseKey: $o');
         }
+        // (البوّابة ٩) لا تجاوز بأيّ لغة — كان التجاوز المشترك يُكتب ولا يُفشل.
+        if (arOverflows.isNotEmpty) {
+          failures.add('$caseKey: تجاوزٌ بالعربية أيضاً: $arOverflows');
+        }
         final otherErrors = {
           for (final code in ['ar', 'ckb'])
             for (final e in _errors['$caseKey@$code'] ?? const <String>[])
@@ -279,6 +386,14 @@ void main() {
         }
         if (otherErrors.isNotEmpty) {
           failures.add('$caseKey: أخطاء غير التجاوز: $otherErrors');
+        }
+
+        final knownUnmatched = _knownUnmatched[caseKey] ?? 0;
+        if (comparison.unmatched != knownUnmatched) {
+          failures.add(
+            '$caseKey: عناصر بلغةٍ دون أخرى = ${comparison.unmatched}، '
+            'المسجَّل $knownUnmatched',
+          );
         }
 
         final known = _knownBugs[caseKey] ?? 0;

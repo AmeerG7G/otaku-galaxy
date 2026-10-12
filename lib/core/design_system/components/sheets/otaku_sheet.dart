@@ -6,6 +6,7 @@ import '../../tokens/app_dimens.dart';
 import '../../tokens/app_fonts.dart';
 import '../buttons/anime_primary_button.dart';
 import '../inputs/anime_text_field.dart';
+import '../typography/bounded_text.dart';
 
 /// الحاوية الأساسية لكل الأوراق السفلية في Otaku Galaxy v2.
 ///
@@ -18,12 +19,32 @@ class OtakuSheet extends StatelessWidget {
     this.title,
     this.titleSize = 16,
     this.padding = const EdgeInsets.fromLTRB(18, 14, 18, 26),
+    this.titleTranslations = const [],
   });
 
   final Widget child;
   final String? title;
   final double titleSize;
   final EdgeInsetsGeometry padding;
+
+  /// ترجمات [title] بكل اللغات (`AppStrings.across`).
+  ///
+  /// [CRITICAL] (البوّابة ١٠، 2026-10-12) العنوان عنوانٌ كعناوين الشاشات: سطرٌ
+  /// يُصغَّر أولاً حتى ٠٫٨ من مقاس التصميم، ويحجز سطراً ثانياً بكل لغة إن لم
+  /// تتّسع ترجمةٌ حتى عنده — «ڕێکخستنەوەی وشەی نهێنی» كان يلتفّ على ٣٢٠×١٫٣
+  /// فتطول الورقة ٣٧ بالكردية وحدها. بلا ترجمات: كما كان.
+  final List<String> titleTranslations;
+
+  Widget _title(TextStyle? style) => titleTranslations.isEmpty
+      ? Text(title!, style: style)
+      : BoundedText(
+          title!,
+          maxLines: 2,
+          floorAtDesignSize: true,
+          reserveFor: titleTranslations,
+          alignment: AlignmentDirectional.topStart,
+          style: style,
+        );
 
   @override
   Widget build(BuildContext context) {
@@ -71,9 +92,8 @@ class OtakuSheet extends StatelessWidget {
                   ),
                 ),
                 if (title != null) ...[
-                  Text(
-                    title!,
-                    style: theme.textTheme.titleMedium?.copyWith(
+                  _title(
+                    theme.textTheme.titleMedium?.copyWith(
                       fontFamily: AppFonts.heading,
                       fontFamilyFallback: AppFonts.headingFallback,
                       fontWeight: AppDimens.weightExtraBold,
@@ -318,6 +338,11 @@ Future<T?> showOtakuPicker<T>({
 /// ورقة تأكيد — البديل الوحيد لـ`AlertDialog` في تصميم v2.
 ///
 /// تُعيد `true` عند التأكيد و`false`/`null` عند الإلغاء.
+///
+/// [titleTranslations] و[messageTranslations]: النصّان بكل اللغات. [CRITICAL]
+/// (البوّابة ١٠، 2026-10-12) العنوان سطرٌ يُصغَّر أولاً والرسالة فقرة، وكلاهما
+/// يحجز أطول ترجماته — رسالةٌ أطول بسطرٍ بلغةٍ كانت تطيل الورقة ١٨–٣٠ وتنقل
+/// زرّيها. بلا ترجمات: كما كان.
 Future<bool?> showOtakuConfirm({
   required BuildContext context,
   required String title,
@@ -325,6 +350,8 @@ Future<bool?> showOtakuConfirm({
   required String confirmLabel,
   String? cancelLabel,
   bool destructive = false,
+  List<String> titleTranslations = const [],
+  List<String> messageTranslations = const [],
 }) {
   return showOtakuSheet<bool>(
     context: context,
@@ -338,23 +365,27 @@ Future<bool?> showOtakuConfirm({
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
+            _confirmText(
               title,
-              style: theme.textTheme.titleLarge?.copyWith(
+              titleTranslations,
+              theme.textTheme.titleLarge?.copyWith(
                 fontFamily: AppFonts.heading,
                 fontFamilyFallback: AppFonts.headingFallback,
                 fontWeight: AppDimens.weightBlack,
                 fontSize: 19,
               ),
+              paragraph: false,
             ),
             const SizedBox(height: 8),
-            Text(
+            _confirmText(
               message,
-              style: theme.textTheme.bodyMedium?.copyWith(
+              messageTranslations,
+              theme.textTheme.bodyMedium?.copyWith(
                 fontSize: 13,
                 height: 1.75,
                 color: theme.colorScheme.onSurfaceVariant,
               ),
+              paragraph: true,
             ),
             const SizedBox(height: 20),
             Row(
@@ -386,6 +417,24 @@ Future<bool?> showOtakuConfirm({
     },
   );
 }
+
+/// نصّ ورقة التأكيد: كما كان بلا ترجمات، وإلا فمنطقةٌ تحجز أطولها — عنوانٌ
+/// يُصغَّر أولاً، أو فقرةٌ لا تُصغَّر.
+Widget _confirmText(
+  String text,
+  List<String> translations,
+  TextStyle? style, {
+  required bool paragraph,
+}) => translations.isEmpty
+    ? Text(text, style: style)
+    : BoundedText(
+        text,
+        maxLines: paragraph ? 12 : 3,
+        minScale: paragraph ? 1 : kBoundedTextMinScale,
+        reserveFor: translations,
+        alignment: AlignmentDirectional.topStart,
+        style: style,
+      );
 
 class _SheetAction extends StatelessWidget {
   const _SheetAction({
