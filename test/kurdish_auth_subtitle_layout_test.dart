@@ -85,7 +85,12 @@ void main() {
     ('إنشاء الحساب', RegisterRoute()),
     ('نسيت كلمة المرور', ForgotPasswordRoute()),
   ];
-  const sizes = [Size(360, 640), Size(390, 844), Size(412, 915)];
+  const sizes = [
+    Size(320, 568),
+    Size(360, 640),
+    Size(390, 844),
+    Size(412, 915),
+  ];
 
   RenderParagraph paragraph(WidgetTester tester, Key key) =>
       tester.renderObject<RenderParagraph>(

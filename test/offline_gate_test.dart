@@ -10,8 +10,10 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otaku_galaxy/core/design_system/design_system.dart';
 import 'package:otaku_galaxy/core/l10n/app_strings.dart';
+import 'package:otaku_galaxy/core/l10n/locale_scope.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:otaku_galaxy/features/connectivity/presentation/offline_gate.dart';
+import 'package:otaku_galaxy/features/settings/presentation/cubit/locale_cubit.dart';
 import 'package:otaku_galaxy/features/visuals/domain/visual_slot.dart';
 import 'package:otaku_galaxy/features/visuals/presentation/character_artwork.dart';
 
@@ -22,7 +24,11 @@ final Finder _art = find.byWidgetPredicate(
   (w) => w is Image && w.image is AssetImage && (w.image as AssetImage).assetName.startsWith('assets/art/'),
 );
 
-Widget _app({required bool dark, required VoidCallback onRetry}) => MaterialApp(
+Widget _app({
+  required bool dark,
+  required VoidCallback onRetry,
+  AppLanguage language = AppLanguage.arabic,
+}) => MaterialApp(
   theme: AppTheme.light,
   darkTheme: AppTheme.dark,
   themeMode: dark ? ThemeMode.dark : ThemeMode.light,
@@ -33,8 +39,18 @@ Widget _app({required bool dark, required VoidCallback onRetry}) => MaterialApp(
     GlobalWidgetsLocalizations.delegate,
     GlobalCupertinoLocalizations.delegate,
   ],
-  home: Scaffold(body: Stack(children: [OfflineGateScreen(onRetry: onRetry)])),
+  home: LocaleScope(
+    language: language,
+    child: Scaffold(body: Stack(children: [OfflineGateScreen(onRetry: onRetry)])),
+  ),
 );
+
+/// المنطقة القابلة للتمرير تحت صفّ الهوية.
+ScrollPosition _scroll(WidgetTester tester) => tester
+    .state<ScrollableState>(
+      find.descendant(of: find.byType(OfflineGateScreen), matching: find.byType(Scrollable)).first,
+    )
+    .position;
 
 void main() {
   setUpAll(loadProjectFonts);
@@ -111,6 +127,43 @@ void main() {
     expect(CharacterArt.forSlot(VisualSlots.offlineGate), 'assets/art/characters/35.png');
     expect(find.byType(CachedNetworkImage), findsNothing);
     expect((tester.widget<Image>(_art).image as AssetImage).assetName, 'assets/art/characters/35.png');
+  });
+
+  // [CRITICAL] (البوّابة ٩، 2026-10-12) أصغر هاتفٍ بخطٍّ مكبَّر: البطاقة والحالة
+  // والزرّ أطول من الشاشة. كان العمود الموسَّط يتجاوز أسفله (٧٢ بالعربية)
+  // والزرّ خارجها بلا وصول؛ الآن يُمرَّر — وحين يتّسع لا تمرير ولا تغيير.
+  for (final language in AppLanguage.values) {
+    testWidgets('[CRITICAL] ٣٢٠×٥٦٨ ×١٫٣ (${language.code}): بلا تجاوز، والزرّ يُبلَغ بالتمرير', (tester) async {
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1.0;
+      tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+      addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      var retries = 0;
+      await tester.pumpWidget(_app(dark: false, onRetry: () => retries++, language: language));
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      expect(_scroll(tester).maxScrollExtent, greaterThan(0));
+
+      final retry = find.text(AppStrings.of(language)('retry'));
+      await tester.scrollUntilVisible(
+        retry,
+        100,
+        scrollable: find.descendant(of: find.byType(OfflineGateScreen), matching: find.byType(Scrollable)).first,
+      );
+      await tester.tap(retry);
+      await tester.pump();
+      expect(retries, 1);
+    });
+  }
+
+  testWidgets('يتّسع (٤١٢×٨٩٢ ×١٫٠): لا تمرير، والمحتوى موسَّط كما كان', (tester) async {
+    tester.view.physicalSize = const Size(412, 892);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(_app(dark: false, onRetry: () {}));
+    await tester.pump();
+    expect(_scroll(tester).maxScrollExtent, 0);
   });
 
   testWidgets('زرّ إعادة المحاولة يستدعي المعاود — منطق الكشف كما هو', (tester) async {

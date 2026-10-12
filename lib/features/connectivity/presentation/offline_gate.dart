@@ -163,46 +163,58 @@ class _OfflineGateScreenState extends State<OfflineGateScreen>
                       ],
                     ),
                   ),
+                  // [CRITICAL] (البوّابة ٩، 2026-10-12) موسَّطٌ ما دام يتّسع،
+                  // ويُمرَّر حين لا يتّسع: البطاقة والحالة والزرّ أطول من
+                  // ٣٢٠×٥٦٨ عند ×١٫٣، فكان العمود الموسَّط يتجاوز أسفله (٧٢
+                  // بالعربية) ويقع الزرّ خارج الشاشة بلا وصول. حين يتّسع: كما
+                  // كان تماماً.
                   Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          const _OfflineCard(),
-                          const SizedBox(height: 20),
-                          Row(
+                    child: LayoutBuilder(
+                      builder: (context, constraints) => SingleChildScrollView(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            minHeight: constraints.maxHeight,
+                          ),
+                          child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              FadeTransition(
-                                opacity: _pulse,
-                                child: Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: const BoxDecoration(
-                                    color: AppColors.error,
-                                    shape: BoxShape.circle,
+                              const _OfflineCard(),
+                              const SizedBox(height: 20),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  FadeTransition(
+                                    opacity: _pulse,
+                                    child: Container(
+                                      width: 8,
+                                      height: 8,
+                                      decoration: const BoxDecoration(
+                                        color: AppColors.error,
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
                                   ),
-                                ),
+                                  const SizedBox(width: 9),
+                                  Text(
+                                    context.strings('offlineShort'),
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      fontSize: 12.5,
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(width: 9),
-                              Text(
-                                context.strings('offlineShort'),
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  fontSize: 12.5,
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                ),
+                              const SizedBox(height: 22),
+                              AnimePrimaryButton(
+                                label: context.strings('retry'),
+                                onPressed: widget.onRetry,
+                                height: AppDimens.buttonHeightXl,
                               ),
                             ],
                           ),
-                          const SizedBox(height: 22),
-                          AnimePrimaryButton(
-                            label: context.strings('retry'),
-                            onPressed: widget.onRetry,
-                            height: AppDimens.buttonHeightXl,
-                          ),
-                        ],
+                        ),
                       ),
                     ),
                   ),
