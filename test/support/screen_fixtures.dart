@@ -53,6 +53,8 @@ import 'package:otaku_galaxy/features/products/domain/entities/product_page.dart
 import 'package:otaku_galaxy/features/products/domain/repositories/governorate_repository.dart';
 import 'package:otaku_galaxy/features/products/domain/repositories/product_repository.dart';
 import 'package:otaku_galaxy/features/products/domain/usecases/fetch_categories_usecase.dart';
+import 'package:otaku_galaxy/features/products/domain/usecases/fetch_category_products_usecase.dart';
+import 'package:otaku_galaxy/features/products/domain/entities/product_sort.dart';
 import 'package:otaku_galaxy/features/products/domain/usecases/fetch_home_usecase.dart';
 import 'package:otaku_galaxy/features/products/domain/usecases/fetch_product_details_usecase.dart';
 import 'package:otaku_galaxy/features/products/domain/usecases/fetch_governorates_usecase.dart';
@@ -237,6 +239,13 @@ class FixtureCatalog implements ProductRepository {
     items: [for (var i = 0; i < 6; i++) fixtureProduct(i)],
     hasMore: false,
   );
+  /// (البوّابة ١٥، 2026-10-12) كان غائباً هو ومزوّد حالة استخدامه، فكانت
+  /// حالة `category-products` تقيس صفحة خطأ المزوّد لا شبكة المنتجات.
+  @override
+  Future<List<Product>> fetchCategoryProducts(
+    String categoryId, {
+    ProductSort? sort,
+  }) async => [for (var i = 0; i < 6; i++) fixtureProduct(i)];
   @override
   Future<Product> fetchProductDetails(String id) async =>
       id == fixtureOutOfStockId
@@ -462,6 +471,9 @@ Future<void> pumpFixtureApp(
         providers: [
           RepositoryProvider.value(value: FetchHomeUsecase(products)),
           RepositoryProvider.value(value: FetchCategoriesUsecase(products)),
+          RepositoryProvider.value(
+            value: FetchCategoryProductsUsecase(products),
+          ),
           RepositoryProvider.value(value: FetchProductsUsecase(products)),
           RepositoryProvider.value(value: FetchProductDetailsUsecase(products)),
           RepositoryProvider.value(value: SearchProductsUsecase(products)),
