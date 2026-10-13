@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { config } from '../config/index.js';
 import { db, withTransaction } from '../database/pool.js';
 import { adminEvents } from './adminEvents.js';
+import { adminPushRepo } from '../repositories/adminPushRepo.js';
 import { mediaRepo } from '../repositories/mediaRepo.js';
 import { userRepo, toPublicUser, type UserRow } from '../repositories/userRepo.js';
 import type { AuthUser, Gender, PublicUser } from '../types/index.js';
@@ -241,7 +242,16 @@ export const authService = {
     // عميل يقرأ الرمز لا الحالة.
     if (!ok) throw Errors.badRequest('كلمة المرور الحالية غير صحيحة', 'INVALID_CURRENT_PASSWORD');
     const passwordHash = await bcrypt.hash(newPassword, config.bcryptRounds);
-    const updated = await userRepo.update(db, user.id, { passwordHash, bumpTokenVersion: true });
+    // [SECURITY] المسار مفتوحٌ للمسؤول أيضاً (الفرعي بلا قسم «المسؤولين» لا يملك
+    // غيره). الجلسات تسقط بالنسخة، وأجهزة إشعار المسؤول معها في المعاملة نفسها —
+    // كما في `adminAccountsService.updateOwn`: وإلا بقي متصفّحٌ سجّلته جلسةٌ
+    // مُبطلة يستقبل بيانات الزبائن حتى انتهائها. الترتيب users ثم الأجهزة هو
+    // ترتيب كل إبطالٍ آخر. للزبون لا صفوف هنا فلا أثر.
+    const updated = await withTransaction(async (tx) => {
+      const row = await userRepo.update(tx, user.id, { passwordHash, bumpTokenVersion: true });
+      await adminPushRepo.deactivateAll(tx, user.id);
+      return row;
+    });
 
     // الجلسات الأخرى تسقط بزيادة النسخة؛ نُعيد توكناً جديداً لهذا الجهاز
     // كي لا يُطرَد صاحبُ الطلب نفسه من التطبيق بعد نجاح العملية.
