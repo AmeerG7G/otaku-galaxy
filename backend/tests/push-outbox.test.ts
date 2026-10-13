@@ -64,7 +64,7 @@ async function outboxFor(userId: string, audience: 'customer' | 'admin' = 'custo
     next_attempt_at: Date;
   }>(
     `SELECT id::text, status, attempts, last_error, event_key, data, next_attempt_at
-       FROM push_outbox WHERE user_id = $1 AND audience = $2 ORDER BY id`,
+       FROM push_outbox WHERE user_id = $1 AND audience = $2 ORDER BY push_outbox.id`,
     [userId, audience],
   );
   return rows;
@@ -526,5 +526,29 @@ describe('FCM HTTP v1 provider — token exchange and error classification (stub
     expect(await provider.send({ tokens: ['a'], title: 't', body: 'b' })).toMatchObject({ sent: 0, transientFailures: 1 });
     expect(await provider.send({ tokens: ['a'], title: 't', body: 'b' })).toMatchObject({ sent: 1 });
     expect(calls.filter((c) => c.url === GOOGLE_TOKEN_URL)).toHaveLength(2);
+  });
+});
+
+describe('outboxFor (test helper) orders rows numerically', () => {
+  /**
+   * `SELECT id::text … ORDER BY id` يرتّب بعمود المُخرَج (نصّ) لا بالعمود نفسه:
+   * '130' قبل '42'، فكان `after.at(-1)` صفّاً قديماً متى عبر التسلسل منزلةً
+   * عشرية — فشلٌ يتبع ما تركته الملفّات السابقة في التسلسل لا الشيفرة.
+   */
+  it('a row with more digits comes after one with fewer', async () => {
+    const owner = await registerAndLogin();
+    const ids = ['9000000000', '10000000000']; // نصّياً العكس — خارج مدى التسلسل
+    try {
+      for (const id of ids) {
+        await db.query(
+          `INSERT INTO push_outbox (id, audience, user_id, event_key, title, status)
+           VALUES ($1::bigint, 'admin', $2, 'new_order', 'helper-order', 'skipped')`,
+          [id, owner.userId],
+        );
+      }
+      expect((await outboxFor(owner.userId, 'admin')).map((row) => row.id)).toEqual(ids);
+    } finally {
+      await db.query('DELETE FROM push_outbox WHERE id = ANY($1::bigint[])', [ids]);
+    }
   });
 });
