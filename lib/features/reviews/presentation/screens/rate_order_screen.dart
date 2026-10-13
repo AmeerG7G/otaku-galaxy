@@ -30,6 +30,11 @@ class RateOrderScreen extends StatefulWidget {
   static const double artWidth = 168;
   static const double artEnd = -49;
 
+  /// حافة الرسم المقصوصة (الصف 766 من 820): الترويسة الأطول من موضعها عند
+  /// العرض أعلاه (خطٌّ مكبَّر، عنوانٌ في سطرين بجوار الوجه) تُنزل الرسم معها
+  /// فلا يظهر القصّ (2026-10-12).
+  static const double artCutAt = 766 / 820;
+
   @override
   State<RateOrderScreen> createState() => _RateOrderScreenState();
 }
@@ -88,6 +93,9 @@ class _RateOrderScreenState extends State<RateOrderScreen> {
               artworkWidth: RateOrderScreen.artWidth,
               artworkEnd: RateOrderScreen.artEnd,
               artworkBelowStatusBar: true,
+              // العنوان والسطر الوصفي بجوار الوجه لا فوقه (2026-10-12).
+              textClearOfArtwork: true,
+              artworkCutAt: RateOrderScreen.artCutAt,
               onBack: () => context.router.maybePop(),
             ),
             Expanded(
