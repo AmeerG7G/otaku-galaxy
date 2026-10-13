@@ -90,7 +90,7 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
     // يجب أن تسري فوراً، لا بعد أن يعيد المستخدم تسجيل الدخول.
     // [I18N] اللغة تُقرأ من الصفّ لا من التوكن: تبديلُها في الإعدادات يسري
     // على الطلب التالي مباشرةً، بلا انتظار انتهاء توكنٍ عمرُه سبعة أيام.
-    req.auth = { ...authUserFrom(state), sessionExpiresAt: sessionExpiry(payload) };
+    req.auth = { ...authUserFrom(state), sessionExpiresAt: sessionExpiry(payload), sessionTokenVersion: tokenVersion };
     // [D3] «زبون نشط اليوم» — كتابةٌ واحدة لكل زبون في اليوم، ومطفأ افتراضياً.
     if (req.auth.role === 'customer') trackingService.customerActive(req.auth.id);
     return next();
@@ -193,7 +193,7 @@ export async function optionalAuthenticate(req: Request, _res: Response, next: N
     const tokenVersion = typeof payload.tv === 'number' ? payload.tv : 0;
     if (tokenVersion !== state.tokenVersion) return next();
 
-    req.auth = { ...authUserFrom(state), sessionExpiresAt: sessionExpiry(payload) };
+    req.auth = { ...authUserFrom(state), sessionExpiresAt: sessionExpiry(payload), sessionTokenVersion: tokenVersion };
   } catch {
     // توكن غير صالح على مسار عام — يُخدَم زائراً.
   }

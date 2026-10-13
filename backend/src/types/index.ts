@@ -78,6 +78,11 @@ export interface AuthUser {
    * المسؤول فلا يستقبل بعد انتهائها (هجرة ٠٨٢). `null` لتوكنٍ بلا `exp`.
    */
   sessionExpiresAt?: Date | null;
+  /**
+   * `token_version` الذي صادق الطلب — يعيد التسجيل فحصه تحت قفل الصف فلا يُحفظ
+   * جهازٌ لجلسةٍ أُبطلت بين المصادقة والمعاملة.
+   */
+  sessionTokenVersion?: number;
 }
 
 /** بيانات المستخدم المكشوفة في الردود (بلا password_hash). */

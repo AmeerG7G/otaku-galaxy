@@ -2,6 +2,7 @@ import type { RequestHandler } from 'express';
 import { withTransaction, db } from '../database/pool.js';
 import { adminPushRepo } from '../repositories/adminPushRepo.js';
 import { pushStatus } from '../services/push/index.js';
+import { Errors } from '../utils/errors.js';
 import { ok } from '../utils/response.js';
 import { parse } from '../utils/zod.js';
 import {
@@ -30,14 +31,23 @@ export const adminPushController = {
     res.locals.auditHandled = true; // شأنٌ شخصي للمسؤول لا تغييرٌ في المتجر
     const input = parse(registerAdminDeviceSchema, req.body ?? {});
     // [SECURITY] الجهاز يستقبل ما دامت هذه الجلسة — لا بعدها (هجرة ٠٨٢).
-    const result = await withTransaction((tx) =>
-      adminPushRepo.register(tx, {
+    const result = await withTransaction(async (tx) => {
+      // [SECURITY] جلسةٌ أُبطلت أو حسابٌ أُوقف بعد المصادقة لا يسجّل جهازاً (انظر
+      // `lockLiveSession`) — بالرسالة والرمز نفسيهما اللذين تردّ بهما المصادقة.
+      const state = await adminPushRepo.lockLiveSession(tx, req.auth!.id, req.auth!.sessionTokenVersion ?? 0);
+      if (state === 'suspended') {
+        throw Errors.forbidden('الحساب موقوف — تواصل مع الدعم', 'ACCOUNT_SUSPENDED');
+      }
+      if (state === 'revoked') {
+        throw Errors.unauthorized('انتهت صلاحية الجلسة — سجّل الدخول من جديد', 'SESSION_REVOKED');
+      }
+      return adminPushRepo.register(tx, {
         userId: req.auth!.id,
         token: input.token,
         platform: input.platform,
         sessionExpiresAt: req.auth!.sessionExpiresAt ?? null,
-      }),
-    );
+      });
+    });
     return ok(res, { registered: true, created: result.created }, 'فُعّلت الإشعارات على هذا الجهاز');
   }) as RequestHandler,
 

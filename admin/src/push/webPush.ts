@@ -121,6 +121,201 @@ async function messaging() {
   return { module: messagingModule, instance: messagingModule.getMessaging(app) }
 }
 
+/**
+ * ═══ كل عمليةٍ لجلستها (سباق تبدّل الجلسة) ═══
+ *
+ * [SECURITY] رمز FCM قد يتأخّر ثوانيَ، وفي أثنائها قد تنتهي جلسة A ويدخل B. كل
+ * عمليةٍ تحمل «تذكرة» جلستها (التوكن نفسه + صاحبه + `epoch`)، وتتحقّق منها
+ * **بلا انتظارٍ بين التحقّق والأثر** قبل كل تسجيلٍ أو إلغاءٍ أو كتابة سجلّ.
+ * تذكرةٌ قديمة ⇒ تتوقّف بلا أثر: العميل يرسل توكن الجلسة **الحالية** عند
+ * الإرسال، فطلبٌ متأخّر من A كان يسجّل رمزه بجلسة B ويعيد سجلّه بعد خروجه.
+ * `epoch` يتقدّم مع كل فعلٍ صريح (تفعيل، إيقاف، نهاية جلسة) — فالأحدث يغلب
+ * ولو في الجلسة نفسها. `setUser` (تحديث الملفّ) لا يمسّ التذكرة.
+ */
+interface SessionTicket {
+  owner: string
+  session: string
+  epoch: number
+}
+
+let epoch = 0
+
+function ticketFor(ownerId: string): SessionTicket | null {
+  const { token, user } = useAuthStore.getState()
+  if (!token || user?.id !== ownerId) return null
+  return { owner: ownerId, session: token, epoch }
+}
+
+function current(ticket: SessionTicket): boolean {
+  const { token, user } = useAuthStore.getState()
+  return token === ticket.session && user?.id === ticket.owner && epoch === ticket.epoch
+}
+
+/**
+ * ═══ كل تسجيلٍ إمّا مقصود أو مُتتبَّع حتى يُلغى ═══
+ *
+ * [SECURITY] لا خروج من الخادم: توكن الجلسة يبقى صالحاً حتى انتهائه، فجهازٌ
+ * سُجّل ولم يُلغَ يستقبل أسماء الزبائن وأرقامهم أياماً. كل رمزٍ أرسله هذا
+ * المتصفّح للتسجيل هو في كل لحظة واحدٌ من: مقصود (السجلّ)، أو تسجيلٌ جارٍ
+ * تملكه عملية، أو استولى عليه `disableWebPush`، أو إلغاءٌ جارٍ، أو في قائمة
+ * التنظيف المحفوظة لصاحبه. عمليةٌ قديمة تستقرّ متأخّرةً **لا تلغي** رمزاً
+ * مقصوداً أو جارياً لغيرها (`isIntended` يُفحص بلا انتظارٍ قبل كل إلغاء).
+ *
+ * الإلغاء على الخادم مقيَّدٌ بالمسؤول لا بالجلسة، ومتكرّرُه بلا أثر: فإلغاءٌ
+ * فشل (شبكة، خطأ خادم، مهلة) يُحفظ ويُعاد عند مزامنة صاحبه التالية — مرّة لكل
+ * مزامنة، بلا مؤقّتات ولا حلقات. ما تجاوز الحدّ يبقى محدوداً بانتهاء جلسته (٠٨٢).
+ */
+interface InflightRegistration {
+  token: string
+  owner: string
+  session: string
+  done: Promise<void>
+  /** `disableWebPush` تولّى إلغاءه — فلا تلغيه العمليةُ صاحبته مرّةً ثانية. */
+  claimed: boolean
+}
+
+/** لكل طلب تسجيلٍ جارٍ مدخلٌ يزول حين يستقرّ — لا خانة واحدة يكتب فوقها طلبٌ آخر. */
+const inflightRegistrations = new Set<InflightRegistration>()
+/** إلغاءٌ جارٍ لكل رمز: تسجيلُ الرمز نفسه ينتظره، فيرى الخادم الإلغاء أولاً. */
+const inflightUnregisters = new Map<string, Promise<void>>()
+
+const CLEANUP_KEY = 'otaku-admin-push-cleanup'
+const CLEANUP_LIMIT = 16
+
+export interface PendingCleanup {
+  owner: string
+  token: string
+}
+
+function readCleanup(): PendingCleanup[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(CLEANUP_KEY) ?? '[]') as unknown
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter(
+      (entry): entry is PendingCleanup =>
+        typeof entry?.owner === 'string' && Boolean(entry.owner) && typeof entry?.token === 'string' && Boolean(entry.token),
+    )
+  } catch {
+    return []
+  }
+}
+
+function writeCleanup(entries: PendingCleanup[]) {
+  try {
+    if (entries.length) localStorage.setItem(CLEANUP_KEY, JSON.stringify(entries.slice(-CLEANUP_LIMIT)))
+    else localStorage.removeItem(CLEANUP_KEY)
+  } catch {
+    // تخزينٌ محجوب: يبقى الصفّ محدوداً بانتهاء جلسته على الخادم.
+  }
+}
+
+function addCleanup(owner: string, token: string) {
+  writeCleanup([...readCleanup().filter((e) => e.owner !== owner || e.token !== token), { owner, token }])
+}
+
+function dropCleanup(owner: string, token: string) {
+  const entries = readCleanup()
+  const rest = entries.filter((e) => e.owner !== owner || e.token !== token)
+  if (rest.length !== entries.length) writeCleanup(rest)
+}
+
+/** إلغاءاتٌ لم تكتمل بعد — تُعاد عند مزامنة صاحبها التالية. */
+export function pendingWebPushCleanup(): PendingCleanup[] {
+  return readCleanup()
+}
+
+/** لا تسجيل ولا إلغاء جارٍ — للاختبارات والتشخيص. */
+export function webPushIdle(): boolean {
+  return inflightRegistrations.size === 0 && inflightUnregisters.size === 0
+}
+
+/** رمزٌ مقصود الآن، أو تسجيلُه جارٍ لعمليةٍ ما — لا يلغيه تنظيف. */
+function isIntended(token: string): boolean {
+  if (readRecord()?.token === token) return true
+  for (const entry of inflightRegistrations) if (entry.token === token) return true
+  return false
+}
+
+/** إلغاءٌ مُتتبَّع: نجاحه يمحوه من قائمة التنظيف، وفشله يحفظه فيها ثم يُرمى. */
+async function unregisterTracked(owner: string | null, token: string): Promise<void> {
+  const before = inflightUnregisters.get(token) ?? Promise.resolve()
+  const request = before.then(() => unregisterAdminDevice(token))
+  const settled = request.then(
+    () => undefined,
+    () => undefined,
+  )
+  inflightUnregisters.set(token, settled)
+  try {
+    await request
+    if (owner) dropCleanup(owner, token)
+  } catch (error) {
+    if (owner) addCleanup(owner, token)
+    throw error
+  } finally {
+    if (inflightUnregisters.get(token) === settled) inflightUnregisters.delete(token)
+  }
+}
+
+/**
+ * تسجيلٌ مُتتبَّع. `true` = العملية ما تزال حاليّة بعد استقراره (فلتكتب السجلّ
+ * فوراً). `false` = قديمة: ما سجّلته يُسوّى هنا — لا يُترك نشطاً بلا صاحب.
+ */
+async function registerTracked(ticket: SessionTicket, token: string): Promise<boolean> {
+  const unregistering = inflightUnregisters.get(token)
+  if (unregistering) {
+    await unregistering
+    if (!current(ticket)) return false
+  }
+  const request = registerAdminDevice(token)
+  const entry: InflightRegistration = {
+    token,
+    owner: ticket.owner,
+    session: ticket.session,
+    done: request.then(
+      () => undefined,
+      () => undefined,
+    ),
+    claimed: false,
+  }
+  inflightRegistrations.add(entry)
+  try {
+    await request
+  } catch (error) {
+    inflightRegistrations.delete(entry)
+    // قد يكون بلغ الخادم قبل الفشل (مهلة): يُتتبَّع ما لم يكن مقصوداً.
+    if (!entry.claimed && !isIntended(token)) addCleanup(ticket.owner, token)
+    throw error
+  }
+  inflightRegistrations.delete(entry)
+  if (current(ticket)) return true
+  await settleStaleRegistration(entry)
+  return false
+}
+
+/** تسجيلٌ استقرّ لعمليةٍ قديمة: يُلغى الآن إن أمكن، وإلا حُفظ لجلسة صاحبه التالية. */
+async function settleStaleRegistration(entry: InflightRegistration): Promise<void> {
+  if (entry.claimed || isIntended(entry.token)) return
+  const { token: session, user } = useAuthStore.getState()
+  if (session && user?.id === entry.owner) {
+    await unregisterTracked(entry.owner, entry.token).catch(() => undefined)
+  } else {
+    addCleanup(entry.owner, entry.token)
+  }
+}
+
+/** إلغاءاتُ هذا المسؤول المعلّقة — محاولةٌ واحدة لكل مزامنة، ولا يُمسّ رمزٌ مقصود. */
+async function drainCleanup(ticket: SessionTicket): Promise<void> {
+  for (const entry of readCleanup()) {
+    if (entry.owner !== ticket.owner) continue
+    if (!current(ticket)) return
+    if (isIntended(entry.token)) {
+      dropCleanup(entry.owner, entry.token)
+      continue
+    }
+    await unregisterTracked(entry.owner, entry.token).catch(() => undefined)
+  }
+}
+
 /** رمز FCM الحاليّ لهذا المتصفّح — Firebase يجدّده إن تبدّل الاشتراك أو قدُم. */
 async function currentToken(): Promise<string | null> {
   const registration = await navigator.serviceWorker.register(SW_URL, { scope: SW_SCOPE })
@@ -158,19 +353,38 @@ export type EnableResult =
 export async function enableWebPush(ownerId: string): Promise<EnableResult> {
   if (!webPushConfigured()) return { ok: false, reason: 'not_configured' }
   if (!webPushSupported()) return { ok: false, reason: 'unsupported' }
+  if (!ticketFor(ownerId)) return { ok: false, reason: 'failed', detail: 'no_session' }
+  // فعلٌ صريح: مزامنةٌ معلّقة قبله لا تكتب فوقه.
+  epoch += 1
+  const ticket = ticketFor(ownerId)!
+  const sessionChanged = { ok: false, reason: 'failed', detail: 'session_changed' } as const
   const permission = await Notification.requestPermission()
-  if (permission !== 'granted') return { ok: false, reason: 'denied' }
+  if (permission !== 'granted') {
+    // المتصفّح لا يستقبل: ما كانت المزامنة المُبطَلة ستفعله يُفعل هنا — النيّة تُمحى
+    // والجهاز يُلغى على الخادم والمتصفّح، فلا تبقى الواجهة والخادم على حالٍ مضلِّلة.
+    const record = readRecord()
+    if (record?.owner === ownerId && current(ticket)) {
+      writeRecord(null)
+      if (record.token) await unregisterTracked(ownerId, record.token).catch(() => undefined)
+      if (current(ticket)) await unsubscribeThisBrowser()
+    }
+    return { ok: false, reason: 'denied' }
+  }
   try {
+    if (!current(ticket)) return sessionChanged
     const token = await currentToken()
     if (!token) return { ok: false, reason: 'failed', detail: 'no_token' }
+    if (!current(ticket)) return sessionChanged
     const previous = readRecord()
-    await registerAdminDevice(token)
-    // رمزه القديم (تبدّل) يُلغى؛ رمز غيره ليس له أن يلغيه (الخادم يقصره على صاحبه).
-    if (previous?.owner === ownerId && previous.token && previous.token !== token) {
-      await unregisterAdminDevice(previous.token).catch(() => undefined)
-    }
+    if (!(await registerTracked(ticket, token))) return sessionChanged
+    // السجلّ يُكتب فور الاستقرار — بلا انتظارٍ يرى فيه تنظيفٌ قديمٌ الرمزَ بلا صاحب.
     takeLegacyToken()
     writeRecord({ owner: ownerId, token })
+    dropCleanup(ownerId, token)
+    // رمزه القديم (تبدّل) يُلغى؛ رمز غيره ليس له أن يلغيه (الخادم يقصره على صاحبه).
+    if (previous?.owner === ownerId && previous.token && previous.token !== token && !isIntended(previous.token)) {
+      await unregisterTracked(ownerId, previous.token).catch(() => undefined)
+    }
     return { ok: true, token }
   } catch (error) {
     return { ok: false, reason: 'failed', detail: error instanceof Error ? error.message : String(error) }
@@ -179,33 +393,69 @@ export async function enableWebPush(ownerId: string): Promise<EnableResult> {
 
 /** إيقافها على هذا الجهاز: يُعطَّل على الخادم ويُلغى اشتراك المتصفّح، ولا تبقى نيّة. */
 export async function disableWebPush(): Promise<void> {
-  const token = readRecord()?.token ?? takeLegacyToken()
+  epoch += 1
+  const mine = epoch
+  const { token: session, user } = useAuthStore.getState()
+  const record = readRecord()
+  const recordToken = record?.token ?? takeLegacyToken()
   writeRecord(null)
   takeLegacyToken()
+  // كل تسجيلٍ أُرسل بهذه الجلسة ولم يستقرّ يُستولى عليه ويُنتظر **قبل** الإلغاء —
+  // وإلا سبقه الإلغاء إلى الخادم فبقي الصفّ نشطاً. تسجيلُ جلسةٍ أخرى ليس لنا.
+  const claimed = [...inflightRegistrations].filter((entry) => entry.session === session)
+  for (const entry of claimed) entry.claimed = true
   try {
-    if (token) await unregisterAdminDevice(token)
+    await Promise.all(claimed.map((entry) => entry.done))
+    const targets = new Map<string, string | null>()
+    if (recordToken) targets.set(recordToken, record?.owner ?? user?.id ?? null)
+    for (const entry of claimed) if (!targets.has(entry.token)) targets.set(entry.token, entry.owner)
+    // تفعيلٌ أحدث في أثناء الانتظار جعل رمزاً مقصوداً أو جارياً من جديد: لا يُلغى من تحته.
+    for (const token of [...targets.keys()]) if (isIntended(token)) targets.delete(token)
+    // كلٌّ مستقلّ: فشلُ واحدٍ لا يُسقط إلغاء غيره، وكلُّ فاشلٍ يبقى في قائمة التنظيف.
+    const results = await Promise.allSettled([...targets].map(([token, owner]) => unregisterTracked(owner, token)))
+    const failure = results.find((result): result is PromiseRejectedResult => result.status === 'rejected')
+    if (failure) throw failure.reason
   } finally {
-    await unsubscribeThisBrowser()
+    // تفعيلٌ أحدث بدأ: اشتراك المتصفّح صار له — لا يُلغى من تحته.
+    if (epoch === mine) await unsubscribeThisBrowser()
   }
 }
 
-let syncing: Promise<void> | null = null
+/** المزامنة الجارية ومفتاحها (صاحب + جلسة + `epoch`) — لا تنضمّ جلسةٌ إلى مزامنة غيرها. */
+let syncing: { key: string; promise: Promise<void> } | null = null
 
 /**
  * بداية جلسة (وبعد تغيير كلمة المرور، وحين يبدّل المتصفّح اشتراكه): يجدّد رمز
  * هذا المتصفّح ويربطه بالجلسة الحالية. فشلُ الشبكة صامت: يُعاد في الجلسة التالية.
+ *
+ * نداءان بالتذكرة نفسها (StrictMode) عمليةٌ واحدة. تذكرةٌ أخرى تبدأ عمليتها فوراً
+ * ولا تنتظر القديمة (قد تعلق في `getToken` أبداً) — القديمة تتوقّف عند حدّها التالي.
  */
 export function syncWebPush(ownerId: string | null | undefined): Promise<void> {
-  if (!ownerId) return Promise.resolve()
-  syncing ??= runSync(ownerId).finally(() => {
-    syncing = null
-  })
-  return syncing
+  const ticket = ownerId ? ticketFor(ownerId) : null
+  if (!ticket) return Promise.resolve()
+  const key = `${ticket.owner}\n${ticket.session}\n${ticket.epoch}`
+  if (syncing?.key === key) return syncing.promise
+  const entry = {
+    key,
+    promise: runSync(ticket)
+      .catch(() => undefined)
+      .finally(() => {
+        if (syncing === entry) syncing = null
+      }),
+  }
+  syncing = entry
+  return entry.promise
 }
 
-async function runSync(ownerId: string): Promise<void> {
+async function runSync(ticket: SessionTicket): Promise<void> {
+  const ownerId = ticket.owner
   // صيغةٌ قديمة بلا صاحب: لا تُنقل لهذا المسؤول — يُعاد التفعيل مرّة.
   if (takeLegacyToken()) await unsubscribeThisBrowser()
+  if (!current(ticket)) return
+  // ما فشل إلغاؤه سابقاً لهذا المسؤول — قبل كل شيء، ولو لم تبقَ نيّة.
+  await drainCleanup(ticket)
+  if (!current(ticket)) return
 
   const record = readRecord()
   if (!record) return
@@ -220,19 +470,24 @@ async function runSync(ownerId: string): Promise<void> {
   if (!permissionGranted()) {
     // سُحب الإذن (أو أُعيد إلى «اسأل»): المتصفّح لا يستقبل — يتوقّف الخادم أيضاً.
     writeRecord(null)
-    if (record.token) await unregisterAdminDevice(record.token).catch(() => undefined)
-    await unsubscribeThisBrowser()
+    if (record.token && !isIntended(record.token)) {
+      await unregisterTracked(ownerId, record.token).catch(() => undefined)
+    }
+    // جلسةٌ أحدث قد تملك الاشتراك الآن — لا يُلغى من تحتها.
+    if (current(ticket)) await unsubscribeThisBrowser()
     return
   }
   try {
     const token = await currentToken()
-    if (!token) return
+    if (!token || !current(ticket)) return
     // الجديد أولاً ثم إلغاء القديم — بلا فجوةٍ لا يستقبل فيها المتصفّح شيئاً.
-    await registerAdminDevice(token)
-    if (record.token && record.token !== token) {
-      await unregisterAdminDevice(record.token).catch(() => undefined)
-    }
+    if (!(await registerTracked(ticket, token))) return
+    // السجلّ يُكتب فور الاستقرار — بلا انتظارٍ يرى فيه تنظيفٌ قديمٌ الرمزَ بلا صاحب.
     writeRecord({ owner: ownerId, token })
+    dropCleanup(ownerId, token)
+    if (record.token && record.token !== token && !isIntended(record.token)) {
+      await unregisterTracked(ownerId, record.token).catch(() => undefined)
+    }
   } catch {
     // لا شيء — يُعاد في الجلسة التالية.
   }
@@ -246,6 +501,7 @@ async function runSync(ownerId: string): Promise<void> {
  * (الـ٤٠١ ينقل إلى صفحة الدخول) تُبقي الرمز محفوظاً فيعيد التحميلُ التالي الإلغاء.
  */
 export async function endWebPushSession(): Promise<void> {
+  epoch += 1
   const record = readRecord()
   const legacy = takeLegacyToken()
   if (!record?.token && !legacy) return

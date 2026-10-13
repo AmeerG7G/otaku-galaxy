@@ -9,6 +9,34 @@ export type AdminDevicePlatform = 'web' | 'android' | 'ios';
  */
 export const adminPushRepo = {
   /**
+   * هل الجلسة ما تزال قائمة؟ (النسخة نفسها والحساب نشط) — بقفل `FOR SHARE` على
+   * صفّ المسؤول حتى نهاية المعاملة.
+   *
+   * [SECURITY] المصادقة تفحص `token_version` **قبل** المعاملة. إبطالٌ بينهما (تغيير
+   * كلمة المرور، الإيقاف — رفع النسخة و`deactivateAll` في معاملةٍ واحدة) كان يترك
+   * التسجيل يُحفظ بعده نشطاً حتى انتهاء التوكن. القفل يرتّب الاثنين: إبطالٌ سبق ⇒
+   * تُقرأ نسخته الجديدة فيُرفض التسجيل؛ تسجيلٌ سبق ⇒ ينتظر الإبطالُ فيعطّله.
+   * ترتيب الأقفال (users ثم admin_push_devices) هو ترتيب الإبطال نفسه — لا جمود.
+   *
+   * الحكم بترتيب المصادقة نفسه: حسابٌ موقوف أولاً (`suspended`)، ثم نسخةٌ تبدّلت أو
+   * حسابٌ زال (`revoked`) — فيردّ التسجيل بما كانت المصادقة سترُدّ به لو وصل بعدها.
+   */
+  async lockLiveSession(
+    tx: pg.PoolClient,
+    userId: string,
+    tokenVersion: number,
+  ): Promise<'live' | 'revoked' | 'suspended'> {
+    const { rows } = await tx.query<{ token_version: number; is_active: boolean }>(
+      'SELECT token_version, is_active FROM users WHERE id = $1 FOR SHARE',
+      [userId],
+    );
+    const row = rows[0];
+    if (!row) return 'revoked';
+    if (!row.is_active) return 'suspended';
+    return row.token_version === tokenVersion ? 'live' : 'revoked';
+  },
+
+  /**
    * تسجيل جهاز. الرمز فريد: متصفّحٌ واحد يسجّل فيه مسؤولٌ ثم آخر ينتقل رمزه
    * إلى الثاني (هو من يستعمل المتصفّح الآن).
    *
