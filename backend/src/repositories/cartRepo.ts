@@ -77,6 +77,20 @@ export const cartRepo = {
   },
 
   /**
+   * أسطر العربة **كلها** بلا قفل — لمعاينة الدفع (`orderService.checkoutQuote`).
+   *
+   * الأسطر نفسها التي يقرؤها الإرسال (`listItemsForCheckout`) ومنها المعطَّل،
+   * فتُبلغ المعاينةُ الزبونَ بما سيرفضه الإنشاء (`PRODUCT_UNAVAILABLE`) بدل أن
+   * تُخفيه عنه. القراءة لا تكتب ولا تقفل: المعاينة ليست وعداً.
+   */
+  async listAllItems(db: pg.Pool | pg.PoolClient, userId: string): Promise<CartLine[]> {
+    const cartId = await ensureCart(db, userId);
+    const { rows } = await db.query<Record<string, unknown>>(`${LINE_FROM}
+      ORDER BY ci.created_at DESC`, [cartId]);
+    return rows.map(mapLine);
+  },
+
+  /**
    * يقفل صفّ العربة داخل معاملة ثم يقرأ عناصرها — لإنشاء الطلب وحده.
    *
    * [CRITICAL] بلا هذا القفل كان إرسالان متزامنان (نقرتان سريعتان، أو إعادة

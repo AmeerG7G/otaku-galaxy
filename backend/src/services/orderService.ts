@@ -14,7 +14,12 @@ import { sendRatingReminderNow } from '../jobs/ratingReminderJob.js';
 import { db, withTransaction } from '../database/pool.js';
 import { adminEvents } from './adminEvents.js';
 import { birthdayDiscountAmount } from '../domain/birthday.js';
-import { fitProductDiscounts, priceOrder } from '../domain/orderPricing.js';
+import {
+  fitProductDiscounts,
+  priceOrder,
+  quoteFingerprint,
+  type QuotedLine,
+} from '../domain/orderPricing.js';
 import {
   eligiblePurchaseValue,
   purchasePointsFor,
@@ -268,6 +273,8 @@ export const orderService = {
       phone: string;
       zoneId?: string | null;
       expectedPrices?: ReadonlyArray<{ productId: string; unitPrice: number }>;
+      /** بصمة المعاينة التي راجعها الزبون (`checkoutQuote().fingerprint`) — فحصٌ لا مصدر. */
+      expectedQuote?: string;
     },
     /**
      * لغة الطلب — تسمّي المنتج في رسائل الرفض أدناه بلغة الزبون (066).
@@ -311,6 +318,8 @@ export const orderService = {
       phone: string;
       zoneId?: string | null;
       expectedPrices?: ReadonlyArray<{ productId: string; unitPrice: number }>;
+      /** بصمة المعاينة التي راجعها الزبون (`checkoutQuote().fingerprint`) — فحصٌ لا مصدر. */
+      expectedQuote?: string;
     },
     locale: AppLocale,
     idempotency: { key: string; fingerprint: string } | null,
@@ -440,6 +449,34 @@ export const orderService = {
         'reserve',
       );
 
+      // [CRITICAL] ربط الإرسال بالمراجعة: البصمة من القيم التي ستُحفظ الآن بعينها
+      // (الأسطر، الوجهة برسومها، الخصمان المحجوزان) بالدالة نفسها التي تعاين بها
+      // شاشة الدفع. اختلافها ⇒ رفضٌ قبل أي كتابة — المزيّة المحجوزة يُرجعها
+      // تراجع المعاملة. غيابها (التطبيق اليوم) = لا فحص، كما كان.
+      if (input.expectedQuote !== undefined) {
+        const reviewed = quoteFingerprint({
+          lines: snapshots.map((item) => ({
+            productId: item.productId,
+            optionValue: item.optionValue,
+            quantity: item.quantity,
+            unitPrice: item.price,
+          })),
+          governorateId: selected.id,
+          zoneId,
+          deliveryFee,
+          pricing: priceOrder({
+            productsTotal,
+            deliveryFee,
+            deliveryPromoRaw: deliveryPromoTotal,
+            discount,
+            loyaltyDiscount: loyaltyReward?.amount ?? 0,
+          }),
+        });
+        if (reviewed !== input.expectedQuote) {
+          throw Errors.conflict('تغيّر ملخّص طلبك منذ راجعته', 'QUOTE_CHANGED');
+        }
+      }
+
       const order = await orderRepo.create(tx, {
         userId,
         governorateId: input.governorateId,
@@ -513,26 +550,52 @@ export const orderService = {
     userId: string,
     input: { governorateId?: string | null; zoneId?: string | null },
   ) {
-    const lines = await cartRepo.listItems(db, userId);
+    const lines = await cartRepo.listAllItems(db, userId);
     const products = await productRepo.findByIds(db, [...new Set(lines.map((l) => l.productId))]);
 
     let productsTotal = 0;
     let deliveryPromoRaw = 0;
+    const quotedLines: Array<QuotedLine & { lineTotal: number }> = [];
+    // ما سيرفض الإنشاءُ به الطلبَ كله — يُعرض قبل التأكيد لا بعده.
+    const issues: Array<
+      | { code: 'PRODUCT_UNAVAILABLE'; productId: string }
+      | { code: 'INSUFFICIENT_STOCK'; productId: string; available: number }
+    > = [];
+    const orderedByProduct = new Map<string, number>();
     for (const line of lines) {
       const product = products.get(line.productId);
       // سطرٌ عُطِّل منتجه سيرفضه الإنشاء كله (`PRODUCT_UNAVAILABLE`)؛ لا يُحسب هنا.
-      if (!product || !product.isActive) continue;
+      if (!product || !product.isActive) {
+        issues.push({ code: 'PRODUCT_UNAVAILABLE', productId: line.productId });
+        continue;
+      }
       productsTotal += product.price * line.quantity;
       if (product.hasDeliveryPromo && product.deliveryPromoAmount > 0) {
         deliveryPromoRaw += product.deliveryPromoAmount * line.quantity;
       }
+      orderedByProduct.set(product.id, (orderedByProduct.get(product.id) ?? 0) + line.quantity);
+      quotedLines.push({
+        productId: product.id,
+        optionValue: line.optionValue,
+        quantity: line.quantity,
+        unitPrice: product.price,
+        lineTotal: product.price * line.quantity,
+      });
+    }
+    // البوّابة نفسها التي يطبّقها الإنشاء: مجموع المنتج لا كمية السطر.
+    for (const [productId, ordered] of orderedByProduct) {
+      const available = Number(products.get(productId)!.stock);
+      if (available < ordered) issues.push({ code: 'INSUFFICIENT_STOCK', productId, available });
     }
 
     let deliveryFee: number | null = null;
+    let governorateId: string | null = null;
+    let zoneId: string | null = null;
     if (input.governorateId) {
       const governorates = await governorateRepo.listActive(db);
       const selected = governorates.find((g) => g.id === input.governorateId);
       if (!selected) throw Errors.badRequest('المحافظة غير موجودة أو غير نشطة');
+      governorateId = selected.id;
       const zones = await zoneRepo.listForGovernorate(db, selected.id);
       if (zones.length === 0) {
         if (input.zoneId) {
@@ -543,6 +606,7 @@ export const orderService = {
         const zone = zones.find((entry) => entry.id === input.zoneId);
         if (!zone) throw Errors.badRequest('منطقة التوصيل غير صالحة', 'ZONE_INVALID');
         deliveryFee = zone.deliveryFee;
+        zoneId = zone.id;
       }
     }
 
@@ -575,6 +639,21 @@ export const orderService = {
       deliveryFee,
       deliveryDiscount: deliveryFee === null ? 0 : priced.deliveryDiscount,
       total: deliveryFee === null ? null : priced.total,
+      lines: quotedLines,
+      issues,
+      // يُرسل مع الطلب (`expectedQuote`) فيُرفض إن تغيّر شيءٌ مما رآه الزبون.
+      // `null` = لا شيء قابلٌ للإرسال بعد: الرسوم مجهولة، أو العربة فارغة، أو
+      // فيها ما سيرفضه الإنشاء.
+      fingerprint:
+        deliveryFee === null || governorateId === null || quotedLines.length === 0 || issues.length > 0
+          ? null
+          : quoteFingerprint({
+              lines: quotedLines,
+              governorateId,
+              zoneId,
+              deliveryFee,
+              pricing: priced,
+            }),
     };
   },
 
