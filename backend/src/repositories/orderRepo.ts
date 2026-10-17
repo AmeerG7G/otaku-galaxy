@@ -249,6 +249,27 @@ export const orderRepo = {
    * القفل على `orders` لا على `points_ledger` عمداً: السقف تعريفُه «لكل
    * طلب»، والصفّ الذي يمثّل الطلب هو نقطة التسلسل الطبيعية الموجودة أصلاً.
    */
+  /**
+   * طلبٌ سابق لهذا الزبون بمفتاح عدم التكرار نفسه، إن وُجد.
+   *
+   * [SECURITY] البحث بـ`user_id` دائماً: المفتاح لا يُطابَق إلا ضمن طلبات
+   * صاحبه، فلا يُعاد طلب زبونٍ آخر مهما تشابه المفتاحان. يقرؤه الإنشاء **بعد**
+   * قفل العربة، فيرى محاولةً أولى التزمت أثناء انتظاره.
+   */
+  async findByIdempotencyKey(
+    db: pg.Pool | pg.PoolClient,
+    userId: string,
+    key: string,
+  ): Promise<{ id: string; fingerprint: string } | null> {
+    const { rows } = await db.query<{ id: string; fingerprint: string }>(
+      `SELECT id, idempotency_fingerprint AS fingerprint
+         FROM orders
+        WHERE user_id = $1 AND idempotency_key = $2`,
+      [userId, key],
+    );
+    return rows[0] ?? null;
+  },
+
   async lockForUpdate(client: pg.PoolClient, orderId: string) {
     const { rows } = await client.query<{ id: string }>(
       'SELECT id FROM orders WHERE id = $1 FOR UPDATE',
@@ -292,6 +313,11 @@ export const orderRepo = {
        * فائضٌ لا يقابله خصمٌ بلغ الرسوم — وهو بالضبط ما يمنعه قيد القاعدة.
        */
       deliveryPromoRaw?: number;
+      /**
+       * مفتاح عدم التكرار وبصمة الطلب (هجرة 071) — يُكتبان مع الطلب في الصفّ
+       * نفسه، فلا مفتاح بلا طلبٍ ملتزَم ولا طلب يضيع مفتاحه. غيابهما = `NULL`.
+       */
+      idempotency?: { key: string; fingerprint: string } | null;
     },
   ): Promise<OrderWithItems> {
     const { rows: numRows } = await db.query<{ number: string }>(
@@ -320,8 +346,9 @@ export const orderRepo = {
       `INSERT INTO orders (
          number, user_id, governorate_id, province, delivery_fee, full_address,
          phone, products_total, discount, total, status, zone_id, zone_name,
-         delivery_discount, loyalty_discount, delivery_discount_excess
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'PENDING_ADMIN_CONFIRMATION', $11, $12, $13, $14, $15)
+         delivery_discount, loyalty_discount, delivery_discount_excess,
+         idempotency_key, idempotency_fingerprint
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'PENDING_ADMIN_CONFIRMATION', $11, $12, $13, $14, $15, $16, $17)
        RETURNING id, number, status, province, delivery_fee, full_address,
                  phone, products_total, discount, total, created_at, zone_name,
                  delivery_discount, loyalty_discount, delivery_discount_excess`,
@@ -341,6 +368,8 @@ export const orderRepo = {
         deliveryDiscount,
         loyaltyDiscount,
         deliveryDiscountExcess,
+        input.idempotency?.key ?? null,
+        input.idempotency?.fingerprint ?? null,
       ],
     );
     const order = rows[0]!;

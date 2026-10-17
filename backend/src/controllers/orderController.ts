@@ -1,6 +1,7 @@
 import type { RequestHandler } from 'express';
 import { orderService } from '../services/orderService.js';
 import { resolveLocale } from '../utils/locale.js';
+import { Errors } from '../utils/errors.js';
 import { created, ok } from '../utils/response.js';
 import { parse } from '../utils/zod.js';
 import {
@@ -11,10 +12,30 @@ import {
 } from '../validators/orders.js';
 import { paginationSchema } from '../validators/catalog.js';
 
+/**
+ * صيغة مفتاح عدم التكرار — القيد نفسه في القاعدة (هجرة 071): UUID أو ١٦ بايتاً
+ * عشوائية بترميز base64url تكفي، ولا شيء يُخزَّن من نصٍّ حرّ.
+ */
+const IDEMPOTENCY_KEY = /^[A-Za-z0-9_-]{16,128}$/;
+
 export const orderController = {
   create: (async (req, res) => {
     const input = parse(createOrderSchema, req.body);
-    const order = await orderService.create(req.auth!.id, input, resolveLocale(req));
+    // الترويسة اختيارية: غيابها = السلوك القائم. حضورها بصيغةٍ غير صالحة
+    // رفضٌ صريح لا تجاهل — عميلٌ يظنّ أنه محميّ من التكرار يجب أن يعرف أنه ليس.
+    const idempotencyKey = req.get('Idempotency-Key');
+    if (idempotencyKey !== undefined && !IDEMPOTENCY_KEY.test(idempotencyKey)) {
+      throw Errors.badRequest('مفتاح الطلب غير صالح', 'INVALID_IDEMPOTENCY_KEY');
+    }
+    const { order, replayed } = await orderService.create(
+      req.auth!.id,
+      input,
+      resolveLocale(req),
+      idempotencyKey ?? null,
+    );
+    // الإعادة تردّ الطلب الملتزَم بالشكل نفسه (201) — التطبيق يعرضه نجاحاً كما
+    // في المحاولة الأولى. الترويسة تقول لمن يهمّه إنها إعادة لا طلبٌ جديد.
+    if (replayed) res.setHeader('Idempotency-Replayed', 'true');
     return created(res, order, 'تم استلام طلبك — سنتواصل معك قريباً');
   }) as RequestHandler,
 
