@@ -65,6 +65,29 @@ jobs:
       - run: npx tsc -b
       - run: npx vite build --mode prod
 
+  web-store:
+    name: Web store (typecheck + lint + tests + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web-store
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web-store/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      # البناء لا يحتاج أسرار التشغيل: الإعدادات تُقرأ عند أول طلب لا عند البناء.
+      # اختبارات Playwright تحتاج خادماً حياً وقاعدة مزروعة، فتُشغَّل محلياً (web-store/README.md).
+      - run: npm run build
+
   flutter:
     name: Flutter (analyze + test)
     runs-on: ubuntu-latest
