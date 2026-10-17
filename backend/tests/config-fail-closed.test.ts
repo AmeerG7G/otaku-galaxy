@@ -128,4 +128,35 @@ describe('APP_ENV يفشل مغلقاً', () => {
     expect((result as { stderr: string }).stderr).toContain('PUBLIC_BASE_URL');
   });
 
+  it('[CRITICAL] الاستماع على الواجهة المحلية افتراضياً خارج التطوير', async () => {
+    // nginx يصل على 127.0.0.1؛ منفذٌ على العنوان العام يتجاوز TLS وحدوده.
+    for (const appEnv of ['staging', 'prod']) {
+      const result = await boot({ ...REAL_SECRETS, APP_ENV: appEnv, NODE_ENV: 'production', HOST: undefined });
+      expect(result.ok, appEnv).toBe(true);
+      expect(JSON.parse((result as { stdout: string }).stdout).host, appEnv).toBe('127.0.0.1');
+    }
+    // صورة Docker تطلب كل الواجهات صراحةً — الحاوية معزولة ومنفذها محلّي على المضيف.
+    const docker = await boot({ ...REAL_SECRETS, APP_ENV: 'prod', NODE_ENV: 'production', HOST: '0.0.0.0' });
+    expect(JSON.parse((docker as { stdout: string }).stdout).host).toBe('0.0.0.0');
+    // التطوير كما كان: كل الواجهات (الهاتف على الشبكة المحلية).
+    const dev = await boot({ APP_ENV: 'dev', NODE_ENV: 'development', HOST: undefined });
+    expect(JSON.parse((dev as { stdout: string }).stdout).host).toBeNull();
+  });
+
+  it('HOST بصيغة غير صالحة يُرفض', async () => {
+    const result = await boot({ ...REAL_SECRETS, APP_ENV: 'prod', NODE_ENV: 'production', HOST: 'api.example.com' });
+    expect(result.ok).toBe(false);
+    expect((result as { stderr: string }).stderr).toContain('HOST');
+  });
+
+  it('BFF_SHARED_SECRET اختياري، وقصيره يُرفض', async () => {
+    const without = await boot({ ...REAL_SECRETS, APP_ENV: 'prod', NODE_ENV: 'production', BFF_SHARED_SECRET: undefined });
+    expect(JSON.parse((without as { stdout: string }).stdout).bffSharedSecretSet).toBe(false);
+    const short = await boot({ ...REAL_SECRETS, APP_ENV: 'prod', NODE_ENV: 'production', BFF_SHARED_SECRET: 'short' });
+    expect(short.ok).toBe(false);
+    expect((short as { stderr: string }).stderr).toContain('BFF_SHARED_SECRET');
+    const set = await boot({ ...REAL_SECRETS, APP_ENV: 'prod', NODE_ENV: 'production', BFF_SHARED_SECRET: 'b'.repeat(64) });
+    expect(JSON.parse((set as { stdout: string }).stdout).bffSharedSecretSet).toBe(true);
+  });
+
 });

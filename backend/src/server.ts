@@ -6,9 +6,18 @@ import { startRatingReminderScheduler } from './jobs/ratingReminderJob.js';
 
 const app = createApp();
 
-const server = app.listen(config.port, () => {
-  console.log(`Otaku Galaxy API running on http://localhost:${config.port} [${config.nodeEnv}]`);
-});
+// `config.host` غائبٌ في التطوير = كل الواجهات كما كان؛ الواجهة المحلية في
+// البيئتين الحقيقيتين خلف nginx (انظر `config.host`).
+// سطر الإقلاع نفسه كما كان (تنتظره `process-lifecycle.test.ts` وأي مراقبة سجلّ).
+const onListening = () => {
+  console.log(
+    `Otaku Galaxy API running on http://${config.host ?? 'localhost'}:${config.port} [${config.nodeEnv}]`,
+  );
+};
+const server =
+  config.host === undefined
+    ? app.listen(config.port, onListening)
+    : app.listen(config.port, config.host, onListening);
 
 // جدولة تذكير التقييم تعيش مع الخادم لا مع التطبيق (createApp)، فلا
 // تشتغل أثناء الاختبارات التي تبني التطبيق وحده.

@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { isIP } from 'node:net';
 import dotenv from 'dotenv';
 
 /**
@@ -211,6 +212,36 @@ const publicBaseUrl = requireInProduction(
   (v) => (/^https?:\/\/.+/.test(v) ? null : 'يجب أن يبدأ بـ http:// أو https://'),
 );
 
+/**
+ * عنوان الاستماع (`HOST`).
+ *
+ * [CRITICAL] nginx يصل إلى الخادم على `127.0.0.1` (upstream في `deploy/nginx`)،
+ * فلا سبب ليستمع على كل الواجهات في البيئتين الحقيقيتين: منفذٌ مفتوح على
+ * العنوان العام يتجاوز TLS وحدود nginx، ويجعل ترويسات العنوان قابلةً للتزوير.
+ * الافتراض هناك الواجهة المحلية؛ صورة Docker تضبط `0.0.0.0` صراحةً لأن
+ * الحاوية معزولة ومنفذها يُنشر على الواجهة المحلية للمضيف (`docker-compose.yml`).
+ * التطوير يبقى على كل الواجهات: الهاتف على الشبكة المحلية يصل إليه.
+ */
+const host = process.env.HOST?.trim() || (isProduction || isStaging ? '127.0.0.1' : undefined);
+if (host !== undefined && host !== 'localhost' && isIP(host) === 0) {
+  fatalConfigErrors.push(`HOST: «${host}» ليس عنوان IP صالحاً (مثل 127.0.0.1 أو 0.0.0.0).`);
+}
+
+/**
+ * سرّ الواجهة الوسيطة للموقع (`BFF_SHARED_SECRET`) — اختياري.
+ *
+ * الموقع يستدعي الخادم من خادمه هو، فيرى الخادم عنوانه لا عنوان الزبون،
+ * ويصير كل زبائن الموقع دلواً واحداً في حدود المعدّل. بهذا السرّ يوقّع الموقع
+ * عنوان الزبون (`middleware/client-ip.ts`)؛ غيابه = لا ترويسة تُقبل، والعنوان
+ * من `req.ip` كما كان.
+ */
+const bffSharedSecret = process.env.BFF_SHARED_SECRET?.trim() || null;
+if (bffSharedSecret !== null && bffSharedSecret.length < MIN_JWT_SECRET_LENGTH) {
+  fatalConfigErrors.push(
+    `BFF_SHARED_SECRET: قصير جداً (${bffSharedSecret.length} حرفاً، الحد الأدنى ${MIN_JWT_SECRET_LENGTH}) — ولّده بـ openssl rand -hex 32`,
+  );
+}
+
 if (fatalConfigErrors.length > 0) {
   throw new Error(
     `فشل التحقق من إعدادات الإنتاج:\n  - ${fatalConfigErrors.join('\n  - ')}\n` +
@@ -227,6 +258,10 @@ export const config = {
   isProduction,
 
   port: Number(process.env.PORT ?? 4000),
+  /** عنوان الاستماع — `undefined` = كل الواجهات (التطوير). انظر التحقق أعلاه. */
+  host,
+  /** سرّ توقيع عنوان الزبون من خادم الموقع — `null` = لا ترويسة تُقبل. */
+  bffSharedSecret,
 
   /**
    * عدد الوسطاء الموثوقين أمام الخادم.
