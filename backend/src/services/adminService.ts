@@ -245,6 +245,8 @@ export const adminService = {
       categoryId?: string;
       subcategoryId?: string | null;
       stock?: number;
+      /** المخزون الذي فُتحت عليه صفحة التعديل — يُقارَن تحت القفل (انظر أدناه). */
+      expectedStock?: number;
       isActive?: boolean;
       isOffer?: boolean;
       isSelected?: boolean;
@@ -271,6 +273,24 @@ export const adminService = {
       if (!existing) throw Errors.notFound('المنتج غير موجود');
       const previousStock = Number(existing.stock);
       const previousRestockAt = existing.restockAt;
+
+      // [CRITICAL] مقارنةٌ ثم كتابة تحت القفل نفسه (compare-and-set).
+      //
+      // `stock` قيمةٌ مطلقة يكتبها المسؤول من صفحةٍ فُتحت قبل لحظات أو ساعات.
+      // قبولُ طلبٍ بين الفتح والحفظ ينزّل المخزون؛ كتابةُ القيمة القديمة
+      // فوقه تُرجع القطع المستهلكة إلى البيع — بيعٌ فوق المخزون الفعلي. القفل
+      // وحده يُسلسل الكتابتين ولا يكشف أن إحداهما بُنيت على قراءةٍ قديمة.
+      // الرفض هنا يسبق كل كتابة، فلا يُحفظ أي حقلٍ آخر من الطلب نفسه.
+      if (
+        input.stock !== undefined &&
+        input.expectedStock !== undefined &&
+        input.expectedStock !== previousStock
+      ) {
+        throw Errors.conflict(
+          `المخزون تغيّر منذ فتح الصفحة (الحالي: ${previousStock}) — راجع القيمة ثم احفظ`,
+          'STOCK_CHANGED',
+        );
+      }
 
       await assertSubcategoryBelongs(
         tx,

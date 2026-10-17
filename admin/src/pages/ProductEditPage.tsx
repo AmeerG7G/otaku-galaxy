@@ -36,11 +36,22 @@ export default function ProductEditPage() {
     },
     onError: (error) => {
       message.error(error instanceof ApiError ? error.message : 'حدث خطأ غير متوقع')
+      // المخزون تغيّر منذ فتح الصفحة: نعيد قراءة المنتج كي يرى المسؤول القيمة
+      // الحالية ويقرّر من جديد، بدل أن يعيد الإرسال على قيمةٍ قديمة.
+      if (error instanceof ApiError && error.code === 'STOCK_CHANGED') {
+        void queryClient.invalidateQueries({ queryKey: ['product-edit', id] })
+      }
     },
   })
 
   function handleSubmit(values: ProductFormValues) {
     const optionsLoaded = editQuery.data?.optionsLoaded ?? true
+    // [CRITICAL] المخزون يُرسَل فقط إن غيّره المسؤول، ومعه القيمة التي فُتحت
+    // عليها الصفحة. كانت الصفحة تعيد إرسال المخزون في كل حفظ، فتعديلُ وصفٍ
+    // بعد قبول طلبٍ في تبويبٍ آخر كان يُرجع القطع المستهلكة إلى البيع (بيعٌ
+    // فوق المخزون). الخادم يرفض بـ`STOCK_CHANGED` إن تغيّر المخزون منذ الفتح.
+    const loadedStock = editQuery.data?.draft.stock
+    const stockChanged = loadedStock === undefined || values.stock !== loadedStock
     // [CRITICAL] المنتج المعطّل لا يوفّر الخادم خياراته للوحة، والحقلُ
     // الغائب عن `PATCH` لا يُمسّ على الخادم (`adminProductUpdateSchema`).
     // كانت الصفحة ترسل `options: []` صراحةً فتمسح الخيارات المحفوظة خلف
@@ -58,7 +69,12 @@ export default function ProductEditPage() {
       price: values.price,
       categoryId: values.categoryId,
       subcategoryId: values.subcategoryId ?? null,
-      stock: values.stock,
+      ...(stockChanged
+        ? {
+            stock: values.stock,
+            ...(loadedStock !== undefined ? { expectedStock: loadedStock } : {}),
+          }
+        : {}),
       // `null` صريحة تمسح الموعد؛ الحقل الغائب يعني «لا تغيّر».
       restockAt: values.restockAt ?? null,
       images: values.images,

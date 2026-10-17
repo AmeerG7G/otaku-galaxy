@@ -91,8 +91,10 @@ describe('ProductEditPage — منتج معطّل بلا خيارات محمَّ
     await waitFor(() => expect(updateProduct).toHaveBeenCalledTimes(1))
     const payload = vi.mocked(updateProduct).mock.calls[0]![1]
     expect(payload).not.toHaveProperty('options')
-    // بقية الحقول تُرسَل كالمعتاد.
-    expect(payload).toMatchObject({ nameAr: 'منتج معطّل', price: 1000, stock: 3, isActive: false })
+    // بقية الحقول تُرسَل كالمعتاد — عدا المخزون الذي لم يُغيَّر (انظر
+    // «المخزون لا يُعاد إرساله» أدناه).
+    expect(payload).toMatchObject({ nameAr: 'منتج معطّل', price: 1000, isActive: false })
+    expect(payload).not.toHaveProperty('stock')
     // ولا نافذة تأكيدٍ تصف مسحاً لن يحدث.
     expect(screen.queryByText(/سيُمسح/)).not.toBeInTheDocument()
   })
@@ -189,5 +191,53 @@ describe('ProductEditPage — المحتوى بلغتين', () => {
     expect(payload).not.toHaveProperty('nameCkb')
     expect(payload).not.toHaveProperty('descriptionCkb')
     expect(payload).toMatchObject({ nameAr: 'منتج معطّل' })
+  })
+})
+
+/**
+ * [CRITICAL] المخزون لا يُعاد إرساله من قيمةٍ قديمة.
+ *
+ * كانت الصفحة ترسل `stock` في كل حفظ بالقيمة التي فُتحت عليها، والخادم
+ * يكتبها قيمةً مطلقة. قبولُ طلبٍ بين فتح الصفحة وحفظها (يُنزّل المخزون) كان
+ * يُمحى بحفظِ تعديلٍ لا علاقة له بالمخزون، فتعود القطع المستهلكة إلى البيع.
+ * الآن: المخزون غير المعدَّل لا يُرسَل، والمعدَّل يُرسَل مع `expectedStock`
+ * ليرفض الخادم بـ`STOCK_CHANGED` إن تغيّر منذ الفتح.
+ */
+describe('ProductEditPage — المخزون والقيمة التي فُتحت عليها الصفحة', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(listAdminCategories).mockResolvedValue({
+      items: [{ id: 'c1', name: 'قسم', imageUrl: null, sortOrder: 0, isActive: true, subcategories: [] }],
+    } as never)
+    vi.mocked(listFranchises).mockResolvedValue({ items: [] } as never)
+    vi.mocked(getProductForEdit).mockResolvedValue({ draft: { ...draft, isActive: true }, optionsLoaded: true })
+    vi.mocked(updateProduct).mockResolvedValue({ product: {} as never, message: 'تم' })
+  })
+
+  it('حفظٌ لا يغيّر المخزون لا يرسل `stock` ولا `expectedStock`', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    const arabicName = await screen.findByLabelText('اسم المنتج بالعربي')
+    await user.clear(arabicName)
+    await user.type(arabicName, 'وصف مصحَّح')
+    await user.click(screen.getByRole('button', { name: 'حفظ التعديلات' }))
+
+    await waitFor(() => expect(updateProduct).toHaveBeenCalledTimes(1))
+    const payload = vi.mocked(updateProduct).mock.calls[0]![1]
+    expect(payload).not.toHaveProperty('stock')
+    expect(payload).not.toHaveProperty('expectedStock')
+    expect(payload).toMatchObject({ nameAr: 'وصف مصحَّح' })
+  })
+
+  it('تغيير المخزون يرسل القيمة الجديدة مع المخزون الذي فُتحت عليه الصفحة', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    const stock = await screen.findByLabelText('المخزون')
+    await user.clear(stock)
+    await user.type(stock, '7')
+    await user.click(screen.getByRole('button', { name: 'حفظ التعديلات' }))
+
+    await waitFor(() => expect(updateProduct).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(updateProduct).mock.calls[0]![1]).toMatchObject({ stock: 7, expectedStock: 3 })
   })
 })
