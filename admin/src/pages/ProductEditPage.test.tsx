@@ -114,7 +114,110 @@ describe('ProductEditPage — منتج معطّل بلا خيارات محمَّ
 
     await waitFor(() => expect(updateProduct).toHaveBeenCalledTimes(1))
     const payload = vi.mocked(updateProduct).mock.calls[0]![1]
-    expect(payload.options).toEqual([{ name: 'اللون', values: ['أحمر'] }])
+    // الحقلان الكرديان صريحان دائماً — خيارٌ بلا ترجمة يُرسَل «بلا ترجمة».
+    expect(payload.options).toEqual([{ name: 'اللون', values: ['أحمر'], nameCkb: null, valuesCkb: [] }])
+  })
+})
+
+/**
+ * [CRITICAL] الترجمة الكردية للخيارات تُحمَّل وتُعدَّل وتُحفظ — لا تُمحى.
+ *
+ * كان النموذج لا يعرف الترجمة أصلاً: يحمّل الخيارات بالعربية ويُعيدها بلا
+ * كردية، والخادم يكتب ما وصله فيمحو `name_ckb`/`values_ckb`.
+ */
+describe('ProductEditPage — Kurdish option translations', () => {
+  const translated = {
+    ...draft,
+    isActive: true,
+    options: [
+      { name: 'اللون', nameCkb: 'ڕەنگ', values: ['أسود', 'أبيض', 'أحمر'], valuesCkb: ['ڕەش', 'سپی', 'سوور'] },
+    ],
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(listAdminCategories).mockResolvedValue({
+      items: [{ id: 'c1', name: 'قسم', imageUrl: null, sortOrder: 0, isActive: true, subcategories: [] }],
+    } as never)
+    vi.mocked(listFranchises).mockResolvedValue({ items: [] } as never)
+    vi.mocked(getProductForEdit).mockResolvedValue({ draft: translated, optionsLoaded: true })
+    vi.mocked(updateProduct).mockResolvedValue({ product: {} as never, message: 'تم' })
+  })
+
+  async function save(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole('button', { name: 'حفظ التعديلات' }))
+    await waitFor(() => expect(updateProduct).toHaveBeenCalledTimes(1))
+    return vi.mocked(updateProduct).mock.calls[0]![1]
+  }
+
+  it('loads the saved translation into the form and saves it back unchanged', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByRole('button', { name: 'حفظ التعديلات' })
+    expect(screen.getByDisplayValue('ڕەنگ')).toBeInTheDocument()
+    expect(screen.getAllByLabelText('القيمة بالكردية').map((input) => (input as HTMLInputElement).value))
+      .toEqual(['ڕەش', 'سپی', 'سوور'])
+
+    const payload = await save(user)
+    expect(payload.options).toEqual(translated.options)
+  })
+
+  it('an edited Kurdish name and value are saved as edited', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByRole('button', { name: 'حفظ التعديلات' })
+    await user.clear(screen.getByDisplayValue('ڕەنگ'))
+    await user.type(screen.getByLabelText('اسم الخيار بالكردية (اختياري)'), 'ڕەنگی نوێ')
+    const second = screen.getAllByLabelText('القيمة بالكردية')[1]!
+    await user.clear(second)
+    await user.type(second, 'سپیی تەواو')
+
+    const payload = await save(user)
+    expect(payload.options).toEqual([
+      { name: 'اللون', nameCkb: 'ڕەنگی نوێ', values: ['أسود', 'أبيض', 'أحمر'], valuesCkb: ['ڕەش', 'سپیی تەواو', 'سوور'] },
+    ])
+  })
+
+  it('removing a value removes its own translation — the others stay on their values', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByRole('button', { name: 'حفظ التعديلات' })
+    await user.click(screen.getAllByRole('button', { name: 'حذف القيمة' })[1]!)
+
+    const payload = await save(user)
+    expect(payload.options).toEqual([
+      { name: 'اللون', nameCkb: 'ڕەنگ', values: ['أسود', 'أحمر'], valuesCkb: ['ڕەش', 'سوور'] },
+    ])
+  })
+
+  it('clearing every Kurdish field is sent as an explicit clear (null and [])', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByRole('button', { name: 'حفظ التعديلات' })
+    await user.clear(screen.getByLabelText('اسم الخيار بالكردية (اختياري)'))
+    for (const input of screen.getAllByLabelText('القيمة بالكردية')) await user.clear(input)
+
+    const payload = await save(user)
+    expect(payload.options).toEqual([
+      { name: 'اللون', nameCkb: null, values: ['أسود', 'أبيض', 'أحمر'], valuesCkb: [] },
+    ])
+  })
+
+  it('a half-translated option is stopped in the form with an Arabic message — nothing is sent', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByRole('button', { name: 'حفظ التعديلات' })
+    await user.clear(screen.getAllByLabelText('القيمة بالكردية')[2]!)
+    await user.click(screen.getByRole('button', { name: 'حفظ التعديلات' }))
+
+    expect(await screen.findByText('ترجم كل قيم الخيار أو اترك ترجمتها فارغة كلها')).toBeInTheDocument()
+    expect(updateProduct).not.toHaveBeenCalled()
+
+    // إفراغ البقية يُسقط الخطأ عن الصفّ الأول فوراً — لا يبقى خطأٌ قديم حتى الحفظ.
+    for (const input of screen.getAllByLabelText('القيمة بالكردية').slice(0, 2)) await user.clear(input)
+    await waitFor(() =>
+      expect(screen.queryByText('ترجم كل قيم الخيار أو اترك ترجمتها فارغة كلها')).not.toBeInTheDocument(),
+    )
   })
 })
 

@@ -12,7 +12,7 @@ import {
   Typography,
 } from 'antd'
 import { ArrowRightOutlined } from '@ant-design/icons'
-import ProductForm, { type ProductFormValues } from '../components/ProductForm'
+import ProductForm, { type ProductFormStore, type ProductFormValues } from '../components/ProductForm'
 import { getProductForEdit, updateProduct } from '../api/productsApi'
 import { ApiError } from '../api/client'
 
@@ -21,7 +21,7 @@ export default function ProductEditPage() {
   const navigate = useNavigate()
   const { message } = App.useApp()
   const queryClient = useQueryClient()
-  const [form] = Form.useForm<ProductFormValues>()
+  const [form] = Form.useForm<ProductFormStore>()
 
   // [CRITICAL] النموذج يقرأ قيمه مرةً واحدة عند التركيب، و`expectedStock` يُؤخذ
   // من بيانات هذا الاستعلام: يجب أن تبقيا الشيء نفسه. كان تحديثٌ في الخلفية

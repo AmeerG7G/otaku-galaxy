@@ -2,6 +2,10 @@ export interface ProductOption {
   id: string
   name: string
   values: string[]
+  /** الترجمة الكردية كما حُفظت — في مسار الإدارة (`GET /admin/products/:id`) وحده. */
+  nameCkb?: string | null
+  /** `[]` = لا ترجمة؛ وإلا قيمةٌ كردية لكل قيمةٍ عربية بالترتيب نفسه. */
+  valuesCkb?: string[]
 }
 
 export interface Product {
@@ -82,6 +86,12 @@ export interface ListProductsParams {
 export interface ProductOptionInput {
   name: string
   values: string[]
+  /**
+   * [CRITICAL] النموذج يرسل الحقلين دائماً: `null`/`[]` = لا ترجمة (إفراغٌ
+   * مقصود). الغائب يعني «لم يُرسَل» فيُبقي الخادم الترجمة المحفوظة.
+   */
+  nameCkb?: string | null
+  valuesCkb?: string[]
 }
 
 export interface ProductCreatePayload {

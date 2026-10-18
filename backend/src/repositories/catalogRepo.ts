@@ -280,7 +280,12 @@ export const productRepo = {
    * الخيارات هي الفارق الوحيد المشروع بين التفاصيل والقائمة؛ ما عداها يأتي
    * من المُحوِّل المعتمد بدل تمثيل ثانٍ كان ينسى حقولاً.
    */
-  async findDetailById(db: pg.Pool | pg.PoolClient, id: string) {
+  async findDetailById(
+    db: pg.Pool | pg.PoolClient,
+    id: string,
+    /** لوحة التحكم تفتح الموقوف أيضاً (`adminService.getProductForEdit`). */
+    { includeInactive = false }: { includeInactive?: boolean } = {},
+  ) {
     const { rows } = await db.query<
       ProductRow & { images?: unknown; franchise_ids?: unknown; options?: unknown }
     >(
@@ -292,19 +297,29 @@ ${PRODUCT_RELATION_COLUMNS('p')},
                           'name', po.name,
                           'nameCkb', po.name_ckb,
                           'values', po.values,
-                          'valuesCkb', po.values_ckb))
+                          'valuesCkb', po.values_ckb)
+                        -- ctid لا id عند التعادل: خيارات ما قبل clock_timestamp()
+                        -- أُدرجت في معاملةٍ واحدة فتتشارك created_at، وid عشوائي
+                        -- كان سيخلط ترتيبها؛ ctid ترتيبُها الفعلي كما عُرضت دائماً.
+                        ORDER BY po.created_at, po.ctid)
                  FROM product_options po WHERE po.product_id = p.id),
                 '[]'::json
               ) AS options
        FROM products p
-       WHERE p.id = $1 AND p.is_active = TRUE`,
-      [id],
+       WHERE p.id = $1 AND (p.is_active = TRUE OR $2::boolean)`,
+      [id, includeInactive],
     );
     const row = rows[0];
     if (!row) return null;
     return {
       ...mapProduct(row),
-      options: (row.options as { id: string; name: string; values: string[] }[]) ?? [],
+      options: (row.options as {
+        id: string;
+        name: string;
+        nameCkb: string | null;
+        values: string[];
+        valuesCkb: string[];
+      }[]) ?? [],
     };
   },
 

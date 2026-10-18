@@ -18,7 +18,7 @@ vi.mock('./client', async () => {
   }
 })
 
-import { client } from './client'
+import { client, get } from './client'
 import { getProductForEdit } from './productsApi'
 
 /**
@@ -80,5 +80,65 @@ describe('getProductForEdit — المحتوى بلغتين', () => {
     expect(draft.nameCkb).toBe('')
     expect(draft.descriptionCkb).toBe('')
     expect(draft.nameAr).toBe('حقيبة ناروتو')
+  })
+})
+
+/**
+ * [CRITICAL] صفحة التعديل تقرأ مسار الإدارة: خيارات المنتج بترجمتها الكردية
+ * كما حُفظت، والموقوف أيضاً. كانت تقرأ المسار العام بالعربية فلا ترى
+ * الترجمة، وكل حفظٍ بعدها كان يمحوها.
+ */
+describe('getProductForEdit — الخيارات بلغتيها من مسار الإدارة', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const adminProduct = {
+    id: 'p1',
+    nameAr: 'تيشيرت',
+    descriptionAr: 'وصف',
+    nameCkb: 'تیشێرت',
+    descriptionCkb: 'وەسف',
+    kurdishMissing: false,
+    price: 1000,
+    stock: 4,
+    images: [],
+    categoryId: 'c1',
+    subcategoryId: null,
+    rating: null,
+    reviewCount: 0,
+    isActive: false,
+    isOffer: false,
+    isSelected: false,
+    previousPrice: null,
+    discountPercent: null,
+    hasDeliveryPromo: false,
+    deliveryPromoAmount: 0,
+    franchiseIds: [],
+    restockAt: null,
+    options: [
+      { id: 'o1', name: 'اللون', nameCkb: 'ڕەنگ', values: ['أسود', 'أبيض'], valuesCkb: ['ڕەش', 'سپی'] },
+      { id: 'o2', name: 'المقاس', nameCkb: null, values: ['S'], valuesCkb: [] },
+    ],
+  }
+
+  it('reads /admin/products/:id and keeps each option\'s Kurdish name and values — inactive products included', async () => {
+    vi.mocked(client.get).mockResolvedValue({ data: { success: true, data: adminProduct } })
+    const { draft, optionsLoaded } = await getProductForEdit('p1')
+    expect(client.get).toHaveBeenCalledWith('/admin/products/p1')
+    expect(optionsLoaded).toBe(true)
+    expect(draft.isActive).toBe(false)
+    expect(draft.options).toEqual([
+      { name: 'اللون', nameCkb: 'ڕەنگ', values: ['أسود', 'أبيض'], valuesCkb: ['ڕەش', 'سپی'] },
+      { name: 'المقاس', nameCkb: null, values: ['S'], valuesCkb: [] },
+    ])
+  })
+
+  it('an older server without the route (404): the admin list, with optionsLoaded false so the save leaves options alone', async () => {
+    const { ApiError } = await import('./client')
+    vi.mocked(client.get).mockRejectedValue(new ApiError('غير موجود', 404, 'NOT_FOUND'))
+    vi.mocked(get).mockResolvedValue({ items: [{ ...adminProduct, options: [] }], hasMore: false } as never)
+    const { draft, optionsLoaded } = await getProductForEdit('p1')
+    expect(optionsLoaded).toBe(false)
+    expect(draft.options).toEqual([])
+    expect(draft.restockAt).toBeNull()
   })
 })

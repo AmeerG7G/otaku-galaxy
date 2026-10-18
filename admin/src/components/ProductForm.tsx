@@ -19,6 +19,8 @@ import { listAdminCategories } from '../api/categoriesApi'
 import { listFranchises } from '../api/communityApi'
 import ImagesEditor from './ImagesEditor'
 import OptionsEditor from './OptionsEditor'
+import { optionsFromFields, optionsToFields, type OptionFields } from './optionFields'
+import type { ProductOptionInput } from '../types/products'
 
 export interface ProductFormValues {
   /**
@@ -34,7 +36,8 @@ export interface ProductFormValues {
   categoryId: string
   subcategoryId?: string | null
   images: string[]
-  options: { name: string; values: string[] }[]
+  /** بلغتيه — `onSubmit` يتلقّى الحقلين الكرديين صريحين دائماً (`optionsFromFields`). */
+  options: ProductOptionInput[]
   isActive: boolean
   isOffer: boolean
   isSelected: boolean
@@ -56,11 +59,17 @@ export interface ProductFormValues {
   restockAt?: string | null
 }
 
+/**
+ * ما يحمله النموذج فعلاً: كل قيمة خيارٍ صفٌّ بلغتيه (`OptionFields`) — حذفُ
+ * قيمةٍ يحذف ترجمتها معها، فلا تنزاح الكردية إلى قيمةٍ أخرى.
+ */
+export type ProductFormStore = Omit<ProductFormValues, 'options'> & { options: OptionFields[] }
+
 /** حقول المحتوى الأربعة — تُقصّ قبل الإرسال كما يقصّها الخادم. */
 const CONTENT_FIELDS = ['nameAr', 'descriptionAr', 'nameCkb', 'descriptionCkb'] as const
 
-function trimContent(values: ProductFormValues): ProductFormValues {
-  const trimmed = { ...values }
+function trimContent(values: ProductFormStore): ProductFormValues {
+  const trimmed: ProductFormValues = { ...values, options: optionsFromFields(values.options ?? []) }
   for (const field of CONTENT_FIELDS) {
     trimmed[field] = (values[field] ?? '').trim()
   }
@@ -89,7 +98,7 @@ function contentRules(kind: 'name' | 'description', language: string, required: 
 interface ProductFormProps {
   mode: 'create' | 'edit'
   /** نسخة النموذج من الصفحة حين تحتاج أن تكتب في حقلٍ بعد التركيب. */
-  form?: FormInstance<ProductFormValues>
+  form?: FormInstance<ProductFormStore>
   initialValues?: Partial<ProductFormValues>
   optionsAvailable: boolean
   submitting: boolean
@@ -106,7 +115,7 @@ export default function ProductForm({
   onSubmit,
   onCancel,
 }: ProductFormProps) {
-  const [form] = Form.useForm<ProductFormValues>(formFromPage)
+  const [form] = Form.useForm<ProductFormStore>(formFromPage)
 
   const categoriesQuery = useQuery({
     queryKey: ['admin-categories'],
@@ -153,11 +162,11 @@ export default function ProductForm({
   }
 
   return (
-    <Form<ProductFormValues>
+    <Form<ProductFormStore>
       form={form}
       layout="vertical"
       requiredMark={false}
-      initialValues={initialValues}
+      initialValues={{ ...initialValues, options: optionsToFields(initialValues?.options ?? []) }}
       onFinish={(values) => onSubmit(trimContent(values))}
       style={{ maxWidth: 760 }}
     >

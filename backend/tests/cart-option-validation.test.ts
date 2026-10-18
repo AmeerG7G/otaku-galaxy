@@ -254,6 +254,159 @@ describe('POST /api/cart — the option must be one of the product\'s real optio
     });
   });
 
+  // ═══ الطول ════════════════════════════════════════════════════════════
+  //
+  // [CRITICAL] كان المدقّق يقطع عند ٨٠ حرفاً — طولُ **قيمةٍ واحدة** في لوحة
+  // التحكم لا طولُ التركيبة. منتجٌ بخيارين قيمتاهما ٦٠ حرفاً كان يُعرض للزبون
+  // ولا يُضاف إلى عربته أبداً، برسالة zod الإنجليزية. السقف الآن أطول تركيبةٍ
+  // تقبلها اللوحة: ١٠ خيارات × ٨٠ حرفاً + ٩ فواصل «، » = ٨١٨.
+
+  describe('length — the cap is the longest combination the dashboard can create', () => {
+    /** قيمةٌ من ٨٠ حرفاً بالضبط، مميَّزة بلاحقتها. */
+    const longValue = (tag: string) => `${'ق'.repeat(80 - tag.length)}${tag}`;
+
+    /** يُنشأ عبر لوحة التحكم نفسها، فحدودُها هي ما يُقاس عليه السقف. */
+    async function dashboardProduct(label: string, options: { name: string; values: string[] }[]) {
+      const res = await api.post('/api/admin/products').set(bearer(adminToken)).send({
+        nameAr: `${PREFIX} ${label} ${Date.now()}`,
+        descriptionAr: 'وصف',
+        nameCkb: `${PREFIX} ${label} ckb`,
+        descriptionCkb: 'وەسف',
+        price: 10000,
+        categoryId: catalog.categoryId,
+        stock: 20,
+        options,
+      });
+      return res;
+    }
+
+    it('the longest combination the dashboard accepts (10 options × 80 characters, 818 in all) goes into the cart as sent', async () => {
+      const c = await registerAndLogin();
+      const options = Array.from({ length: 10 }, (_, i) => ({
+        name: `خيار ${i + 1}`,
+        values: [longValue(`a${i}`), longValue(`b${i}`)],
+      }));
+      const created = await dashboardProduct('longest', options);
+      expect(created.status).toBe(201);
+      const p = created.body.data.id as string;
+
+      const longest = options.map((o, i) => o.values[i % 2]!).reverse().join('، ');
+      expect(longest).toHaveLength(818);
+      const res = await add(c.token, p, longest);
+      expect({ status: res.status, stored: res.body.data?.item?.optionValue }).toEqual({ status: 200, stored: longest });
+      expect((await storedOptions(c.userId, p)).map((r) => r.option_value)).toEqual([longest]);
+    });
+
+    it('a combination past 80 characters that the old cap refused is accepted, and the short ones still are', async () => {
+      const c = await registerAndLogin();
+      const created = await dashboardProduct('two-long', [
+        { name: 'التصميم', values: [longValue('x'), 'عادي'] },
+        { name: 'المقاس', values: ['M', 'L'] },
+      ]);
+      expect(created.status).toBe(201);
+      const p = created.body.data.id as string;
+
+      const sent = [`${longValue('x')}، M`, 'L، عادي', 'عادي، M'];
+      expect(sent[0]!.length).toBe(83);
+      for (const optionValue of sent) {
+        const res = await add(c.token, p, optionValue);
+        expect({ optionValue, status: res.status }).toEqual({ optionValue, status: 200 });
+      }
+      expect((await storedOptions(c.userId, p)).map((r) => r.option_value)).toEqual(sent);
+    });
+
+    it('one character past the longest possible combination is refused before the product is read — in Arabic, and in Kurdish for ckb', async () => {
+      const c = await registerAndLogin();
+      const p = await product('too-long', SHIRT);
+      for (const optionValue of ['ق'.repeat(819), `M، ${'ق'.repeat(816)}`, 'ق'.repeat(100_000)]) {
+        const res = await add(c.token, p, optionValue);
+        expect({ length: optionValue.length, status: res.status, code: res.body.error?.code, message: res.body.message })
+          .toEqual({ length: optionValue.length, status: 400, code: 'VALIDATION_ERROR', message: INVALID });
+      }
+      const ckb = await add(c.token, p, 'ق'.repeat(819), 'ckb');
+      expect(ckb.status).toBe(400);
+      expect(ckb.body.message).toBe('بۆ هەر هەڵبژاردنێکی بەرهەمەکە بەهایەکی دروست دیاری بکە');
+      // نصٌّ يُقصّ إلى ٨١٨ أو أقل ليس فوق السقف: المسافات حولها لا تُحسب.
+      const padded = await add(c.token, p, `   ${'M، أسود'}${' '.repeat(900)}`);
+      expect(padded.status).toBe(200);
+      expect((await storedOptions(c.userId, p)).map((r) => r.option_value)).toEqual(['M، أسود']);
+    });
+
+    it('a non-string option is refused in Arabic, not with the validator\'s English default', async () => {
+      const c = await registerAndLogin();
+      const p = await product('not-a-string', SHIRT);
+      for (const optionValue of [42, ['M', 'أسود'], { M: 'أسود' }, true]) {
+        const res = await add(c.token, p, optionValue);
+        expect({ sent: optionValue, status: res.status, code: res.body.error?.code, message: res.body.message })
+          .toEqual({ sent: optionValue, status: 400, code: 'VALIDATION_ERROR', message: INVALID });
+      }
+      expect(await storedOptions(c.userId, p)).toEqual([]);
+    });
+
+    it('[CRITICAL] the longer cap cannot be turned into CPU: nested values containing «، » across ten options are refused in milliseconds', async () => {
+      // «أ»، «أ، أ»، «أ، أ، أ»… حتى ٨٠ حرفاً، في عشرة خيارات: كل موضعٍ يقبل
+      // عشرات القراءات. بلا حدٍّ للعمل كان طلبٌ واحد يكلّف ١١ ثانية.
+      const nested = Array.from({ length: 27 }, (_, j) => Array(j + 1).fill('أ').join('، '));
+      const p = await product('nested', Array.from({ length: 10 }, (_, i) => ({ name: `خيار ${i + 1}`, values: nested })));
+      const c = await registerAndLogin();
+      for (const optionValue of [Array(272).fill('أ').join('، ') + '، ب', Array(273).fill('أ').join('، ').slice(0, 818)]) {
+        const started = performance.now();
+        const res = await add(c.token, p, optionValue);
+        const elapsed = performance.now() - started;
+        expect({ status: res.status, code: res.body.error?.code }).toEqual({ status: 400, code: 'INVALID_PRODUCT_OPTION' });
+        expect(elapsed).toBeLessThan(1_000);
+      }
+      // والصالح على المنتج نفسه يمرّ: قيمةٌ متداخلة لكل خيار.
+      const valid = Array.from({ length: 10 }, (_, i) => nested[i]!).join('، ');
+      expect((await add(c.token, p, valid)).status).toBe(200);
+    });
+
+    it('many options sharing the same values, plus one value containing «، », still accept a valid combination', async () => {
+      // وجده المراجع: ثماني خيارات بخمسين قيمة مشتركة تستنفد البحث المحدود،
+      // فرُفضت تركيبةٌ صحيحة. التقسيم أولاً يحسمها بالمطابقة الثنائية.
+      const c = await registerAndLogin();
+      const shared = Array.from({ length: 50 }, (_, i) => `v${i}`);
+      const options = [
+        ...Array.from({ length: 8 }, (_, i) => ({ name: `مشترك ${i + 1}`, values: shared })),
+        { name: 'خاص', values: ['v0', 'x، y'] },
+      ];
+      const created = await dashboardProduct('shared-values', options);
+      expect(created.status).toBe(201);
+      const p = created.body.data.id as string;
+      const sent = shared.slice(0, 9).join('، ');
+      const res = await add(c.token, p, sent);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      // وما يستعمل القيمة ذات الفاصل يُقرأ بالبحث كما كان.
+      await add(c.token, p, ['x، y', ...shared.slice(1, 9)].join('، ')).expect(200);
+      expect((await add(c.token, p, shared.slice(0, 8).join('، '))).status).toBe(400);
+    });
+
+    it('the heaviest product the dashboard allows — 10 options × 50 Arabic + 50 Kurdish values of 80 characters, one containing «، » — still matches', async () => {
+      const options = Array.from({ length: 10 }, (_, i) => {
+        const values = Array.from({ length: 50 }, (_, j) =>
+          i === 0 && j === 0 ? `${'ق'.repeat(37)}، ${'ق'.repeat(41)}` : longValue(`${i}-${j}`));
+        return { name: `خيار ${i + 1}`, values, valuesCkb: values.map((v) => v.replace(/ق/g, 'ک')) };
+      });
+      const p = await product('heaviest', options);
+      const c = await registerAndLogin();
+      // الكردية بترتيب نقرٍ معكوس، والقيمة التي تحوي الفاصل في آخرها.
+      const sent = options.map((o, i) => o.valuesCkb[i === 0 ? 0 : 49]!).reverse().join('، ');
+      expect(sent).toHaveLength(818);
+      const res = await add(c.token, p, sent);
+      expect(res.status).toBe(200);
+      expect(res.body.data.item.optionValue).toBe(sent);
+    });
+
+    it('the dashboard limits that bound the cap hold: no 81-character value, no eleventh option', async () => {
+      const tooLongValue = await dashboardProduct('value-81', [{ name: 'التصميم', values: [`${longValue('x')}z`] }]);
+      expect(tooLongValue.status).toBe(400);
+      const eleven = await dashboardProduct('eleven', Array.from({ length: 11 }, (_, i) => ({
+        name: `خيار ${i + 1}`, values: ['أ'],
+      })));
+      expect(eleven.status).toBe(400);
+    });
+  });
+
   // ═══ الأسطر القائمة ══════════════════════════════════════════════════
 
   describe('existing lines are left alone', () => {

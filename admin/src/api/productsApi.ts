@@ -6,8 +6,9 @@ import type {
   ProductCreatePayload,
   ProductFormDraft,
   ProductListResponse,
+  ProductOption,
+  ProductOptionInput,
   ProductUpdatePayload,
-  PublicProduct,
 } from '../types/products'
 import { ApiError } from './client'
 
@@ -73,29 +74,17 @@ function contentDraft(
   }
 }
 
-function publicProductToDraft(product: PublicProduct): ProductFormDraft {
+/** الخيار بلغتيه كما حُفظ — يصل النموذجَ ويعود منه كاملاً (انظر `ProductOptionInput`). */
+function optionToDraft(option: ProductOption): ProductOptionInput {
   return {
-    ...contentDraft(product),
-    price: product.price,
-    stock: product.stock,
-    categoryId: product.categoryId,
-    subcategoryId: product.subcategoryId,
-    images: product.images,
-    options: product.options.map((option) => ({ name: option.name, values: option.values })),
-    isActive: true,
-    isOffer: product.isOffer,
-    isSelected: product.isSelected,
-    rating: product.rating,
-    reviewCount: product.reviewCount,
-    previousPrice: product.previousPrice,
-    hasDeliveryPromo: product.hasDeliveryPromo,
-    deliveryPromoAmount: product.deliveryPromoAmount ?? 0,
-    franchiseIds: product.franchiseIds,
-    restockAt: product.restockAt ?? null,
+    name: option.name,
+    values: option.values,
+    nameCkb: option.nameCkb ?? null,
+    valuesCkb: option.valuesCkb ?? [],
   }
 }
 
-function adminProductToDraft(product: Product): ProductFormDraft {
+function adminProductToDraft(product: Product, options: ProductOption[]): ProductFormDraft {
   return {
     ...contentDraft(product),
     price: product.price,
@@ -103,7 +92,7 @@ function adminProductToDraft(product: Product): ProductFormDraft {
     categoryId: product.categoryId,
     subcategoryId: product.subcategoryId,
     images: product.images,
-    options: [],
+    options: options.map(optionToDraft),
     isActive: product.isActive,
     isOffer: product.isOffer,
     isSelected: product.isSelected,
@@ -124,25 +113,28 @@ export interface ProductForEdit {
   optionsLoaded: boolean
 }
 
-export async function getPublicProduct(id: string): Promise<PublicProduct> {
-  const response = await client.get<ApiEnvelope<PublicProduct>>(`/catalog/products/${id}`)
-  if (!response.data.data) {
-    throw new ApiError('المنتج غير موجود', 404, 'NOT_FOUND')
-  }
-  return response.data.data
-}
-
+/**
+ * المنتج لصفحة التعديل من مسار الإدارة — الموقوف أيضاً، وخياراته بترجمتها.
+ *
+ * [CRITICAL] كانت الصفحة تقرأ المسار العام (`/catalog/products/:id`): خياراتٌ
+ * محسومة إلى العربية بلا ترجمتها، فكان كل حفظٍ يُعيدها بلا كردية ويمحوها،
+ * والمنتج الموقوف 404 هناك فيُفتح بلا خيارات.
+ *
+ * خادمٌ أقدم من المسار (404): القائمة الإدارية بلا خيارات و`optionsLoaded:
+ * false` — الحفظ لا يرسل الخيارات فلا يمسّها، كما كان للمنتج الموقوف.
+ */
 export async function getProductForEdit(id: string): Promise<ProductForEdit> {
   try {
-    const product = await getPublicProduct(id)
-    return { draft: publicProductToDraft(product), optionsLoaded: true }
+    const response = await client.get<ApiEnvelope<Product>>(`/admin/products/${id}`)
+    const product = response.data.data
+    if (!product) throw new ApiError('المنتج غير موجود', 404, 'NOT_FOUND')
+    return { draft: adminProductToDraft(product, product.options ?? []), optionsLoaded: true }
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) {
       const product = await findProductInAdminList(id)
       if (product) {
-        return { draft: adminProductToDraft(product), optionsLoaded: false }
+        return { draft: adminProductToDraft(product, []), optionsLoaded: false }
       }
-      // إعادة الخطأ الأصلي إذا لم يوجد المنتج حتى في قائمة الإدارة.
       throw error
     }
     throw error

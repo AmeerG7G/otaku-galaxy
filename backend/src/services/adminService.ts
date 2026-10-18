@@ -128,6 +128,100 @@ async function assertSubcategoryBelongs(
   }
 }
 
+/** خيارٌ كما يصل من المدقّق: الكردية غائبة = لم يُرسلها العميل (`validators/admin.ts`). */
+interface ProductOptionInput {
+  name: string;
+  values: string[];
+  nameCkb?: string | null;
+  valuesCkb?: string[];
+}
+
+interface StoredProductOption {
+  name: string;
+  nameCkb: string | null;
+  values: string[];
+  valuesCkb: string[];
+}
+
+/**
+ * الترجمة الكردية التي تُكتب مع كل خيار عند استبدال خيارات المنتج.
+ *
+ * [CRITICAL] الحفظ يحذف الخيارات ويُدرجها من جديد، فكان كل حفظٍ من اللوحة
+ * يكتب `name`/`values` وحدهما فيمحو `name_ckb`/`values_ckb` بصمت — والزبون
+ * الكردي يعود إلى الخيارات بالعربية بعد تعديل سعرٍ أو صورة.
+ *
+ * الحقل المُرسَل يُكتب كما هو (`null`/`[]` = إفراغٌ مقصود). الغائب — عميلٌ
+ * أقدم من الحقلين — يُؤخذ من الخيار المحفوظ بالاسم العربي نفسه، وتُنقل كل
+ * قيمة كردية مع قيمتها العربية فتبقى إعادة الترتيب والحذف صحيحتين. قيمةٌ
+ * جديدة في خيارٍ مترجَم لا ترجمة لها: رفضٌ برسالة لا خيارٌ نصفه كردي ولا
+ * إسقاطٌ صامت لترجمة الخيار كله.
+ */
+function resolveOptionTranslations(
+  previous: readonly StoredProductOption[],
+  next: readonly ProductOptionInput[],
+): StoredProductOption[] {
+  const matched = new Set<number>();
+  const resolved = next.map((option) => {
+    // خياران بالاسم العربي نفسه: الأولى به من تحوي قيمُه القيمَ المرسلة.
+    const candidates = previous.flatMap((old, i) => (!matched.has(i) && old.name === option.name ? [i] : []));
+    const index = candidates.find((i) => option.values.every((value) => previous[i]!.values.includes(value)))
+      ?? candidates[0]
+      ?? -1;
+    if (index >= 0) matched.add(index);
+    const old = index >= 0 ? previous[index]! : null;
+
+    const nameCkb = option.nameCkb !== undefined ? option.nameCkb : (old?.nameCkb ?? null);
+    let valuesCkb: string[];
+    if (option.valuesCkb !== undefined) {
+      valuesCkb = option.valuesCkb;
+    } else if (!old || old.valuesCkb.length === 0) {
+      valuesCkb = [];
+    } else {
+      valuesCkb = option.values.map((value) => {
+        const at = old.values.indexOf(value);
+        if (at < 0) {
+          throw Errors.badRequest(
+            `القيمة «${value}» في خيار «${option.name}» بلا ترجمة كردية — أعد تحميل الصفحة وأدخل ترجمتها`,
+            'OPTION_TRANSLATION_MISSING',
+          );
+        }
+        return old.valuesCkb[at]!;
+      });
+    }
+    return { name: option.name, nameCkb, values: option.values, valuesCkb, matched: old !== null, omitted: option.nameCkb === undefined || option.valuesCkb === undefined };
+  });
+  // خيارٌ بلا مطابقٍ بالاسم وكرديّته غائبة، وخيارٌ مترجَم محفوظ لم يطابقه
+  // أحد: الأرجح إعادة تسمية من عميلٍ لا يعرف الترجمة — حفظُه يُسقطها بصمت.
+  // الحذف الصريح (لا خيار جديد غائب الكردية) يبقى مقبولاً.
+  const orphanTranslated = previous.find(
+    (old, i) => !matched.has(i) && (old.nameCkb !== null || old.valuesCkb.length > 0),
+  );
+  const unmatchedOmitted = resolved.find((option) => !option.matched && option.omitted);
+  if (orphanTranslated && unmatchedOmitted) {
+    throw Errors.badRequest(
+      `الخيار «${unmatchedOmitted.name}» بلا ترجمة كردية والخيار المترجَم «${orphanTranslated.name}» حُذف — أعد تحميل الصفحة وأدخل ترجمته`,
+      'OPTION_TRANSLATION_MISSING',
+    );
+  }
+  return resolved.map(({ matched: _matched, omitted: _omitted, ...option }) => option);
+}
+
+async function insertProductOptions(
+  tx: pg.PoolClient,
+  productId: string,
+  options: readonly StoredProductOption[],
+) {
+  for (const option of options) {
+    await tx.query(
+      // `clock_timestamp()` لا `now()`: كل الخيارات تُدرج في معاملةٍ واحدة،
+      // و`now()` يعطيها اللحظة نفسها فيضيع ترتيب إدخال المسؤول.
+      `INSERT INTO product_options (product_id, name, name_ckb, values, values_ckb, created_at)
+       VALUES ($1, $2, $3, $4, $5, clock_timestamp())`,
+      [productId, option.name, option.nameCkb, option.values, option.valuesCkb],
+    );
+  }
+}
+
 export const adminService = {
   // ===== المنتجات =====
   async createProduct(input: {
@@ -141,7 +235,7 @@ export const adminService = {
     subcategoryId?: string | null;
     stock: number;
     images: string[];
-    options: { name: string; values: string[] }[];
+    options: ProductOptionInput[];
     isOffer?: boolean;
     isSelected?: boolean;
     previousPrice?: number | null;
@@ -190,14 +284,23 @@ export const adminService = {
           [product.id, url, index],
         );
       }
-      for (const option of input.options) {
-        await tx.query(
-          'INSERT INTO product_options (product_id, name, values) VALUES ($1, $2, $3)',
-          [product.id, option.name, option.values],
-        );
-      }
+      // منتجٌ جديد لا ترجمة محفوظة له: الغائب = لا ترجمة.
+      await insertProductOptions(tx, product.id, resolveOptionTranslations([], input.options));
       return (await productRepo.findById(tx, product.id))!;
     });
+  },
+
+  /**
+   * منتجٌ واحد لصفحة التعديل — الموقوف أيضاً، وخياراته بلغتيها كما حُفظت.
+   *
+   * [CRITICAL] كانت الصفحة تقرأ المسار العام بـ`Accept-Language: ar`: خياراتٌ
+   * محسومة إلى العربية بلا `nameCkb`/`valuesCkb`، فلا يرى المسؤول الترجمة ولا
+   * يُعيدها مع الحفظ — والمنتج الموقوف 404 هناك فتُفتح صفحته بلا خيارات.
+   */
+  async getProductForEdit(id: string) {
+    const product = await productRepo.findDetailById(db, id, { includeInactive: true });
+    if (!product) throw Errors.notFound('المنتج غير موجود');
+    return product;
   },
 
   /**
@@ -251,7 +354,7 @@ export const adminService = {
       isOffer?: boolean;
       isSelected?: boolean;
       images?: string[];
-      options?: { name: string; values: string[] }[];
+      options?: ProductOptionInput[];
       previousPrice?: number | null;
       hasDeliveryPromo?: boolean;
       deliveryPromoAmount?: number;
@@ -405,13 +508,15 @@ export const adminService = {
         }
       }
       if (input.options !== undefined) {
+        // تُقرأ قبل الحذف وتحت قفل المنتج — الترجمة المحفوظة هي مرجع الغائب.
+        const { rows: stored } = await tx.query<StoredProductOption>(
+          `SELECT name, name_ckb AS "nameCkb", values, values_ckb AS "valuesCkb"
+           FROM product_options WHERE product_id = $1 ORDER BY created_at, ctid`,
+          [id],
+        );
+        const options = resolveOptionTranslations(stored, input.options);
         await tx.query('DELETE FROM product_options WHERE product_id = $1', [id]);
-        for (const option of input.options) {
-          await tx.query(
-            'INSERT INTO product_options (product_id, name, values) VALUES ($1, $2, $3)',
-            [id, option.name, option.values],
-          );
-        }
+        await insertProductOptions(tx, id, options);
       }
       return (await productRepo.findById(tx, id))!;
     });

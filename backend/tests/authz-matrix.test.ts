@@ -283,6 +283,7 @@ describe('Phase 3 — vertical privilege escalation (every admin endpoint)', () 
   const ADMIN_ENDPOINTS: Array<[string, () => string, unknown?]> = [
     ['get', () => '/api/admin/products'],
     ['post', () => '/api/admin/products', { name: 'x', price: 1000, categoryId: U, stock: 1 }],
+    ['get', () => `/api/admin/products/${U}`],
     ['patch', () => `/api/admin/products/${U}`, { name: 'x' }],
     ['delete', () => `/api/admin/products/${U}`],
     ['get', () => '/api/admin/categories'],
