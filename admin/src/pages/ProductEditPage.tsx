@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -13,23 +13,27 @@ import {
 } from 'antd'
 import { ArrowRightOutlined } from '@ant-design/icons'
 import ProductForm, { type ProductFormValues } from '../components/ProductForm'
-import { getProductForEdit, updateProduct } from '../api/productsApi'
+import { getProductForEdit, updateProduct, type ProductForEdit } from '../api/productsApi'
 import { ApiError } from '../api/client'
 
+/**
+ * كل ما يخصّ منتجاً (النموذج، أساس المقارنة، الحفظ) يُبنى من جديد لكل منتج.
+ *
+ * [CRITICAL] React Router يبقي الصفحة نفسها حين يتغيّر `:id` وحده (التنقّل
+ * بقائمة «رجوع» في المتصفح بين صفحتي تعديل). كانت نسخة النموذج تعيش في الصفحة
+ * فتبقى قيم المنتج السابق، والحفظ يكتبها فوق المنتج الحالي.
+ */
 export default function ProductEditPage() {
   const { id = '' } = useParams()
-  const navigate = useNavigate()
-  const { message } = App.useApp()
-  const queryClient = useQueryClient()
-  const [form] = Form.useForm<ProductFormValues>()
+  return <ProductEditor key={id} id={id} />
+}
 
-  // [CRITICAL] النموذج يقرأ قيمه مرةً واحدة عند التركيب، و`expectedStock` يُؤخذ
-  // من بيانات هذا الاستعلام: يجب أن تبقيا الشيء نفسه. كان تحديثٌ في الخلفية
-  // (عودة الاتصال، أو فتح المنتج من جديد على نسخةٍ مخبّأة ثم جلبها) يقدّم
-  // `expectedStock` إلى قيمة الخادم بينما الحقل يعرض القديمة، فيقبل الخادم
-  // المقارنة ويكتب القيمة القديمة — يُرجع قطعاً مستهلكة إلى البيع أو يمحو
-  // تخزيناً حفظه المسؤول نفسه قبل دقيقة. الآن: لا تحديث في الخلفية ما دامت
-  // الصفحة مفتوحة، ولا نسخة مخبّأة بعد إغلاقها — كل فتحٍ يقرأ من الخادم.
+function ProductEditor({ id }: { id: string }) {
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+
+  // كل فتحٍ يقرأ من الخادم: لا تحديث في الخلفية، ولا نسخة مخبّأة بعد الإغلاق
+  // (الحذف عند الإغلاق نفسه لا بعد مهلة `gcTime`، فالعودة السريعة لا تسبقه).
   const editQuery = useQuery({
     queryKey: ['product-edit', id],
     queryFn: () => getProductForEdit(id),
@@ -37,84 +41,7 @@ export default function ProductEditPage() {
     staleTime: Infinity,
     refetchOnReconnect: false,
   })
-  // الحذف عند الإغلاق نفسه، لا بعد مهلة (`gcTime`): العودة السريعة إلى المنتج
-  // كانت تسبق المهلة فتركّب النموذج من النسخة القديمة.
   useEffect(() => () => queryClient.removeQueries({ queryKey: ['product-edit', id] }), [queryClient, id])
-
-  const updateMutation = useMutation({
-    mutationFn: (input: { payload: Parameters<typeof updateProduct>[1] }) =>
-      updateProduct(id, input.payload),
-    onSuccess: (result) => {
-      message.success(result.message)
-      queryClient.invalidateQueries({ queryKey: ['products'] })
-      queryClient.removeQueries({ queryKey: ['product-edit', id] })
-      navigate('/products')
-    },
-    onError: (error) => {
-      message.error(error instanceof ApiError ? error.message : 'حدث خطأ غير متوقع')
-      // المخزون تغيّر منذ فتح الصفحة: نعيد قراءة المنتج ونضع المخزون الحالي في
-      // الحقل، فيرى المسؤول القيمة ويقرّر من جديد، والحفظ التالي يقارن بها.
-      // بقية حقوله كما كتبها.
-      if (error instanceof ApiError && error.code === 'STOCK_CHANGED') {
-        void queryClient
-          .fetchQuery({ queryKey: ['product-edit', id], queryFn: () => getProductForEdit(id), staleTime: 0 })
-          .then((fresh) => form.setFieldValue('stock', fresh.draft.stock))
-          .catch(() => {
-            // تعذّرت القراءة: المقارنة تبقى على القيمة القديمة، فيرفض الخادم مجدداً.
-          })
-      }
-    },
-  })
-
-  function handleSubmit(values: ProductFormValues) {
-    const optionsLoaded = editQuery.data?.optionsLoaded ?? true
-    // [CRITICAL] المخزون يُرسَل فقط إن غيّره المسؤول، ومعه القيمة التي فُتحت
-    // عليها الصفحة. كانت الصفحة تعيد إرسال المخزون في كل حفظ، فتعديلُ وصفٍ
-    // بعد قبول طلبٍ في تبويبٍ آخر كان يُرجع القطع المستهلكة إلى البيع (بيعٌ
-    // فوق المخزون). الخادم يرفض بـ`STOCK_CHANGED` إن تغيّر المخزون منذ الفتح.
-    // `loadedStock` هو ما بُني عليه الحقل (انظر خيارات الاستعلام أعلاه).
-    const loadedStock = editQuery.data?.draft.stock
-    const stockChanged = loadedStock === undefined || values.stock !== loadedStock
-    // [CRITICAL] المنتج المعطّل لا يوفّر الخادم خياراته للوحة، والحقلُ
-    // الغائب عن `PATCH` لا يُمسّ على الخادم (`adminProductUpdateSchema`).
-    // كانت الصفحة ترسل `options: []` صراحةً فتمسح الخيارات المحفوظة خلف
-    // نافذة تأكيد تبرّر المسح بخللٍ في الخادم زال منذ زمن. الآن لا يُرسَل
-    // الحقل أصلاً، فتبقى الخيارات كما هي في القاعدة.
-    const payload = {
-      // [CRITICAL] كل لغة في حقليها وحدهما — لا نسخ بين اللغتين. حقلٌ فارغ
-      // (نصٌّ ناقص في منتجٍ قديم لم يُكمَل) لا يُرسَل: الحقل الغائب لا يُمسّ
-      // على الخادم، فيبقى «ناقصاً» صراحةً بدل أن يُكتب فراغاً (والخادم يرفض
-      // الفراغ أصلاً). ما كان مكتوباً إلزاميٌّ في النموذج فيُرسَل دائماً.
-      ...(values.nameAr ? { nameAr: values.nameAr } : {}),
-      ...(values.descriptionAr ? { descriptionAr: values.descriptionAr } : {}),
-      ...(values.nameCkb ? { nameCkb: values.nameCkb } : {}),
-      ...(values.descriptionCkb ? { descriptionCkb: values.descriptionCkb } : {}),
-      price: values.price,
-      categoryId: values.categoryId,
-      subcategoryId: values.subcategoryId ?? null,
-      ...(stockChanged
-        ? {
-            stock: values.stock,
-            ...(loadedStock !== undefined ? { expectedStock: loadedStock } : {}),
-          }
-        : {}),
-      // `null` صريحة تمسح الموعد؛ الحقل الغائب يعني «لا تغيّر».
-      restockAt: values.restockAt ?? null,
-      images: values.images,
-      ...(optionsLoaded ? { options: values.options } : {}),
-      isOffer: values.isOffer,
-      isSelected: values.isSelected,
-      isActive: values.isActive,
-      // التقييم وعدده مشتقان من تقييمات العملاء المنشورة — لا نرسلهما.
-      previousPrice: values.previousPrice ?? null,
-      hasDeliveryPromo: values.hasDeliveryPromo ?? false,
-      deliveryPromoAmount: values.hasDeliveryPromo
-        ? (values.deliveryPromoAmount ?? 0)
-        : 0,
-      franchiseIds: values.franchiseIds ?? [],
-    }
-    updateMutation.mutate({ payload })
-  }
 
   return (
     <div style={{ maxWidth: 860, width: '100%' }}>
@@ -155,18 +82,120 @@ export default function ProductEditPage() {
         />
       )}
 
-      {editQuery.data && (
-        <ProductForm
-          key={id}
-          form={form}
-          mode="edit"
-          initialValues={editQuery.data.draft}
-          optionsAvailable={editQuery.data.optionsLoaded}
-          submitting={updateMutation.isPending}
-          onSubmit={handleSubmit}
-          onCancel={() => navigate('/products')}
-        />
-      )}
+      {editQuery.data && <LoadedProductEditor id={id} loaded={editQuery.data} />}
     </div>
+  )
+}
+
+/**
+ * [CRITICAL] أساس المقارنة هو ما بُني عليه النموذج، لا آخر ما جلبه الاستعلام.
+ *
+ * النموذج يقرأ قيمه مرةً عند التركيب. كان `expectedStock` يُؤخذ من الاستعلام
+ * الحيّ، فأي جلبٍ له لاحقاً (عودة الاتصال، زرّ «إعادة المحاولة»، إبطالٌ من صفحة
+ * أخرى) يقدّم المقارنة إلى قيمة الخادم والحقلُ على القديمة، فيقبل الخادم ويكتب
+ * القديمة: قطعٌ مستهلكة تعود إلى البيع. ومثله `optionsLoaded`: انقلابه بعد
+ * إعادة القراءة كان يرسل خيارات النموذج الفارغة فيمحو خيارات المنتج.
+ *
+ * الأساس هنا يُلتقط عند التركيب ولا يتغيّر إلا مع الحقل نفسه بعد `STOCK_CHANGED`.
+ */
+function LoadedProductEditor({ id, loaded }: { id: string; loaded: ProductForEdit }) {
+  const navigate = useNavigate()
+  const { message } = App.useApp()
+  const queryClient = useQueryClient()
+  const [form] = Form.useForm<ProductFormValues>()
+  const [draft] = useState(loaded.draft)
+  const [base, setBase] = useState(() => ({ stock: loaded.draft.stock, optionsLoaded: loaded.optionsLoaded }))
+  const open = useRef(true)
+  useEffect(() => {
+    open.current = true
+    return () => {
+      open.current = false
+    }
+  }, [])
+
+  const updateMutation = useMutation({
+    mutationFn: (input: { payload: Parameters<typeof updateProduct>[1] }) =>
+      updateProduct(id, input.payload),
+    onSuccess: (result) => {
+      message.success(result.message)
+      queryClient.invalidateQueries({ queryKey: ['products'] })
+      queryClient.removeQueries({ queryKey: ['product-edit', id] })
+      navigate('/products')
+    },
+    onError: (error, input) => {
+      message.error(error instanceof ApiError ? error.message : 'حدث خطأ غير متوقع')
+      // المخزون تغيّر منذ فتح الصفحة: نقرأ المنتج ونضع المخزون الحالي في الحقل
+      // وفي الأساس معاً، فيرى المسؤول القيمة ويقرّر، والحفظ التالي يقارن بها.
+      // القراءة مباشرةً من الخادم لا عبر الاستعلام (لا نسخة مخبّأة تبقى بعد
+      // الإغلاق)، وفقط والصفحة مفتوحة. قيمةٌ كتبها المسؤول أثناء القراءة له:
+      // لا يُستبدل إلا ما رُفض. تعذّرت القراءة؟ الأساس يبقى، فيرفض الخادم مجدداً.
+      if (error instanceof ApiError && error.code === 'STOCK_CHANGED' && open.current) {
+        const rejected = input.payload.stock
+        void getProductForEdit(id)
+          .then((fresh) => {
+            if (!open.current) return
+            setBase((current) => ({ ...current, stock: fresh.draft.stock }))
+            if (form.getFieldValue('stock') === rejected) form.setFieldValue('stock', fresh.draft.stock)
+          })
+          .catch(() => {})
+      }
+    },
+  })
+
+  function handleSubmit(values: ProductFormValues) {
+    const optionsLoaded = base.optionsLoaded
+    // [CRITICAL] المخزون يُرسَل فقط إن غيّره المسؤول، ومعه القيمة التي فُتحت
+    // عليها الصفحة. كانت الصفحة تعيد إرسال المخزون في كل حفظ، فتعديلُ وصفٍ
+    // بعد قبول طلبٍ في تبويبٍ آخر كان يُرجع القطع المستهلكة إلى البيع (بيعٌ
+    // فوق المخزون). الخادم يرفض بـ`STOCK_CHANGED` إن تغيّر المخزون منذ الفتح.
+    // `loadedStock` هو ما بُني عليه الحقل (انظر `LoadedProductEditor`).
+    const loadedStock = base.stock
+    const stockChanged = values.stock !== loadedStock
+    // [CRITICAL] المنتج المعطّل لا يوفّر الخادم خياراته للوحة، والحقلُ
+    // الغائب عن `PATCH` لا يُمسّ على الخادم (`adminProductUpdateSchema`).
+    // كانت الصفحة ترسل `options: []` صراحةً فتمسح الخيارات المحفوظة خلف
+    // نافذة تأكيد تبرّر المسح بخللٍ في الخادم زال منذ زمن. الآن لا يُرسَل
+    // الحقل أصلاً، فتبقى الخيارات كما هي في القاعدة.
+    const payload = {
+      // [CRITICAL] كل لغة في حقليها وحدهما — لا نسخ بين اللغتين. حقلٌ فارغ
+      // (نصٌّ ناقص في منتجٍ قديم لم يُكمَل) لا يُرسَل: الحقل الغائب لا يُمسّ
+      // على الخادم، فيبقى «ناقصاً» صراحةً بدل أن يُكتب فراغاً (والخادم يرفض
+      // الفراغ أصلاً). ما كان مكتوباً إلزاميٌّ في النموذج فيُرسَل دائماً.
+      ...(values.nameAr ? { nameAr: values.nameAr } : {}),
+      ...(values.descriptionAr ? { descriptionAr: values.descriptionAr } : {}),
+      ...(values.nameCkb ? { nameCkb: values.nameCkb } : {}),
+      ...(values.descriptionCkb ? { descriptionCkb: values.descriptionCkb } : {}),
+      price: values.price,
+      categoryId: values.categoryId,
+      subcategoryId: values.subcategoryId ?? null,
+      ...(stockChanged ? { stock: values.stock, expectedStock: loadedStock } : {}),
+      // `null` صريحة تمسح الموعد؛ الحقل الغائب يعني «لا تغيّر».
+      restockAt: values.restockAt ?? null,
+      images: values.images,
+      ...(optionsLoaded ? { options: values.options } : {}),
+      isOffer: values.isOffer,
+      isSelected: values.isSelected,
+      isActive: values.isActive,
+      // التقييم وعدده مشتقان من تقييمات العملاء المنشورة — لا نرسلهما.
+      previousPrice: values.previousPrice ?? null,
+      hasDeliveryPromo: values.hasDeliveryPromo ?? false,
+      deliveryPromoAmount: values.hasDeliveryPromo
+        ? (values.deliveryPromoAmount ?? 0)
+        : 0,
+      franchiseIds: values.franchiseIds ?? [],
+    }
+    updateMutation.mutate({ payload })
+  }
+
+  return (
+    <ProductForm
+      form={form}
+      mode="edit"
+      initialValues={draft}
+      optionsAvailable={base.optionsLoaded}
+      submitting={updateMutation.isPending}
+      onSubmit={handleSubmit}
+      onCancel={() => navigate('/products')}
+    />
   )
 }

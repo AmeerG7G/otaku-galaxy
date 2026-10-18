@@ -44,7 +44,7 @@ const draft = {
   categoryId: 'c1',
   subcategoryId: null,
   images: [],
-  options: [],
+  options: [] as Array<{ name: string; values: string[] }>,
   isActive: false,
   isOffer: false,
   isSelected: false,
@@ -256,11 +256,11 @@ describe('ProductEditPage — المخزون والقيمة التي فُتحت 
  */
 describe('ProductEditPage — حقل المخزون والمقارنة لا يفترقان (عميل التطبيق)', () => {
   let server = { ...draft, isActive: true, stock: 5 }
-  let navigateTo: (path: string) => void = () => {}
+  let navigateTo: (to: string | number) => void = () => {}
   function NavigationHandle() {
     const navigate = useNavigate()
     useEffect(() => {
-      navigateTo = navigate
+      navigateTo = (to) => (typeof to === 'number' ? navigate(to) : navigate(to))
     }, [navigate])
     return null
   }
@@ -351,6 +351,128 @@ describe('ProductEditPage — حقل المخزون والمقارنة لا يف
     await waitFor(() => expect(updateProduct).toHaveBeenCalledTimes(1))
     expect(lastPayload()).not.toHaveProperty('stock')
     expect(server.stock).toBe(3)
+  })
+
+  it('[CRITICAL] أي جلبٍ للاستعلام والصفحة مفتوحة (إعادة المحاولة، إبطالٌ من صفحة أخرى) لا يحرّك المقارنة', async () => {
+    const queryClient = mount()
+    await screen.findByLabelText('المخزون')
+    server = { ...server, stock: 3 }
+    await act(async () => queryClient.invalidateQueries({ queryKey: ['product-edit'] }))
+    await waitFor(() => expect(getProductForEdit).toHaveBeenCalledTimes(2))
+    expect(stockField()).toHaveValue('5')
+    await userEvent.setup().clear(stockField())
+    await userEvent.setup().type(stockField(), '6')
+    await save()
+
+    await waitFor(() => expect(updateProduct).toHaveBeenCalledTimes(1))
+    expect(lastPayload()).toMatchObject({ stock: 6, expectedStock: 5 })
+    expect(server.stock).toBe(3)
+  })
+
+  it('[CRITICAL] منتجٌ فُتح معطّلاً وفعّله غيرك: بعد STOCK_CHANGED لا يُرسَل `options: []` فلا تُمحى خياراته', async () => {
+    server = { ...server, isActive: false, stock: 0, options: [] }
+    vi.mocked(getProductForEdit).mockImplementation(async () => ({
+      draft: { ...server },
+      optionsLoaded: server.isActive,
+    }))
+    mount()
+    await screen.findByLabelText('المخزون')
+    // مسؤولٌ آخر يخزّن المنتج ويفعّله بخياراته.
+    server = { ...server, isActive: true, stock: 10, options: [{ name: 'اللون', values: ['أحمر'] }] }
+    await userEvent.setup().clear(stockField())
+    await userEvent.setup().type(stockField(), '4')
+    await save()
+    await waitFor(() => expect(stockField()).toHaveValue('10'))
+
+    await save()
+    await waitFor(() => expect(updateProduct).toHaveBeenCalledTimes(2))
+    expect(lastPayload()).not.toHaveProperty('options')
+    expect(lastPayload()).not.toHaveProperty('stock')
+  })
+
+  it('[CRITICAL] التنقّل بالتاريخ بين صفحتي تعديل: كل منتجٍ بقيمه، والحفظ يكتب المنتج الظاهر فقط', async () => {
+    const products: Record<string, typeof server> = {
+      p1: { ...server, nameAr: 'المنتج الأول', price: 1000, stock: 5 },
+      p2: { ...server, nameAr: 'المنتج الثاني', price: 2000, stock: 50 },
+    }
+    vi.mocked(getProductForEdit).mockImplementation(async (productId) => ({
+      draft: { ...products[productId]! },
+      optionsLoaded: true,
+    }))
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <ConfigProvider direction="rtl">
+          <AntApp>
+            <MemoryRouter initialEntries={['/products/p1/edit', '/products', '/products/p2/edit']} initialIndex={2}>
+              <NavigationHandle />
+              <Routes>
+                <Route path="/products/:id/edit" element={<ProductEditPage />} />
+                <Route path="/products" element={<div>قائمة المنتجات</div>} />
+              </Routes>
+            </MemoryRouter>
+          </AntApp>
+        </ConfigProvider>
+      </QueryClientProvider>,
+    )
+    expect(await screen.findByLabelText('اسم المنتج بالعربي')).toHaveValue('المنتج الثاني')
+    // قائمة «رجوع» في المتصفح: قفزةٌ واحدة إلى صفحة تعديل المنتج الأول.
+    await act(async () => navigateTo(-2))
+    await waitFor(() => expect(screen.getByLabelText('اسم المنتج بالعربي')).toHaveValue('المنتج الأول'))
+    expect(stockField()).toHaveValue('5')
+    await save()
+
+    await waitFor(() => expect(updateProduct).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(updateProduct).mock.calls[0]![0]).toBe('p1')
+    expect(lastPayload()).toMatchObject({ nameAr: 'المنتج الأول', price: 1000 })
+    expect(lastPayload()).not.toHaveProperty('stock')
+  })
+
+  it('STOCK_CHANGED يصل بعد مغادرة الصفحة: لا قراءة ولا نسخة مخبّأة، والفتح التالي من الخادم', async () => {
+    let rejectSave: (error: unknown) => void = () => {}
+    vi.mocked(updateProduct).mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectSave = reject
+        }),
+    )
+    const queryClient = mount()
+    await screen.findByLabelText('المخزون')
+    await userEvent.setup().clear(stockField())
+    await userEvent.setup().type(stockField(), '8')
+    await save()
+    await waitFor(() => expect(updateProduct).toHaveBeenCalledTimes(1))
+    await act(async () => navigateTo('/products'))
+    await act(async () => rejectSave(new ApiError('المخزون تغيّر منذ فتح الصفحة (الحالي: 3)', 409, 'STOCK_CHANGED')))
+
+    expect(getProductForEdit).toHaveBeenCalledTimes(1)
+    expect(queryClient.getQueryCache().find({ queryKey: ['product-edit', 'p1'] })).toBeUndefined()
+  })
+
+  it('قيمةٌ كتبها المسؤول أثناء إعادة القراءة تبقى له، والمقارنة بالقيمة الحالية', async () => {
+    mount()
+    await screen.findByLabelText('المخزون')
+    server = { ...server, stock: 3 }
+    let finishRead: () => void = () => {}
+    vi.mocked(getProductForEdit).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishRead = () => resolve({ draft: { ...server }, optionsLoaded: true })
+        }),
+    )
+    await userEvent.setup().clear(stockField())
+    await userEvent.setup().type(stockField(), '8')
+    await save()
+    await waitFor(() => expect(getProductForEdit).toHaveBeenCalledTimes(2))
+    // يكتب قيمةً جديدة بعد رسالة الرفض وقبل أن تعود القراءة.
+    await userEvent.setup().clear(stockField())
+    await userEvent.setup().type(stockField(), '9')
+    await act(async () => finishRead())
+    expect(stockField()).toHaveValue('9')
+
+    await save()
+    await screen.findByText('قائمة المنتجات')
+    expect(lastPayload()).toMatchObject({ stock: 9, expectedStock: 3 })
+    expect(server.stock).toBe(9)
   })
 
   it('[CRITICAL] فتح المنتج بعد حفظه: لا يُمحى التخزين الذي حفظه المسؤول للتو', async () => {
