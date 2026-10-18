@@ -65,6 +65,7 @@ class _BannerArt extends StatelessWidget {
     required this.height,
     required this.cornerRadius,
     this.imageUrl,
+    this.start,
   });
 
   /// فتحة الشخصية المضمَّنة — تُعرض حين لا صورة أو فشل تحميلها. `null`:
@@ -77,6 +78,10 @@ class _BannerArt extends StatelessWidget {
   /// نصف قطر زاوية البطاقة — يحدّد أصغر إزاحة آمنة.
   final double cornerRadius;
   final String? imageUrl;
+
+  /// حدّ الصندوق من جهة البداية — حيث ينتهي نصّ البطاقة. `null`: إزاحة الزاوية
+  /// كالجهات الثلاث الأخرى. الرسم الأعرض من الباقي يُصغَّر ولا يدخل تحت النصّ.
+  final double? start;
 
   /// أصغر إزاحةٍ متساوية عن حافّتين تُبقي زاوية الرسم داخل انحناء زاوية
   /// البطاقة: r·(1 − 1/√2). أقلّ منها وتقصّ الزاويةُ المدوَّرة طرفَ الصورة.
@@ -93,7 +98,7 @@ class _BannerArt extends StatelessWidget {
     return PositionedDirectional(
       top: inset,
       bottom: inset,
-      start: inset,
+      start: start ?? inset,
       end: inset,
       // `Align` يمرّر قيوداً فضفاضة: الارتفاع المطلوب يُقصر على المتاح،
       // والعرض المشتقّ من نسبة الصورة يُقصر على عرض البطاقة.
@@ -132,6 +137,26 @@ class HomeHeroCard extends StatelessWidget {
   /// المضمَّن كما هو — لا لوحة فارغة ولا نص نائب.
   final model.Banner? banner;
 
+  /// أقصى عرضٍ لعمود النصّ.
+  static const double textColumnMax = 190;
+
+  /// حشوة النصّ من جهة البداية — الرسم لا يتجاوز ما بعدها.
+  static const double textStart = 22;
+
+  /// حشوة الكبسولة وزرّ «تسوّق الآن» الأفقية (من الجهتين معاً).
+  static const double _kickerPadding = 22;
+  static const double _ctaPadding = 38;
+
+  /// عرض عمود النصّ في بطاقةٍ بعرض [cardWidth]: [textColumnMax]، أو ما بين
+  /// حشوتيه إن ضاقت البطاقة.
+  ///
+  /// [CRITICAL] (2026-10-13) لا يضيق بنسبة البطاقة. عمودٌ بـ٥٢٪ منها (نسبة
+  /// المرجع) كان ١٤٣٫٥ عند ٣٢٠، فالتفّ العنوان عند ×١٫٣ سطراً رابعاً بكل لغة،
+  /// وطالت البطاقة ٣٩، ونزل زرّ «تسوّق الآن» تحت شريط التنقّل. ما يُبعد
+  /// الشخصية عن النصّ هو العرض المحجوز له أدناه، لا تضييق العمود.
+  static double textColumnFor(double cardWidth) =>
+      math.max(0, math.min(textColumnMax, cardWidth - 2 * textStart));
+
   @override
   Widget build(BuildContext context) {
     // نصّ البنر بلغة الواجهة الآن — الكردية الناقصة تسقط إلى العربية والعكس.
@@ -150,121 +175,171 @@ class HomeHeroCard extends StatelessWidget {
       for (final l in AppLanguage.values)
         banner?.subtitleIn(l) ?? AppStrings.of(l)('heroNewCollection'),
     ];
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
-      child: Container(
-        constraints: const BoxConstraints(minHeight: 174),
-        decoration: BoxDecoration(
-          gradient: AppColors.animeHeroGradient,
-          borderRadius: BorderRadius.circular(AppDimens.radiusXl),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.primary.withValues(alpha: 0.30),
-              blurRadius: 40,
-              offset: const Offset(0, 20),
-            ),
-          ],
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Stack(
-          children: [
-            PositionedDirectional(
-              top: -40,
-              start: -30,
-              child: Container(
-                width: 170,
-                height: 170,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withValues(alpha: 0.12),
-                ),
-              ),
-            ),
-            // صورة البنر التي يرفعها المسؤول تحلّ محلّ الشخصية المضمَّنة،
-            // في الموضع والمقاس نفسيهما.
-            _BannerArt(
-              slot: VisualSlots.homeHero,
-              imageUrl: banner?.imageUrl,
-              height: 168,
-              cornerRadius: AppDimens.radiusXl,
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(22, 22, 22, 24),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 190),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 11,
-                        vertical: 5,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.26),
-                        borderRadius: BorderRadius.circular(
-                          AppDimens.radiusFull,
-                        ),
-                      ),
-                      child: BoundedText(
-                        subtitle ?? context.strings('heroNewCollection'),
-                        maxLines: 2,
-                        reserveFor: subtitles,
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          fontSize: 10.5,
-                          fontWeight: AppDimens.weightExtraBold,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: AppDimens.space4),
-                    BoundedText(
-                      title ?? context.strings('heroNewSeason'),
-                      maxLines: 6,
-                      reserveFor: titles,
-                      alignment: AlignmentDirectional.topStart,
-                      style: Theme.of(context).textTheme.headlineSmall
-                          ?.copyWith(
-                            fontSize: 23,
-                            height: 1.3,
-                            fontWeight: AppDimens.weightBlack,
-                            color: Colors.white,
-                          ),
-                    ),
-                    const SizedBox(height: AppDimens.space4),
-                    GestureDetector(
-                      onTap: onShop,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 19,
-                          vertical: 11,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(
-                            AppDimens.radiusFull,
-                          ),
-                        ),
-                        child: Text(
-                          context.strings('shopNow'),
-                          style: Theme.of(context).textTheme.labelMedium
-                              ?.copyWith(
-                                fontSize: 12.5,
-                                fontWeight: AppDimens.weightExtraBold,
-                                color: const Color(0xFF25123F),
-                              ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
+    final kicker = BoundedText(
+      subtitle ?? context.strings('heroNewCollection'),
+      maxLines: 2,
+      reserveFor: subtitles,
+      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+        fontSize: 10.5,
+        fontWeight: AppDimens.weightExtraBold,
+        color: Colors.white,
       ),
     );
+    final heading = BoundedText(
+      title ?? context.strings('heroNewSeason'),
+      maxLines: 6,
+      reserveFor: titles,
+      alignment: AlignmentDirectional.topStart,
+      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+        fontSize: 23,
+        height: 1.3,
+        fontWeight: AppDimens.weightBlack,
+        color: Colors.white,
+      ),
+    );
+    final ctaStyle = Theme.of(context).textTheme.labelMedium?.copyWith(
+      fontSize: 12.5,
+      fontWeight: AppDimens.weightExtraBold,
+      color: const Color(0xFF25123F),
+    );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final column = textColumnFor(constraints.maxWidth);
+          // [CRITICAL] (2026-10-12) النصّ والشخصية لا يتداخلان، بأي مقاسٍ
+          // ولغة: الرسم يبدأ حيث ينتهي أعرض ما يأخذه العمود بأيّ ترجمة
+          // (الكبسولة، العنوان، الزرّ)، ويُصغَّر إلى ما يبقى بدل أن يدخل تحت
+          // النصّ — كما يُصغَّر حين تقصر البطاقة. كان صندوقه البطاقةَ كلّها،
+          // فيقع العنوان على يده عند ٤١٢ وعلى ذراعه ووجهه عند ٣٢٠ × ١٫٣، والكردي
+          // على ضفيرتها حتى عند ٤١٢. العرض المحجوز لا يتغيّر باللغة، فلا يتحرّك
+          // الرسم بتغيّرها.
+          final textWidth = [
+            kicker.reservedWidth(
+                  context,
+                  math.max(0, column - _kickerPadding),
+                ) +
+                _kickerPadding,
+            heading.reservedWidth(context, column),
+            _ctaWidth(context, ctaStyle, column),
+          ].reduce(math.max);
+          return Container(
+            constraints: const BoxConstraints(minHeight: 174),
+            decoration: BoxDecoration(
+              gradient: AppColors.animeHeroGradient,
+              borderRadius: BorderRadius.circular(AppDimens.radiusXl),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.primary.withValues(alpha: 0.30),
+                  blurRadius: 40,
+                  offset: const Offset(0, 20),
+                ),
+              ],
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Stack(
+              children: [
+                PositionedDirectional(
+                  top: -40,
+                  start: -30,
+                  child: Container(
+                    width: 170,
+                    height: 170,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white.withValues(alpha: 0.12),
+                    ),
+                  ),
+                ),
+                // صورة البنر التي يرفعها المسؤول تحلّ محلّ الشخصية المضمَّنة،
+                // في الموضع والمقاس نفسيهما.
+                _BannerArt(
+                  slot: VisualSlots.homeHero,
+                  imageUrl: banner?.imageUrl,
+                  height: 168,
+                  cornerRadius: AppDimens.radiusXl,
+                  start: textStart + textWidth,
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    textStart,
+                    22,
+                    textStart,
+                    24,
+                  ),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: column),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: _kickerPadding / 2,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.26),
+                            borderRadius: BorderRadius.circular(
+                              AppDimens.radiusFull,
+                            ),
+                          ),
+                          child: kicker,
+                        ),
+                        const SizedBox(height: AppDimens.space4),
+                        heading,
+                        const SizedBox(height: AppDimens.space4),
+                        GestureDetector(
+                          onTap: onShop,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: _ctaPadding / 2,
+                              vertical: 11,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(
+                                AppDimens.radiusFull,
+                              ),
+                            ),
+                            child: Text(
+                              context.strings('shopNow'),
+                              style: ctaStyle,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// أعرض ما يأخذه زرّ «تسوّق الآن» بأيّ ترجمة في عمودٍ بعرض [column].
+  static double _ctaWidth(
+    BuildContext context,
+    TextStyle? style,
+    double column,
+  ) {
+    var widest = 0.0;
+    for (final label in AppStrings.across('shopNow')) {
+      final painter = TextPainter(
+        text: TextSpan(
+          text: label,
+          style: DefaultTextStyle.of(context).style.merge(style),
+        ),
+        textScaler: MediaQuery.textScalerOf(context),
+        textDirection: Directionality.of(context),
+      )..layout(maxWidth: math.max(0, column - _ctaPadding));
+      widest = math.max(widest, painter.width + _ctaPadding);
+      painter.dispose();
+    }
+    return widest;
   }
 }
 

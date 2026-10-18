@@ -97,6 +97,27 @@ Rect _art(WidgetTester tester) => tester.getRect(
   ),
 );
 
+/// أبعد ما يصله نصّ البطاقة نحو الرسم (يسار العمود في RTL): نصوصها وخلفيتا
+/// الكبسولة والزرّ.
+double _textLeft(WidgetTester tester) {
+  final hero = find.byType(HomeHeroCard);
+  final texts = find.descendant(of: hero, matching: find.byType(RichText));
+  final boxes = find.descendant(
+    of: hero,
+    matching: find.byWidgetPredicate(
+      (w) =>
+          w is Container &&
+          w.decoration is BoxDecoration &&
+          (w.decoration! as BoxDecoration).borderRadius ==
+              BorderRadius.circular(AppDimens.radiusFull),
+    ),
+  );
+  return [
+    for (final e in [...texts.evaluate(), ...boxes.evaluate()])
+      (e.renderObject! as RenderBox).localToGlobal(Offset.zero).dx,
+  ].reduce((a, b) => a < b ? a : b);
+}
+
 void _expectInsideRoundedCard(Rect art, Rect card) {
   final rounded = RRect.fromRectAndRadius(
     card,
@@ -165,8 +186,12 @@ void main() {
           // [STEP 64] عمودياً: موسَّط — كان مثبَّتاً في القاع فيبقى فوقه شريطٌ
           // فارغ يكبر مع ارتفاع البطاقة («الشخصية نازلة»).
           expect(art.top - card.top, closeTo(card.bottom - art.bottom, 0.5));
-          // التكوين محفوظ: البطاقة تتّسع للرسم بارتفاعه الأصلي فلا يُصغَّر.
-          expect(art.height, closeTo(168, 0.5));
+          // [CRITICAL] (2026-10-12) لا يدخل تحت عمود النصّ: يُصغَّر إلى ما
+          // يبقى بجواره (كان ١٦٨ دائماً فيقع العنوان على يده وذراعه)، وبارتفاعه
+          // الأصلي حيث يتّسع المكان (اللوح).
+          expect(art.right, lessThanOrEqualTo(_textLeft(tester) + 0.5));
+          expect(art.height, lessThanOrEqualTo(168 + 0.5));
+          if (entry.value.width >= 834) expect(art.height, closeTo(168, 0.5));
         },
       );
     }
@@ -204,6 +229,15 @@ void main() {
         );
       }
     }
+  });
+
+  test('عمود النصّ ١٩٠ ولا يضيق بنسبة البطاقة — إلا إلى ما بين حشوتيه', () {
+    // [CRITICAL] (2026-10-13) عمودٌ بنسبة البطاقة (١٤٣٫٥ عند ٣٢٠) لفّ العنوان
+    // سطراً رابعاً عند ×١٫٣ فنزل زرّ «تسوّق الآن» تحت شريط التنقّل.
+    expect(HomeHeroCard.textColumnFor(376), 190);
+    expect(HomeHeroCard.textColumnFor(284), 190);
+    expect(HomeHeroCard.textColumnFor(798), 190);
+    expect(HomeHeroCard.textColumnFor(204), 160);
   });
 
   group('الحدود تحمي حتى حين لا يتّسع المكان', () {

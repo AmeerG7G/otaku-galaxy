@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -41,6 +42,8 @@ enum OtakuHeaderVariant {
       this.artworkWidth,
       this.artworkEnd,
     this.artworkBelowStatusBar = false,
+    this.textClearOfArtwork = false,
+    this.artworkCutAt,
       this.gradient,
       this.variant = OtakuHeaderVariant.plain,
       this.leading,
@@ -63,6 +66,8 @@ enum OtakuHeaderVariant {
     this.artworkWidth,
     this.artworkEnd,
     this.artworkBelowStatusBar = false,
+    this.textClearOfArtwork = false,
+    this.artworkCutAt,
     this.leading,
     this.bottom,
     this.titleTranslations = const [],
@@ -81,6 +86,8 @@ enum OtakuHeaderVariant {
     this.artworkWidth,
     this.artworkEnd,
     this.artworkBelowStatusBar = false,
+    this.textClearOfArtwork = false,
+    this.artworkCutAt,
     this.bottom,
     this.titleTranslations = const [],
     this.subtitleTranslations = const [],
@@ -101,6 +108,8 @@ enum OtakuHeaderVariant {
     this.artworkWidth,
     this.artworkEnd,
     this.artworkBelowStatusBar = false,
+    this.textClearOfArtwork = false,
+    this.artworkCutAt,
     this.leading,
     this.bottom,
     this.titleTranslations = const [],
@@ -146,6 +155,26 @@ enum OtakuHeaderVariant {
   /// (`MediaQuery.paddingOf(context).top`)، فلا تداخل ولا قصّ من الأعلى. تختاره
   /// الشاشة التي تحتاجه؛ لا يتغيّر شيءٌ لغيرها.
   final bool artworkBelowStatusBar;
+
+  /// عمود العنوان والسطر الوصفي لا يدخل تحت صندوق الرسم.
+  ///
+  /// [CRITICAL] (2026-10-12) الافتراضي `false`: العمود بعرض الترويسة كلّه
+  /// والرسم خلفه، فعنوانٌ طويل يُرسم على وجه الشخصية («تقييم منتجات طلبك»:
+  /// الكردي عند كل مقاس، والعربي عند ٣٢٠ × ١٫٣). `true` يُنهي العمود عند
+  /// الجزء الظاهر من صندوق الرسم ([artworkWidth] + [artworkEnd] من حافة
+  /// النهاية)، فيُصغَّر النصّ داخل ما بقي ثم يأخذ سطره التالي — بقواعد
+  /// `BoundedText` نفسها، وبكل لغة (الترجمات تحجز الأسطر نفسها). تختاره
+  /// الشاشة التي يقع رسمها بجوار نصّها؛ لا يتغيّر شيءٌ لغيرها.
+  final bool textClearOfArtwork;
+
+  /// موضع حافة الرسم المقصوصة من الأسفل — نسبةٌ من ارتفاعه (الصورة 43: الصف
+  /// 766 من 820). `null`: لا قصّ يُخفى، والرسم يبقى حيث يضعه [artworkBelowStatusBar].
+  ///
+  /// [CRITICAL] (2026-10-12) القصّ يُخفيه أسفل الترويسة، فترويسةٌ تطول أبعد منه
+  /// (خطٌّ مكبَّر، نصٌّ بجوار الرسم في سطرين) كانت تُظهره خطّاً أفقياً عبر
+  /// الشخصية. بالنسبة يتبع الرسم أسفل الترويسة حين تطول، فيبقى القصّ عند حافتها
+  /// أو تحتها — ولا يصعد فوق موضعه (تحت شريط الحالة) حين تقصر.
+  final double? artworkCutAt;
 
   /// عرض الرسم حين لا تحدّد الشاشة [artworkWidth].
   static const double defaultArtworkWidth = 126;
@@ -242,23 +271,23 @@ enum OtakuHeaderVariant {
           // رسم الشخصية خلف الترويسة — بلا شفافية (قرار 2026-09-15): كان
           // يُرسم بـ١٦٪ كما في المرجع لرسمٍ مضمَّن، فبدت الشخصيةُ التي يرفعها
           // المسؤول باهتةً كأنها معطوبة. تُعرض الآن كصورتها الأصلية.
-          if (_hasArtwork)
-            PositionedDirectional(
-              top: artworkBelowStatusBar
-                  ? MediaQuery.paddingOf(context).top
-                  : defaultArtworkTop,
-              end: artworkEnd ?? defaultArtworkEnd,
-              child: IgnorePointer(
-                child: artworkSlot == null
-                    ? Image.asset(
-                        artwork!,
-                        width: artworkWidth ?? defaultArtworkWidth,
-                      )
-                    : CharacterArtwork(
-                        slot: artworkSlot!,
-                        width: artworkWidth ?? defaultArtworkWidth,
-                      ),
+          if (_hasArtwork && artworkCutAt != null)
+            Positioned.fill(
+              child: CustomSingleChildLayout(
+                delegate: _ArtworkAboveBottom(
+                  top: _artworkTop(context),
+                  end: artworkEnd ?? defaultArtworkEnd,
+                  cutAt: artworkCutAt!,
+                  textDirection: Directionality.of(context),
+                ),
+                child: _artworkImage(),
               ),
+            )
+          else if (_hasArtwork)
+            PositionedDirectional(
+              top: _artworkTop(context),
+              end: artworkEnd ?? defaultArtworkEnd,
+              child: _artworkImage(),
             ),
           Padding(
             padding: padding,
@@ -304,9 +333,13 @@ enum OtakuHeaderVariant {
                               // عند الحدّ. الحدّ من مقاس التصميم ([PRODUCT]
                               // 2026-10-05): عند ×١٫٣ لا يصغر عن ٠٫٨ من مقاسه
                               // بلا تكبير — كتسميات الأزرار.
+                              // ثلاثة أسطر حدّاً (2026-10-12): عنوانٌ بجوار رسمه
+                              // ([textClearOfArtwork]) يأخذ عرضاً أضيق — الكردي
+                              // «تقييم منتجات طلبك» لا يتّسع لسطرين بجوار الوجه
+                              // عند ٣٢٠ × ١٫٣ حتى عند حدّه. ما اتّسع لسطرين بقي.
                               BoundedText(
                                 title,
-                                maxLines: 2,
+                                maxLines: 3,
                                 floorAtDesignSize: true,
                                 reserveFor: titleTranslations,
                                 alignment: AlignmentDirectional.topStart,
@@ -356,6 +389,10 @@ enum OtakuHeaderVariant {
                           ),
                         ),
                         ?trailing,
+                        // ما يظهر من صندوق الرسم ([textClearOfArtwork]).
+                        if (_textEndClearance(padding) case final clearance
+                            when clearance > 0)
+                          SizedBox(width: clearance),
                       ],
                     ),
                   ],
@@ -367,6 +404,30 @@ enum OtakuHeaderVariant {
         ],
       ),
     );
+  }
+
+  double _artworkTop(BuildContext context) => artworkBelowStatusBar
+      ? MediaQuery.paddingOf(context).top
+      : defaultArtworkTop;
+
+  Widget _artworkImage() => IgnorePointer(
+    child: artworkSlot == null
+        ? Image.asset(artwork!, width: artworkWidth ?? defaultArtworkWidth)
+        : CharacterArtwork(
+            slot: artworkSlot!,
+            width: artworkWidth ?? defaultArtworkWidth,
+          ),
+  );
+
+  /// ما يُترك من نهاية عمود النصّ للرسم: الجزء الظاهر من صندوقه بعد حشوة
+  /// الترويسة. صفرٌ بلا رسم أو بلا [textClearOfArtwork].
+  double _textEndClearance(EdgeInsets padding) {
+    if (!textClearOfArtwork || !_hasArtwork) return 0;
+    final visible =
+        (artworkWidth ?? defaultArtworkWidth) +
+        (artworkEnd ?? defaultArtworkEnd);
+    // `padding` فيزيائية متناظرة الجانبين في كل الأنماط.
+    return math.max(0, visible - padding.left);
   }
 
   Widget _buildCompactRow(BuildContext context, Color onInk) =>
@@ -411,6 +472,45 @@ enum OtakuHeaderVariant {
       ],
     );
   }
+}
+
+/// رسم الترويسة عند [top] من حافتها و[end] من نهايتها — وأدنى من ذلك حين
+/// تطول الترويسة، حتى لا يعلو قصّه ([cutAt] من ارتفاعه) فوق أسفلها.
+class _ArtworkAboveBottom extends SingleChildLayoutDelegate {
+  const _ArtworkAboveBottom({
+    required this.top,
+    required this.end,
+    required this.cutAt,
+    required this.textDirection,
+  });
+
+  final double top;
+  final double end;
+  final double cutAt;
+  final TextDirection textDirection;
+
+  // بلا قيود كـ`PositionedDirectional` بجهتين: الرسم بمقاسه الذي يطلبه.
+  @override
+  BoxConstraints getConstraintsForChild(BoxConstraints constraints) =>
+      const BoxConstraints();
+
+  @override
+  Offset getPositionForChild(Size size, Size childSize) => Offset(
+    textDirection == TextDirection.rtl
+        ? end
+        : size.width - end - childSize.width,
+    // رسمٌ لم تُفكّ صورته بعد بلا ارتفاع ولا قصّ يُخفى: موضعه المعتاد.
+    childSize.isEmpty
+        ? top
+        : math.max(top, size.height - childSize.height * cutAt),
+  );
+
+  @override
+  bool shouldRelayout(_ArtworkAboveBottom old) =>
+      old.top != top ||
+      old.end != end ||
+      old.cutAt != cutAt ||
+      old.textDirection != textDirection;
 }
 
 /// زر أيقوني مربّع مستدير (٣٨×٣٨، نصف قطر ١٣) داخل ترويسات v2.

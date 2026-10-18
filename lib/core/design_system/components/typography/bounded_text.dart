@@ -97,10 +97,10 @@ class BoundedText extends StatelessWidget {
   /// سطراً ثانياً إلا لنصٍّ لا يتّسع حتى عنده. لا يعرف اللغة: يقيس نصوصاً.
   final List<String> reserveFor;
 
-  _Fit _fitIn(BuildContext context) {
+  _Fit _fitFor(BuildContext context, String text, List<String> reserveFor) {
     final scaler = MediaQuery.textScalerOf(context);
     return _Fit(
-      data: data,
+      data: text,
       style: DefaultTextStyle.of(context).style.merge(style),
       scaler: scaler,
       direction: Directionality.of(context),
@@ -120,11 +120,31 @@ class BoundedText extends StatelessWidget {
   /// لأبٍ ثابت الارتفاع يحجز مكانها مسبقاً: رأسٌ يطول بقدر أسطرها لا يعرف
   /// كم سطراً تأخذ إلا بالقياس نفسه. لا يعرف اللغة: يقيس [data] وحده.
   int linesAt(BuildContext context, double maxWidth) =>
-      _fitIn(context).resolve(maxWidth).lines;
+      _fitFor(context, data, reserveFor).resolve(maxWidth).lines;
+
+  /// أعرضُ ما تأخذه المنطقة بأيٍّ من [data] و[reserveFor] في عرض [maxWidth] —
+  /// بالحساب نفسه الذي يخطّطها (المقاس وعدد الأسطر).
+  ///
+  /// [CRITICAL] (2026-10-12) لمن يضع شيئاً بجوار المنطقة (رسم شخصية بجوار
+  /// عنوان): عرض النصّ المعروض يتغيّر بالترجمة، وهذا لا يتغيّر — فلا يتحرّك
+  /// الجار بتغيّر اللغة، كما لا تتغيّر أسطر المنطقة.
+  double reservedWidth(BuildContext context, double maxWidth) {
+    final all = [data, ...reserveFor];
+    var widest = 0.0;
+    for (final text in all.toSet()) {
+      final size = _fitFor(
+        context,
+        text,
+        all,
+      ).sizeFor(BoxConstraints(maxWidth: maxWidth));
+      widest = math.max(widest, size.width);
+    }
+    return widest;
+  }
 
   @override
   Widget build(BuildContext context) {
-    final fit = _fitIn(context);
+    final fit = _fitFor(context, data, reserveFor);
 
     return _BoundedLayout(
       fit: fit,
