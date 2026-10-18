@@ -41,25 +41,26 @@ function warnRejected(reason: string) {
   console.warn(`[client-ip] ترويسة عنوان الزبون مرفوضة (${reason}) — العنوان من req.ip`);
 }
 
-let proxyWarned = false;
+const proxyWarned = { forwardedUntrusted: false, unknownIp: false };
 /**
  * فحوص express-rate-limit التشخيصية (X-Forwarded-For مع `TRUST_PROXY=false`،
  * `req.ip` مجهول) لا تعمل إلا داخل مولّد مفاتيحه الافتراضي، وكل حدودنا
  * تستعمل `clientRateLimitKey`. نعيدها هنا: إعداد وسيطٍ خاطئ يجمع كل الزبائن في
- * دلوٍ واحد بلا أي خطأ ظاهر. تحذيرٌ واحد لكل عملية. (فحصه الثالث — الثقة
- * المطلقة `true` — لا يبلغه إعدادنا: `TRUST_PROXY=true` يُسقط الإقلاع أصلاً.)
+ * دلوٍ واحد بلا أي خطأ ظاهر. تحذيرٌ واحد لكل مشكلة في عمر العملية — لكلٍّ علمُه،
+ * فلا يُسكت أحدهما الآخر. (الثقة المطلقة `true` لا يبلغها إعدادنا:
+ * `TRUST_PROXY=true` يُسقط الإقلاع أصلاً.)
  */
 function checkProxySetup(req: Request) {
-  if (proxyWarned) return;
-  const trust: unknown = req.app.get('trust proxy');
-  let problem: string | null = null;
-  if (req.ip === undefined) problem = 'req.ip غير معروف — كل الطلبات في مفتاحٍ فارغ';
-  else if (!trust && req.get('x-forwarded-for') !== undefined) {
-    problem = 'X-Forwarded-For موجودة و TRUST_PROXY=false — كل الطلبات بعنوان الوسيط';
+  if (!proxyWarned.forwardedUntrusted && !req.app.get('trust proxy') && req.get('x-forwarded-for') !== undefined) {
+    proxyWarned.forwardedUntrusted = true;
+    console.warn('[client-ip] إعداد الوسيط: X-Forwarded-For موجودة و TRUST_PROXY=false — كل الطلبات بعنوان الوسيط');
   }
-  if (!problem) return;
-  proxyWarned = true;
-  console.warn(`[client-ip] إعداد الوسيط: ${problem}`);
+  // اتصالٌ قطعه صاحبه قبل المعالجة يترك `req.ip` مجهولاً هو أيضاً: طلبٌ واحد
+  // أُلغي، لا إعدادٌ خاطئ.
+  if (!proxyWarned.unknownIp && req.ip === undefined && !req.socket.destroyed) {
+    proxyWarned.unknownIp = true;
+    console.warn('[client-ip] إعداد الوسيط: req.ip غير معروف — كل الطلبات في مفتاحٍ فارغ');
+  }
 }
 
 /**

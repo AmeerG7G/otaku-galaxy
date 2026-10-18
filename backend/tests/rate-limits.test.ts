@@ -140,6 +140,30 @@ describe('[CRITICAL] resolveClientIp — يُقبل العنوان الموقَ�
     expect(await warnings(false, {})).toEqual([]);
   });
 
+  it('تحذيرٌ عن مشكلةٍ لا يُسكت تحذيراً عن أخرى', async () => {
+    vi.resetModules();
+    const fresh = await import('../src/middleware/client-ip.js');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const app = express();
+      // طلبٌ بلا عنوان معروف أولاً (اتصالٌ مقطوع مثلاً)، ثم إعدادٌ خاطئ حقيقي.
+      app.use('/unknown', (req, _res, next) => {
+        Object.defineProperty(req, 'ip', { value: undefined });
+        next();
+      });
+      app.use(fresh.resolveClientIp(SECRET, () => NOW));
+      app.get(['/unknown', '/ip'], (_req, res) => res.json({}));
+      await request(app).get('/unknown');
+      await request(app).get('/ip').set('X-Forwarded-For', '198.51.100.4');
+      const messages = warn.mock.calls.map((call) => String(call[0]));
+      expect(messages).toHaveLength(2);
+      expect(messages.join(' ')).toContain('req.ip غير معروف');
+      expect(messages.join(' ')).toContain('TRUST_PROXY=false');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it('مفتاح الحدود يجمّع IPv6 بشبكته الفرعية — لا آلاف الدلاء لمشتركٍ واحد', async () => {
     const key = async (ip: string) =>
       (await probe().get('/ip').set(signClientIp(SECRET, ip, NOW))).body.key as string;
