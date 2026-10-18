@@ -41,6 +41,27 @@ function warnRejected(reason: string) {
   console.warn(`[client-ip] ترويسة عنوان الزبون مرفوضة (${reason}) — العنوان من req.ip`);
 }
 
+let proxyWarned = false;
+/**
+ * فحوص express-rate-limit التشخيصية (X-Forwarded-For مع `TRUST_PROXY=false`،
+ * ثقةٌ مطلقة بكل وسيط، `req.ip` مجهول) لا تعمل إلا داخل مولّد مفاتيحه
+ * الافتراضي، وكل حدودنا تستعمل `clientRateLimitKey`. نعيدها هنا: إعداد وسيطٍ
+ * خاطئ يجمع كل الزبائن في دلوٍ واحد بلا أي خطأ ظاهر. تحذيرٌ واحد لكل عملية.
+ */
+function checkProxySetup(req: Request) {
+  if (proxyWarned) return;
+  const trust: unknown = req.app.get('trust proxy');
+  let problem: string | null = null;
+  if (req.ip === undefined) problem = 'req.ip غير معروف — كل الطلبات في مفتاحٍ فارغ';
+  else if (trust === true) problem = 'TRUST_PROXY يثق بكل وسيط — أي زبون يزوّر عنوانه بـX-Forwarded-For';
+  else if (!trust && req.get('x-forwarded-for') !== undefined) {
+    problem = 'X-Forwarded-For موجودة و TRUST_PROXY=false — كل الطلبات بعنوان الوسيط';
+  }
+  if (!problem) return;
+  proxyWarned = true;
+  console.warn(`[client-ip] إعداد الوسيط: ${problem}`);
+}
+
 /**
  * [CRITICAL] عنوان الزبون لحدود المعدّل.
  *
@@ -50,17 +71,24 @@ function warnRejected(reason: string) {
  * بـ`BFF_SHARED_SECRET`؛ يُقبل العنوان **فقط** بتوقيعٍ صحيح حديث، وإلا بقي
  * `req.ip` كما كان — فالترويسة من الإنترنت (عبر nginx أو مباشرة) لا تزوّر شيئاً.
  *
- * بلا سرّ مُعدّ لا تُقرأ الترويسة أصلاً.
+ * بلا سرّ مُعدّ لا يُقبل العنوان أبداً، ويُحذَّر إن وصلت ترويسة موقَّعة.
  */
 export function resolveClientIp(
   secret: string | null = config.bffSharedSecret,
   nowSeconds: () => number = () => Math.floor(Date.now() / 1000),
 ) {
   return (req: Request, _res: Response, next: NextFunction) => {
+    checkProxySetup(req);
     req.clientIp = req.ip ?? '';
     const claimed = req.get(CLIENT_IP_HEADER);
     const signature = req.get(CLIENT_IP_SIGNATURE_HEADER);
-    if (!secret || claimed === undefined || signature === undefined) return next();
+    if (claimed === undefined || signature === undefined) return next();
+    if (!secret) {
+      // الموقع يوقّع والخادم بلا سرّ: نصفُ إعداد. الترويسة تُهمَل (لا تزوير)،
+      // لكن زبائن الموقع عادوا دلواً واحداً — يجب أن يُرى.
+      warnRejected('لا BFF_SHARED_SECRET على الخادم');
+      return next();
+    }
 
     const match = /^(\d{1,12})\.([0-9a-f]{64})$/.exec(signature);
     if (!match || isIP(claimed) === 0) {

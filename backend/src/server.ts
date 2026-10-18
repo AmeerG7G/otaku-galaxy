@@ -9,7 +9,16 @@ const app = createApp();
 // `config.host` غائبٌ في التطوير = كل الواجهات كما كان؛ الواجهة المحلية في
 // البيئتين الحقيقيتين خلف nginx (انظر `config.host`).
 // سطر الإقلاع نفسه كما كان (تنتظره `process-lifecycle.test.ts` وأي مراقبة سجلّ).
-const onListening = () => {
+//
+// [CRITICAL] express 5 يستدعي الدالة نفسها عند فشل الربط (`server.once('error')`)
+// والخطأ وسيطُها الأول. تجاهُله كان يطبع «running» لعنوانٍ لم يُربط (منفذ
+// مشغول، HOST غير موجود على الجهاز) ثم تخرج العملية بالرمز صفر — «توقّفتُ كما
+// طُلب» — فلا يعيد المدير تشغيلها.
+const onListening = (error?: Error) => {
+  if (error) {
+    console.error(`[fatal] listen ${config.host ?? '*'}:${config.port} failed: ${error.message}`);
+    process.exit(1);
+  }
   console.log(
     `Otaku Galaxy API running on http://${config.host ?? 'localhost'}:${config.port} [${config.nodeEnv}]`,
   );

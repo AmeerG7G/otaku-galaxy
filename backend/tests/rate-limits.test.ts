@@ -98,9 +98,49 @@ describe('[CRITICAL] resolveClientIp — يُقبل العنوان الموقَ�
     }
   });
 
-  it('بلا سرٍّ مُعدّ لا تُقرأ الترويسة أصلاً', async () => {
-    const res = await probe(null).get('/ip').set(signClientIp(SECRET, '203.0.113.7', NOW));
-    expect(res.body.ip).toMatch(/127\.0\.0\.1$/);
+  it('بلا سرٍّ مُعدّ لا يُقبل العنوان — ويُحذَّر لأن الموقع يوقّع والخادم لا', async () => {
+    // وحدةٌ جديدة: حالة التحذير (مرة كل عشر دقائق) لا تتسرّب من الاختبارات السابقة.
+    vi.resetModules();
+    const fresh = await import('../src/middleware/client-ip.js');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const app = express();
+      app.use(fresh.resolveClientIp(null, () => NOW));
+      app.get('/ip', (req, res) => res.json({ ip: fresh.clientIp(req) }));
+      const res = await request(app).get('/ip').set(signClientIp(SECRET, '203.0.113.7', NOW));
+      expect(res.body.ip).toMatch(/127\.0\.0\.1$/);
+      expect(warn.mock.calls.flat().join(' ')).toContain('BFF_SHARED_SECRET');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('إعداد وسيطٍ خاطئ يُحذَّر منه مرةً واحدة (تشخيص express-rate-limit المفقود)', async () => {
+    const warnings = async (trustProxy: unknown, headers: Record<string, string>) => {
+      vi.resetModules();
+      const fresh = await import('../src/middleware/client-ip.js');
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        const app = express();
+        app.set('trust proxy', trustProxy);
+        app.use(fresh.resolveClientIp(SECRET, () => NOW));
+        app.get('/ip', (_req, res) => res.json({}));
+        await request(app).get('/ip').set(headers);
+        await request(app).get('/ip').set(headers);
+        return warn.mock.calls.map((call) => String(call[0]));
+      } finally {
+        warn.mockRestore();
+      }
+    };
+    const behindProxyUntrusted = await warnings(false, { 'X-Forwarded-For': '198.51.100.4' });
+    expect(behindProxyUntrusted).toHaveLength(1);
+    expect(behindProxyUntrusted[0]).toContain('TRUST_PROXY=false');
+    const trustsEveryone = await warnings(true, {});
+    expect(trustsEveryone).toHaveLength(1);
+    expect(trustsEveryone[0]).toContain('يثق بكل وسيط');
+    // الإعداد السليم صامت.
+    expect(await warnings(1, { 'X-Forwarded-For': '198.51.100.4' })).toEqual([]);
+    expect(await warnings(false, {})).toEqual([]);
   });
 
   it('مفتاح الحدود يجمّع IPv6 بشبكته الفرعية — لا آلاف الدلاء لمشتركٍ واحد', async () => {
