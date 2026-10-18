@@ -21,6 +21,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:otaku_galaxy/core/config/app_config.dart';
 import 'package:otaku_galaxy/core/design_system/design_system.dart';
 import 'package:otaku_galaxy/core/di/injection_container.dart';
+import 'package:otaku_galaxy/core/l10n/app_strings.dart';
 import 'package:otaku_galaxy/core/router/app_router.dart';
 import 'package:otaku_galaxy/features/auth/presentation/cubit/auth_cubit.dart';
 import 'package:otaku_galaxy/features/settings/presentation/cubit/locale_cubit.dart';
@@ -146,6 +147,57 @@ void main() {
       }
     }
   }
+  }
+
+  // (البوّابة ١٥، 2026-10-17) ×١٫٦ و×٢٫٠ من مصفوفة القياس الموثّقة
+  // (`docs/localization/sorani-style-lock.md` §10): التوضيح الذي لا يتّسع
+  // لسطرين حتى عند ٠٫٨ يأخذ أسطر أطول ترجماته — بالعدد نفسه باللغتين — ويطول
+  // الرأس بها فيبقى فوق البطاقة. كان «نسيت كلمة المرور» يُقصّ في سطرين.
+  for (final scale in const [1.6, 2.0]) {
+    for (final size in sizes) {
+      for (final (name, route) in screens) {
+        testWidgets('[CRITICAL] $name ${size.width.toInt()} ×$scale: التوضيح كاملٌ '
+            'فوق البطاقة، وحافة البطاقة واحدة باللغتين', (tester) async {
+          tester.view.padding = const FakeViewPadding(top: 24);
+          final cardTops = <double>[];
+          // [KNOWN] (البوّابة ١٥) رسالة فشل تحميل المستويات (خارج الرأس) أضيق
+          // من كلمتها الأطول بجوار خانة «إعادة المحاولة» عند ×١٫٦/×٢٫٠ على
+          // الهواتف الضيّقة — بكل لغة، مسجّلةٌ في تقرير البوّابة ١٥. أيّ خطأٍ
+          // غيرها يُفشل الاختبار.
+          final known = AppStrings.across('levelsLoadFailed');
+          for (final language in AppLanguage.values) {
+            final errors = <String>[];
+            final previous = FlutterError.onError;
+            FlutterError.onError = (details) => errors.add(details.exceptionAsString());
+            try {
+              await _pump(tester, route, language, size, textScale: scale);
+            } finally {
+              FlutterError.onError = previous;
+            }
+            expect(errors.where((e) => !known.any(e.contains)), isEmpty,
+                reason: language.code);
+            final subtitle = paragraph(tester, const Key('auth_header_subtitle'));
+            expect(subtitle.didExceedMaxLines, isFalse,
+                reason: '${language.code}: النصّ التوضيحي مقصوص');
+            expect(subtitle.text.style!.fontSize!,
+                greaterThanOrEqualTo(13 * kBoundedTextMinScale - 0.01),
+                reason: language.code);
+            final area = region(tester, const Key('auth_header_subtitle'));
+            expect(area.bottom, lessThanOrEqualTo(cardTop(tester) - 4),
+                reason: '${language.code}: أسفل التوضيح (${area.bottom}) تحت '
+                    'حافة البطاقة (${cardTop(tester)})');
+            if (scale == 2.0 && route is ForgotPasswordRoute) {
+              // النموّ نفسه يُختبَر: سطران لا يكفيان هنا بأيّ لغة.
+              expect(area.height, greaterThan(2 * 13 * 1.7 * scale + 0.5),
+                  reason: language.code);
+            }
+            cardTops.add(cardTop(tester));
+          }
+          expect(cardTops.toSet(), hasLength(1),
+              reason: 'حافة البطاقة تتحرّك بتغيّر اللغة: $cardTops');
+        });
+      }
+    }
   }
 
   testWidgets('[CRITICAL] الرأس ٢١٤ تماماً عند ×١٫٠ — يطول بالتكبير وحده', (tester) async {

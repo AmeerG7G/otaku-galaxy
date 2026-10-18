@@ -149,6 +149,10 @@ class _RegisterScreenState extends State<RegisterScreen>
             AppGender.unknown,
             context.language,
           ),
+          subtitleTranslations: [
+            for (final l in AppLanguage.values)
+              GenderedStrings.galaxyResident.ofLocale(AppGender.unknown, l),
+          ],
           artworkSlot: VisualSlots.registerHeader,
           artworkHeight: 178,
           artworkWidth: 150,

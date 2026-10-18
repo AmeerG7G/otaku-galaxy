@@ -187,6 +187,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
           showBack: true,
           title: context.strings('forgotPasswordTitle'),
           subtitle: context.strings('forgotPasswordIntro'),
+          subtitleTranslations: AppStrings.across('forgotPasswordIntro'),
           artworkSlot: VisualSlots.forgotPasswordHeader,
           artworkHeight: 166,
           artworkBottom: -6,

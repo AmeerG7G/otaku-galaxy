@@ -140,6 +140,9 @@ class _LoginScreenState extends State<LoginScreen>
         child: AuthScaffold(
           title: context.strings('login'),
           subtitle: context.g(GenderedStrings.enterPhoneAndPassword),
+          subtitleTranslations: context.gAcross(
+            GenderedStrings.enterPhoneAndPassword,
+          ),
           artworkSlot: VisualSlots.login,
           // [STEP 64 §20] أكبر بـ٢٠٪: الصندوق ١٣٨×١٩٦ ← ١٦٥٫٦×٢٣٥٫٢ (المقياس لا
           // الصورة — 1.png لا تُمسّ). الصورة مربّعة تُرسم `contain` موسَّطة

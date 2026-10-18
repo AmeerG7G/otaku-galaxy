@@ -97,10 +97,9 @@ class BoundedText extends StatelessWidget {
   /// سطراً ثانياً إلا لنصٍّ لا يتّسع حتى عنده. لا يعرف اللغة: يقيس نصوصاً.
   final List<String> reserveFor;
 
-  @override
-  Widget build(BuildContext context) {
+  _Fit _fitIn(BuildContext context) {
     final scaler = MediaQuery.textScalerOf(context);
-    final fit = _Fit(
+    return _Fit(
       data: data,
       style: DefaultTextStyle.of(context).style.merge(style),
       scaler: scaler,
@@ -113,6 +112,19 @@ class BoundedText extends StatelessWidget {
           ? math.min(minScale, minScale / scaler.scale(1))
           : minScale,
     );
+  }
+
+  /// عدد الأسطر الذي ترسمه المنطقة في عرض [maxWidth] — الحساب نفسه الذي
+  /// يجريه `build`، بسياقٍ يرى ما تراه المنطقة (`DefaultTextStyle` نفسه).
+  ///
+  /// لأبٍ ثابت الارتفاع يحجز مكانها مسبقاً: رأسٌ يطول بقدر أسطرها لا يعرف
+  /// كم سطراً تأخذ إلا بالقياس نفسه. لا يعرف اللغة: يقيس [data] وحده.
+  int linesAt(BuildContext context, double maxWidth) =>
+      _fitIn(context).resolve(maxWidth).lines;
+
+  @override
+  Widget build(BuildContext context) {
+    final fit = _fitIn(context);
 
     return _BoundedLayout(
       fit: fit,
