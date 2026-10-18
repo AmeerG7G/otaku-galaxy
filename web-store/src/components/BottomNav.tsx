@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '@/components/Link';
 import { usePathname } from 'next/navigation';
 
 /** The app's bottom tabs on mobile (hidden from 900px, where the header nav takes over). */

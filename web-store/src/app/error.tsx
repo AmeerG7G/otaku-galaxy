@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '@/components/Link';
 
 /**
  * Anything a page failed to load (API down, timeout). Only a generic message

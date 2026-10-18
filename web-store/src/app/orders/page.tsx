@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
+import Link from '@/components/Link';
 import { Pagination, parsePage } from '@/components/Catalog';
 import { formatDateTime, formatIqd, orderStatusLabel } from '@/lib/format';
 import { requireSession, sessionRead } from '@/lib/page-session';

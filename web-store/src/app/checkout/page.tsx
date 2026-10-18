@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Metadata } from 'next';
-import Link from 'next/link';
+import Link from '@/components/Link';
 import { CheckoutForm } from '@/components/CheckoutForm';
 import { listGovernorates } from '@/lib/catalog';
 import { localPhone } from '@/lib/format';

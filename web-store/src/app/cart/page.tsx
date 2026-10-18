@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
+import Link from '@/components/Link';
 import { CartView } from '@/components/CartView';
 import { mediaOrigin } from '@/lib/config';
 import { resolveMediaUrl } from '@/lib/media';

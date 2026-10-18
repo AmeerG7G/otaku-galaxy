@@ -111,7 +111,9 @@ Screenshots land in `test-results/screens/`. This is browser emulation; see the 
 - If Cloudflare is put in front, nginx needs `real_ip` configuration for Cloudflare's ranges first. Otherwise every shopper appears as a Cloudflare address.
 - Set the same `BFF_SHARED_SECRET` on the API and here. Use a different secret per environment.
 - `API_INTERNAL_URL` must be loopback or TLS. The signed IP headers are only as private as that hop.
-- Every API call is made per request with the shopper's signed IP. Nothing is cached in Next's fetch cache (see `src/lib/api.ts`), so each page view counts against that shopper's API limits (`RATE_LIMIT_GLOBAL_MAX`, 300 per 15 minutes by default), exactly as the app's own calls do.
+- Every API call is made per request with the shopper's signed IP. Nothing is cached in Next's fetch cache (see `src/lib/api.ts`), so each page view counts against that shopper's API limits (`RATE_LIMIT_GLOBAL_MAX`, 300 per 15 minutes by default, shared with the app on the same IP).
+  - Link prefetching is off (`src/components/Link.tsx`). With it, every card and chip in view was a server render, and a listing page cost 11–32 API calls.
+  - Without it a page view costs what the page reads, one to three calls, like a screen in the app. `e2e/budget.spec.ts` browses 42 pages as one shopper.
 
 ## Not included yet
 

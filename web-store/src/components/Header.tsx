@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import Link from '@/components/Link';
 
 /** Site header: text wordmark (no character artwork), search, desktop navigation. */
 export function Header({ signedIn }: { signedIn: boolean }) {
