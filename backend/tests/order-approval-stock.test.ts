@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../src/database/pool.js';
 import {
+  addProductOption,
   api,
   createAdminUser,
   purgeTestUsers,
@@ -185,6 +186,7 @@ describe('استهلاك المخزون عند القبول', () => {
 
   it('سطران بخيارين لمنتج واحد يُجمعان عند القبول', async () => {
     const id = await product('خيارات', 3);
+    await addProductOption(id);
     const { orderId } = await submitOrder([
       { productId: id, quantity: 2, optionValue: 'أحمر' },
       { productId: id, quantity: 1, optionValue: 'أزرق' },
@@ -196,6 +198,7 @@ describe('استهلاك المخزون عند القبول', () => {
 
   it('سطران مجموعهما فوق المخزون لحظة القبول يُرفضان معاً', async () => {
     const id = await product('خيارات فوق', 3);
+    await addProductOption(id);
     const { orderId } = await submitOrder([
       { productId: id, quantity: 2, optionValue: 'أحمر' },
       { productId: id, quantity: 1, optionValue: 'أزرق' },

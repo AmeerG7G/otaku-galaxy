@@ -1,7 +1,7 @@
 import type pg from 'pg';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../src/database/pool.js';
-import { api, createAdminUser, purgeTestUsers, registerAndLogin, seedTestCatalog, storeToday } from './helpers.js';
+import { addProductOption, api, createAdminUser, purgeTestUsers, registerAndLogin, seedTestCatalog, storeToday } from './helpers.js';
 
 /**
  * CA-14 — مزامنة العربة النشطة (قرار المالك، STEP 59).
@@ -201,6 +201,7 @@ describe('CA-14 — active cart synchronization and the checkout safety net', ()
     it('two option lines of one product are measured together; the older line keeps its units', async () => {
       const c = await registerAndLogin();
       const p = await product('stock-options', 5);
+      await addProductOption(p);
       await add(c.token, p, 2, 'أحمر');
       await add(c.token, p, 2, 'أزرق');
       await admin(p, { stock: 3 });

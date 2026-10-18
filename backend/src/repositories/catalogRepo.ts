@@ -155,6 +155,15 @@ export const productRepo = {
     return rows[0] ? mapProduct(rows[0]) : null;
   },
 
+  /** قيم خيارات المنتج باللغتين — ما يُطابَق به خيار سطر العربة (`cartService.addItem`). */
+  async findOptionValues(db: pg.Pool | pg.PoolClient, id: string) {
+    const { rows } = await db.query<{ values: string[]; values_ckb: string[] }>(
+      'SELECT values, values_ckb FROM product_options WHERE product_id = $1',
+      [id],
+    );
+    return rows.map((row) => ({ values: row.values, valuesCkb: row.values_ckb }));
+  },
+
   /**
    * عدّة منتجات بمعرّفاتها في جملة واحدة — للطلب الذي يحتاجها كلها معاً.
    *

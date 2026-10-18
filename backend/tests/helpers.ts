@@ -70,6 +70,18 @@ export async function seedTestCatalog() {
 }
 
 /**
+ * يعطي المنتج خياراً بقيمه. خيار سطر العربة يجب أن يكون من خيارات منتجه
+ * (`domain/productOptions.ts`)، فالسويتات التي تضيف «أحمر» و«أزرق» لمنتجٍ
+ * واحد تحتاج أن يكون للمنتج لونٌ بهاتين القيمتين.
+ */
+export async function addProductOption(productId: string, name = 'اللون', values = ['أحمر', 'أزرق']) {
+  await db.query(
+    'INSERT INTO product_options (product_id, name, values) VALUES ($1, $2, $3)',
+    [productId, name, values],
+  );
+}
+
+/**
  * يسجّل مستخدماً (رقم فريد) ويعيد التوكن.
  *
  * `gender` جزءٌ من التسجيل الآن ولا يُقبل الطلب بدونه — لذلك يُرسَل هنا في
