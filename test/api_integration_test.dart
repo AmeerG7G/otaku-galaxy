@@ -1,6 +1,8 @@
 @Tags(['integration'])
 library;
 
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otaku_galaxy/core/network/api_client.dart';
@@ -76,11 +78,24 @@ void main() {
       // لا رمز: الحساب يُفعَّل بموافقة الإدارة عبر المسار الإداري الحقيقي.
       // بلا مسؤولٍ مزروع لا يمكن تفعيل أي حساب، فتُتخطّى السويت كلّها —
       // وهذا هو السلوك المطلوب لا عيباً في الاختبار.
+      // [CRITICAL] بيانات المسؤول من بيئة البذر نفسها (`SEED_ADMIN_PHONE`/
+      // `SEED_ADMIN_PASSWORD`، كما في اختبار الموقع). كانت ثابتةً هنا
+      // (`07700000000`/`admin123`) والبذر يرفض كلمة مرورٍ دون ١٢ حرفاً، فلم
+      // يكن بالإمكان زرع هذا المسؤول أصلاً وتُتخطّى السويت كلها دائماً.
+      final adminPhone = Platform.environment['SEED_ADMIN_PHONE'] ?? '';
+      final adminPassword = Platform.environment['SEED_ADMIN_PASSWORD'] ?? '';
+      if (adminPhone.isEmpty || adminPassword.isEmpty) {
+        markTestSkipped(
+          'SEED_ADMIN_PHONE و SEED_ADMIN_PASSWORD غير مضبوطين — '
+          'اضبطهما بقيم db:seed ثم أعد التشغيل',
+        );
+        return;
+      }
       final adminApi = ApiClient(dio: Dio(BaseOptions(baseUrl: base)));
       final AuthSession adminSession;
       try {
         adminSession = await AuthRepositoryImpl(api: adminApi)
-            .login('07700000000', 'admin123');
+            .login(adminPhone, adminPassword);
       } on AppException catch (e) {
         markTestSkipped(
           'لا مسؤول مزروع في قاعدة التطوير (${e.message}) — '
@@ -183,16 +198,28 @@ void main() {
 
         // الفلترة تتم عبر subcategoryId الذي يصدّره الخادم مع المنتجات،
         // مع رجوع لاسم القسم الفرعي عند غياب المعرّف (توافق قديم).
+        // التصنيف المعتمد يحمل مجموعاتٍ فرعية بلا منتجات بعد (البذر نفسه:
+        // «سلاسل مفاتيح»، «حقائب كتف») — فالمقياس أن الفلترة تُسند كل منتج
+        // إلى مجموعته، لا أن كل مجموعةٍ ممتلئة.
+        var filled = 0;
         for (final sub in category.subcategories) {
           final subId = category.subcategoryIds[sub];
           final subItems = subId != null
               ? items.where((p) => p.subcategoryId == subId).toList()
               : items.where((p) => p.subcategory == sub).toList();
+          if (subItems.isNotEmpty) filled++;
+        }
+        expect(
+          filled,
+          greaterThan(0),
+          reason: 'لا مجموعة فرعية في القسم "$target" تُسند إليها منتجاته',
+        );
+        final ids = category.subcategoryIds.values.toSet();
+        for (final p in items.where((p) => p.subcategoryId != null)) {
           expect(
-            subItems,
-            isNotEmpty,
-            reason:
-                'المجموعة الفرعية "$sub" في القسم "$target" يجب أن تحتوي منتجات',
+            ids,
+            contains(p.subcategoryId),
+            reason: 'منتج "${p.id}" في مجموعةٍ فرعية لا يعرضها القسم "$target"',
           );
         }
       }
@@ -425,7 +452,9 @@ void main() {
     final adminApi = ApiClient(dio: Dio(BaseOptions(baseUrl: base)));
     final AuthSession adminSession;
     try {
-      adminSession = await AuthRepositoryImpl(api: adminApi).login('07700000000', 'admin123');
+      final seeded = _seedAdmin();
+      if (seeded == null) throw const AppException('SEED_ADMIN_PHONE/SEED_ADMIN_PASSWORD غير مضبوطين');
+      adminSession = await AuthRepositoryImpl(api: adminApi).login(seeded.phone, seeded.password);
     } on AppException catch (e) {
       markTestSkipped('لا مسؤول مزروع (${e.message})');
       return;
@@ -436,7 +465,9 @@ void main() {
     for (var page = 1; page <= 5 && product == null; page++) {
       final result = await products.fetchProducts(page: page, limit: 50);
       for (final p in result.items) {
-        if (p.stock >= 2) {
+        // بلا خيارات: السطر يُضاف بـ`optionValue: null` (انظر `_pickInStockProduct`).
+        if (p.stock >= 2 &&
+            ((await products.fetchProductDetails(p.id)).options ?? const []).isEmpty) {
           product = p;
           break;
         }
@@ -518,7 +549,9 @@ void main() {
     final adminApi = ApiClient(dio: Dio(BaseOptions(baseUrl: base)));
     final AuthSession adminSession;
     try {
-      adminSession = await AuthRepositoryImpl(api: adminApi).login('07700000000', 'admin123');
+      final seeded = _seedAdmin();
+      if (seeded == null) throw const AppException('SEED_ADMIN_PHONE/SEED_ADMIN_PASSWORD غير مضبوطين');
+      adminSession = await AuthRepositoryImpl(api: adminApi).login(seeded.phone, seeded.password);
     } on AppException catch (e) {
       markTestSkipped('لا مسؤول مزروع (${e.message})');
       return;
@@ -622,9 +655,16 @@ void main() {
       //
       // [NOTE] الرقم يُرسل بالصيغة المحلية كما يكتبه المستخدم، ويعود من
       // الخادم بالصيغة المعتمدة — والتطبيع هو ما يجعل الاثنين رقماً واحداً.
-      const adminPhone = '07700000000';
-      const canonicalAdminPhone = '+9647700000000';
-      const adminPassword = 'admin123';
+      final seeded = _seedAdmin();
+      if (seeded == null) {
+        markTestSkipped('SEED_ADMIN_PHONE و SEED_ADMIN_PASSWORD غير مضبوطين');
+        return;
+      }
+      final adminPhone = seeded.phone;
+      final adminPassword = seeded.password;
+      // الصيغة التي يخزّنها الخادم (E.164) لرقمٍ محلي `07…`.
+      final canonicalAdminPhone =
+          adminPhone.startsWith('0') ? '+964${adminPhone.substring(1)}' : adminPhone;
 
       final adminApi = ApiClient(dio: Dio(BaseOptions(baseUrl: base)));
       final adminAuth = AuthRepositoryImpl(api: adminApi);
@@ -670,13 +710,28 @@ Future<bool> _backendUp() async {
 }
 
 /// يعيد أول منتج متوفر في المخزون (تتجنب عروض المخزون الصفري التي ترفضها السلة).
+/// منتجٌ متوفر **بلا خيارات** — تضيفه هذه الفحوص بـ`optionValue: null`.
+///
+/// [CRITICAL] منذ صار الخادم يطابق خيار السطر بخيارات المنتج الحقيقية
+/// (`INVALID_PRODUCT_OPTION`)، منتجٌ له خيارات يحتاج قيمةً لكل خيار. القائمة
+/// لا تحمل الخيارات، فتُقرأ من التفاصيل كما يفعل التطبيق نفسه.
 Future<Product> _pickInStockProduct(ProductRepository repo) async {
   for (var page = 1; page <= 5; page++) {
     final result = await repo.fetchProducts(page: page, limit: 50);
     for (final product in result.items) {
-      if (product.stock > 0) return product;
+      if (product.stock <= 0) continue;
+      final detail = await repo.fetchProductDetails(product.id);
+      if ((detail.options ?? const []).isEmpty) return product;
     }
     if (!result.hasMore) break;
   }
-  throw StateError('لا يوجد منتج متوفر في المخزون');
+  throw StateError('لا يوجد منتج متوفر في المخزون بلا خيارات');
+}
+
+/// المسؤول المزروع (`db:seed`) من البيئة نفسها التي زرعته — لا بيانات ثابتة.
+({String phone, String password})? _seedAdmin() {
+  final phone = Platform.environment['SEED_ADMIN_PHONE'] ?? '';
+  final password = Platform.environment['SEED_ADMIN_PASSWORD'] ?? '';
+  if (phone.isEmpty || password.isEmpty) return null;
+  return (phone: phone, password: password);
 }

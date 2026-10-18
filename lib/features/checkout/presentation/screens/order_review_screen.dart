@@ -75,6 +75,12 @@ class _OrderReviewScreenState extends State<OrderReviewScreen>
 
   bool get _canConfirm => _elapsed >= confirmDelay && !_loading;
 
+  /// ما يُرسَل في كل محاولة من هذه الشاشة: المراجَع نفسه بمفتاح عدم تكرارٍ
+  /// واحد — إعادة الضغط بعد مهلةٍ أو انقطاع تعيد الطلب الأول ولا تنشئ ثانياً.
+  late final OrderData _submission = widget.orderData.idempotencyKey == null
+      ? widget.orderData.withIdempotencyKey(newOrderIdempotencyKey())
+      : widget.orderData;
+
   @override
   void initState() {
     super.initState();
@@ -93,7 +99,7 @@ class _OrderReviewScreenState extends State<OrderReviewScreen>
     if (_loading || _placed || !_canConfirm) return;
     setState(() => _loading = true);
     try {
-      await context.read<PlaceOrderUsecase>()(widget.orderData);
+      await context.read<PlaceOrderUsecase>()(_submission);
       if (!mounted) return;
       context.read<CartCubit>().clear();
       setState(() => _placed = true);

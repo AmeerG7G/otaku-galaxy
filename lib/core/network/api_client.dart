@@ -200,9 +200,20 @@ class ApiClient {
   Future<dynamic> get(String path, {Map<String, dynamic>? query}) =>
       _request(() => _dio.get<dynamic>(path, queryParameters: query));
 
-  /// POST — يعيد حقل `data` من المغلف الموحّد.
-  Future<dynamic> post(String path, {Object? body}) =>
-      _request(() => _dio.post<dynamic>(path, data: body));
+  /// POST — يعيد حقل `data` من المغلف الموحّد. [headers] لطلبٍ بعينه
+  /// (`Idempotency-Key` لإنشاء الطلب) فوق ترويسات العميل الثابتة.
+  Future<dynamic> post(
+    String path, {
+    Object? body,
+    Map<String, String>? headers,
+  }) =>
+      _request(
+        () => _dio.post<dynamic>(
+          path,
+          data: body,
+          options: headers == null ? null : Options(headers: headers),
+        ),
+      );
 
   /// PUT — يعيد حقل `data` من المغلف الموحّد.
   Future<dynamic> put(String path, {Object? body}) =>

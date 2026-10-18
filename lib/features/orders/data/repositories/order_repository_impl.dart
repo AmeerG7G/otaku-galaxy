@@ -14,7 +14,13 @@ class OrderRepositoryImpl implements OrderRepository {
   @override
   Future<Order> placeOrder(OrderData data) async {
     final orderData =
-        await _api.post(ApiEndpoints.orders, body: data.toJson())
+        await _api.post(
+              ApiEndpoints.orders,
+              body: data.toJson(),
+              headers: data.idempotencyKey == null
+                  ? null
+                  : {'Idempotency-Key': data.idempotencyKey!},
+            )
             as Map<String, dynamic>;
     return Order.fromJson(orderData);
   }
