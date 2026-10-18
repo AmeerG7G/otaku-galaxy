@@ -823,9 +823,7 @@ class _OrderDataScreenState extends State<OrderDataScreen> with LocaleRefetch {
                   alignment: AlignmentDirectional.topStart,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     fontFamily: isTotal ? AppFonts.heading : null,
-                    fontFamilyFallback: isTotal
-                        ? AppFonts.headingFallback
-                        : null,
+                    fontFamilyFallback: isTotal ? AppFonts.headingFallback : null,
                     fontSize: isTotal ? 20 : 13.5,
                     fontWeight: isTotal
                         ? AppDimens.weightBlack

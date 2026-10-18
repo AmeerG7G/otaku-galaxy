@@ -37,6 +37,8 @@ const _handledElsewhere = <String, (int, String)>{
     1,
     'SafeArea',
   ),
+  // شاشة الانقطاع (البوّابة ٩): المُمرِّر داخل `SafeArea` الشاشة الكاملة.
+  'lib/features/connectivity/presentation/offline_gate.dart': (1, 'SafeArea'),
   'lib/features/favorites/presentation/screens/favorites_screen.dart': (
     1,
     'SafeArea',
@@ -67,6 +69,7 @@ const _handledElsewhere = <String, (int, String)>{
   // داخل `OtakuSheet`: `SafeArea` الورقة وحشوة لوحة المفاتيح.
   'lib/features/collections/presentation/widgets/add_to_collection_sheet.dart':
       (1, 'ورقة سفلية'),
+  'lib/features/birthday/presentation/birthday_prompt.dart': (1, 'ورقة سفلية'),
   'lib/features/settings/presentation/screens/settings_screen.dart': (
     1,
     'ورقة تغيير كلمة المرور',
