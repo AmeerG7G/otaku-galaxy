@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -6,6 +7,7 @@ import {
   Breadcrumb,
   Button,
   Flex,
+  Form,
   Spin,
   Typography,
 } from 'antd'
@@ -19,12 +21,25 @@ export default function ProductEditPage() {
   const navigate = useNavigate()
   const { message } = App.useApp()
   const queryClient = useQueryClient()
+  const [form] = Form.useForm<ProductFormValues>()
 
+  // [CRITICAL] النموذج يقرأ قيمه مرةً واحدة عند التركيب، و`expectedStock` يُؤخذ
+  // من بيانات هذا الاستعلام: يجب أن تبقيا الشيء نفسه. كان تحديثٌ في الخلفية
+  // (عودة الاتصال، أو فتح المنتج من جديد على نسخةٍ مخبّأة ثم جلبها) يقدّم
+  // `expectedStock` إلى قيمة الخادم بينما الحقل يعرض القديمة، فيقبل الخادم
+  // المقارنة ويكتب القيمة القديمة — يُرجع قطعاً مستهلكة إلى البيع أو يمحو
+  // تخزيناً حفظه المسؤول نفسه قبل دقيقة. الآن: لا تحديث في الخلفية ما دامت
+  // الصفحة مفتوحة، ولا نسخة مخبّأة بعد إغلاقها — كل فتحٍ يقرأ من الخادم.
   const editQuery = useQuery({
     queryKey: ['product-edit', id],
     queryFn: () => getProductForEdit(id),
     enabled: Boolean(id),
+    staleTime: Infinity,
+    refetchOnReconnect: false,
   })
+  // الحذف عند الإغلاق نفسه، لا بعد مهلة (`gcTime`): العودة السريعة إلى المنتج
+  // كانت تسبق المهلة فتركّب النموذج من النسخة القديمة.
+  useEffect(() => () => queryClient.removeQueries({ queryKey: ['product-edit', id] }), [queryClient, id])
 
   const updateMutation = useMutation({
     mutationFn: (input: { payload: Parameters<typeof updateProduct>[1] }) =>
@@ -32,14 +47,21 @@ export default function ProductEditPage() {
     onSuccess: (result) => {
       message.success(result.message)
       queryClient.invalidateQueries({ queryKey: ['products'] })
+      queryClient.removeQueries({ queryKey: ['product-edit', id] })
       navigate('/products')
     },
     onError: (error) => {
       message.error(error instanceof ApiError ? error.message : 'حدث خطأ غير متوقع')
-      // المخزون تغيّر منذ فتح الصفحة: نعيد قراءة المنتج كي يرى المسؤول القيمة
-      // الحالية ويقرّر من جديد، بدل أن يعيد الإرسال على قيمةٍ قديمة.
+      // المخزون تغيّر منذ فتح الصفحة: نعيد قراءة المنتج ونضع المخزون الحالي في
+      // الحقل، فيرى المسؤول القيمة ويقرّر من جديد، والحفظ التالي يقارن بها.
+      // بقية حقوله كما كتبها.
       if (error instanceof ApiError && error.code === 'STOCK_CHANGED') {
-        void queryClient.invalidateQueries({ queryKey: ['product-edit', id] })
+        void queryClient
+          .fetchQuery({ queryKey: ['product-edit', id], queryFn: () => getProductForEdit(id), staleTime: 0 })
+          .then((fresh) => form.setFieldValue('stock', fresh.draft.stock))
+          .catch(() => {
+            // تعذّرت القراءة: المقارنة تبقى على القيمة القديمة، فيرفض الخادم مجدداً.
+          })
       }
     },
   })
@@ -50,6 +72,7 @@ export default function ProductEditPage() {
     // عليها الصفحة. كانت الصفحة تعيد إرسال المخزون في كل حفظ، فتعديلُ وصفٍ
     // بعد قبول طلبٍ في تبويبٍ آخر كان يُرجع القطع المستهلكة إلى البيع (بيعٌ
     // فوق المخزون). الخادم يرفض بـ`STOCK_CHANGED` إن تغيّر المخزون منذ الفتح.
+    // `loadedStock` هو ما بُني عليه الحقل (انظر خيارات الاستعلام أعلاه).
     const loadedStock = editQuery.data?.draft.stock
     const stockChanged = loadedStock === undefined || values.stock !== loadedStock
     // [CRITICAL] المنتج المعطّل لا يوفّر الخادم خياراته للوحة، والحقلُ
@@ -135,6 +158,7 @@ export default function ProductEditPage() {
       {editQuery.data && (
         <ProductForm
           key={id}
+          form={form}
           mode="edit"
           initialValues={editQuery.data.draft}
           optionsAvailable={editQuery.data.optionsLoaded}

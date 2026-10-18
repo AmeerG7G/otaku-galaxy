@@ -11,6 +11,7 @@ import {
   Space,
   Switch,
   Typography,
+  type FormInstance,
 } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useQuery } from '@tanstack/react-query'
@@ -87,6 +88,8 @@ function contentRules(kind: 'name' | 'description', language: string, required: 
 
 interface ProductFormProps {
   mode: 'create' | 'edit'
+  /** نسخة النموذج من الصفحة حين تحتاج أن تكتب في حقلٍ بعد التركيب. */
+  form?: FormInstance<ProductFormValues>
   initialValues?: Partial<ProductFormValues>
   optionsAvailable: boolean
   submitting: boolean
@@ -96,13 +99,14 @@ interface ProductFormProps {
 
 export default function ProductForm({
   mode,
+  form: formFromPage,
   initialValues,
   optionsAvailable,
   submitting,
   onSubmit,
   onCancel,
 }: ProductFormProps) {
-  const [form] = Form.useForm<ProductFormValues>()
+  const [form] = Form.useForm<ProductFormValues>(formFromPage)
 
   const categoriesQuery = useQuery({
     queryKey: ['admin-categories'],
