@@ -138,7 +138,7 @@ describe('مُشغّل الهجرات: الاستيراد ≠ التنفيذ', (
       expect(result.code, `stderr: ${result.stderr}`).toBe(0);
       // والوحدة أدّت عملها الوحيد عند الاستيراد: تصدير الدوالّ.
       expect(JSON.parse(result.stdout.trim())).toEqual({
-        exports: ['resetDatabase', 'runMigrations'],
+        exports: ['resetDatabase', 'resetRefusal', 'runMigrations'],
       });
     } finally {
       await canary.close();
@@ -223,5 +223,61 @@ describe('مُشغّل الهجرات: دورة حياة الاتصال', () => 
 
     await expect(runMigrations(readOnly)).rejects.toThrow(/read-only/);
     expect(await openSessions(name)).toBe(0);
+  });
+});
+
+describe('[CRITICAL] مُشغّل الهجرات: --reset للتطوير وحده', () => {
+  const REAL_SECRETS = {
+    JWT_SECRET: 'c'.repeat(64),
+    TRUST_PROXY: '1',
+    PUBLIC_BASE_URL: 'https://api.example.com',
+    SMS_BASE_URL: 'https://sms.example.com/send',
+    SMS_API_KEY: 'key',
+    SMS_SENDER: 'OtakuGalaxy',
+  };
+
+  it.each([
+    ['prod', 'production'],
+    ['staging', 'production'],
+    ['dev', 'production'],
+  ])('APP_ENV=%s NODE_ENV=%s → refused before any connection, exit code non-zero', async (appEnv, nodeEnv) => {
+    const canary = await startCanary();
+    try {
+      const result = await run(
+        'scripts/migrate.ts',
+        { ...isolatedEnv(canary.url), ...REAL_SECRETS, APP_ENV: appEnv, NODE_ENV: nodeEnv },
+        ['--reset'],
+      );
+      expect(result.code).not.toBe(0);
+      expect(result.stderr).toContain('--reset مرفوض');
+      expect(canary.connections(), 'the reset reached the database').toBe(0);
+    } finally {
+      await canary.close();
+    }
+  }, 60_000);
+
+  it('APP_ENV=dev aimed at a remote database (an exported DATABASE_URL) → refused before any connection', async () => {
+    const remote = 'postgres://u:p@db.example.com:5432/otaku';
+    const result = await run(
+      'scripts/migrate.ts',
+      { ...isolatedEnv(remote), APP_ENV: 'dev', NODE_ENV: 'development' },
+      ['--reset'],
+    );
+    expect(result.code).not.toBe(0);
+    expect(result.stderr).toContain('db.example.com');
+    expect(result.stdout).not.toContain('schema dropped');
+  }, 60_000);
+
+  it('the rule: only a local dev database may be reset', async () => {
+    const { resetRefusal } = await import('../scripts/migrate.js');
+    const local = 'postgres://u:p@localhost:5432/otaku_galaxy';
+    expect(resetRefusal({ appEnv: 'dev', nodeEnv: 'development', url: local })).toBeNull();
+    expect(resetRefusal({ appEnv: 'dev', nodeEnv: '', url: 'postgres://u:p@127.0.0.1/otaku' })).toBeNull();
+    expect(resetRefusal({ appEnv: 'dev', nodeEnv: '', url: 'postgres://u:p@[::1]/otaku' })).toBeNull();
+    expect(resetRefusal({ appEnv: 'dev', nodeEnv: '', url: 'postgres:///otaku?host=/var/run/postgresql' })).toBeNull();
+    expect(resetRefusal({ appEnv: 'prod', nodeEnv: 'development', url: local })).not.toBeNull();
+    expect(resetRefusal({ appEnv: 'dev', nodeEnv: '', url: 'postgres://u:p@10.0.0.5/otaku' })).not.toBeNull();
+    expect(resetRefusal({ appEnv: 'dev', nodeEnv: '', url: 'postgres://u:p@localhost.evil.example/otaku' })).not.toBeNull();
+    expect(resetRefusal({ appEnv: 'dev', nodeEnv: '', url: 'not a url' })).not.toBeNull();
   });
 });

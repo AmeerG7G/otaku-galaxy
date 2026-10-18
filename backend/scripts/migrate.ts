@@ -95,9 +95,43 @@ export async function resetDatabase(url: string) {
   }
 }
 
+/**
+ * [CRITICAL] `--reset` يحذف المخطّط كاملاً (`DROP SCHEMA public CASCADE`) —
+ * لقاعدة تطويرٍ محلية وحدها. كان يعمل في أي بيئة وعلى أي قاعدة. شرطان معاً،
+ * والرفض قبل أي اتصال:
+ *   - البيئة `dev` و`NODE_ENV` ليس `production` (`docker compose run migrate
+ *     … --reset` بملف الإنتاج).
+ *   - القاعدة على هذا الجهاز (localhost / 127.0.0.1 / ::1 / مقبس unix): `npm
+ *     run db:reset` يضبط `APP_ENV=dev` بنفسه، و`DATABASE_URL` مُصدَّرٌ في
+ *     الصدفة نحو خادمٍ بعيد يسبق `.env.dev` — فالبيئة وحدها لا تكفي.
+ */
+const LOCAL_DB_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1', '']);
+
+export function resetRefusal(env: { appEnv: string; nodeEnv: string; url: string }): string | null {
+  if (env.appEnv !== 'dev' || env.nodeEnv === 'production') {
+    return `--reset مرفوض في APP_ENV=${env.appEnv} NODE_ENV=${env.nodeEnv}: يحذف القاعدة كاملةً، وهو للتطوير وحده.`;
+  }
+  let host: string;
+  try {
+    const parsed = new URL(env.url);
+    // `?host=/var/run/postgresql` مقبس unix محلي.
+    host = parsed.searchParams.get('host')?.startsWith('/') ? '' : parsed.hostname.toLowerCase();
+  } catch {
+    return '--reset مرفوض: عنوان القاعدة غير مفهوم.';
+  }
+  if (!LOCAL_DB_HOSTS.has(host)) {
+    return `--reset مرفوض: القاعدة على ${host} لا على هذا الجهاز — يحذف القاعدة كاملةً، وهو لقاعدة تطويرٍ محلية وحدها.`;
+  }
+  return null;
+}
+
 async function main() {
   const url = config.migrationDatabaseUrl || config.databaseUrl;
   const shouldReset = process.argv.includes('--reset');
+  if (shouldReset) {
+    const refusal = resetRefusal({ appEnv: config.appEnv, nodeEnv: process.env.NODE_ENV ?? '', url });
+    if (refusal) throw new Error(refusal);
+  }
   console.log(`Migrating database … (${shouldReset ? 'resetting first' : 'incremental'})`);
   if (shouldReset) {
     await resetDatabase(url);
