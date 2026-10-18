@@ -32,17 +32,26 @@ const CONTROL_CHARS = /[\u0000-\u001f\u007f\\]/;
  * A post-login destination that can only ever be a path on this site.
  * Anything else (absolute URLs, protocol-relative `//evil`, backslash
  * tricks, control characters, overly long values) becomes `/`.
+ *
+ * The check applies to the value returned, not only the one received: URL
+ * parsing removes `.` and `..` segments, so `/.//evil.example` passes every
+ * input check yet normalises to the protocol-relative `//evil.example`.
  */
 export function safeReturnTo(value: unknown, siteOrigin: string): string {
   if (typeof value !== 'string' || value.length === 0 || value.length > 512) return '/';
-  if (!value.startsWith('/') || value.startsWith('//') || CONTROL_CHARS.test(value)) return '/';
+  if (!isLocalPath(value)) return '/';
   try {
     const resolved = new URL(value, siteOrigin);
     if (resolved.origin !== siteOrigin) return '/';
-    return `${resolved.pathname}${resolved.search}${resolved.hash}`;
+    const path = `${resolved.pathname}${resolved.search}${resolved.hash}`;
+    return isLocalPath(path) && new URL(path, siteOrigin).origin === siteOrigin ? path : '/';
   } catch {
     return '/';
   }
+}
+
+function isLocalPath(value: string): boolean {
+  return value.startsWith('/') && !value.startsWith('//') && !CONTROL_CHARS.test(value);
 }
 
 /** Idempotency keys the API accepts (`orderController`, migration 071). */

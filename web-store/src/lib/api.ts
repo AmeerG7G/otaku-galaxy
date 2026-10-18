@@ -38,8 +38,6 @@ export interface ApiRequest {
   body?: unknown;
   token?: string | null;
   idempotencyKey?: string | null;
-  /** Seconds the response may be reused (public catalog only). */
-  revalidate?: number;
   query?: Record<string, string | number | undefined | null>;
 }
 
@@ -69,17 +67,16 @@ export async function apiFetch<T>(path: string, request: ApiRequest = {}): Promi
   if (request.token) headers.Authorization = `Bearer ${request.token}`;
   if (request.idempotencyKey) headers['Idempotency-Key'] = request.idempotencyKey;
 
-  // Personalised calls are never cached. Public catalog reads may be reused
-  // for a short window (they carry no Authorization header).
-  const cacheable = !request.token && (request.method ?? 'GET') === 'GET' && request.revalidate !== undefined;
-  const cacheOptions: RequestInit & { next?: { revalidate: number } } = cacheable
-    ? { next: { revalidate: request.revalidate! } }
-    : { cache: 'no-store' };
-
-  // Uncached calls act for one shopper, so they carry that shopper's signed
-  // IP (see `client-ip.ts`). Cached catalog reads are shared between visitors
-  // and must never carry one visitor's identity.
-  if (!cacheable) Object.assign(headers, await shopperIpHeaders());
+  // Every call acts for one shopper and carries that shopper's signed IP
+  // (see `client-ip.ts`), so the API's rate limits stay per shopper. Nothing is
+  // cached, catalog reads included. A shared cached read cannot carry one
+  // visitor's identity, so it would reach the API as this server's own
+  // address: one rate-limit bucket that any visitor can drain with cache misses
+  // (a random search, an unknown product id), after which every other
+  // shopper's misses fail. Shopper-chosen keys would also grow the on-disk
+  // fetch cache without bound. The API sits on the same host or a private
+  // network, so the cost of not caching is a few milliseconds per page.
+  Object.assign(headers, await shopperIpHeaders());
 
   let response: Response;
   try {
@@ -88,7 +85,7 @@ export async function apiFetch<T>(path: string, request: ApiRequest = {}): Promi
       headers,
       body: request.body === undefined ? undefined : JSON.stringify(request.body),
       signal: AbortSignal.timeout(TIMEOUT_MS),
-      ...cacheOptions,
+      cache: 'no-store',
     });
   } catch {
     throw new ApiError(503, 'UPSTREAM_UNAVAILABLE', 'تعذّر الاتصال بالخادم — حاول بعد قليل');

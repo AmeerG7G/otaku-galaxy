@@ -25,8 +25,8 @@ export default async function OrderPage({ params, searchParams }: Props) {
   try {
     order = await sessionRead<Order>(session, `/orders/${id}`, returnTo);
   } catch (error) {
-    // Someone else's order answers 404 exactly like a missing one.
-    if (error instanceof ApiError && error.status === 404) notFound();
+    // Someone else's order (the API answers 403) looks exactly like a missing one.
+    if (error instanceof ApiError && (error.status === 404 || error.status === 403)) notFound();
     throw error;
   }
   const placed = (await searchParams).placed === '1';

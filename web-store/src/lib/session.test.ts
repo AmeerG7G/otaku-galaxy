@@ -38,6 +38,19 @@ describe('sealed session cookie', () => {
     expect(unseal(undefined, [keyA], now)).toBeNull();
   });
 
+  it('rejects truncated authentication tags and odd IV sizes', () => {
+    const sealed = seal(data, [keyA]);
+    const [version, kid, iv, ciphertext, tag] = sealed.split('.') as [string, string, string, string, string];
+    const tagBytes = Buffer.from(tag, 'base64url');
+    expect(tagBytes).toHaveLength(16);
+    for (const length of [4, 8, 12, 15]) {
+      const truncated = [version, kid, iv, ciphertext, tagBytes.subarray(0, length).toString('base64url')].join('.');
+      expect(unseal(truncated, [keyA], now), `${length}-byte tag`).toBeNull();
+    }
+    const longIv = [version, kid, Buffer.concat([Buffer.from(iv, 'base64url'), Buffer.alloc(4)]).toString('base64url'), ciphertext, tag].join('.');
+    expect(unseal(longIv, [keyA], now)).toBeNull();
+  });
+
   it('rejects an unknown key and supports rotation', () => {
     const sealed = seal(data, [keyA]);
     expect(unseal(sealed, [keyB], now)).toBeNull();

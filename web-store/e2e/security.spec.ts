@@ -25,6 +25,9 @@ test('there is no route to the admin API or any other API path through the site'
   for (const route of ['/bff/admin/orders', '/api/admin/orders', '/api/orders', '/bff/auth/me', '/bff/../api/admin']) {
     expect((await request.get(route)).status(), route).toBe(404);
   }
+  // Whatever renders under /bff/ (a framework 404 page) may run nothing at all.
+  const policy = (await request.get('/bff/no-such-route')).headers()['content-security-policy'] ?? '';
+  expect(policy).toContain("default-src 'none'");
 });
 
 test('admin accounts cannot hold a storefront session', async ({ request }) => {
@@ -53,9 +56,25 @@ test('login never redirects off-site, and the session cookie is unreadable by sc
   await page.goto('/account');
   expect(await page.content()).not.toMatch(/eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/);
 
-  const expired = await page.request.get('/bff/session/expired?returnTo=%2F%2Fevil.example', { maxRedirects: 0 });
+  // Signed in, a crafted returnTo still lands on this site — including dot
+  // segments that normalise to `//host`.
+  for (const returnTo of ['%2F%2Fevil.example', '%2F.%2F%2Fevil.example%2Flogin', '%2Fa%2F..%2F%2Fevil.example', '%2F%252e%2F%2Fevil.example']) {
+    const response = await page.request.get(`/login?returnTo=${returnTo}`, { maxRedirects: 0 });
+    expect(response.status(), returnTo).toBe(307);
+    expect(response.headers().location, returnTo).toBe('/');
+  }
+
+  // A link from another site to the "session expired" route cannot sign out a
+  // session the API still accepts: it continues on this site, still signed in.
+  const expired = await page.request.get('/bff/session/expired?returnTo=%2F.%2F%2Fevil.example', {
+    maxRedirects: 0,
+    headers: { 'Sec-Fetch-Site': 'cross-site' },
+  });
   expect(expired.status()).toBe(303);
-  expect(expired.headers().location).toBe(`${SITE}/login?returnTo=%2F&expired=1`);
+  expect(expired.headers().location).toBe(`${SITE}/`);
+  expect(expired.headers()['set-cookie'] ?? '').not.toContain('og_session');
+  await page.goto('/account');
+  await expect(page).toHaveURL(`${SITE}/account`);
 });
 
 test('every page carries a nonce CSP and every script uses that nonce', async ({ request }) => {

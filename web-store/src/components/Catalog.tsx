@@ -87,5 +87,6 @@ export function parsePage(value: string | string[] | undefined): number {
 
 export function parseSort(value: string | string[] | undefined): ProductSort {
   const sort = Array.isArray(value) ? value[0] : value;
-  return sort && sort in SORT_LABELS ? (sort as ProductSort) : 'newest';
+  // Own keys only: `in` would also accept `constructor`, `toString`, ….
+  return sort && Object.hasOwn(SORT_LABELS, sort) ? (sort as ProductSort) : 'newest';
 }

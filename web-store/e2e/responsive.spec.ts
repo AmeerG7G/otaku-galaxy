@@ -14,6 +14,15 @@ const SCREENS = path.join(process.cwd(), 'test-results', 'screens');
 const AUTH_STATE = path.join(process.cwd(), 'e2e', '.state', 'auth.json');
 const HEADERS = { 'x-real-ip': '203.0.113.52' };
 
+/**
+ * Each width is its own shopper (own IP): every page view is a set of API
+ * calls under that shopper's rate limit, as for real visitors, and one
+ * emulated device browsing every page eight times over would exceed it.
+ */
+function shopperIp(width: number, signedIn: boolean): string {
+  return `203.0.113.${100 + WIDTHS.indexOf(width as (typeof WIDTHS)[number]) * 2 + (signedIn ? 1 : 0)}`;
+}
+
 async function contextFor(browser: Browser, width: number, signedIn: boolean): Promise<BrowserContext> {
   const touch = width < 900;
   return browser.newContext({
@@ -22,7 +31,7 @@ async function contextFor(browser: Browser, width: number, signedIn: boolean): P
     hasTouch: touch,
     deviceScaleFactor: touch ? 2 : 1,
     locale: 'ar-IQ',
-    extraHTTPHeaders: HEADERS,
+    extraHTTPHeaders: { 'x-real-ip': shopperIp(width, signedIn) },
     ...(signedIn ? { storageState: AUTH_STATE } : {}),
   });
 }

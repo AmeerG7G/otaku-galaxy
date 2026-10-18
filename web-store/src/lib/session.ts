@@ -27,6 +27,10 @@ export interface SessionData {
 }
 
 const VERSION = 'v1';
+const IV_BYTES = 12;
+// GCM accepts tags truncated down to 4 bytes unless the length is pinned, which
+// would make a forged cookie far cheaper to find.
+const TAG_BYTES = 16;
 
 function keyId(key: Buffer): string {
   return createHash('sha256').update(key).digest('base64url').slice(0, 8);
@@ -35,8 +39,8 @@ function keyId(key: Buffer): string {
 export function seal(data: SessionData, keys: readonly Buffer[]): string {
   const key = keys[0];
   if (!key) throw new Error('No session sealing key configured.');
-  const iv = randomBytes(12);
-  const cipher = createCipheriv('aes-256-gcm', key, iv);
+  const iv = randomBytes(IV_BYTES);
+  const cipher = createCipheriv('aes-256-gcm', key, iv, { authTagLength: TAG_BYTES });
   const ciphertext = Buffer.concat([cipher.update(JSON.stringify(data), 'utf8'), cipher.final()]);
   const tag = cipher.getAuthTag();
   return [VERSION, keyId(key), iv.toString('base64url'), ciphertext.toString('base64url'), tag.toString('base64url')].join('.');
@@ -49,9 +53,12 @@ export function unseal(value: string | undefined | null, keys: readonly Buffer[]
   const [, kid, ivPart, ciphertextPart, tagPart] = parts as [string, string, string, string, string];
   const key = keys.find((candidate) => keyId(candidate) === kid);
   if (!key) return null;
+  const iv = Buffer.from(ivPart, 'base64url');
+  const tag = Buffer.from(tagPart, 'base64url');
+  if (iv.length !== IV_BYTES || tag.length !== TAG_BYTES) return null;
   try {
-    const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(ivPart, 'base64url'));
-    decipher.setAuthTag(Buffer.from(tagPart, 'base64url'));
+    const decipher = createDecipheriv('aes-256-gcm', key, iv, { authTagLength: TAG_BYTES });
+    decipher.setAuthTag(tag);
     const plaintext = Buffer.concat([
       decipher.update(Buffer.from(ciphertextPart, 'base64url')),
       decipher.final(),

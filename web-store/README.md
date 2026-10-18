@@ -31,7 +31,7 @@ npm run dev                  # http://127.0.0.1:3000
 |---|---|
 | `API_INTERNAL_URL` | The API as reached from this server (loopback or a private network), e.g. `http://127.0.0.1:4000/api`. |
 | `MEDIA_ORIGIN` | Public origin that serves `/uploads/...` to browsers (the API's public host). |
-| `SITE_ORIGIN` | Canonical public origin, e.g. `https://otakugalaxystore.com`. Mutating `/bff/*` requests are accepted only from this `Origin`. |
+| `SITE_ORIGIN` | Canonical public origin, e.g. `https://otakugalaxystore.com`. Mutating `/bff/*` requests are accepted only from this `Origin`. **Required in production**, and `https` there (only a loopback origin may be `http`). |
 | `SESSION_SEAL_KEYS` | Comma-separated 32-byte keys (base64url) that seal the session cookie. The first one seals; all of them open, which allows rotation. **Required in production.** |
 | `BFF_SHARED_SECRET` | The same value as the API's `BFF_SHARED_SECRET`. It signs the shopper's IP so the API's rate limits stay per shopper. **Required in production.** |
 | `CSP_EXTRA_IMG_ORIGINS` | Optional extra image origins for the CSP, e.g. `https://placehold.co` for the dev seed. |
@@ -94,11 +94,24 @@ Screenshots land in `test-results/screens/`. This is browser emulation; see the 
 
 - Run `npm start`. It listens on **127.0.0.1:3000 only**, behind nginx.
 - nginx must:
-  - set `proxy_set_header X-Real-IP $remote_addr;` (the shopper IP that gets signed to the API);
+  - **overwrite** both client IP headers. The site signs whatever `X-Real-IP` it receives as the shopper's IP, so a value passed through from the browser would let a visitor choose their own rate-limit bucket:
+
+    ```nginx
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+    ```
+
   - redirect `www.otakugalaxystore.com` to `https://otakugalaxystore.com`;
   - send HSTS.
 - If Cloudflare is put in front, nginx needs `real_ip` configuration for Cloudflare's ranges first. Otherwise every shopper appears as a Cloudflare address.
 - Set the same `BFF_SHARED_SECRET` on the API and here. Use a different secret per environment.
+- `API_INTERNAL_URL` must be loopback or TLS. The signed IP headers are only as private as that hop.
+- Every API call is made per request with the shopper's signed IP. Nothing is cached in Next's fetch cache (see `src/lib/api.ts`), so each page view counts against that shopper's API limits (`RATE_LIMIT_GLOBAL_MAX`, 300 per 15 minutes by default), exactly as the app's own calls do.
 
 ## Not included yet
 

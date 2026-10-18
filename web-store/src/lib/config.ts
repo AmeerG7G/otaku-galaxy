@@ -45,9 +45,35 @@ export function extraImageOrigins(): string[] {
     .filter((entry) => /^https?:\/\/[a-z0-9.-]+(:\d{1,5})?$/i.test(entry));
 }
 
-/** Canonical origin of this site — the only Origin mutating routes accept. */
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]']);
+
+/**
+ * Canonical origin of this site — the only Origin mutating routes accept, and
+ * what decides the `Secure`/`__Host-` cookie flags. Normalised the way browsers
+ * send `Origin` (lower case, no default port, no path). Required in
+ * production, and https there unless it is a loopback address (a production
+ * build run locally, as the end-to-end tests do).
+ */
 export function siteOrigin(): string {
-  return stripTrailingSlash(trimmed('SITE_ORIGIN') ?? 'http://127.0.0.1:3000');
+  const raw = trimmed('SITE_ORIGIN');
+  const production = process.env.NODE_ENV === 'production';
+  if (!raw) {
+    if (production) throw new Error('SITE_ORIGIN is required in production.');
+    return 'http://127.0.0.1:3000';
+  }
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error('SITE_ORIGIN must be an origin such as https://otakugalaxystore.com.');
+  }
+  if ((url.protocol !== 'https:' && url.protocol !== 'http:') || url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
+    throw new Error('SITE_ORIGIN must be an origin such as https://otakugalaxystore.com.');
+  }
+  if (production && url.protocol !== 'https:' && !LOOPBACK_HOSTS.has(url.hostname)) {
+    throw new Error('SITE_ORIGIN must use https in production.');
+  }
+  return url.origin;
 }
 
 export function secureCookies(): boolean {

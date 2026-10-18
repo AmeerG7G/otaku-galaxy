@@ -67,6 +67,23 @@ describe('safeReturnTo (open-redirect guard)', () => {
       expect(safeReturnTo(value, SITE), String(value)).toBe('/');
     }
   });
+
+  it('checks the normalised result too: dot segments cannot produce //host', () => {
+    for (const value of [
+      '/.//evil.example',
+      '/.//evil.example/login?x=1#y',
+      '/a/..//evil.example',
+      '/%2e//evil.example',
+      '/%2E%2E//evil.example',
+      '/..//evil.example',
+      '/./%2e/..//evil.example',
+    ]) {
+      expect(safeReturnTo(value, SITE), value).toBe('/');
+    }
+    // Ordinary dot segments still resolve to a local path.
+    expect(safeReturnTo('/c/../checkout', SITE)).toBe('/checkout');
+    expect(safeReturnTo('/./orders', SITE)).toBe('/orders');
+  });
 });
 
 describe('IDEMPOTENCY_KEY', () => {
