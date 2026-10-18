@@ -11332,3 +11332,206 @@ by the session's permission policy. A scratchpad-only Vite harness ran the **rea
 with the axios client answered in memory from hand-written fixtures typed from `admin/src/types/*`
 (long Arabic names, full phones, a 35-point ledger) — no server, no credential. Nothing of it is
 committed.
+
+---
+
+# STEP 67 — COMMERCE INTEGRITY GAP CLOSURE · RESPONSIVE ARABIC WEB STORE (`web-store/`) (2026-10-18)
+
+Branch `claude/clever-brown-b00tod`, based on `dev` @ `d3fd23c`; small verified commits pushed to that
+branch only — no PR, no merge, no deployment, no server, staging/production database or infrastructure
+touched. Every result below was observed in this run against a throwaway local PostgreSQL 16 cluster
+(test + dev databases, seeded with the repo's own seed); nothing was mocked.
+
+## 67.1 Gate 0 — the earlier audit's targets, re-read on `d3fd23c`
+
+| Target | Status | Evidence |
+|---|---|---|
+| Admin subcategory create / rename / delete | **already implemented** — backend, dashboard API and UI | `routes/admin.ts` POST/PATCH/DELETE `/subcategories`; `admin/src/api/categoriesApi.ts`; `CategoriesPage.tsx` wires rename and delete |
+| Admin notifications | **already implemented** (manual, broadcast, audience) | `routes/admin.ts` `/notifications`, `/notifications/broadcast`; `NotificationsPage.tsx` |
+| Franchise images | **obsolete by decision** (§64.2, anime without images) | `FranchisesPage.tsx` has no image field |
+| Najaf zone fees | **owner data, not a defect** — seeded at the governorate fee, editable in «التوصيل» | migration `015_delivery_zones.sql` |
+| Kurdish | 527/527 strings provisional, 0 native-reviewed — needs a human reviewer | `docs/localization/status.json` |
+| «Misleading subcategory/product test» | **not reproduced**; the closest is a weak `[200, 409]` assertion in the governorate delete test (noted, not changed) | grep + run of the category/subcategory/product suites |
+| FK index audit | 18 FKs without a *leading* single-column index, all covered by composite indexes for the real query patterns → **no migration** | catalog query on the migrated schema |
+| Push-notification delivery | **out of scope by decision** for this phase | — |
+
+## 67.2 Commerce and security defects fixed (backend + dashboard)
+
+All changes are additive: every new field/header is optional, so the installed Flutter app and cached
+dashboard bundles keep their exact previous behaviour.
+
+| # | Defect (before) | Fix | Commit |
+|---|---|---|---|
+| P1-1 | The product edit page resent `stock` from page load on every save; the server wrote it as an absolute value → an order approved meanwhile had its deduction erased (**oversell**), and a stale value fired false «عاد إلى المخزون» notifications | optional `expectedStock` compare-and-set under the existing row lock → 409 `STOCK_CHANGED` before any write; the dashboard sends stock only when the field changed | `176d3b7` |
+| P1-4 | Re-registering a phone whose request was still pending **overwrote the pending password** → anyone knowing the number set their own password, then the admin approved the real owner's WhatsApp check | a pending resume never writes the password; decision re-made under a row lock; bcrypt only when a password is written | `b40d538` |
+| P1-2 | No idempotency on `POST /api/orders`: a retry after a lost response got `EMPTY_CART`, and any refilled cart produced a **second order** | optional `Idempotency-Key` (migration 071: key + fingerprint on the order row, partial unique index per user). Same key + same payload → the committed order, 201, `Idempotency-Replayed: true`; different payload → 422 `IDEMPOTENCY_KEY_REUSED`; the cart lock opens the transaction so concurrent duplicates wait and replay | `216706c` |
+| P1-3 | The submit was bound only to unit prices: a line added from another device, a quantity or zone-fee change, a different destination or a lost discount passed silently between review and submit | `checkout-quote` returns `lines`, `issues`, `fingerprint`; `POST /orders` accepts optional `expectedQuote`, recomputed from the values about to be persisted → 409 `QUOTE_CHANGED` before any write | `51b32ed` |
+| P1-5/6 | Every limiter keyed on `req.ip`: behind a server-side website all shoppers would share one bucket (the 300/15 min global limit would close the site). The API bound all interfaces | signed shopper IP (`X-OG-Client-IP` + HMAC `X-OG-Client-Signature`, ±60 s, `BFF_SHARED_SECRET` ≥ 32 chars; unsigned/forged/stale → `req.ip` exactly as before). Every limiter keys on `ipKeyGenerator(clientIp(req))`. `HOST` defaults to `127.0.0.1` in staging/prod (Docker sets `0.0.0.0`; compose publishes on host loopback); invalid `HOST` or short secret fails boot | `5a42448` |
+
+## 67.3 `web-store/` — the customer website
+
+New Next.js 16 app (`9c1ebc1`; `web-store/README.md`): Arabic, `dir="rtl"`, mobile-first from 320 px. `/` **is the
+catalog** — no landing/welcome page, no hero, **no character artwork** (only product images from the API;
+the app's assets are untouched). Routes: `/`, `/categories`, `/c/[id]`, `/p/[id]`, `/search`, `/cart`,
+`/checkout`, `/orders`, `/orders/[id]` (with «تأكيد الاستلام»), `/login`, `/register` and
+`/forgot-password` (account **requests** approved by the admin — no SMS/OTP), `/account`, 404, error.
+
+- **Same data as the app:** the real API supplies catalog, the shared server cart, quotes and orders.
+  The website never computes a total; cash on delivery; no customer cancellation (rejection with a
+  reason stays the admin's action).
+- **BFF:** the browser talks only to `/bff/*` on its own origin. The API JWT is sealed (AES-256-GCM) in
+  `__Host-og_session` (HttpOnly, Secure, SameSite=Lax), minted fresh at every login; admin accounts are
+  refused (`WEB_CUSTOMERS_ONLY`); mutating routes require `Origin == SITE_ORIGIN`; `returnTo` is
+  path-only; an allowlist of customer endpoints — nothing proxies arbitrary API paths, `/api/admin` is
+  unreachable. An expired session redirects to «سجّل الدخول» with the page to return to.
+- **Per shopper end to end:** every API call — catalog reads included — is made per request with the
+  shopper's signed IP and is never stored in Next's fetch cache, so each shopper has their own API
+  limits (R1 in 67.5). Link prefetching is off (`components/Link.tsx`), so a page view costs what the
+  page reads — one to three API calls, like a screen in the app (R2-1 in 67.5).
+- **Checkout:** submit carries `Idempotency-Key` (a lost response still yields one order) and
+  `expectedQuote` (a changed cart gets `QUOTE_CHANGED` and a re-review). The reviewed lines are shown.
+- **Headers:** per-request nonce CSP (`src/proxy.ts`), `X-Frame-Options: DENY`, `nosniff`,
+  `Referrer-Policy`, `Permissions-Policy`, COOP; no `X-Powered-By`. HSTS is left to nginx.
+- **Hydration gate:** buttons stay disabled until hydrated and credential forms are `method="post"`, so
+  an early tap neither does nothing nor puts a password in a URL.
+- **CI:** new `web-store` job (`npm ci`, typecheck, lint, unit tests, build).
+
+## 67.4 Verification (observed in this run)
+
+| Stack | Check | Result |
+|---|---|---|
+| Backend | `tsc --noEmit` | clean |
+| Backend | full `vitest` (local test DB) on the final head `beb856b` | **94 files / 1735 passed**, exit 0 (baseline on `d3fd23c`: 90 / 1692; before the review fixes: 94 / 1727) |
+| Backend | red-before-fix | admin-stock-cas 3/6 red · auth-security 2 red · order-idempotency 6/9 red · checkout-quote-binding 6/8 red (2 compatibility guards) · rate-limits: 3/7 fail with the key reverted to `req.ip` (mutation check). Review fixes, run against the previous commit: process-lifecycle + rate-limits 3 red, auth-security 2 red (approval / rejection injected between read and lock), order-idempotency 1 red; second round: auth-security 2 red (rejection inside the lock → the rejected password logs in; approval inside it → `deadlock detected`), rate-limits 1 red |
+| Dashboard | `tsc -b` · `vitest` · `oxlint` · `vite build --mode prod` (final head) | clean · **35 files / 258 passed** (247 + 2 + 4 + 5; the 9 stale-form cases red on their previous commits) · 7 warnings, all pre-existing (§66.6), none in changed files · built |
+| Web store | `npm ci` · typecheck · lint · `vitest` · `next build` | exit 0 · clean · clean · **10 files / 41 passed** (10 red on the commit before the first review fixes) · built (all routes dynamic, proxy registered) |
+| Web store | Playwright vs production build + real dev API/DB (re-run after both review rounds) | **18/18 passed**: one shopper (one IP) viewing 42 pages scrolled to the bottom — no prefetch request, no failed page; 8 widths (320, 360, 390, 414, 768, 1024, 1280, 1440 px) × every public and signed-in page — no horizontal overflow, touch targets ≥ 44 px, no CSP violation, no app artwork, catalog first; purchase flow incl. a **lost response → exactly one order** and a **post-review cart change → `QUOTE_CHANGED` → re-review → order**; CSRF 403 (foreign/`null`/missing Origin), admin/API paths 404, admin login refused, off-site `returnTo` → `/` (incl. dot-segment forms), a cross-site hit on the «session expired» route keeps a valid session, deny-all CSP under `/bff/`, cookie flags, no JWT in HTML, nonce on every script, per-shopper login limit end to end |
+| Web store | live per-shopper catalog limit (dev API with `RATE_LIMIT_GLOBAL_MAX=30`, random searches through the site) | shopper A: 30 × 200, then error pages; shopper B on the same web server: 200 on every page |
+| Web store | screenshots 320 px and 1280 px | reviewed by eye — layout, Arabic text, amounts on one line |
+| Web store | `npm audit --omit=dev` | **0 vulnerabilities**; full tree: 5 high, all in the dev-only `eslint-config-next` → `@next/eslint-plugin-next` → `fast-glob` → `micromatch` → `braces` chain (lint tooling, not shipped; the suggested fix is a downgrade to v14 — not applied) |
+| Repo | secret scan of committed files | 0 hits |
+
+**Not verified here:** real phones/tablets (browser emulation only — see 67.7), the Flutter app (no SDK
+in the session; it sends neither new field and is unaffected by construction), staging/production,
+nginx, a Docker image build (no daemon), and real-interface binding (the sandbox forces every bind to
+loopback; evidence is the requested address in the boot log plus the config tests).
+
+## 67.5 Independent security review of this branch — and what it changed
+
+A read-only review in four dimensions (web session and redirects; BFF surface, CSP and caching; signed
+IP, limits and boot; orders, stock and registration), each finding re-examined by a separate verifier
+told to refute it, with scratch reproductions (pure functions, the real `createApp()`, the real
+dashboard page). Findings and outcome:
+
+| # | Finding | Verdict | Outcome |
+|---|---|---|---|
+| R1 | Catalog reads went to the API **unsigned** and through Next's fetch cache, so every cache miss counted against **one** API bucket — the web server's own address. One visitor at ~1 request / 3 s (random searches, unknown product ids) made every other shopper's uncached pages fail with 429; ordinary traffic on ~10 hot keys could trip it alone | **high** (found by two reviewers, both confirmed) | **fixed** `0c55bd6` (its per-view cost completed in `d832c1c`, R2-1): every API call is per request, `no-store`, with the shopper's signed IP. Live: global limit 30 → shopper A 30 × 200 then error pages; shopper B on the same web server 4 × 200 |
+| R2 | `safeReturnTo` checked only its input: `/.//evil.example` normalises to `//evil.example` — an off-site redirect after login (phishing) | medium, confirmed | **fixed** `0c55bd6` (the result is checked too; e2e covers 4 encodings) |
+| R3 | Admin stock compare-and-set compared the **live** query with a form built at mount: a reconnect, reopening a product after an approval, or reopening it after one's own save wrote the stale stock and passed the check | medium, confirmed (+ the own-save path found by the verifier) | **fixed** `fb9c938`, completed in `ec3cfcf` (R2-4, R2-5): the form and `expectedStock` always come from the same frozen draft; `STOCK_CHANGED` writes the current stock into the field |
+| R4 | `register` kept two decisions made before its row lock: an approval in between let an unauthenticated request write its password onto the now-active account; a rejection in between opened a new request on the rejected applicant's password | low, confirmed | **fixed** `4bdffa7` (re-decided under the lock), completed in `5cde685` (R2-2) |
+| R5 | A pending registration keeps the **first** registrant's password — the mirror of the old "last writer wins" flaw | low, confirmed | **open decision** (67.8) |
+| R6 | `GET /bff/session/expired` signed out anyone a link sent there | low | **fixed** `0c55bd6` (drops the cookie only when the API rejects the token) |
+| R7 | Signed IP headers reaching an API without `BFF_SHARED_SECRET` were dropped silently | low | **fixed** `287bce7` (throttled warning) |
+| R8 | Custom limiter keys switched off express-rate-limit's proxy-misconfiguration checks | low | **fixed** `287bce7` (one warning per process) |
+| R9 | A failed bind printed «running» and exited 0 | low (verifier) | **fixed** `287bce7` (exit 1) |
+| R10 | Random searches grew `.next/cache/fetch-cache` without bound | low (verifier) | **fixed** by R1 (nothing is fetch-cached) |
+| R11 | `?sort=constructor` broke catalog pages | low | **fixed** `0c55bd6` |
+| R12 | The idempotency fingerprint ignored `expectedQuote` | low | **fixed** `4bdffa7` (fingerprint unchanged when the field is absent) |
+| R13 | The site signs whatever `X-Real-IP` it receives; safety depends on an nginx site config the repo does not ship | plausible, low | **documented**: `web-store/README.md` has the nginx block that overwrites both headers; the site config itself is deployment work (67.6) |
+| R14–R18 | GCM accepted 4-byte tags · `SITE_ORIGIN` not required in production · HTML under `/bff/` had no CSP · another customer's order showed the error page (403) · compose did not pin `HOST` | info | **fixed** (`0c55bd6`, `287bce7`) |
+| R19 | A signed IP header can be replayed for ±60 s by whoever sees the web → API hop | info | **documented**: that hop must be loopback or TLS |
+| R20 | Migration 071 holds `ACCESS EXCLUSIVE` on `orders` across two scans | info | **accepted**: milliseconds at this store's volume; `CONCURRENTLY` would need a change to the migration runner |
+
+Every first-round fix has a test that fails on the previous code: web 10, API 3 + 3, dashboard 4.
+
+### 67.5.1 Second round — review of the fixes themselves
+
+The same method applied to the fix commits (`0c55bd6`…`4bdffa7`), told to look for incomplete fixes,
+regressions and new defects; verifiers re-ran each claim against the old and the new code.
+
+| # | Finding | Verdict | Outcome |
+|---|---|---|---|
+| R2-1 | R1's fix had a blind spot: Next prefetches every `<Link>` that scrolls into view, and each prefetch is a server render. A listing view cost **11–32 API calls** charged to the shopper (measured 23–32 at 1280 px), so about a dozen listings exhausted 300 / 15 min for that shopper and everyone on their IP (app included) | **high**, confirmed | **fixed** `d832c1c`: every link goes through `components/Link.tsx` with `prefetch={false}` (guard test). Verifier's own builds against a stub enforcing 300 / IP: 42 views on `4bdffa7` → failures from view 21; on HEAD → 0 failures, 63 calls, 1–2 per view, 0 prefetch requests |
+| R2-2 | R4's fix was incomplete: reject did not take the user lock, so a rejection inside registration's lock window still opened a request on the rejected password | low, confirmed | **fixed** `5cde685` (approve and reject lock the user first) |
+| R2-3 | Approve and a concurrent re-registration locked in opposite orders and deadlocked (40P01 → 500) | info — **pre-existing** (reproduced on `9c1ebc1` and `4bdffa7`) | **fixed** `5cde685` (one lock order: users, then requests) |
+| R2-4 | Admin: `expectedStock` still came from the live query — the error «إعادة المحاولة» button or an invalidation moved it while the field stayed old | medium, confirmed | **fixed** `ec3cfcf` (the form's starting draft, stock baseline and `optionsLoaded` are frozen per editor) |
+| R2-5 | Admin (regression in `fb9c938`): the page-level form survived a product-id change; a jump through the browser's history list showed product B's values on A's page, and saving overwrote A | medium, confirmed | **fixed** `ec3cfcf` (the whole editor is keyed by id) |
+| R2-6 | Admin: a re-read after `STOCK_CHANGED` flipped `optionsLoaded` for a product activated elsewhere → the next save sent `options: []` and deleted its options | low — pre-existing | **fixed** `ec3cfcf` |
+| R2-7 | Admin: a late `STOCK_CHANGED` after leaving re-created the cache entry; the re-read replaced a value typed meanwhile | low | **fixed** `ec3cfcf` |
+| R2-8 | Proxy diagnostics: the `trust === true` branch was dead (`TRUST_PROXY=true` already fails boot); one shared flag let a reset connection silence the real `TRUST_PROXY=false` warning; any client can trigger the missing-secret line before the site exists | info | **fixed** `5cde685`, `beb856b` (branch removed, one flag per problem, message says the header may come from any client; still one line per 10 min) |
+| — | A hop count larger than the real proxy chain (e.g. `TRUST_PROXY=5` behind one nginx) is not warned about | info | **documented**: the same limit as express-rate-limit's own check; set `TRUST_PROXY=1` behind the one nginx |
+
+Each second-round fix again has a test that fails on the previous commit: API 2 + 1, dashboard 5. The
+prefetch fix's e2e (`budget.spec.ts`) was not run against the old build here — a temporary edit to
+re-enable prefetching was refused by the session's permission policy; the verifier's 42-view run on
+`4bdffa7` above is the red evidence.
+
+Checked and found sound by the reviewers (with evidence in their runs): `safeReturnTo` against 2,693,613
+generated inputs on three origins (0 off-site or unstable results); React `cache()` shares nothing
+across requests; every upstream call is signed (including `generateMetadata` and route handlers); 2000 of
+2000 cookies sealed before the GCM change still open; the «session expired» route cannot loop and HEAD
+behaves like GET; `next build` with an empty environment; the idempotency fingerprint is byte-identical
+without `expectedQuote`; a web retry after a lost response always replays.
+
+## 67.6 Before the website can go live (not done in this phase)
+
+1. Run migration **071** before deploying the API (catalog-only; the previous release ignores the
+   columns).
+2. API env: `BFF_SHARED_SECRET` (≥ 32 chars, different per environment); `HOST` per `deploy/README.md`.
+3. Web env: `API_INTERNAL_URL`, `MEDIA_ORIGIN`, `SITE_ORIGIN=https://otakugalaxystore.com`,
+   `SESSION_SEAL_KEYS`, the same `BFF_SHARED_SECRET`. `npm start` listens on 127.0.0.1:3000 only.
+4. nginx (a web-store site config does not exist in `deploy/nginx/` yet): overwrite `X-Real-IP` **and**
+   `X-Forwarded-For` with `$remote_addr` (block in `web-store/README.md`), `www.otakugalaxystore.com` → 301
+   `https://otakugalaxystore.com`, HSTS once HTTPS is verified. With Cloudflare in front, `real_ip` for
+   Cloudflare's ranges first — otherwise every shopper is one Cloudflare address.
+5. Backups and restore drill for the database (still open from the earlier audit).
+
+## 67.7 Manual real-device QA checklist
+
+Run on the deployed HTTPS domain (the `__Host-` cookie needs HTTPS):
+
+1. **Small phones** — iPhone SE (Safari) and a 360 px Android (Chrome): `/` opens on products; no
+   sideways scroll on any page; Cairo/Tajawal render; amounts («30000 د.ع», Western digits as in the app) stay on one line.
+2. **Keyboard** — login, register and checkout: the phone field opens the numeric pad; the focused
+   field and «تأكيد الطلب» are not hidden by the keyboard; iOS does not zoom on focus.
+3. **Purchase** — sign in with a real customer, add a product with options and one without, check out
+   to a governorate with zones and one without: the order appears in the app on the same account
+   (shared cart emptied) and in the dashboard with the right option, zone fee and total.
+4. **Lost connection** — enable airplane mode right after tapping «تأكيد الطلب», restore, tap again:
+   exactly one order in the dashboard.
+5. **Changed cart** — keep checkout open on the phone, add an item from the app, then submit on the
+   phone: «تغيّر ملخّص طلبك» and the new total, then a successful order.
+6. **Session** — after logout, the browser back button shows no account data; an expired session
+   returns to «سجّل الدخول» and then to the same page.
+7. **Account requests** — register and «نسيت كلمة المرور» create requests the admin sees; approval lets
+   the customer sign in; an admin number is refused on the website.
+8. **Desktop** — Chrome, Safari, Firefox, Edge at 1280/1440 px.
+9. **Accessibility** — VoiceOver/TalkBack read the Arabic labels and buttons; system text size at its
+   largest does not break the layout.
+10. **Slow network** — throttled 3G: images load lazily without layout jumps.
+
+## 67.8 Deferred and open
+
+- **Server-side sessions / logout revocation** — the API has no per-token revocation; logout drops the
+  cookie (password change or suspension still revokes every token). Needs its own approval (auth model).
+- **Cart `optionValue` is not validated** against the product's options (pre-existing, outside this
+  diff): a product with options can be ordered with none, or with free text. Queued as a separate
+  task; not changed here because the app's format could not be verified without the Flutter SDK.
+- **Open decision — who owns a pending registration (R5).** The admin verifies the phone's owner on
+  WhatsApp, but nothing ties that person to whoever typed the password. Before this branch the last
+  submission's password won (anyone knowing a pending number could replace it); now the first one wins
+  (someone must register a number *before* its owner, and the owner must then register too and confirm).
+  Both are closed only by binding the request to the person verified — e.g. a short request code shown
+  after submitting, which the admin asks for on WhatsApp — a product-flow change for the owner to
+  decide. Recovery is phone-bound either way (forgot-password → admin sets a new password, which revokes
+  every token).
+- A shopper over the API limit sees the generic error page; a dedicated «حاول بعد قليل» page would be
+  kinder (cosmetic).
+- Carrier NAT: the API's per-IP limits (`RATE_LIMIT_GLOBAL_MAX`, 300 / 15 min) are shared by everyone
+  behind one carrier address — app and site alike (pre-existing for the app). Watch real 429 rates after
+  launch before raising it.
+- Flutter adoption of `Idempotency-Key` and `expectedQuote` (a later app release).
+- nginx/Cloudflare `real_ip`, backups; optional DB `lock_timeout`/`statement_timeout`.
+- Kurdish native review; Kurdish on the website (later, by decision).
+- Najaf real zone fees (owner data); product image licensing.
+- Push-notification delivery (deferred by decision).
