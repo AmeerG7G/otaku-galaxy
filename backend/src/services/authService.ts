@@ -112,10 +112,20 @@ export const authService = {
     const { user, request } = await withTransaction(async (tx) => {
       let written: UserRow;
       if (existing) {
-        // الحكم يُعاد تحت قفل الصفّ: تسجيلان متزامنان على الرقم نفسه لا
-        // يقرأ أحدهما «لا طلب معلَّق» بعد أن فتحه الآخر.
-        await tx.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [existing.id]);
-        if (passwordHash === null || (await hasPendingRequest(tx, existing.phone))) {
+        // [SECURITY] الحكم **كله** يُعاد تحت قفل الصفّ، لا من القراءتين قبله:
+        //   • تفعيلٌ وقع بينهما (وافقت الإدارة): الرقم صار مأخوذاً. كان الطلب
+        //     يمضي فيكتب كلمة مروره على حسابٍ مفعَّل — دخولٌ لمن لا يملكه.
+        //   • طلبٌ معلَّق رُفض بينهما: هذا تسجيلٌ جديد بكلمة مروره هو. كان
+        //     يُعامَل استئنافاً فيفتح طلباً جديداً على كلمة الطالب السابق.
+        // وتسجيلان متزامنان لا يقرأ أحدهما «لا طلب معلَّق» بعد أن فتحه الآخر.
+        const { rows } = await tx.query<{ phone_verified_at: Date | null }>(
+          'SELECT phone_verified_at FROM users WHERE id = $1 FOR UPDATE',
+          [existing.id],
+        );
+        if (!rows[0] || rows[0].phone_verified_at !== null) {
+          throw Errors.conflict('هذا الرقم مسجّل بالفعل — جرّب تسجيل الدخول', 'PHONE_TAKEN');
+        }
+        if (await hasPendingRequest(tx, existing.phone)) {
           // استئناف معلَّق: الاسم والجنس فقط — كلمة المرور لا تُمسّ (انظر
           // [SECURITY] أعلاه). زيادة النسخة كما كانت: لا توكن لحسابٍ معلَّق أصلاً.
           written = await userRepo.update(tx, existing.id, {
@@ -125,11 +135,12 @@ export const authService = {
           });
         } else {
           // تسجيلٌ جديد على صفٍّ غير مفعَّل. زيادة نسخة التوكن تُبطل أي توكن
-          // قد يكون صدر لمحاولةٍ سابقة.
+          // قد يكون صدر لمحاولةٍ سابقة. التجزئة هنا داخل القفل في حالةٍ واحدة
+          // نادرة: ظُنّ استئنافاً قبل القفل ثم رُفض الطلب.
           written = await userRepo.update(tx, existing.id, {
             username: input.username,
             gender: input.gender,
-            passwordHash,
+            passwordHash: passwordHash ?? (await bcrypt.hash(input.password, config.bcryptRounds)),
             bumpTokenVersion: true,
           });
         }

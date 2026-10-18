@@ -216,6 +216,7 @@ function orderFingerprint(input: {
   phone: string;
   zoneId?: string | null;
   expectedPrices?: ReadonlyArray<{ productId: string; unitPrice: number }>;
+  expectedQuote?: string;
 }): string {
   const expectedPrices = [...(input.expectedPrices ?? [])]
     .map((entry) => [entry.productId, entry.unitPrice] as const)
@@ -227,6 +228,10 @@ function orderFingerprint(input: {
     fullAddress: input.fullAddress,
     phone: input.phone,
     expectedPrices,
+    // الملخّص الذي راجعه الزبون جزءٌ من الطلب: المفتاح نفسه مع ملخّصٍ آخر
+    // طلبٌ آخر (422) لا إعادة. بلا ملخّص يبقى البصم كما كان حرفاً بحرف —
+    // `JSON.stringify` يُسقط الحقل غير المعرَّف — فلا يتغيّر شيء للتطبيق.
+    expectedQuote: input.expectedQuote,
   });
   return createHash('sha256').update(canonical).digest('hex');
 }

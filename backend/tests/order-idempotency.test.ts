@@ -218,6 +218,36 @@ describe('[CRITICAL] إرسال الطلب بمفتاح عدم التكرار', 
     expect(await cartLines(buyer.userId)).toBe(1);
   });
 
+  it('الملخّص المراجَع جزءٌ من الطلب: المفتاح نفسه بملخّصٍ آخر ⇒ 422، وبالملخّص نفسه ⇒ إعادة', async () => {
+    const p = await product('ملخّص');
+    const buyer = await buyerWith(p);
+    const quote = await api
+      .get('/api/orders/checkout-quote')
+      .query({ governorateId: catalog.governorateId })
+      .set('Authorization', `Bearer ${buyer.token}`)
+      .expect(200);
+    const reviewed = quote.body.data.fingerprint as string;
+    expect(reviewed).toMatch(/^q1:[0-9a-f]{64}$/);
+    const k = key();
+    const first = await submit(buyer.token, k, body({ expectedQuote: reviewed }));
+    expect(first.status).toBe(201);
+
+    await api
+      .post('/api/cart')
+      .set('Authorization', `Bearer ${buyer.token}`)
+      .send({ productId: p, quantity: 1 })
+      .expect(200);
+    const other = await submit(buyer.token, k, body({ expectedQuote: `q1:${'0'.repeat(64)}` }));
+    expect(other.status).toBe(422);
+    expect(other.body.error.code).toBe('IDEMPOTENCY_KEY_REUSED');
+
+    const replay = await submit(buyer.token, k, body({ expectedQuote: reviewed }));
+    expect(replay.status).toBe(201);
+    expect(replay.headers['idempotency-replayed']).toBe('true');
+    expect(replay.body.data.id).toBe(first.body.data.id);
+    expect(await ordersOf(buyer.userId)).toEqual([first.body.data.id]);
+  });
+
   it('محاولةٌ أولى فشلت لا تُخزَّن: الإعادة بالمفتاح نفسه تُنفَّذ بعد زوال السبب', async () => {
     const p = await product('فشل أول', 5);
     const buyer = await buyerWith(p, 3);

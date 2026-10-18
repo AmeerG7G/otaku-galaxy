@@ -1,9 +1,10 @@
 import { execFile } from 'node:child_process';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { config } from '../src/config/index.js';
 import { db } from '../src/database/pool.js';
+import { accountRequestRepo } from '../src/repositories/accountRequestRepo.js';
 import { api, approveAsAdmin, createAdminUser, purgeTestUsers, registerAndLogin } from './helpers.js';
 
 const execFileAsync = promisify(execFile);
@@ -226,6 +227,74 @@ describe('تسجيل حساب جديد — المسار الحقيقي كامل�
     await approveAsAdmin(second.body.data.request.id as string);
     await api.post('/api/auth/login').send({ phone, password: 'fresh-pass-2' }).expect(200);
     await api.post('/api/auth/login').send({ phone, password: 'rejected-pass' }).expect(401);
+  });
+
+  /**
+   * [SECURITY] الحكم يُعاد تحت قفل الصفّ، لا من القراءتين قبله. الحالتان
+   * تقعان في نافذة جولةٍ واحدة على القاعدة؛ الاختبار يُدخل الحدث فيها بالضبط
+   * (عند أول قراءة لحال الطلب، قبل القفل).
+   */
+  async function registerWhile(event: () => Promise<void>, body: Record<string, string>) {
+    const original = accountRequestRepo.findLatest.bind(accountRequestRepo);
+    let fired = false;
+    const spy = vi.spyOn(accountRequestRepo, 'findLatest').mockImplementation(async (...args) => {
+      const before = await original(...args);
+      if (!fired) {
+        fired = true;
+        await event();
+      }
+      return before;
+    });
+    try {
+      return await api.post('/api/auth/register').send(body);
+    } finally {
+      spy.mockRestore();
+    }
+  }
+
+  it('[SECURITY] موافقةٌ تقع بين القراءة والقفل: الرقم صار مأخوذاً، ولا تُكتب كلمة مرور', async () => {
+    const phone = uniquePhone();
+    const owner = await api
+      .post('/api/auth/register')
+      .send({ username: 'صاحب الرقم', phone, password: 'owner-pass-1', gender: 'female' })
+      .expect(202);
+
+    const res = await registerWhile(() => approveAsAdmin(owner.body.data.request.id as string), {
+      username: 'منتحل',
+      phone,
+      password: 'intruder-pass-1',
+      gender: 'male',
+    });
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('PHONE_TAKEN');
+    await api.post('/api/auth/login').send({ phone, password: 'intruder-pass-1' }).expect(401);
+    await api.post('/api/auth/login').send({ phone, password: 'owner-pass-1' }).expect(200);
+  });
+
+  it('[SECURITY] رفضٌ يقع بين القراءة والقفل: تسجيلٌ جديد بكلمة صاحبه، لا بكلمة الطلب المرفوض', async () => {
+    const phone = uniquePhone();
+    const rejected = await api
+      .post('/api/auth/register')
+      .send({ username: 'طلب سيُرفض', phone, password: 'rejected-pass-1', gender: 'male' })
+      .expect(202);
+    const adminToken = await createAdminUser();
+
+    const res = await registerWhile(
+      async () => {
+        await api
+          .post(`/api/admin/account-requests/${rejected.body.data.request.id}/reject`)
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ note: 'ليس صاحب الرقم' })
+          .expect(200);
+      },
+      { username: 'صاحب الرقم', phone, password: 'owner-pass-2', gender: 'female' },
+    );
+    expect(res.status).toBe(202);
+    expect(res.body.data.request.id).not.toBe(rejected.body.data.request.id);
+
+    await approveAsAdmin(res.body.data.request.id as string);
+    await api.post('/api/auth/login').send({ phone, password: 'owner-pass-2' }).expect(200);
+    await api.post('/api/auth/login').send({ phone, password: 'rejected-pass-1' }).expect(401);
   });
 
   it('الرقم المفعَّل مأخوذ فعلاً — لا تسجيل ثانٍ عليه', async () => {
