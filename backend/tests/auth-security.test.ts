@@ -297,6 +297,93 @@ describe('تسجيل حساب جديد — المسار الحقيقي كامل�
     await api.post('/api/auth/login').send({ phone, password: 'rejected-pass-1' }).expect(401);
   });
 
+  /**
+   * الحدث نفسه **داخل** القفل: بين قراءة حال الطلب تحت قفل الحساب وكتابة
+   * الطلب. لا يُنتظر الحدث داخل المعاملة (كان سينتظر قفلها إلى الأبد) — يبدأ،
+   * ثم يكمل التسجيل حين يقف الحدث على قفلٍ أو ينتهي.
+   */
+  async function registerWithConcurrent(event: () => Promise<void>, body: Record<string, string>) {
+    const original = accountRequestRepo.findLatest.bind(accountRequestRepo);
+    let calls = 0;
+    let pending: Promise<void> | null = null;
+    const spy = vi.spyOn(accountRequestRepo, 'findLatest').mockImplementation(async (...args) => {
+      const before = await original(...args);
+      calls += 1;
+      if (calls === 2) {
+        let settled = false;
+        pending = event().finally(() => {
+          settled = true;
+        });
+        pending.catch(() => {});
+        for (let i = 0; i < 1000 && !settled; i += 1) {
+          const { rows } = await db.query<{ n: number }>(
+            `SELECT COUNT(*)::int AS n FROM pg_stat_activity
+              WHERE datname = current_database() AND wait_event_type = 'Lock'`,
+          );
+          if (rows[0]!.n > 0) break;
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+      }
+      return before;
+    });
+    try {
+      const res = await api.post('/api/auth/register').send(body);
+      return { res, event: pending ?? Promise.resolve() };
+    } finally {
+      spy.mockRestore();
+    }
+  }
+
+  it('[SECURITY] رفضٌ يقع تحت قفل التسجيل: لا يُفتح طلبٌ يحمل كلمة الطالب المرفوض', async () => {
+    const phone = uniquePhone();
+    const rejected = await api
+      .post('/api/auth/register')
+      .send({ username: 'طلب سيُرفض', phone, password: 'rejected-pass-2', gender: 'male' })
+      .expect(202);
+    const adminToken = await createAdminUser();
+
+    const { res, event } = await registerWithConcurrent(
+      async () => {
+        await api
+          .post(`/api/admin/account-requests/${rejected.body.data.request.id}/reject`)
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ note: 'ليس صاحب الرقم' })
+          .expect(200);
+      },
+      { username: 'صاحب الرقم', phone, password: 'owner-pass-3', gender: 'female' },
+    );
+    await event;
+    expect(res.status).toBe(202);
+
+    // أيّ طلبٍ معلَّق بقي للرقم: موافقته لا تفعّل كلمة الطالب المرفوض.
+    const { rows } = await db.query<{ id: string }>(
+      `SELECT id FROM account_requests WHERE kind = 'registration' AND submitted_phone = $1 AND status = 'pending'`,
+      [phone],
+    );
+    for (const row of rows) await approveAsAdmin(row.id);
+    const login = await api.post('/api/auth/login').send({ phone, password: 'rejected-pass-2' });
+    expect(login.status).not.toBe(200);
+  });
+
+  it('[CONCURRENCY] موافقةٌ تقع تحت قفل إعادة التسجيل: تنتظر ولا تتقاطع (لا 40P01)', async () => {
+    const phone = uniquePhone();
+    const owner = await api
+      .post('/api/auth/register')
+      .send({ username: 'صاحب الرقم', phone, password: 'owner-pass-4', gender: 'female' })
+      .expect(202);
+
+    const { res, event } = await registerWithConcurrent(() => approveAsAdmin(owner.body.data.request.id as string), {
+      username: 'صاحب الرقم',
+      phone,
+      password: 'second-try-4',
+      gender: 'female',
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(202);
+    await expect(event).resolves.toBeUndefined();
+    await api.post('/api/auth/login').send({ phone, password: 'owner-pass-4' }).expect(200);
+    await api.post('/api/auth/login').send({ phone, password: 'second-try-4' }).expect(401);
+  });
+
   it('الرقم المفعَّل مأخوذ فعلاً — لا تسجيل ثانٍ عليه', async () => {
     const { phone } = await registerAndLogin();
     const res = await api

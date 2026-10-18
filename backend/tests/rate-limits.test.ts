@@ -135,9 +135,6 @@ describe('[CRITICAL] resolveClientIp — يُقبل العنوان الموقَ�
     const behindProxyUntrusted = await warnings(false, { 'X-Forwarded-For': '198.51.100.4' });
     expect(behindProxyUntrusted).toHaveLength(1);
     expect(behindProxyUntrusted[0]).toContain('TRUST_PROXY=false');
-    const trustsEveryone = await warnings(true, {});
-    expect(trustsEveryone).toHaveLength(1);
-    expect(trustsEveryone[0]).toContain('يثق بكل وسيط');
     // الإعداد السليم صامت.
     expect(await warnings(1, { 'X-Forwarded-For': '198.51.100.4' })).toEqual([]);
     expect(await warnings(false, {})).toEqual([]);

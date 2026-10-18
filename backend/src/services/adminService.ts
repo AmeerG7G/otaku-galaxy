@@ -886,6 +886,10 @@ export const adminService = {
     if (!user) throw Errors.conflict('الحساب المرتبط لم يعد موجوداً', 'NO_LINKED_ACCOUNT');
 
     return withTransaction(async (tx) => {
+      // [CONCURRENCY] الحساب قبل الطلب — الترتيب الذي يقفل به التسجيل
+      // (`authService.register`) ووضعُ كلمة المرور. بالترتيب المعاكس كانت
+      // الموافقة وإعادةُ التسجيل المتزامنة تتبادلان الانتظار (40P01 → 500).
+      await tx.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [user.id]);
       const resolved = await accountRequestRepo.resolve(tx, id, { status: 'approved', resolvedBy: adminId, note });
       if (!resolved) throw Errors.conflict('الطلب محسوم مسبقاً', 'REQUEST_RESOLVED');
       // التفعيل: الحساب يصير قابلاً للدخول هنا فقط — لا عند إنشائه.
@@ -901,9 +905,15 @@ export const adminService = {
     const row = await accountRequestRepo.findById(db, id);
     if (!row) throw Errors.notFound('الطلب غير موجود');
     if (row.status !== 'pending') throw Errors.conflict('الطلب محسوم مسبقاً', 'REQUEST_RESOLVED');
-    const resolved = await accountRequestRepo.resolve(db, id, { status: 'rejected', resolvedBy: adminId, note });
-    if (!resolved) throw Errors.conflict('الطلب محسوم مسبقاً', 'REQUEST_RESOLVED');
-    return this.shapeAccountRequest(resolved);
+    return withTransaction(async (tx) => {
+      // [SECURITY] الرفض يقفل الحساب أولاً كالموافقة. التسجيل يقرّر «استئناف
+      // معلَّق» تحت قفل الحساب ثم يكتب الطلب؛ رفضٌ لا ينتظر ذلك القفل كان يقع
+      // بين القرار والكتابة، فيُفتح طلبٌ جديد يحمل كلمة الطالب المرفوض.
+      if (row.user_id) await tx.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [row.user_id]);
+      const resolved = await accountRequestRepo.resolve(tx, id, { status: 'rejected', resolvedBy: adminId, note });
+      if (!resolved) throw Errors.conflict('الطلب محسوم مسبقاً', 'REQUEST_RESOLVED');
+      return this.shapeAccountRequest(resolved);
+    });
   },
 
   /**

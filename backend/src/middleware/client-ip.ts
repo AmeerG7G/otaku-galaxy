@@ -44,16 +44,16 @@ function warnRejected(reason: string) {
 let proxyWarned = false;
 /**
  * فحوص express-rate-limit التشخيصية (X-Forwarded-For مع `TRUST_PROXY=false`،
- * ثقةٌ مطلقة بكل وسيط، `req.ip` مجهول) لا تعمل إلا داخل مولّد مفاتيحه
- * الافتراضي، وكل حدودنا تستعمل `clientRateLimitKey`. نعيدها هنا: إعداد وسيطٍ
- * خاطئ يجمع كل الزبائن في دلوٍ واحد بلا أي خطأ ظاهر. تحذيرٌ واحد لكل عملية.
+ * `req.ip` مجهول) لا تعمل إلا داخل مولّد مفاتيحه الافتراضي، وكل حدودنا
+ * تستعمل `clientRateLimitKey`. نعيدها هنا: إعداد وسيطٍ خاطئ يجمع كل الزبائن في
+ * دلوٍ واحد بلا أي خطأ ظاهر. تحذيرٌ واحد لكل عملية. (فحصه الثالث — الثقة
+ * المطلقة `true` — لا يبلغه إعدادنا: `TRUST_PROXY=true` يُسقط الإقلاع أصلاً.)
  */
 function checkProxySetup(req: Request) {
   if (proxyWarned) return;
   const trust: unknown = req.app.get('trust proxy');
   let problem: string | null = null;
   if (req.ip === undefined) problem = 'req.ip غير معروف — كل الطلبات في مفتاحٍ فارغ';
-  else if (trust === true) problem = 'TRUST_PROXY يثق بكل وسيط — أي زبون يزوّر عنوانه بـX-Forwarded-For';
   else if (!trust && req.get('x-forwarded-for') !== undefined) {
     problem = 'X-Forwarded-For موجودة و TRUST_PROXY=false — كل الطلبات بعنوان الوسيط';
   }
@@ -84,9 +84,10 @@ export function resolveClientIp(
     const signature = req.get(CLIENT_IP_SIGNATURE_HEADER);
     if (claimed === undefined || signature === undefined) return next();
     if (!secret) {
-      // الموقع يوقّع والخادم بلا سرّ: نصفُ إعداد. الترويسة تُهمَل (لا تزوير)،
-      // لكن زبائن الموقع عادوا دلواً واحداً — يجب أن يُرى.
-      warnRejected('لا BFF_SHARED_SECRET على الخادم');
+      // ترويسةٌ موقَّعة والخادم بلا سرّ: إمّا موقعٌ يوقّع وخادمٌ نسي السرّ (نصف
+      // إعداد: زبائن الموقع دلوٌ واحد)، وإمّا عميلٌ من الإنترنت يرسلها عبثاً قبل
+      // نشر الموقع. الترويسة تُهمَل في الحالتين؛ الرسالة تقول ذلك ولا تجزم.
+      warnRejected('ترويسة موقَّعة بلا BFF_SHARED_SECRET على الخادم — موقعٌ بلا سرّ هنا، أو عميلٌ يرسلها');
       return next();
     }
 
