@@ -102,6 +102,13 @@ const kGeoFullContentViews = <GeoView>[
   GeoView(Size(320, 3000), 1.3),
 ];
 
+/// أكبر تكبيرٍ في مصفوفة القياس الموثّقة (١٫٠ / ١٫٣ / ٢٫٠،
+/// `docs/localization/sorani-style-lock.md` §10) — خارج المقاسات المطلوبة.
+const kGeoLargestScaleViews = <GeoView>[
+  GeoView(Size(412, 892), 2.0),
+  GeoView(Size(320, 568), 2.0),
+];
+
 /// شريط الحالة المحاكى.
 const double kStatusBar = 24;
 

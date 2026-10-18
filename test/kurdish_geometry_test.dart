@@ -12,6 +12,7 @@
 // يُسجَّل). بعد كل إصلاح: أنقص الرقم أو احذف السطر. لا يُرفع رقمٌ أبداً.
 // و`_knownUnmatched` (البوّابة ١٠) عناصر لغةٍ دون أخرى، دقيقةٌ مثلها: البديل
 // المصمَّم المعتمد وحده. وأيّ تجاوز — بالعربية أيضاً — يُفشل الاختبار.
+// و`_cleanAtLargestScale` (البوّابة ١٥) شاشاتٌ ثبتت عند ×٢٫٠ فتبقى ثابتة.
 //
 // للتشخيص: `GEOMETRY_REPORT=/path/report.txt flutter test test/kurdish_geometry_test.dart`
 // يكتب كل فرقٍ بعناصره ومساراته.
@@ -308,8 +309,72 @@ const _knownUnmatched = <String, int>{
   'forgot-password@320x3000@1.3': 1,
 };
 
+/// [RATCHET] (البوّابة ١٥، 2026-10-17) شاشة@مقاس ثابتةٌ عند ×٢٫٠ — أكبر تكبيرٍ
+/// في مصفوفة القياس الموثّقة، خارج المقاسات المطلوبة: لا فرق غير نصّي، ولا
+/// عنصر بلغةٍ دون أخرى، ولا خطأ (تجاوز أو نصٌّ لا يتّسع) بأيّ لغة. تنمو ولا
+/// تنقص؛ ما ليس فيها لم يثبت بعد عند ×٢٫٠ (جردُه في تقرير البوّابة ١٥).
+const _cleanAtLargestScale = <String>{
+  'cart-guest@412x892@2.0',
+  'cart@412x892@2.0',
+  'category-products@320x568@2.0',
+  'category-products@412x892@2.0',
+  'collections@320x568@2.0',
+  'collections@412x892@2.0',
+  'community@412x892@2.0',
+  'favorites@412x892@2.0',
+  'force-update@320x568@2.0',
+  'force-update@412x892@2.0',
+  'forgot-password@412x892@2.0',
+  'gender-required@320x568@2.0',
+  'gender-required@412x892@2.0',
+  'login@320x568@2.0',
+  'login@412x892@2.0',
+  'offline@412x892@2.0',
+  'order-success@320x568@2.0',
+  'order-success@412x892@2.0',
+  'pending-register@412x892@2.0',
+  'pending-reset@412x892@2.0',
+  'personalize@320x568@2.0',
+  'rate-order@320x568@2.0',
+  'rate-order@412x892@2.0',
+  'register@320x568@2.0',
+  'register@412x892@2.0',
+  'review-submitted@320x568@2.0',
+  'review-submitted@412x892@2.0',
+  'search@320x568@2.0',
+  'search@412x892@2.0',
+  'sheet-add-to-collection@320x568@2.0',
+  'sheet-add-to-collection@412x892@2.0',
+  'sheet-birthday@320x568@2.0',
+  'sheet-birthday@412x892@2.0',
+  'sheet-collection-actions@320x568@2.0',
+  'sheet-collection-actions@412x892@2.0',
+  'sheet-delivery-confirmation@320x568@2.0',
+  'sheet-delivery-confirmation@412x892@2.0',
+  'sheet-login-gate@320x568@2.0',
+  'sheet-login-gate@412x892@2.0',
+  'sheet-prompt-rename-collection@320x568@2.0',
+};
+
 final _geometry = <String, Map<String, GeoNode>>{};
 final _errors = <String, List<String>>{};
+
+Future<void> _measure(
+  WidgetTester tester,
+  String name,
+  GeoView view,
+  AppLanguage language,
+) async {
+  useGeoView(tester, view);
+  final key = '$name@$view@${language.code}';
+  _errors[key] = await captureLayoutErrors(
+    () => _cases[name]!(tester, language, view.textScale),
+  );
+  _geometry[key] = collectGeometry(tester, view: view.size);
+  // تفكيك الشجرة قبل `tearDown` يُنهي مؤقّتات الشاشة داخل الاختبار.
+  await tester.pumpWidget(const SizedBox.shrink());
+  await tester.pump(const Duration(seconds: 2));
+}
 
 void main() {
   setUpAll(loadProjectFonts);
@@ -318,17 +383,21 @@ void main() {
   for (final view in views) {
     for (final entry in _cases.entries) {
       for (final language in AppLanguage.values) {
-        testWidgets('${entry.key} $view ${language.code}', (tester) async {
-          useGeoView(tester, view);
-          final key = '${entry.key}@$view@${language.code}';
-          _errors[key] = await captureLayoutErrors(
-            () => entry.value(tester, language, view.textScale),
-          );
-          _geometry[key] = collectGeometry(tester, view: view.size);
-          // تفكيك الشجرة قبل `tearDown` يُنهي مؤقّتات الشاشة داخل الاختبار.
-          await tester.pumpWidget(const SizedBox.shrink());
-          await tester.pump(const Duration(seconds: 2));
-        });
+        testWidgets(
+          '${entry.key} $view ${language.code}',
+          (tester) => _measure(tester, entry.key, view, language),
+        );
+      }
+    }
+  }
+  for (final view in kGeoLargestScaleViews) {
+    for (final name in _cases.keys) {
+      if (!_cleanAtLargestScale.contains('$name@$view')) continue;
+      for (final language in AppLanguage.values) {
+        testWidgets(
+          '$name $view ${language.code}',
+          (tester) => _measure(tester, name, view, language),
+        );
       }
     }
   }
@@ -430,6 +499,35 @@ void main() {
       File(path).writeAsStringSync(report.toString());
     }
 
+    expect(failures, isEmpty, reason: failures.join('\n'));
+  });
+
+  test('[RATCHET] ×٢٫٠: ما ثبت يبقى ثابتاً بكل لغة', () {
+    final failures = <String>[];
+    for (final caseKey in _cleanAtLargestScale) {
+      final ar = _geometry['$caseKey@ar'];
+      final ckb = _geometry['$caseKey@ckb'];
+      if (ar == null || ckb == null) {
+        failures.add('$caseKey: لم تُبنَ الشاشة');
+        continue;
+      }
+      final comparison = compareGeometry(ar, ckb);
+      final errors = [
+        for (final code in ['ar', 'ckb'])
+          for (final e in _errors['$caseKey@$code'] ?? const <String>[])
+            '[$code] ${e.split('\n').first}',
+      ];
+      if (comparison.bugs.isNotEmpty ||
+          comparison.unmatched != 0 ||
+          errors.isNotEmpty) {
+        failures.add(
+          '$caseKey: bugs=${comparison.bugs.length} '
+          'unmatched=${comparison.unmatched}\n'
+          '${comparison.bugs.map((d) => '    $d').join('\n')}\n'
+          '${errors.map((e) => '    $e').join('\n')}',
+        );
+      }
+    }
     expect(failures, isEmpty, reason: failures.join('\n'));
   });
 }
