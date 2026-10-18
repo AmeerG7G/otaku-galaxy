@@ -157,6 +157,41 @@ void main() {
     });
   }
 
+  // [CRITICAL] (البوّابة ١٥، 2026-10-17) ×٢٫٠ من مصفوفة القياس الموثّقة: اسم
+  // المتجر في صفّ الهوية كان `Text` بلا حدّ فيتجاوز «گەلاکسی ئۆتاکو» يميناً
+  // ١٧. الآن منطقةٌ تُصغَّر حتى ٠٫٨ من مقاس التصميم، والصفّ بالارتفاع نفسه
+  // باللغتين. (عنوان الحالة الكردي لا يتّسع بعدُ لأسطره الثلاثة عند ×٢٫٠ —
+  // مسجَّلٌ في تقرير البوّابة ١٥؛ هذا الاختبار يحرس التجاوز وصفّ الهوية.)
+  testWidgets('[CRITICAL] ٣٢٠×٥٦٨ ×٢٫٠: صفّ الهوية بلا تجاوز وبالارتفاع نفسه باللغتين', (tester) async {
+    tester.view.physicalSize = const Size(320, 568);
+    tester.view.devicePixelRatio = 1.0;
+    tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+    addTearDown(tester.view.reset);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    final rows = <double>[];
+    for (final language in AppLanguage.values) {
+      final overflows = <String>[];
+      final previous = FlutterError.onError;
+      FlutterError.onError = (details) {
+        final text = details.exceptionAsString();
+        if (text.contains('overflowed')) overflows.add(text.split('\n').first);
+      };
+      try {
+        await tester.pumpWidget(_app(dark: false, onRetry: () {}, language: language));
+        await tester.pump();
+      } finally {
+        FlutterError.onError = previous;
+      }
+      expect(overflows, isEmpty, reason: language.code);
+      final brand = find.ancestor(
+        of: find.text(AppStrings.of(language)('brandName')),
+        matching: find.byType(Row),
+      );
+      rows.add(tester.getSize(brand.first).height);
+    }
+    expect(rows.toSet(), hasLength(1), reason: 'صفّ الهوية: $rows');
+  });
+
   testWidgets('يتّسع (٤١٢×٨٩٢ ×١٫٠): لا تمرير، والمحتوى موسَّط كما كان', (tester) async {
     tester.view.physicalSize = const Size(412, 892);
     tester.view.devicePixelRatio = 1.0;

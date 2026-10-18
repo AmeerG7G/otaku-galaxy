@@ -103,91 +103,99 @@ class _BirthdayFormState extends State<_BirthdayForm> {
 
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      // [CRITICAL] (البوّابة ١٥، 2026-10-17) كورقة كلمة المرور: العنوان يحجز
+      // أطول ترجماته (على ٣٢٠×٥٦٨ عند ×٢٫٠ كان العنوان الكردي يلتفّ سطرين
+      // والعمود يتجاوز أسفله ٤٣)، والنموذج يُمرَّر حين لا يتّسع (ولوحة المفاتيح
+      // مفتوحة على ٣٢٠×٥٦٨ ×١٫٣ كان الحفظ تحتها بلا وصول، باللغتين). حين يتّسع:
+      // كما كان تماماً.
       child: OtakuSheet(
         title: context.strings('birthdayTitle'),
+        titleTranslations: AppStrings.across('birthdayTitle'),
         titleSize: 19,
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // [CRITICAL] (البوّابة ٨، 2026-10-10) فقرةٌ تحجز أسطر أطول
-              // ترجماتها: الكردية أطول بسطر عند ×١٫٣ فكانت الورقة تطول ٣٠.
-              // مقدّمةٌ يمرّرها المستدعي: بلغته وحدها.
-              BoundedText(
-                widget.intro ??
-                    context.strings.p('birthdayPromptShort', {
-                      'percent': '${birthday.discountPercent}',
-                    }),
-                maxLines: 12,
-                minScale: 1,
-                reserveFor: widget.intro != null
-                    ? const []
-                    : [
-                        for (final l in AppLanguage.values)
-                          AppStrings.of(l).p('birthdayPromptShort', {
-                            'percent': '${birthday.discountPercent}',
-                          }),
-                      ],
-                alignment: AlignmentDirectional.topStart,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  fontSize: 13,
-                  height: 1.75,
-                  color: theme.colorScheme.onSurfaceVariant,
+        child: SingleChildScrollView(
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // [CRITICAL] (البوّابة ٨، 2026-10-10) فقرةٌ تحجز أسطر أطول
+                // ترجماتها: الكردية أطول بسطر عند ×١٫٣ فكانت الورقة تطول ٣٠.
+                // مقدّمةٌ يمرّرها المستدعي: بلغته وحدها.
+                BoundedText(
+                  widget.intro ??
+                      context.strings.p('birthdayPromptShort', {
+                        'percent': '${birthday.discountPercent}',
+                      }),
+                  maxLines: 12,
+                  minScale: 1,
+                  reserveFor: widget.intro != null
+                      ? const []
+                      : [
+                          for (final l in AppLanguage.values)
+                            AppStrings.of(l).p('birthdayPromptShort', {
+                              'percent': '${birthday.discountPercent}',
+                            }),
+                        ],
+                  alignment: AlignmentDirectional.topStart,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontSize: 13,
+                    height: 1.75,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: AnimeTextField(
-                      controller: _dayCtrl,
-                      label: context.strings('day'),
-                      keyboardType: TextInputType.number,
-                      textInputAction: TextInputAction.next,
-                      inputFormatters: [
-                        digitsOnlyInputFormatter,
-                        LengthLimitingTextInputFormatter(2),
-                      ],
-                      validator: (v) {
-                        final day = _parse(v);
-                        if (day == null || day < 1 || day > 31) {
-                          return context.strings('invalidDay');
-                        }
-                        return null;
-                      },
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: AnimeTextField(
+                        controller: _dayCtrl,
+                        label: context.strings('day'),
+                        keyboardType: TextInputType.number,
+                        textInputAction: TextInputAction.next,
+                        inputFormatters: [
+                          digitsOnlyInputFormatter,
+                          LengthLimitingTextInputFormatter(2),
+                        ],
+                        validator: (v) {
+                          final day = _parse(v);
+                          if (day == null || day < 1 || day > 31) {
+                            return context.strings('invalidDay');
+                          }
+                          return null;
+                        },
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: AnimeTextField(
-                      controller: _monthCtrl,
-                      label: context.strings('month'),
-                      keyboardType: TextInputType.number,
-                      textInputAction: TextInputAction.done,
-                      onSubmitted: (_) => _save(),
-                      inputFormatters: [
-                        digitsOnlyInputFormatter,
-                        LengthLimitingTextInputFormatter(2),
-                      ],
-                      validator: (v) {
-                        final month = _parse(v);
-                        if (month == null || month < 1 || month > 12) {
-                          return context.strings('invalidMonth');
-                        }
-                        return null;
-                      },
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: AnimeTextField(
+                        controller: _monthCtrl,
+                        label: context.strings('month'),
+                        keyboardType: TextInputType.number,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => _save(),
+                        inputFormatters: [
+                          digitsOnlyInputFormatter,
+                          LengthLimitingTextInputFormatter(2),
+                        ],
+                        validator: (v) {
+                          final month = _parse(v);
+                          if (month == null || month < 1 || month > 12) {
+                            return context.strings('invalidMonth');
+                          }
+                          return null;
+                        },
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              AnimePrimaryButton(
-                label: context.strings('save'),
-                onPressed: _save,
-              ),
-            ],
+                  ],
+                ),
+                const SizedBox(height: 20),
+                AnimePrimaryButton(
+                  label: context.strings('save'),
+                  onPressed: _save,
+                ),
+              ],
+            ),
           ),
         ),
       ),

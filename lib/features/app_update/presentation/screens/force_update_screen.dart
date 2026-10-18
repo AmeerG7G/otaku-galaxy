@@ -112,13 +112,23 @@ class ForceUpdateScreen extends StatelessWidget {
                         // صار يمرّ بمكوّن الشعار الوحيد فلا يمكن أن ينحرف عنه.
                         const OtakuStoreLogoSimple(size: 38),
                         const SizedBox(width: 11),
-                        Text(
-                          context.strings('brandName'),
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontFamily: AppFonts.heading,
-                            fontFamilyFallback: AppFonts.headingFallback,
-                            fontSize: 15.5,
-                            fontWeight: AppDimens.weightExtraBold,
+                        // [CRITICAL] (البوّابة ١٥، 2026-10-17) اسم المتجر نصّ
+                        // ترويسة كاسم الرئيسية: يُصغَّر حتى ٠٫٨ من مقاس التصميم،
+                        // ويحجز سطراً ثانياً بكل لغة إن لم تتّسع ترجمةٌ حتى عنده.
+                        // كان `Text` بلا حدّ في الصفّ: «گەلاکسی ئۆتاکو» يتجاوز
+                        // يميناً ١٧ على ٣٢٠ عند ×٢٫٠ (مصفوفة القياس الموثّقة).
+                        Flexible(
+                          child: BoundedText(
+                            context.strings('brandName'),
+                            maxLines: 2,
+                            floorAtDesignSize: true,
+                            reserveFor: AppStrings.across('brandName'),
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontFamily: AppFonts.heading,
+                              fontFamilyFallback: AppFonts.headingFallback,
+                              fontSize: 15.5,
+                              fontWeight: AppDimens.weightExtraBold,
+                            ),
                           ),
                         ),
                       ],

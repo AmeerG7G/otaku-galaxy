@@ -117,12 +117,23 @@ class _OrderSuccessViewState extends State<OrderSuccessView>
                               ),
                             ),
                             const SizedBox(width: 9),
-                            Text(
-                              context.strings('pendingApproval'),
-                              style: theme.textTheme.labelMedium?.copyWith(
-                                fontSize: 12.5,
-                                fontWeight: AppDimens.weightBold,
-                                color: AppColors.accent,
+                            // [CRITICAL] (البوّابة ١٥، 2026-10-17) تسميةٌ كتسمية
+                            // `OtakuStatusPill`: تُصغَّر داخل الكبسولة وتحجز
+                            // سطراً ثانياً بكل لغة إن لم تتّسع ترجمةٌ حتى ٠٫٨.
+                            // كانت `Text` بلا حدّ فتتجاوز الكردية يميناً ٢٥ على
+                            // ٣٢٠ عند ×٢٫٠.
+                            Flexible(
+                              child: BoundedText(
+                                context.strings('pendingApproval'),
+                                maxLines: 2,
+                                reserveFor: AppStrings.across(
+                                  'pendingApproval',
+                                ),
+                                style: theme.textTheme.labelMedium?.copyWith(
+                                  fontSize: 12.5,
+                                  fontWeight: AppDimens.weightBold,
+                                  color: AppColors.accent,
+                                ),
                               ),
                             ),
                           ],
