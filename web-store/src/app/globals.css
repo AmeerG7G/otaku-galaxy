@@ -538,6 +538,12 @@ textarea {
   color: var(--success-text);
 }
 
+/* The two-piece offer is longer than a status pill and wraps in a narrow card:
+   a softer corner keeps a two-line tag from reading as a squashed capsule. */
+.pill-offer {
+  border-radius: 10px;
+}
+
 .pagination {
   display: flex;
   justify-content: center;

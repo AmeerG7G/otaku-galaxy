@@ -26,7 +26,7 @@ export function ProductCard({ product, eager = false }: { product: Product; eage
             {product.previousPrice ? <span className="price-previous">{formatIqd(product.previousPrice)}</span> : null}
           </span>
         )}
-        {pairOffer ? <span className="pill pill-promo">{pairOffer}</span> : null}
+        {pairOffer ? <span className="pill pill-promo pill-offer">{pairOffer}</span> : null}
         {product.price === null ? null : outOfStock ? (
           <span className="pill pill-out">نفدت الكمية</span>
         ) : product.stock <= 3 ? (

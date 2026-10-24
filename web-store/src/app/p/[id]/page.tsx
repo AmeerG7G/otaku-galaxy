@@ -74,7 +74,7 @@ export default async function ProductPage({ params }: Props) {
               {product.discountPercent ? <span className="pill pill-promo">خصم {product.discountPercent}٪</span> : null}
             </p>
             {product.pairPrice != null ? (
-              <p className="pill pill-promo">
+              <p className="pill pill-promo pill-offer">
                 {pairOfferLabel(product.pairPrice)} بدل {formatIqd(product.price * 2)} — ولو اختلف الخيار
               </p>
             ) : null}
