@@ -6,6 +6,37 @@
 > **لم يُنشر شيء.** الملفات هنا إعداد مُراجَع لا نشرٌ منفَّذ. النطاقات قيم
 > نائبة (`api.example.com`)، ولا سرّ واحد في هذا المستودع.
 
+> **[حرِج] R-17 — عزل البيئتين على خادمٍ واحد (2026-10-24).** كانت أوامر §٢–§٥
+> تبني الاختبار المسبق في مجلّد الإنتاج نفسه (PM2)، وتشغّل البيئتين بمشروع compose
+> واحد ووسم صورة واحد وحجم صورٍ واحد (Docker)، وتفعّل موقع nginx قبل وجود شهادته،
+> وكان الموقع يرجع إلى API الإنتاج (`127.0.0.1:4000`) إن غاب `API_INTERNAL_URL`.
+> صُحِّحت كلها هنا وفي الملفات (`docker-compose.yml`، `deploy/pm2`، `web-store`)،
+> وتحرسها `backend/tests/deploy-runbook.test.ts`. القواعد:
+>
+> | | الاختبار المسبق | الإنتاج |
+> |---|---|---|
+> | نسخة المستودع | `/srv/otaku-galaxy-staging` | `/srv/otaku-galaxy` |
+> | مشروع compose | `-p otaku-staging` | `-p otaku-prod` |
+> | منفذ API / الموقع | `4001` / `3001` | `4000` / `3000` |
+> | وسم الصورة | `staging-<commit>` | `prod-<commit>` |
+>
+> **لا تُشغَّل على خادمٍ يستضيف بيئةً قائمة** قبل §٠ أدناه: الأوامر لم تُنفَّذ على
+> خادمٍ حقيقي، ونقلُ بيئةٍ قائمة إلى اسم مشروعٍ أو مجلّدٍ آخر يُنشئ حجم صورٍ فارغاً
+> بجانب القديم. §١٣ (الموقع) **لا تُشغَّل** كلها حتى تُراجَع على خادم.
+
+### ٠. قبل أول أمرٍ من هذا الدليل على خادمٍ قائم — للقراءة فقط
+
+```bash
+docker compose ls                                   # أسماء المشاريع القائمة
+docker ps --format '{{.Names}}\t{{.Image}}\t{{.Ports}}'
+docker volume ls | grep -i uploads
+pm2 ls 2>/dev/null; pm2 describe otaku-api-prod 2>/dev/null | grep -E 'exec cwd|script path'
+ls -d /srv/otaku-galaxy* 2>/dev/null
+```
+
+إن كانت بيئةٌ تعمل باسم مشروعٍ أو مجلّدٍ غير ما في الجدول أعلاه: **توقّف**. نقلُها
+قرارٌ للمشغّل مع نسخةٍ احتياطية من حجم الصور، لا خطوةٌ ضمن هذا الدليل.
+
 ---
 
 ## ١. اختر مساراً واحداً للتشغيل
@@ -23,25 +54,43 @@
 
 ## ٢. المسار الأول: Docker
 
+**[حرِج] كل بيئة من نسختها وباسم مشروعها.** compose يسمّي المشروع باسم المجلّد
+إن لم يُعطَ `-p`، والحاوية والحجم يتبعان المشروع: من مجلّدٍ واحد يستبدل `up`
+الإنتاج حاويةَ الاختبار المسبق والعكس، ويكتبان الصور في حجمٍ واحد. والوسم
+`otaku-galaxy-api:<tag>` عامٌّ على الخادم كله، فوسمٌ مشترك يعني أن بناء الاختبار
+المسبق يصير صورة الإنتاج عند أول إعادة إنشاء. لذلك لا قيمة افتراضية في
+`docker-compose.yml` لأيٍّ من `ENV_FILE` و`HOST_PORT` و`IMAGE_TAG`: غيابها يوقف
+compose برسالة. وهي مطلوبة حتى لأمر `migrate`، لأن compose يفسّر الملف كله.
+
 ```bash
+# الاختبار المسبق — من نسخته، وفرعُها staging
+cd /srv/otaku-galaxy-staging
+git rev-parse --abbrev-ref HEAD                       # يجب أن يطبع staging
+export ENV_FILE=./backend/.env.staging HOST_PORT=4001 IMAGE_TAG=staging-$(git rev-parse --short HEAD)
+
 # البناء
-docker compose build
+docker compose -p otaku-staging build api
 
 # الهجرات — خطوة صريحة قبل تشغيل أي نسخة جديدة
-ENV_FILE=./backend/.env.staging docker compose --profile tools run --rm migrate
+docker compose -p otaku-staging --profile tools run --rm migrate
 
-# التشغيل — الاختبار المسبق على منفذ المضيف 4001
-ENV_FILE=./backend/.env.staging HOST_PORT=4001 docker compose up -d api
+# التشغيل — على منفذ المضيف 4001
+docker compose -p otaku-staging up -d api
 
 # التحقّق
-docker compose ps                     # يجب أن تكون الحالة healthy
+docker compose -p otaku-staging ps    # يجب أن تكون الحالة healthy
 curl -fsS localhost:4001/health
 ```
 
-للإنتاج:
+للإنتاج — من نسخة الإنتاج وحدها، بعد أن مرّ الإصدار نفسه على الاختبار المسبق:
 
 ```bash
-ENV_FILE=./backend/.env.prod HOST_PORT=4000 docker compose up -d api
+cd /srv/otaku-galaxy
+git rev-parse --abbrev-ref HEAD                       # يجب أن يطبع prod
+export ENV_FILE=./backend/.env.prod HOST_PORT=4000 IMAGE_TAG=prod-$(git rev-parse --short HEAD)
+docker compose -p otaku-prod build api
+docker compose -p otaku-prod --profile tools run --rm migrate
+docker compose -p otaku-prod up -d api
 curl -fsS localhost:4000/health
 ```
 
@@ -68,15 +117,27 @@ curl -fsS localhost:4000/health
 
 ## ٣. المسار الثاني: PM2
 
-```bash
-cd /srv/otaku-galaxy/backend
-npm ci && npm run build
-npm run db:migrate:staging          # أو :prod
+**[حرِج] كل بيئة في مجلّدها** (`cwd` في `deploy/pm2/ecosystem.config.cjs`):
+`/srv/otaku-galaxy-staging/backend` للاختبار المسبق و`/srv/otaku-galaxy/backend`
+للإنتاج. كانتا مجلّداً واحداً: `npm run build` للاختبار المسبق كان يستبدل `dist/`
+الذي يشغّله الإنتاج عند أول إعادة تشغيل (عطل، سقف ذاكرة، إقلاع الخادم)، و`uploads/`
+(نسبيٌّ إلى المجلّد) كان واحداً للبيئتين.
 
+```bash
+# الاختبار المسبق — من نسخته
+cd /srv/otaku-galaxy-staging/backend
+npm ci && npm run build
+npm run db:migrate:staging
+
+cd /srv/otaku-galaxy-staging        # ملف PM2 في جذر المستودع لا في backend/
 sudo mkdir -p /var/log/otaku-galaxy
 pm2 start deploy/pm2/ecosystem.config.cjs --only otaku-api-staging
 pm2 save && pm2 startup             # ليبقى بعد إعادة تشغيل الخادم
+curl -fsS localhost:4001/health
 ```
+
+للإنتاج الأوامر نفسها من `/srv/otaku-galaxy` مع `db:migrate:prod` و`--only otaku-api-prod`
+و`localhost:4000`. لا يُبنى في مجلّد الإنتاج إلا إصدار الإنتاج.
 
 الأسرار ليست في ملف PM2. التطبيق يقرأ `.env.${APP_ENV}` من مجلّد التشغيل
 عبر dotenv، فيكفي أن يحدّد PM2 البيئة ويترك القيم لملفٍ يعيش على الخادم
@@ -92,10 +153,22 @@ pm2 save && pm2 startup             # ليبقى بعد إعادة تشغيل ا
 
 ## ٤. الوسيط العكسي
 
+**[حرِج] الشهادة قبل الموقع (§٥).** ملفّا nginx يشيران إلى
+`/etc/letsencrypt/live/<النطاق>/`؛ تفعيلُ الموقع قبل وجودها يُفشل `nginx -t`، وكان
+الرابط يبقى في `sites-enabled` بعد الفشل، فيرفض nginx الإقلاع عند أول إعادة تشغيل
+أو إقلاعٍ للخادم — **ومعه الإنتاج** الذي يخدمه nginx نفسه. الأمر الآن لا يفعّل
+بلا شهادة، ويلغي التفعيل إن فشل الفحص:
+
 ```bash
-sudo cp deploy/nginx/staging-api.conf /etc/nginx/sites-available/
-sudo ln -s /etc/nginx/sites-available/staging-api.conf /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
+DOMAIN=staging-api.example.com CONF=staging-api.conf     # أو api.example.com / api.conf
+if sudo test -s /etc/letsencrypt/live/$DOMAIN/fullchain.pem; then
+  sudo cp deploy/nginx/$CONF /etc/nginx/sites-available/
+  sudo ln -s /etc/nginx/sites-available/$CONF /etc/nginx/sites-enabled/
+  if sudo nginx -t; then sudo systemctl reload nginx
+  else sudo rm /etc/nginx/sites-enabled/$CONF; echo "nginx -t فشل — أُلغي تفعيل $CONF"; fi
+else
+  echo "لا شهادة لـ$DOMAIN — نفّذ §٥ أولاً"
+fi
 ```
 
 **[حرِج] `TRUST_PROXY` والوسيط يعملان معاً أو لا يعمل أيٌّ منهما.** الخادم
@@ -113,13 +186,34 @@ sudo nginx -t && sudo systemctl reload nginx
 
 **لم تُصدَر أي شهادة، ولم تُنشأ شهادات وهمية.** الآلية الموصى بها:
 
-```bash
-sudo apt install certbot python3-certbot-nginx
-sudo mkdir -p /var/www/certbot
+`certbot --nginx` يحتاج إعداد nginx سليماً ويعيد كتابة ملفّات الموقع المراجَعة،
+فالشهادة تُصدَر بـ`certonly --webroot` من موقع HTTP مؤقّت **لنطاقٍ جديد** لا يخدم
+إلا التحدّي (نطاقٌ مفعَّل أصلاً يخدم التحدّي من ملفّه، فلا يحتاج المؤقّت):
 
-sudo certbot --nginx -d staging-api.example.com
-sudo certbot --nginx -d api.example.com
+```bash
+sudo apt install certbot
+sudo mkdir -p /var/www/certbot
+DOMAIN=staging-api.example.com
+
+sudo tee /etc/nginx/sites-available/acme-$DOMAIN.conf >/dev/null <<NGINX
+server {
+    listen 80;
+    listen [::]:80;
+    server_name $DOMAIN;
+    location /.well-known/acme-challenge/ { root /var/www/certbot; }
+    location / { return 404; }
+}
+NGINX
+sudo ln -s /etc/nginx/sites-available/acme-$DOMAIN.conf /etc/nginx/sites-enabled/
+if sudo nginx -t; then
+  sudo systemctl reload nginx
+  sudo certbot certonly --webroot -w /var/www/certbot -d $DOMAIN \
+    --deploy-hook 'systemctl reload nginx'
+fi
+sudo rm /etc/nginx/sites-enabled/acme-$DOMAIN.conf && sudo nginx -t && sudo systemctl reload nginx
 ```
+
+ثم §٤ للنطاق نفسه.
 
 التجديد تلقائي عبر مؤقّت systemd الذي تثبّته certbot. تحقّق منه بـ:
 
@@ -362,3 +456,58 @@ cd backend && npm run analytics:rebuild:staging -- --from <أول شهر فيه 
   التحليلات من الأشهر المفتوحة؛ الأشهر المغلقة لا تتغيّر إلا بإعادة بناءٍ مُسجَّلة.
 - **حسابٌ قديم بلا جنس:** التطبيق يطلب الاختيار عند الدخول التالي (لا تخطّي ولا خيار
   ثالث)، أو يُكمَل من ملفّ الزبون بعد تحقّق واتساب — مرةً واحدة، ولا يُكتب فوق جنسٍ موجود.
+
+---
+
+## ١٣. STEP 68 — الموقع (`web-store/`) على الاختبار المسبق — **لا تُشغَّل**
+
+> **[حرِج] لا تُشغَّل هذا القسم.** صُحِّح من مراجعة R-17 لكنه لم يُنفَّذ على خادم،
+> ولم يُراجَع بعدُ على الخادم الحقيقي، وملف nginx للموقع **غير موجود** في
+> `deploy/nginx/`. يُرفع هذا التحذير بعد: (١) §٠ على الخادم، (٢) كتابة ملف nginx
+> للموقع ومراجعته، (٣) تنفيذٍ كامل على الاختبار المسبق تُسجَّل مخرجاته.
+
+**ما تغيّر عن النسخة السابقة من هذا القسم (المفقودة مع حاوية الجلسة السحابية):**
+البناء في نسخة الاختبار المسبق لا في مجلّد الإنتاج؛ PM2 يشغّل ملف Next التنفيذي
+نفسه (`otaku-web-staging`) لا أمراً لا يبدأ Next؛ المنفذ 3001 لا 3000؛
+`API_INTERNAL_URL` إلزامي في الإنتاج (كان غيابه يعني API الإنتاج على 4000)؛ nginx
+بعد الشهادة لا قبلها.
+
+**قبله:** API الاختبار المسبق يعمل على 4001 (§٢ أو §٣) والهجرة **083**
+(`083_order_idempotency.sql`، إضافية) مطبَّقة، و`BFF_SHARED_SECRET` مضبوط في
+`backend/.env.staging`.
+
+```bash
+cd /srv/otaku-galaxy-staging/web-store
+git rev-parse --abbrev-ref HEAD                      # يجب أن يطبع staging
+
+# الإعدادات — على الخادم وحده، لا تدخل Git (web-store/.gitignore)
+install -m 600 /dev/null .env.production.local
+$EDITOR .env.production.local
+#   API_INTERNAL_URL=http://127.0.0.1:4001/api       ← API الاختبار المسبق لا 4000
+#   MEDIA_ORIGIN=https://staging-api.example.com
+#   SITE_ORIGIN=https://staging.example.com
+#   SESSION_SEAL_KEYS=<مفتاحٌ للاختبار المسبق وحده>
+#   BFF_SHARED_SECRET=<القيمة نفسها في backend/.env.staging>
+
+npm ci && npm run build
+
+cd /srv/otaku-galaxy-staging
+pm2 start deploy/pm2/ecosystem.config.cjs --only otaku-web-staging
+pm2 save
+```
+
+**التحقّق — كلّه يجب أن ينجح قبل nginx:**
+
+```bash
+ss -ltnp | grep ':3001 '                             # node على 127.0.0.1:3001 وحده
+curl -fsS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3001/     # 200 — الصفحة تقرأ الـAPI
+pm2 logs otaku-web-staging --lines 30 --nostream     # لا «API_INTERNAL_URL is required»
+```
+
+ثم منتجٌ تجريبي تنشئه لوحة الاختبار المسبق يظهر على `127.0.0.1:3001` **ولا يظهر**
+على موقع الإنتاج — هذا هو دليل العزل، لا رمز الحالة وحده.
+
+**nginx للموقع:** لا ملف له بعد. حين يُكتب: الشهادة أولاً (§٥ ثم §٤)، و`proxy_pass
+http://127.0.0.1:3001` للاختبار المسبق، وكتابةٌ فوق `X-Real-IP` و`X-Forwarded-For`
+بـ`$remote_addr` (الكتلة في `web-store/README.md`) — وإلا اختار الزائر دلو حدوده.
+

@@ -1,10 +1,20 @@
 # ==============================================================================
 # تشغيل خادم مجرّة الأوتاكو بالحاويات — للاختبار المسبق والإنتاج.
 #
-# الملف واحد للبيئتين؛ ما يفرّق بينهما هو ملف البيئة الذي يُمرَّر:
+# الملف واحد للبيئتين، لكن **كل بيئة في نسخة مستودعٍ خاصة بها وباسم مشروعٍ
+# خاص بها** (انظر `deploy/README.md` §٢):
 #
-#   ENV_FILE=./backend/.env.staging  docker compose up -d api
-#   ENV_FILE=./backend/.env.prod     docker compose up -d api
+#   cd /srv/otaku-galaxy-staging && ENV_FILE=./backend/.env.staging HOST_PORT=4001 \
+#     IMAGE_TAG=staging-<commit> docker compose -p otaku-staging up -d api
+#   cd /srv/otaku-galaxy        && ENV_FILE=./backend/.env.prod    HOST_PORT=4000 \
+#     IMAGE_TAG=prod-<commit>    docker compose -p otaku-prod    up -d api
+#
+# [CRITICAL] لا قيمة افتراضية لـ`ENV_FILE` ولا `HOST_PORT` ولا `IMAGE_TAG`:
+# غياب أيٍّ منها يوقف compose برسالة بدل أن يخلط البيئتين. كانت الافتراضات
+# (`.env.staging` + المنفذ 4000 + الوسم `latest`) تجعل أمراً عارياً يشغّل
+# الاختبار المسبق على منفذ الإنتاج، وبناءَ الاختبار المسبق يعيد وسم الصورة
+# التي يُعاد منها إنشاء حاوية الإنتاج. والمشروع نفسه (المجلّد نفسه بلا `-p`)
+# يعني حاويةً واحدة وحجم صورٍ واحداً للبيئتين: كل `up` يستبدل الأخرى.
 #
 # [CRITICAL] لا سرّ في هذا الملف ولا في الصورة. ملفات `.env.*` الحقيقية
 # تُنشأ على الخادم ولا تدخل Git إطلاقاً (انظر `.gitignore`).
@@ -21,13 +31,13 @@ services:
       target: runtime
       args:
         NODE_VERSION: "22"
-    image: otaku-galaxy-api:${IMAGE_TAG:-latest}
+    image: otaku-galaxy-api:${IMAGE_TAG:?IMAGE_TAG مطلوب — وسمٌ خاص بالبيئة والإصدار، مثل staging-<commit> أو prod-<commit>}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     # ملف البيئة يحمل كل شيء: APP_ENV، الأسرار، وصلة القاعدة، إعداد الرسائل.
     # غيابه يعني إقلاعاً بلا إعداد — وهو ما ترفضه طبقة الإعدادات صراحةً.
     env_file:
-      - ${ENV_FILE:-./backend/.env.staging}
+      - ${ENV_FILE:?ENV_FILE مطلوب — ./backend/.env.staging أو ./backend/.env.prod}
     environment:
       # [CRITICAL] المنفذ **داخل** الحاوية ثابت على 4000، ويطغى هذا على أي
       # `PORT` في ملف البيئة (`environment` أعلى أولويةً من `env_file`).
@@ -47,7 +57,7 @@ services:
     ports:
       # يُنشر على الواجهة المحلية فقط: nginx وحده يواجه الإنترنت، والحاوية
       # لا يجوز أن تكون قابلة للوصول مباشرةً من الخارج متجاوزةً TLS وحدوده.
-      - "127.0.0.1:${HOST_PORT:-4000}:4000"
+      - "127.0.0.1:${HOST_PORT:?HOST_PORT مطلوب — 4001 للاختبار المسبق، 4000 للإنتاج}:4000"
     volumes:
       # الصور المرفوعة يجب أن تعيش خارج الحاوية، وإلا ضاعت مع كل نشر.
       - uploads:/app/uploads
@@ -80,7 +90,8 @@ services:
   # تعمل من مرحلة `builder` لأن `scripts/migrate.ts` خارج `rootDir` فلا
   # يترجمه `tsc`، ويحتاج `tsx` وهي أداة تطوير لا مكان لها في صورة الإنتاج.
   #
-  #   ENV_FILE=./backend/.env.staging docker compose run --rm migrate
+  #   docker compose -p otaku-staging --profile tools run --rm migrate
+  #   (المتغيّرات الثلاثة مطلوبة هنا أيضاً: compose يفسّر الملف كله — انظر §٢)
   # ---------------------------------------------------------------------------
   migrate:
     profiles: ["tools"]
@@ -92,7 +103,7 @@ services:
       args:
         NODE_VERSION: "22"
     env_file:
-      - ${ENV_FILE:-./backend/.env.staging}
+      - ${ENV_FILE:?ENV_FILE مطلوب — ./backend/.env.staging أو ./backend/.env.prod}
     command: ["npx", "tsx", "scripts/migrate.ts"]
     restart: "no"
 

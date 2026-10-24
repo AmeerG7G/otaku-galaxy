@@ -16,16 +16,21 @@
  * dotenv، فيكفي أن يحدّد هذا الملف البيئة ويترك القيم للملف الذي يعيش على
  * الخادم وحده. لا سرّ يدخل Git.
  *
- * التشغيل:
- *   pm2 start deploy/pm2/ecosystem.config.cjs --only otaku-api-staging
- *   pm2 start deploy/pm2/ecosystem.config.cjs --only otaku-api-prod
+ * [CRITICAL] كل بيئة في نسخة مستودعٍ خاصة بها (`cwd` أدناه). كانت البيئتان
+ * تشتركان في `/srv/otaku-galaxy/backend`: بناءُ نسخة الاختبار المسبق
+ * (`npm ci && npm run build`) كان يستبدل `dist/` الذي يشغّله الإنتاج عند أول
+ * إعادة تشغيل، و`UPLOADS_DIR=uploads` (نسبيٌّ إلى `cwd`) كان مجلّد صورٍ واحداً
+ * للبيئتين. مسار الإنتاج لم يتغيّر؛ الاختبار المسبق انتقل إلى مجلّده.
+ *
+ * التشغيل (كلٌّ من نسخته — انظر `deploy/README.md` §٣):
+ *   cd /srv/otaku-galaxy-staging && pm2 start deploy/pm2/ecosystem.config.cjs --only otaku-api-staging
+ *   cd /srv/otaku-galaxy         && pm2 start deploy/pm2/ecosystem.config.cjs --only otaku-api-prod
  *   pm2 save && pm2 startup     # ليبقى بعد إعادة تشغيل الخادم
  */
 
 /** ما يشترك فيه التطبيقان — الفرق بينهما البيئة وحدها. */
 const shared = {
   script: 'dist/server.js',
-  cwd: '/srv/otaku-galaxy/backend',
 
   /**
    * نسخة واحدة، لا وضع العنقود.
@@ -80,6 +85,7 @@ module.exports = {
     {
       ...shared,
       name: 'otaku-api-staging',
+      cwd: '/srv/otaku-galaxy-staging/backend',
       env: {
         // هذان فقط. الباقي يأتي من `.env.staging` على الخادم.
         APP_ENV: 'staging',
@@ -91,12 +97,49 @@ module.exports = {
     {
       ...shared,
       name: 'otaku-api-prod',
+      cwd: '/srv/otaku-galaxy/backend',
       env: {
         APP_ENV: 'prod',
         NODE_ENV: 'production',
       },
       error_file: '/var/log/otaku-galaxy/prod-error.log',
       out_file: '/var/log/otaku-galaxy/prod-out.log',
+    },
+
+    // ── الموقع (`web-store/`) — Next.js خلف nginx، على 127.0.0.1 وحده ─────────
+    //
+    // [CRITICAL] `script` هو ملف Next التنفيذي نفسه، فما يبدؤه PM2 هو `next start`
+    // فعلاً (لا `npm` يبتلع رمز الخروج). المنفذ من `PORT` (3001 / 3000): موقعان
+    // على خادمٍ واحد لا يتنازعان منفذاً. الإعدادات (`API_INTERNAL_URL`…) في
+    // `.env.production.local` داخل مجلّد كل بيئة، و`API_INTERNAL_URL` إلزامي:
+    // غيابه لم يعد يعني «API الإنتاج على 4000».
+    {
+      ...shared,
+      name: 'otaku-web-staging',
+      cwd: '/srv/otaku-galaxy-staging/web-store',
+      script: 'node_modules/next/dist/bin/next',
+      args: 'start -H 127.0.0.1',
+      env: {
+        NODE_ENV: 'production',
+        PORT: '3001',
+        NEXT_TELEMETRY_DISABLED: '1',
+      },
+      error_file: '/var/log/otaku-galaxy/web-staging-error.log',
+      out_file: '/var/log/otaku-galaxy/web-staging-out.log',
+    },
+    {
+      ...shared,
+      name: 'otaku-web-prod',
+      cwd: '/srv/otaku-galaxy/web-store',
+      script: 'node_modules/next/dist/bin/next',
+      args: 'start -H 127.0.0.1',
+      env: {
+        NODE_ENV: 'production',
+        PORT: '3000',
+        NEXT_TELEMETRY_DISABLED: '1',
+      },
+      error_file: '/var/log/otaku-galaxy/web-prod-error.log',
+      out_file: '/var/log/otaku-galaxy/web-prod-out.log',
     },
   ],
 };
