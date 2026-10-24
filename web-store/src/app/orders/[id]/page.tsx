@@ -74,6 +74,7 @@ export default async function OrderPage({ params, searchParams }: Props) {
                     {item.optionValue ? <div className="hint">{item.optionValue}</div> : null}
                     <div className="hint">
                       {formatIqd(item.price)} × {item.quantity}
+                      {item.lineTotal < item.price * item.quantity ? <span className="pill pill-promo">عرض قطعتين</span> : null}
                     </div>
                     <div className="price">{formatIqd(item.lineTotal)}</div>
                   </div>

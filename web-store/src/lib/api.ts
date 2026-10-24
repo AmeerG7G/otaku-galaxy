@@ -62,7 +62,12 @@ export async function apiFetch<T>(path: string, request: ApiRequest = {}): Promi
     if (value !== undefined && value !== null && value !== '') url.searchParams.set(key, String(value));
   }
 
-  const headers: Record<string, string> = { Accept: 'application/json', 'Accept-Language': 'ar' };
+  // `X-OG-Unpriced: 1`: this storefront renders a product whose price is not
+  // announced yet as «قريباً — السعر يُعلن لاحقاً» with no add-to-cart, so the
+  // catalog may return it (the installed app never asks — it would read the
+  // missing price as 0). Only catalog reads look at it; it is sent on every
+  // call so no catalog route can be missed.
+  const headers: Record<string, string> = { Accept: 'application/json', 'Accept-Language': 'ar', 'X-OG-Unpriced': '1' };
   if (request.body !== undefined) headers['Content-Type'] = 'application/json';
   if (request.token) headers.Authorization = `Bearer ${request.token}`;
   if (request.idempotencyKey) headers['Idempotency-Key'] = request.idempotencyKey;

@@ -483,6 +483,19 @@ textarea {
   white-space: nowrap;
 }
 
+.price-soon {
+  display: block;
+  color: var(--warning-text);
+  font-weight: 700;
+  font-size: 0.9rem;
+  /* Longer than a price: it wraps inside a narrow card instead of overflowing it. */
+  overflow-wrap: anywhere;
+}
+
+.price-soon--detail {
+  font-size: 1.1rem;
+}
+
 .price-row {
   display: flex;
   flex-wrap: wrap;

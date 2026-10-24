@@ -7,12 +7,19 @@ import { formatIqd } from '@/lib/format';
 import type { CheckoutQuote, Governorate, QuoteIssue, Zone } from '@/lib/types';
 import { bff } from './client-api';
 
-const CART_CONFLICTS = new Set(['PRODUCT_PRICE_CHANGED', 'INSUFFICIENT_STOCK', 'PRODUCT_UNAVAILABLE', 'QUOTE_CHANGED']);
+const CART_CONFLICTS = new Set([
+  'PRODUCT_PRICE_CHANGED',
+  'INSUFFICIENT_STOCK',
+  'PRODUCT_UNAVAILABLE',
+  'PRODUCT_NOT_PRICED',
+  'QUOTE_CHANGED',
+]);
 
 function issueText(issue: QuoteIssue, name: string): string {
-  return issue.code === 'INSUFFICIENT_STOCK'
-    ? `«${name}»: المتوفر ${issue.available} فقط`
-    : `«${name}» لم يعد متاحاً`;
+  if (issue.code === 'INSUFFICIENT_STOCK') return `«${name}»: المتوفر ${issue.available} فقط`;
+  // A product whose price was withdrawn after it reached the cart (084).
+  if (issue.code === 'PRODUCT_NOT_PRICED') return `«${name}»: السعر لم يُعلن بعد — أزله من السلة`;
+  return `«${name}» لم يعد متاحاً`;
 }
 
 /**

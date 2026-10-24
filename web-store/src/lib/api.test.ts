@@ -49,6 +49,8 @@ describe('catalog reads', () => {
       expect(headers['X-OG-Client-IP'], url).toBe(SHOPPER);
       expect(headers['X-OG-Client-Signature'], url).toMatch(/^\d+\.[0-9a-f]{64}$/);
       expect(headers.Authorization, url).toBeUndefined();
+      // This storefront shows unpriced products as «قريباً» (084); the app never opts in.
+      expect(headers['X-OG-Unpriced'], url).toBe('1');
     }
   });
 });

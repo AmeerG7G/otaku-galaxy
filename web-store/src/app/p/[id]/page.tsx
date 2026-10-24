@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { AddToCart } from '@/components/AddToCart';
 import { ApiError } from '@/lib/api';
 import { getProduct, isUuid } from '@/lib/catalog';
-import { formatIqd } from '@/lib/format';
+import { formatIqd, pairOfferLabel, PRICE_COMING_SOON } from '@/lib/format';
 import { readSession } from '@/lib/server-session';
 import type { Product } from '@/lib/types';
 
@@ -58,18 +58,35 @@ export default async function ProductPage({ params }: Props) {
 
       <div>
         <h1>{product.name}</h1>
-        <p className="price-row">
-          <span className="price">{formatIqd(product.price)}</span>
-          {product.previousPrice ? <span className="price-previous">{formatIqd(product.previousPrice)}</span> : null}
-          {product.discountPercent ? <span className="pill pill-promo">خصم {product.discountPercent}٪</span> : null}
-        </p>
-        {product.hasDeliveryPromo && product.deliveryPromoAmount > 0 ? (
-          <p className="pill pill-promo">خصم {formatIqd(product.deliveryPromoAmount)} من التوصيل</p>
-        ) : null}
-        {product.stock > 0 && product.stock <= 3 ? <p className="pill pill-low">متبقٍّ {product.stock} فقط</p> : null}
-        {product.description ? <p>{product.description}</p> : null}
-        <AddToCart productId={product.id} stock={product.stock} options={product.options ?? []} signedIn={Boolean(session)} />
-        <p className="hint">الدفع عند الاستلام — تتواصل معك الإدارة لتأكيد الطلب.</p>
+        {product.price === null ? (
+          // Announced before its price (084): shown, never sold — no add-to-cart,
+          // no stock state. The API refuses it at cart, quote and order anyway.
+          <>
+            <p className="price-soon price-soon--detail">{PRICE_COMING_SOON}</p>
+            {product.description ? <p>{product.description}</p> : null}
+            <p className="hint">يُتاح الطلب حين يُعلن السعر.</p>
+          </>
+        ) : (
+          <>
+            <p className="price-row">
+              <span className="price">{formatIqd(product.price)}</span>
+              {product.previousPrice ? <span className="price-previous">{formatIqd(product.previousPrice)}</span> : null}
+              {product.discountPercent ? <span className="pill pill-promo">خصم {product.discountPercent}٪</span> : null}
+            </p>
+            {product.pairPrice != null ? (
+              <p className="pill pill-promo">
+                {pairOfferLabel(product.pairPrice)} بدل {formatIqd(product.price * 2)} — ولو اختلف الخيار
+              </p>
+            ) : null}
+            {product.hasDeliveryPromo && product.deliveryPromoAmount > 0 ? (
+              <p className="pill pill-promo">خصم {formatIqd(product.deliveryPromoAmount)} من التوصيل</p>
+            ) : null}
+            {product.stock > 0 && product.stock <= 3 ? <p className="pill pill-low">متبقٍّ {product.stock} فقط</p> : null}
+            {product.description ? <p>{product.description}</p> : null}
+            <AddToCart productId={product.id} stock={product.stock} options={product.options ?? []} signedIn={Boolean(session)} />
+            <p className="hint">الدفع عند الاستلام — تتواصل معك الإدارة لتأكيد الطلب.</p>
+          </>
+        )}
       </div>
     </article>
   );

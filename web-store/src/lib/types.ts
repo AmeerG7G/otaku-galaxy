@@ -39,7 +39,10 @@ export interface Product {
   id: string;
   name: string;
   description: string;
-  price: number;
+  /** `null` = coming soon, price not announced yet: shown, never sold (the API refuses it, PRODUCT_NOT_PRICED). */
+  price: number | null;
+  /** Price for two pieces of this product, any options (migration 085); `null`/absent = no offer. */
+  pairPrice?: number | null;
   stock: number;
   images: string[];
   categoryId: string;
@@ -78,6 +81,8 @@ export interface CartLine {
   optionValue: string | null;
   quantity: number;
   unitPrice: number;
+  pairPrice?: number | null;
+  /** From the server, after the two-piece offer across this product's lines — never computed here. */
   lineTotal: number;
   stock: number;
   hasDeliveryPromo: boolean;
@@ -121,11 +126,13 @@ export interface QuoteLine {
   optionValue: string | null;
   quantity: number;
   unitPrice: number;
+  pairPrice?: number | null;
   lineTotal: number;
 }
 
 export type QuoteIssue =
   | { code: 'PRODUCT_UNAVAILABLE'; productId: string }
+  | { code: 'PRODUCT_NOT_PRICED'; productId: string }
   | { code: 'INSUFFICIENT_STOCK'; productId: string; available: number };
 
 export interface OrderItem {
@@ -134,7 +141,10 @@ export interface OrderItem {
   imageUrl: string | null;
   optionValue: string | null;
   price: number;
+  /** Two-piece price at order time (085); `null`/absent = no offer or an older order. */
+  pairPrice?: number | null;
   quantity: number;
+  /** What the shopper paid for the line — below `price × quantity` when the two-piece offer applied. */
   lineTotal: number;
 }
 

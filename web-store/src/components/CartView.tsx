@@ -3,7 +3,7 @@
 import Link from '@/components/Link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { formatIqd } from '@/lib/format';
+import { formatIqd, pairOfferLabel } from '@/lib/format';
 import type { CartLine } from '@/lib/types';
 import { bff } from './client-api';
 import { useHydrated } from './use-hydrated';
@@ -55,6 +55,15 @@ export function CartView({ lines }: { lines: CartLine[] }) {
                 </Link>
                 {line.optionValue ? <div className="hint">{line.optionValue}</div> : null}
                 <div className="price">{formatIqd(line.unitPrice)}</div>
+                {pairOfferLabel(line.pairPrice) ? <div className="hint">{pairOfferLabel(line.pairPrice)}</div> : null}
+                {line.quantity > 1 || line.lineTotal !== line.unitPrice * line.quantity ? (
+                  // The server's line total — after the two-piece offer across
+                  // this product's lines, so it can be below price × quantity.
+                  <div className="hint">
+                    الإجمالي <span className="price">{formatIqd(line.lineTotal)}</span>
+                    {line.lineTotal < line.unitPrice * line.quantity ? <span className="pill pill-promo">عرض قطعتين</span> : null}
+                  </div>
+                ) : null}
                 <div className="cart-line__actions">
                   <div className="stepper" role="group" aria-label={`كمية ${line.productName}`}>
                     <button

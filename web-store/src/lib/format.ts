@@ -11,6 +11,14 @@ export function formatIqd(amount: number): string {
   return `${Math.round(amount).toFixed(0)}\u00A0د.ع`;
 }
 
+/** «قطعتان بـ7000 د.ع» — the two-piece offer label; `null` when the product has none. */
+export function pairOfferLabel(pairPrice: number | null | undefined): string | null {
+  return pairPrice === null || pairPrice === undefined ? null : `قطعتان بـ${formatIqd(pairPrice)}`;
+}
+
+/** Shown instead of a price while it is not announced (migration 084). */
+export const PRICE_COMING_SOON = 'قريباً — السعر يُعلن لاحقاً';
+
 const STATUS_LABELS: Record<string, string> = {
   PENDING_ADMIN_CONFIRMATION: 'بانتظار تأكيد الإدارة',
   CONFIRMED: 'تم تأكيد الطلب',
