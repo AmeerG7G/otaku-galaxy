@@ -323,7 +323,8 @@ class _CartItemCard extends StatelessWidget {
     final theme = Theme.of(context);
     final cart = context.read<CartCubit>();
     final option = item.selectedOption;
-    final lineTotal = item.product.price * item.quantity;
+    // من الخادم — بعد عرض القطعتين (085) — لا السعر × الكمية.
+    final lineTotal = item.lineTotal;
 
     return OtakuPanel(
       padding: const EdgeInsets.all(12),

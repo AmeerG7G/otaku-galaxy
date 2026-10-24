@@ -195,6 +195,9 @@ class Order {
       }),
       quantity: json['quantity'] as int? ?? 1,
       selectedOption: json['optionValue'] as String?,
+      // ما دفعه الزبون عن السطر — لقطةٌ محفوظة، قد تقلّ عن السعر × الكمية
+      // بعرض القطعتين (085).
+      serverLineTotal: (json['lineTotal'] as num?)?.toDouble(),
     );
   }
 }

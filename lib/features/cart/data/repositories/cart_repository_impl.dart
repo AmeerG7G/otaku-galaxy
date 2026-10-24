@@ -105,6 +105,8 @@ class CartRepositoryImpl implements CartRepository {
       quantity: line['quantity'] as int? ?? 1,
       selectedOption: line['optionValue'] as String?,
       lineId: line['id']?.toString(),
+      // بعد عرض القطعتين (085) — يُعرض كما هو ولا يُحسب هنا.
+      serverLineTotal: (line['lineTotal'] as num?)?.toDouble(),
     );
   }
 }
