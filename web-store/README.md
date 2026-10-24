@@ -29,7 +29,8 @@ npm run dev                  # http://127.0.0.1:3000
 
 | Variable | Purpose |
 |---|---|
-| `API_INTERNAL_URL` | The API as reached from this server (loopback or a private network), e.g. `http://127.0.0.1:4000/api`. |
+| `API_INTERNAL_URL` | The API as reached from this server (loopback or a private network): staging `http://127.0.0.1:4001/api`, production `http://127.0.0.1:4000/api`. **Required in production** — there is no fallback, because the development default (`:4000`) is the production API's port. |
+| `PORT` | Port for `npm start` (always on `127.0.0.1`). Default `3000`; staging needs its own (e.g. `3001`) on a shared server. |
 | `MEDIA_ORIGIN` | Public origin that serves `/uploads/...` to browsers (the API's public host). |
 | `SITE_ORIGIN` | Canonical public origin, e.g. `https://otakugalaxystore.com`. Mutating `/bff/*` requests are accepted only from this `Origin`. **Required in production**, and `https` there (only a loopback origin may be `http`). |
 | `SESSION_SEAL_KEYS` | Comma-separated 32-byte keys (base64url) that seal the session cookie. The first one seals; all of them open, which allows rotation. **Required in production.** |
@@ -49,7 +50,7 @@ CI runs exactly these (`.github/workflows/ci.yml`, job `web-store`).
 **End to end (Playwright).** These run against a production build and a real local API; nothing is mocked:
 
 ```bash
-npm run build && npm start &                  # with the variables above
+npm run build && API_INTERNAL_URL=http://127.0.0.1:4000/api npm start &   # a production build needs API_INTERNAL_URL
 SEED_ADMIN_PHONE=… SEED_ADMIN_PASSWORD=… npm run e2e
 ```
 
@@ -92,7 +93,7 @@ Screenshots land in `test-results/screens/`. This is browser emulation; see the 
 
 ## Deployment notes (not done in this phase)
 
-- Run `npm start`. It listens on **127.0.0.1:3000 only**, behind nginx.
+- Run `npm start`. It listens on **127.0.0.1 only** (`PORT`, default 3000), behind nginx. Staging runs from its own checkout with its own `PORT` and `API_INTERNAL_URL` — see `deploy/README.md` §13 (marked «لا تُشغَّل» until reviewed on a server).
 - nginx must:
   - **overwrite** both client IP headers. The site signs whatever `X-Real-IP` it receives as the shopper's IP, so a value passed through from the browser would let a visitor choose their own rate-limit bucket:
 

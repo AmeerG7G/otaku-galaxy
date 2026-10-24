@@ -22,8 +22,30 @@ function stripTrailingSlash(value: string): string {
   return value.replace(/\/+$/, '');
 }
 
+/**
+ * The API as reached from this server. Required in production: the
+ * development fallback, 127.0.0.1:4000, is the production API's port on a
+ * shared host (`deploy/README.md`), so a staging site started without the
+ * variable silently served production's catalog, cart and orders.
+ */
 export function apiBaseUrl(): string {
-  return stripTrailingSlash(trimmed('API_INTERNAL_URL') ?? 'http://127.0.0.1:4000/api');
+  const raw = trimmed('API_INTERNAL_URL');
+  if (!raw) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('API_INTERNAL_URL is required in production (e.g. http://127.0.0.1:4001/api for staging).');
+    }
+    return 'http://127.0.0.1:4000/api';
+  }
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error('API_INTERNAL_URL must be an http(s) URL such as http://127.0.0.1:4001/api.');
+  }
+  if ((url.protocol !== 'https:' && url.protocol !== 'http:') || url.username || url.password || url.search || url.hash) {
+    throw new Error('API_INTERNAL_URL must be an http(s) URL such as http://127.0.0.1:4001/api.');
+  }
+  return stripTrailingSlash(raw);
 }
 
 /** Public origin that serves `/uploads/...` to browsers. */
