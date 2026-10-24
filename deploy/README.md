@@ -20,6 +20,10 @@
 > | منفذ API / الموقع | `4001` / `3001` | `4000` / `3000` |
 > | وسم الصورة | `staging-<commit>` | `prod-<commit>` |
 >
+> **كل كتلة أوامر قشرةٌ فرعية** `( set -e … )` تبدأ بـ`cd` إلى نسخة بيئتها وفحص فرعها:
+> `cd` فاشل أو فرعٌ خاطئ يوقف الكتلة قبل أي بناء، ولا يبقى `export` بعدها ليصيب كتلة
+> البيئة الأخرى. لا تُلصق الأوامر سطراً سطراً في قشرتك.
+>
 > **لا تُشغَّل على خادمٍ يستضيف بيئةً قائمة** قبل §٠ أدناه: الأوامر لم تُنفَّذ على
 > خادمٍ حقيقي، ونقلُ بيئةٍ قائمة إلى اسم مشروعٍ أو مجلّدٍ آخر يُنشئ حجم صورٍ فارغاً
 > بجانب القديم. §١٣ (الموقع) **لا تُشغَّل** كلها حتى تُراجَع على خادم.
@@ -30,12 +34,22 @@
 docker compose ls                                   # أسماء المشاريع القائمة
 docker ps --format '{{.Names}}\t{{.Image}}\t{{.Ports}}'
 docker volume ls | grep -i uploads
-pm2 ls 2>/dev/null; pm2 describe otaku-api-prod 2>/dev/null | grep -E 'exec cwd|script path'
+pm2 ls 2>/dev/null
+for app in otaku-api-staging otaku-api-prod otaku-web-staging otaku-web-prod; do
+  pm2 describe "$app" 2>/dev/null | grep -E 'exec cwd|script path' | sed "s/^/$app /"
+done
 ls -d /srv/otaku-galaxy* 2>/dev/null
+nginx -v; sudo nginx -t; ls -l /etc/nginx/sites-enabled/
 ```
 
 إن كانت بيئةٌ تعمل باسم مشروعٍ أو مجلّدٍ غير ما في الجدول أعلاه: **توقّف**. نقلُها
-قرارٌ للمشغّل مع نسخةٍ احتياطية من حجم الصور، لا خطوةٌ ضمن هذا الدليل.
+قرارٌ للمشغّل مع نسخةٍ احتياطية من حجم الصور، لا خطوةٌ ضمن هذا الدليل. الاستثناء
+الوحيد: `otaku-api-staging` في `/srv/otaku-galaxy/backend` (التخطيط القديم) — §٣ يحذفه
+ويعيد إنشاءه في مجلّده، لأن إعادة تشغيل تطبيق PM2 تُبقي مجلّده القديم.
+
+`sudo nginx -t` يجب أن ينجح قبل أي شيء، وملفّا `deploy/nginx` يستعملان `http2 on;`
+الذي يحتاج nginx **1.25.1 أو أحدث** (أوبونتو 24.04 يأتي بـ1.24): على أقدم منه يفشل
+`nginx -t` في §٤ فيتراجع الأمر عن التفعيل — ارفع nginx أولاً.
 
 ---
 
@@ -63,35 +77,37 @@ ls -d /srv/otaku-galaxy* 2>/dev/null
 compose برسالة. وهي مطلوبة حتى لأمر `migrate`، لأن compose يفسّر الملف كله.
 
 ```bash
-# الاختبار المسبق — من نسخته، وفرعُها staging
-cd /srv/otaku-galaxy-staging
-git rev-parse --abbrev-ref HEAD                       # يجب أن يطبع staging
-export ENV_FILE=./backend/.env.staging HOST_PORT=4001 IMAGE_TAG=staging-$(git rev-parse --short HEAD)
+# مرةً واحدة: نسخة الاختبار المسبق على فرع staging
+sudo install -d -o "$USER" -g "$USER" /srv/otaku-galaxy-staging
+git clone --branch staging https://github.com/AmeerG7G/otaku-galaxy.git /srv/otaku-galaxy-staging
 
-# البناء
-docker compose -p otaku-staging build api
-
-# الهجرات — خطوة صريحة قبل تشغيل أي نسخة جديدة
-docker compose -p otaku-staging --profile tools run --rm migrate
-
-# التشغيل — على منفذ المضيف 4001
-docker compose -p otaku-staging up -d api
-
-# التحقّق
-docker compose -p otaku-staging ps    # يجب أن تكون الحالة healthy
-curl -fsS localhost:4001/health
+# كل إصدار
+( set -e
+  cd /srv/otaku-galaxy-staging
+  test "$(git rev-parse --abbrev-ref HEAD)" = staging
+  export ENV_FILE=./backend/.env.staging HOST_PORT=4001 IMAGE_TAG=staging-$(git rev-parse --short HEAD)
+  # الصورتان معاً: `run` لا يبني `migrate` إن وُجدت صورتها، فتبقى هجرات الإصدار السابق
+  docker compose -p otaku-staging build api migrate
+  docker compose -p otaku-staging --profile tools run --rm migrate
+  docker compose -p otaku-staging up -d api
+  docker compose -p otaku-staging ps          # يجب أن تكون الحالة healthy
+  curl -fsS localhost:4001/health
+)
 ```
 
 للإنتاج — من نسخة الإنتاج وحدها، بعد أن مرّ الإصدار نفسه على الاختبار المسبق:
 
 ```bash
-cd /srv/otaku-galaxy
-git rev-parse --abbrev-ref HEAD                       # يجب أن يطبع prod
-export ENV_FILE=./backend/.env.prod HOST_PORT=4000 IMAGE_TAG=prod-$(git rev-parse --short HEAD)
-docker compose -p otaku-prod build api
-docker compose -p otaku-prod --profile tools run --rm migrate
-docker compose -p otaku-prod up -d api
-curl -fsS localhost:4000/health
+( set -e
+  cd /srv/otaku-galaxy
+  test "$(git rev-parse --abbrev-ref HEAD)" = prod
+  export ENV_FILE=./backend/.env.prod HOST_PORT=4000 IMAGE_TAG=prod-$(git rev-parse --short HEAD)
+  docker compose -p otaku-prod build api migrate
+  docker compose -p otaku-prod --profile tools run --rm migrate
+  docker compose -p otaku-prod up -d api
+  docker compose -p otaku-prod ps
+  curl -fsS localhost:4000/health
+)
 ```
 
 ### المنفذان: الداخلي والخارجي
@@ -124,20 +140,34 @@ curl -fsS localhost:4000/health
 (نسبيٌّ إلى المجلّد) كان واحداً للبيئتين.
 
 ```bash
-# الاختبار المسبق — من نسخته
-cd /srv/otaku-galaxy-staging/backend
-npm ci && npm run build
-npm run db:migrate:staging
+# مرةً واحدة: النسخة (§٢)، ومجلّد سجلّات يملكه مستخدم PM2 — `mkdir` بـsudo يتركه
+# لـroot فيفشل فتح السجلّات ويبقى التطبيق `errored`.
+sudo install -d -o "$USER" -g "$USER" /var/log/otaku-galaxy
 
-cd /srv/otaku-galaxy-staging        # ملف PM2 في جذر المستودع لا في backend/
-sudo mkdir -p /var/log/otaku-galaxy
-pm2 start deploy/pm2/ecosystem.config.cjs --only otaku-api-staging
-pm2 save && pm2 startup             # ليبقى بعد إعادة تشغيل الخادم
-curl -fsS localhost:4001/health
+( set -e
+  cd /srv/otaku-galaxy-staging
+  test "$(git rev-parse --abbrev-ref HEAD)" = staging
+  cd backend
+  npm ci && npm run build
+  # بيئةٌ نظيفة (`env -i`): dotenv لا يطغى على متغيّرٍ موجود، وPM2 يدمج متغيّرات
+  # القشرة في التطبيق — `DATABASE_URL` مُصدَّرٌ في قشرتك كان سيصير قاعدة الاختبار المسبق.
+  env -i HOME="$HOME" PATH="$PATH" npm run db:migrate:staging
+  cd ..                                     # ملف PM2 في جذر المستودع لا في backend/
+  # تطبيقٌ بالاسم نفسه من التخطيط القديم يُبقي مجلّده عند إعادة التشغيل: يُحذف أولاً.
+  if pm2 describe otaku-api-staging >/dev/null 2>&1 &&
+     ! pm2 describe otaku-api-staging | grep -q 'exec cwd.*/srv/otaku-galaxy-staging/backend'; then
+    pm2 delete otaku-api-staging
+  fi
+  env -i HOME="$HOME" PATH="$PATH" pm2 start deploy/pm2/ecosystem.config.cjs --only otaku-api-staging
+  pm2 save
+  curl -fsS localhost:4001/health
+)
+pm2 startup     # مرةً واحدة: يطبع أمر sudo — شغّله، وإلا لا ينجو PM2 من إعادة الإقلاع
 ```
 
-للإنتاج الأوامر نفسها من `/srv/otaku-galaxy` مع `db:migrate:prod` و`--only otaku-api-prod`
-و`localhost:4000`. لا يُبنى في مجلّد الإنتاج إلا إصدار الإنتاج.
+للإنتاج الكتلة نفسها من `/srv/otaku-galaxy` بفرع `prod` و`db:migrate:prod` و`--only
+otaku-api-prod` و`localhost:4000` — بلا خطوة الحذف (مجلّد الإنتاج لم يتغيّر). لا يُبنى في
+مجلّد الإنتاج إلا إصدار الإنتاج.
 
 الأسرار ليست في ملف PM2. التطبيق يقرأ `.env.${APP_ENV}` من مجلّد التشغيل
 عبر dotenv، فيكفي أن يحدّد PM2 البيئة ويترك القيم لملفٍ يعيش على الخادم
@@ -157,18 +187,32 @@ curl -fsS localhost:4001/health
 `/etc/letsencrypt/live/<النطاق>/`؛ تفعيلُ الموقع قبل وجودها يُفشل `nginx -t`، وكان
 الرابط يبقى في `sites-enabled` بعد الفشل، فيرفض nginx الإقلاع عند أول إعادة تشغيل
 أو إقلاعٍ للخادم — **ومعه الإنتاج** الذي يخدمه nginx نفسه. الأمر الآن لا يفعّل
-بلا شهادة، ويلغي التفعيل إن فشل الفحص:
+بلا شهادة، ويُرجع ما كان إن فشل الفحص: الملف السابق يعود، والرابط يُزال فقط إن
+أنشأه هذا التشغيل (تحديثُ موقعٍ مفعَّل لا يُطفئه). يُشغَّل من نسخة البيئة نفسها، فملف
+الإنتاج من `/srv/otaku-galaxy` لا من نسخة الاختبار المسبق. يحتاج nginx 1.25.1 أو أحدث
+(`http2 on;` — انظر §٠):
 
 ```bash
-DOMAIN=staging-api.example.com CONF=staging-api.conf     # أو api.example.com / api.conf
-if sudo test -s /etc/letsencrypt/live/$DOMAIN/fullchain.pem; then
-  sudo cp deploy/nginx/$CONF /etc/nginx/sites-available/
-  sudo ln -s /etc/nginx/sites-available/$CONF /etc/nginx/sites-enabled/
-  if sudo nginx -t; then sudo systemctl reload nginx
-  else sudo rm /etc/nginx/sites-enabled/$CONF; echo "nginx -t فشل — أُلغي تفعيل $CONF"; fi
-else
-  echo "لا شهادة لـ$DOMAIN — نفّذ §٥ أولاً"
-fi
+( set -e
+  cd /srv/otaku-galaxy-staging                  # الإنتاج: /srv/otaku-galaxy وفرع prod
+  test "$(git rev-parse --abbrev-ref HEAD)" = staging
+  DOMAIN=staging-api.example.com CONF=staging-api.conf   # الإنتاج: api.example.com / api.conf
+  AV=/etc/nginx/sites-available/$CONF EN=/etc/nginx/sites-enabled/$CONF
+  if ! sudo test -s /etc/letsencrypt/live/$DOMAIN/fullchain.pem; then
+    echo "لا شهادة لـ$DOMAIN — نفّذ §٥ أولاً"; false
+  fi
+  if sudo test -e "$AV"; then sudo cp -p "$AV" "$AV.bak"; fi
+  sudo cp deploy/nginx/$CONF "$AV"
+  CREATED=0
+  if ! sudo test -e "$EN"; then sudo ln -s "$AV" "$EN"; CREATED=1; fi
+  if sudo nginx -t; then
+    sudo systemctl reload nginx
+  else
+    if [ "$CREATED" = 1 ]; then sudo rm "$EN"; fi
+    if sudo test -e "$AV.bak"; then sudo mv "$AV.bak" "$AV"; else sudo rm "$AV"; fi
+    echo "nginx -t فشل — أُعيد الإعداد السابق كما كان"; false
+  fi
+)
 ```
 
 **[حرِج] `TRUST_PROXY` والوسيط يعملان معاً أو لا يعمل أيٌّ منهما.** الخادم
@@ -193,9 +237,9 @@ fi
 ```bash
 sudo apt install certbot
 sudo mkdir -p /var/www/certbot
-DOMAIN=staging-api.example.com
 
-sudo tee /etc/nginx/sites-available/acme-$DOMAIN.conf >/dev/null <<NGINX
+( DOMAIN=staging-api.example.com
+  sudo tee /etc/nginx/sites-available/acme-$DOMAIN.conf >/dev/null <<NGINX
 server {
     listen 80;
     listen [::]:80;
@@ -204,13 +248,14 @@ server {
     location / { return 404; }
 }
 NGINX
-sudo ln -s /etc/nginx/sites-available/acme-$DOMAIN.conf /etc/nginx/sites-enabled/
-if sudo nginx -t; then
-  sudo systemctl reload nginx
-  sudo certbot certonly --webroot -w /var/www/certbot -d $DOMAIN \
-    --deploy-hook 'systemctl reload nginx'
-fi
-sudo rm /etc/nginx/sites-enabled/acme-$DOMAIN.conf && sudo nginx -t && sudo systemctl reload nginx
+  sudo ln -s /etc/nginx/sites-available/acme-$DOMAIN.conf /etc/nginx/sites-enabled/
+  if sudo nginx -t; then
+    sudo systemctl reload nginx
+    sudo certbot certonly --webroot -w /var/www/certbot -d $DOMAIN \
+      --deploy-hook 'systemctl reload nginx'
+  fi
+  sudo rm /etc/nginx/sites-enabled/acme-$DOMAIN.conf && sudo nginx -t && sudo systemctl reload nginx
+)
 ```
 
 ثم §٤ للنطاق نفسه.
@@ -332,7 +377,6 @@ compose و`kill_timeout: 15000` في PM2 أطول من ذلك عمداً.
 
 ### الإنتاج
 كل ما سبق بأسرار **مختلفة**، وزيادةً:
-- [ ] اعتماد مزوّد رسائل حقيقي ومعرّف مرسِل معتمد
 - [ ] نسخ احتياطية مجدولة مع **استرجاع مُختبَر فعلاً** (نسخة لم تُستَرجع ليست نسخة)
 - [ ] مراقبة وتنبيه
 - [ ] خطة تراجع (وسمُ الصور بإصدار، والاحتفاظ بالسابق)
@@ -386,8 +430,11 @@ compose و`kill_timeout: 15000` في PM2 أطول من ذلك عمداً.
 ### قبل الهجرة — تشخيص الجنس (للقراءة فقط، على كل بيئة)
 
 ```bash
-cd backend && PGOPTIONS='-c default_transaction_read_only=on' \
-  psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f scripts/gender-integrity-diagnostic.sql
+( cd /srv/otaku-galaxy-staging/backend          # الإنتاج: /srv/otaku-galaxy/backend و.env.prod
+  # متغيّرٌ غير مُصدَّر داخل قشرةٍ فرعية: يصل psql وسيطاً ولا يبقى في قشرتك.
+  DATABASE_URL="$(sed -n 's/^DATABASE_URL=//p' .env.staging | head -1)"
+  PGOPTIONS='-c default_transaction_read_only=on' \
+    psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f scripts/gender-integrity-diagnostic.sql )
 ```
 
 - **الصنف A يجب أن يكون صفراً** (زبونٌ بلا جنس أُنشئ بعد ٠٤٠). غير الصفر عطلٌ
@@ -415,10 +462,10 @@ cd backend && PGOPTIONS='-c default_transaction_read_only=on' \
 ### بعد الهجرة — بناء التاريخ مرة واحدة
 
 ```bash
-cd backend && npm run analytics:rebuild:staging -- --from <أول شهر فيه طلبات> --to <الشهر الحالي> --reason "backfill STEP 67"
+( cd /srv/otaku-galaxy-staging/backend && env -i HOME="$HOME" PATH="$PATH" npm run analytics:rebuild:staging -- --from <أول شهر فيه طلبات> --to <الشهر الحالي> --reason "backfill STEP 67" )
 ```
 
-- (`analytics:rebuild:prod` للإنتاج.) يعيد قراءة اللقطات المخزّنة ولا يكتب على لقطة
+- (`analytics:rebuild:prod` للإنتاج، من `/srv/otaku-galaxy/backend`.) يعيد قراءة اللقطات المخزّنة ولا يكتب على لقطة
   تكلفة أو دور أو علم. الأشهر الماضية تُغلق في أول نبضة بعد مهلة ٧ أيام؛ إعادة بناء
   شهرٍ مغلق تحتاج `--include-closed` وسبباً مكتوباً، وتُسجَّل قبل/بعد في
   `analytics_rebuild_log`. لا مسار HTTP لإعادة البناء.
@@ -477,23 +524,29 @@ cd backend && npm run analytics:rebuild:staging -- --from <أول شهر فيه 
 `backend/.env.staging`.
 
 ```bash
-cd /srv/otaku-galaxy-staging/web-store
-git rev-parse --abbrev-ref HEAD                      # يجب أن يطبع staging
-
-# الإعدادات — على الخادم وحده، لا تدخل Git (web-store/.gitignore)
-install -m 600 /dev/null .env.production.local
-$EDITOR .env.production.local
+# مرةً واحدة — الإعدادات على الخادم وحده، لا تدخل Git (web-store/.gitignore).
+# لا تُنشأ فوق ملفٍ موجود: `install /dev/null` يفرّغه.
+F=/srv/otaku-galaxy-staging/web-store/.env.production.local
+[ -e "$F" ] || install -m 600 /dev/null "$F"
+$EDITOR "$F"
 #   API_INTERNAL_URL=http://127.0.0.1:4001/api       ← API الاختبار المسبق لا 4000
 #   MEDIA_ORIGIN=https://staging-api.example.com
 #   SITE_ORIGIN=https://staging.example.com
 #   SESSION_SEAL_KEYS=<مفتاحٌ للاختبار المسبق وحده>
 #   BFF_SHARED_SECRET=<القيمة نفسها في backend/.env.staging>
 
-npm ci && npm run build
-
-cd /srv/otaku-galaxy-staging
-pm2 start deploy/pm2/ecosystem.config.cjs --only otaku-web-staging
-pm2 save
+# كل إصدار
+( set -e
+  cd /srv/otaku-galaxy-staging
+  test "$(git rev-parse --abbrev-ref HEAD)" = staging
+  cd web-store
+  npm ci && npm run build
+  cd ..
+  # `env -i`: Next لا يطغى على متغيّرٍ موجود من `.env.production.local`، وPM2 يدمج
+  # القشرة — `API_INTERNAL_URL` أو `PORT` مُصدَّران هنا كانا سيغلبان ملف البيئة.
+  env -i HOME="$HOME" PATH="$PATH" pm2 start deploy/pm2/ecosystem.config.cjs --only otaku-web-staging
+  pm2 save
+)
 ```
 
 **التحقّق — كلّه يجب أن ينجح قبل nginx:**

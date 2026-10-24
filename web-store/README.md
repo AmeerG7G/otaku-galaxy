@@ -50,7 +50,7 @@ CI runs exactly these (`.github/workflows/ci.yml`, job `web-store`).
 **End to end (Playwright).** These run against a production build and a real local API; nothing is mocked:
 
 ```bash
-npm run build && API_INTERNAL_URL=http://127.0.0.1:4000/api npm start &   # a production build needs API_INTERNAL_URL
+npm run build && API_INTERNAL_URL=http://127.0.0.1:4000/api npm start &   # with the variables above; a production build needs API_INTERNAL_URL
 SEED_ADMIN_PHONE=… SEED_ADMIN_PASSWORD=… npm run e2e
 ```
 
