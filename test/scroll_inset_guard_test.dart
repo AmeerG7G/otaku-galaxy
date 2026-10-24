@@ -24,6 +24,11 @@ const _handledElsewhere = <String, (int, String)>{
     1,
     'SafeArea',
   ),
+  // تنبيه التحديث الاختياري (STEP 70) — بطاقةٌ في الوسط داخل `SafeArea` كاملة.
+  'lib/features/app_update/presentation/widgets/optional_update_prompt.dart': (
+    1,
+    'SafeArea',
+  ),
   'lib/features/auth/presentation/screens/account_pending_screen.dart': (
     1,
     'SafeArea',

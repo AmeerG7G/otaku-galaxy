@@ -2,24 +2,34 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 
+import 'store_url.dart';
+
 /// إعدادات إجبار التحديث كما يضبطها المسؤول من لوحة التحكم.
 ///
 /// [CRITICAL] لا قيمة منها مخبوزة في Flutter. الحدّ الأدنى يُرفع من اللوحة
 /// بعد نشر نسخة جديدة، فلا يحتاج إجبارُ التحديث بناءَ تطبيقٍ ولا بناءَ خادم
 /// — وهو الغرض كلّه.
 ///
-/// [STEP 64 §16] ثلاثة حقول في اللوحة: التفعيل، والحدّ الأدنى، ورابط التحديث
-/// الواحد. لا رسالة مسؤول (النصّ المترجَم الافتراضي وحده) ولا «أحدث نسخة».
+/// [STEP 64 §16] التفعيل، والحدّ الأدنى، ورابط التحديث الواحد. لا رسالة
+/// مسؤول (النصّ المترجَم الافتراضي وحده).
+///
+/// [STEP 70] و«أحدث إصدار» (قرار المالك 2026-10-24): نسخةٌ دونه وليست دون
+/// الحدّ ترى تنبيهاً اختيارياً يُغلق (`OptionalUpdatePrompt`) — لا حجب.
 class AppVersionConfig {
   const AppVersionConfig({
     this.minimumSupportedVersion = '',
+    this.latestVersion = '',
     this.updateUrl = '',
   });
 
   /// الحدّ **الفعّال**: فارغٌ حين يكون الإجبار معطَّلاً.
   final String minimumSupportedVersion;
 
-  /// رابط زرّ «تحديث التطبيق» — واحدٌ للمنصّتين.
+  /// أحدث إصدار منشور — فارغٌ حين لا تنبيه.
+  final String latestVersion;
+
+  /// رابط زرّ «تحديث التطبيق» — واحدٌ للمنصّتين، ومتجرٌ رسمي دائماً
+  /// ([trustedStoreUrl])؛ فارغٌ إن لم يصل رابطٌ موثوق.
   final String updateUrl;
 
   /// الإعداد الفارغ = «لا حدّ أدنى» = لا حجب. هو حالة ما قبل الضبط وحالة
@@ -34,7 +44,10 @@ class AppVersionConfig {
   ///
   /// والرابط: `updateUrl`، وإلا رابطُ المتجر القديم لهذه المنصّة ثم الآخر —
   /// زرُّ تحديثٍ يفتح متجراً غير مثالي خيرٌ من زرٍّ لا يفعل شيئاً في شاشة لا
-  /// مخرج منها سواه.
+  /// مخرج منها سواه. وأوّلُها **الموثوق**: رابطٌ ليس متجراً رسمياً لا يُفتح.
+  ///
+  /// و`latestVersion`: يُقرأ ما لم يقل الخادم `updateMode: none` (خادمٌ قبل
+  /// STEP 70 يرسله فارغاً).
   factory AppVersionConfig.fromJson(Map<String, dynamic> json, {bool? isIos}) {
     String read(String key) {
       final value = json[key];
@@ -45,19 +58,21 @@ class AppVersionConfig {
     final ios = isIos ?? (!kIsWeb && Platform.isIOS);
     final legacyPreferred = read(ios ? 'iosStoreUrl' : 'androidStoreUrl');
     final legacyOther = read(ios ? 'androidStoreUrl' : 'iosStoreUrl');
-    final url = read('updateUrl');
+    final url =
+        trustedStoreUrl(read('updateUrl')) ??
+        trustedStoreUrl(legacyPreferred) ??
+        trustedStoreUrl(legacyOther) ??
+        '';
     return AppVersionConfig(
       minimumSupportedVersion: enabled ? read('minimumSupportedVersion') : '',
-      updateUrl: url.isNotEmpty
-          ? url
-          : legacyPreferred.isNotEmpty
-          ? legacyPreferred
-          : legacyOther,
+      latestVersion: json['updateMode'] == 'none' ? '' : read('latestVersion'),
+      updateUrl: url,
     );
   }
 
   Map<String, dynamic> toJson() => {
     'minimumSupportedVersion': minimumSupportedVersion,
+    'latestVersion': latestVersion,
     'updateUrl': updateUrl,
   };
 }

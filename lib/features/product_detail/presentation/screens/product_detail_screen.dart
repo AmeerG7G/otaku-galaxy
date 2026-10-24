@@ -394,6 +394,41 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                 ],
               ),
 
+              // [STEP 70] عرض القطعتين (085): المبلغ نفسه الذي تحسبه العربة على
+              // الخادم لقطعتين من هذا المنتج — عرضٌ فقط، والحساب على الخادم.
+              if (product.pairPrice != null) ...[
+                const SizedBox(height: 10),
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: Container(
+                    key: const Key('product_pair_offer'),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 11,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.secondary.withValues(alpha: 0.10),
+                      border: Border.all(
+                        color: AppColors.secondary.withValues(alpha: 0.45),
+                      ),
+                      borderRadius: BorderRadius.circular(AppDimens.radiusFull),
+                    ),
+                    child: Text(
+                      context.strings.p('pairOffer', {
+                        'price': context.strings.p('priceIqd', {
+                          'amount': product.pairPrice!.toStringAsFixed(0),
+                        }),
+                      }),
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        fontSize: 12.5,
+                        fontWeight: AppDimens.weightExtraBold,
+                        color: AppColors.secondary,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+
               const SizedBox(height: 14),
               ProductStockPill.forProduct(product),
 

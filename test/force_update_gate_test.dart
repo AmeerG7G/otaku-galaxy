@@ -65,7 +65,7 @@ class _ConfigAdapter implements HttpClientAdapter {
     if (hold != null) await hold.future;
     return ResponseBody.fromString(
       '{"success":true,"data":{"minimumSupportedVersion":"$minimum",'
-      '"latestVersion":"$latest","androidStoreUrl":"https://play.example/x",'
+      '"latestVersion":"$latest","androidStoreUrl":"https://play.google.com/store/apps/details?id=com.otakugalaxy.otaku_galaxy",'
       '"iosStoreUrl":"","updateMessage":""},"message":null}',
       200,
       headers: {

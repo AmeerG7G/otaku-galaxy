@@ -16,11 +16,22 @@ class AppVersionCheck {
     required this.updateRequired,
     required this.installedVersion,
     required this.config,
+    this.updateAvailable = false,
+    this.fromServer = false,
   });
 
+  /// دون الحدّ الأدنى ← شاشة الحجب.
   final bool updateRequired;
+
+  /// [STEP 70] ليست دون الحدّ لكنها دون «أحدث إصدار» ← تنبيهٌ يُغلق.
+  final bool updateAvailable;
+
   final String installedVersion;
   final AppVersionConfig config;
+
+  /// الحكم من ردٍّ وصل الآن من الخادم — لا من المحفوظ بعد فشل الشبكة.
+  /// `ForceUpdateGate` يعيد المحاولة ما دام `false`.
+  final bool fromServer;
 
   static const allowed = AppVersionCheck(
     updateRequired: false,
@@ -45,6 +56,16 @@ class AppVersionRepository {
 
   /// آخر إعداد وصل من الخادم — يُحفظ ليصمد الحجب عبر إعادة التشغيل.
   static const _cacheKey = 'app_version_config_v1';
+
+  /// آخر «أحدث إصدار» أغلق الزبون تنبيهه — التنبيه مرّةٌ لكل إصدار.
+  static const _dismissedKey = 'app_update_prompt_dismissed_v1';
+
+  /// الإصدار الذي أُغلق تنبيهه، أو نصٌّ فارغ.
+  String dismissedPromptVersion() => _prefs.getString(_dismissedKey) ?? '';
+
+  /// يُغلق تنبيه [version] فلا يعود حتى يصدر إصدارٌ أحدث منه.
+  Future<void> dismissPrompt(String version) =>
+      _prefs.setString(_dismissedKey, version);
 
   String? _installedVersion;
 
@@ -86,23 +107,40 @@ class AppVersionRepository {
     final installed = await installedVersion();
 
     AppVersionConfig config;
+    var fromServer = false;
     try {
       final data = await _api.get(ApiEndpoints.appVersion);
       config = AppVersionConfig.fromJson(
         (data as Map<String, dynamic>?) ?? const {},
       );
+      fromServer = true;
       await _prefs.setString(_cacheKey, jsonEncode(config.toJson()));
     } catch (_) {
       config = cachedConfig();
     }
 
+    return _verdict(installed, config, fromServer: fromServer);
+  }
+
+  /// الحكم من إعدادٍ واحد: الحجب أولاً، والتنبيه لمن ليس محجوباً.
+  static AppVersionCheck _verdict(
+    String installed,
+    AppVersionConfig config, {
+    required bool fromServer,
+  }) {
+    final required = isUpdateRequired(
+      installed: installed,
+      minimum: config.minimumSupportedVersion,
+    );
     return AppVersionCheck(
-      updateRequired: isUpdateRequired(
-        installed: installed,
-        minimum: config.minimumSupportedVersion,
-      ),
+      updateRequired: required,
+      // «أدنى من أحدث إصدار» بالمقارنة نفسها، و`false` في كل حالة شكّ.
+      updateAvailable:
+          !required &&
+          isUpdateRequired(installed: installed, minimum: config.latestVersion),
       installedVersion: installed,
       config: config,
+      fromServer: fromServer,
     );
   }
 
@@ -110,14 +148,6 @@ class AppVersionRepository {
   /// بدل أن يومض المحتوى ثم يُحجب.
   Future<AppVersionCheck> cachedCheck() async {
     final installed = await installedVersion();
-    final config = cachedConfig();
-    return AppVersionCheck(
-      updateRequired: isUpdateRequired(
-        installed: installed,
-        minimum: config.minimumSupportedVersion,
-      ),
-      installedVersion: installed,
-      config: config,
-    );
+    return _verdict(installed, cachedConfig(), fromServer: false);
   }
 }

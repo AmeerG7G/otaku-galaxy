@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../../../core/l10n/app_strings.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/design_system/design_system.dart';
 import '../../domain/app_version_config.dart';
+import '../open_store.dart';
 
 /// شاشة إجبار التحديث — حاجزٌ كامل بلا مخرج سوى المتجر.
 ///
@@ -38,32 +38,9 @@ class ForceUpdateScreen extends StatelessWidget {
   /// عند البناء حيث السياق متاح.
   static const defaultMessageKey = 'updateRequiredMessage';
 
-  Future<void> _openStore(BuildContext context) async {
-    final url = config.updateUrl;
-    if (url.isEmpty) {
-      // رابط غير مضبوط: نقول ذلك بدل أن نصمت على زرّ لا يفعل شيئاً.
-      _notify(
-        context,
-        context.strings('updateLinkUnavailable'),
-      );
-      return;
-    }
-    if (onOpenStore != null) {
-      await onOpenStore!(url);
-      return;
-    }
-    final uri = Uri.tryParse(url);
-    if (uri == null) return;
-    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!opened && context.mounted) {
-      _notify(context, context.strings('storeOpenFailed'));
-    }
-  }
-
-  void _notify(BuildContext context, String message) {
-    final messenger = ScaffoldMessenger.maybeOf(context);
-    messenger?.showSnackBar(SnackBar(content: Text(message)));
-  }
+  /// رابطٌ غائب أو غير موثوق ⇒ «الرابط غير متوفر»؛ انظر [openStoreListing].
+  Future<void> _openStore(BuildContext context) =>
+      openStoreListing(context, config.updateUrl, onOpenStore: onOpenStore);
 
   @override
   Widget build(BuildContext context) {

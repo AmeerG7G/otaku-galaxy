@@ -146,7 +146,7 @@ void main() {
   });
 
   group('قراءة الإعداد (STEP 64 §16: تفعيل، حدّ أدنى، رابطٌ واحد)', () {
-    const url = 'https://play.google.com/store/apps/details?id=x';
+    const url = 'https://play.google.com/store/apps/details?id=com.otakugalaxy.otaku_galaxy';
 
     test('الشكل الجديد: الحدّ الفعّال والرابط الواحد', () {
       final config = AppVersionConfig.fromJson(const {
@@ -275,16 +275,16 @@ void main() {
         final adapter = _Adapter({
           'forceUpdateEnabled': true,
           'minimumSupportedVersion': '1.2.0',
-          'updateUrl': 'https://x.example/app',
+          'updateUrl': 'https://play.google.com/store/apps/details?id=com.otakugalaxy.otaku_galaxy',
         });
         final first = await (await repo(adapter)).check();
         expect(first.updateRequired, isTrue);
-        expect(first.config.updateUrl, 'https://x.example/app');
+        expect(first.config.updateUrl, 'https://play.google.com/store/apps/details?id=com.otakugalaxy.otaku_galaxy');
 
         adapter.down = true;
         final offline = await (await repo(adapter)).check();
         expect(offline.updateRequired, isTrue, reason: 'آخر حكمٍ ناجح يصمد');
-        expect(offline.config.updateUrl, 'https://x.example/app');
+        expect(offline.config.updateUrl, 'https://play.google.com/store/apps/details?id=com.otakugalaxy.otaku_galaxy');
       },
     );
 
@@ -292,13 +292,13 @@ void main() {
       final adapter = _Adapter({
         'forceUpdateEnabled': true,
         'minimumSupportedVersion': '1.2.0',
-        'updateUrl': 'https://x.example/app',
+        'updateUrl': 'https://play.google.com/store/apps/details?id=com.otakugalaxy.otaku_galaxy',
       });
       expect((await (await repo(adapter)).check()).updateRequired, isTrue);
       adapter.body = {
         'forceUpdateEnabled': false,
         'minimumSupportedVersion': '',
-        'updateUrl': 'https://x.example/app',
+        'updateUrl': 'https://play.google.com/store/apps/details?id=com.otakugalaxy.otaku_galaxy',
       };
       expect((await (await repo(adapter)).check()).updateRequired, isFalse);
     });
@@ -306,7 +306,7 @@ void main() {
     test('1.9.9 < 1.10.0 < 2.0.0 عبر المستودع', () async {
       final adapter = _Adapter({
         'minimumSupportedVersion': '1.10.0',
-        'updateUrl': 'https://x.example/app',
+        'updateUrl': 'https://play.google.com/store/apps/details?id=com.otakugalaxy.otaku_galaxy',
       });
       expect(
         (await (await repo(
@@ -335,7 +335,7 @@ void main() {
   group('شاشة إجبار التحديث', () {
     const config = AppVersionConfig(
       minimumSupportedVersion: '1.2.0',
-      updateUrl: 'https://play.google.com/store/apps/details?id=x',
+      updateUrl: 'https://play.google.com/store/apps/details?id=com.otakugalaxy.otaku_galaxy',
     );
     final defaultMessage = AppStrings.arabic('updateRequiredMessage');
 
