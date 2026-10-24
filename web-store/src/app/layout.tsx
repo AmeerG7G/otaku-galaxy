@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import localFont from 'next/font/local';
 import { BottomNav } from '@/components/BottomNav';
 import { Header } from '@/components/Header';
+import { getPlayStoreLink } from '@/lib/catalog';
 import { readSession } from '@/lib/server-session';
 import './globals.css';
 
@@ -34,7 +35,7 @@ export const viewport: Viewport = {
 };
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  const session = await readSession();
+  const [session, playStore] = await Promise.all([readSession(), getPlayStoreLink()]);
   return (
     <html lang="ar" dir="rtl" className={`${cairo.variable} ${tajawal.variable}`}>
       <body>
@@ -44,6 +45,13 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         <Header signedIn={Boolean(session)} />
         <main id="main" className="page">
           {children}
+          {playStore ? (
+            <footer className="app-download">
+              <a href={playStore} className="app-download__link" rel="noopener noreferrer" target="_blank">
+                حمّل تطبيق مجرة الأوتاكو من Google Play
+              </a>
+            </footer>
+          ) : null}
         </main>
         <BottomNav signedIn={Boolean(session)} />
       </body>

@@ -1,6 +1,12 @@
 import { z } from 'zod';
 import { GENDERS } from '../types/index.js';
 import { GALAXY_LEVEL_KEYS } from '../domain/galaxyPoints.js';
+import {
+  MAX_OPTION_NAME_LENGTH,
+  MAX_OPTION_VALUE_LENGTH,
+  MAX_OPTION_VALUES,
+  MAX_PRODUCT_OPTIONS,
+} from '../domain/productOptions.js';
 import { BIRTHDAY_FILTERS, CUSTOMER_SORTS } from '../repositories/userRepo.js';
 import { BANNER_DESTINATIONS, BANNER_PLACEMENTS, NOTIFICATION_TYPES } from '../types/index.js';
 
@@ -138,6 +144,76 @@ function retiredKey(replacement: string) {
     .optional();
 }
 
+/**
+ * خيارات المنتج — حدودها في `domain/productOptions.ts` لأن سقف `optionValue`
+ * في العربة مشتقٌّ منها: ما تقبله اللوحة هنا هو ما يجب أن تقبله العربة.
+ *
+ * الترجمة الكردية (046) اختيارية لكل خيار، وغيابُها غيرُ إفراغها:
+ *   - `nameCkb`: نصٌّ، أو `null`/`''` = لا اسم كردي.
+ *   - `valuesCkb`: قيمةٌ كردية لكل قيمةٍ عربية بالترتيب نفسه، أو `[]` (أو
+ *     كلها فارغة) = لا ترجمة. ترجمةُ بعض القيم دون بعض مرفوضة — القاعدة
+ *     لا تقبل قائمتين بطولين مختلفين، والزبون الكردي لا يرى نصفَ خيار.
+ *   - غياب الحقل = «لم يُرسله العميل»: الخدمة تُبقي الترجمة المحفوظة
+ *     (`adminService.updateProduct`) ولا تمحوها.
+ */
+const productOptions = z
+  .array(
+    z
+      .object({
+        name: z
+          .string()
+          .trim()
+          .min(1, 'اسم الخيار مطلوب')
+          .max(MAX_OPTION_NAME_LENGTH, `اسم الخيار طويل جداً (${MAX_OPTION_NAME_LENGTH} حرفاً كحد أقصى)`),
+        values: z
+          .array(
+            z
+              .string()
+              .trim()
+              .min(1, 'قيمة الخيار مطلوبة')
+              .max(MAX_OPTION_VALUE_LENGTH, `قيمة الخيار طويلة جداً (${MAX_OPTION_VALUE_LENGTH} حرفاً كحد أقصى)`),
+          )
+          .min(1, 'أضف قيمةً واحدة على الأقل لكل خيار')
+          .max(MAX_OPTION_VALUES, `${MAX_OPTION_VALUES} قيمة كحد أقصى لكل خيار`),
+        nameCkb: z
+          .string({ error: 'اسم الخيار الكردي يجب أن يكون نصاً' })
+          .trim()
+          .max(MAX_OPTION_NAME_LENGTH, `اسم الخيار الكردي طويل جداً (${MAX_OPTION_NAME_LENGTH} حرفاً كحد أقصى)`)
+          .nullable()
+          .optional(),
+        valuesCkb: z
+          .array(
+            z
+              .string({ error: 'قيمة الخيار الكردية يجب أن تكون نصاً' })
+              .trim()
+              .max(MAX_OPTION_VALUE_LENGTH, `قيمة الخيار الكردية طويلة جداً (${MAX_OPTION_VALUE_LENGTH} حرفاً كحد أقصى)`),
+            { error: 'قيم الخيار الكردية يجب أن تكون قائمة' },
+          )
+          .max(MAX_OPTION_VALUES, `${MAX_OPTION_VALUES} قيمة كحد أقصى لكل خيار`)
+          .optional(),
+      })
+      .superRefine((option, ctx) => {
+        if (option.valuesCkb === undefined) return;
+        const filled = option.valuesCkb.filter((value) => value.length > 0).length;
+        if (filled === 0) return;
+        if (option.valuesCkb.length !== option.values.length || filled !== option.values.length) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['valuesCkb'],
+            message: `ترجم كل قيم الخيار «${option.name}» إلى الكردية أو اترك ترجمتها فارغة كلها`,
+          });
+        }
+      })
+      .transform(({ nameCkb, valuesCkb, ...option }) => ({
+        ...option,
+        ...(nameCkb !== undefined ? { nameCkb: nameCkb === '' ? null : nameCkb } : {}),
+        ...(valuesCkb !== undefined
+          ? { valuesCkb: valuesCkb.every((value) => value.length === 0) ? [] : valuesCkb }
+          : {}),
+      })),
+  )
+  .max(MAX_PRODUCT_OPTIONS, `${MAX_PRODUCT_OPTIONS} خيارات كحد أقصى للمنتج`);
+
 export const adminProductCreateSchema = z.object({
   nameAr: contentName('العربية'),
   descriptionAr: contentDescription('العربية'),
@@ -150,15 +226,7 @@ export const adminProductCreateSchema = z.object({
   subcategoryId: z.string().uuid('معرّف قسم فرعي غير صالح').nullable().optional(),
   stock: z.number().int().min(0).max(100000),
   images: z.array(imageUrl).max(10).default([]),
-  options: z
-    .array(
-      z.object({
-        name: z.string().trim().min(1).max(40),
-        values: z.array(z.string().trim().min(1).max(80)).min(1).max(50),
-      }),
-    )
-    .max(10)
-    .default([]),
+  options: productOptions.default([]),
   isOffer: z.boolean().default(false),
   isSelected: z.boolean().default(false),
   /** السعر قبل الخصم — يجب أن يكون أعلى من السعر الحالي (تتحقق القاعدة أيضاً). */
@@ -201,15 +269,7 @@ export const adminProductUpdateSchema = z.object({
    */
   expectedStock: z.number().int().min(0).max(100000).optional(),
   images: z.array(imageUrl).max(10).optional(),
-  options: z
-    .array(
-      z.object({
-        name: z.string().trim().min(1).max(40),
-        values: z.array(z.string().trim().min(1).max(80)).min(1).max(50),
-      }),
-    )
-    .max(10)
-    .optional(),
+  options: productOptions.optional(),
   isOffer: z.boolean().optional(),
   isSelected: z.boolean().optional(),
   isActive: z.boolean().optional(),

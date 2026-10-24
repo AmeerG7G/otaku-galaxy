@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { db } from '../src/database/pool.js';
 import { notificationRepo } from '../src/repositories/notificationsRepo.js';
 import { orderRepo } from '../src/repositories/orderRepo.js';
-import { api, createAdminUser, purgeTestUsers, registerAndLogin, seedTestCatalog } from './helpers.js';
+import { addProductOption, api, createAdminUser, purgeTestUsers, registerAndLogin, seedTestCatalog } from './helpers.js';
 
 /**
  * تدقيق تزامن الطلبات والمخزون (2026-09-21) — سباقاتٌ **حتمية** لا احتمالية.
@@ -524,6 +524,7 @@ describe('Orders + stock concurrency audit', () => {
       // بوّابة العربة تجمع على المنتج أيضاً، فالسطران يُقبلان بمخزون ٥ ثم
       // يُخفَّض إلى ٤ قبل القبول: ٥ > ٤ عند القبول.
       const p = await product('dup-options', 5);
+      await addProductOption(p);
       const { orderId } = await submitOrder([
         { productId: p, quantity: 2, optionValue: 'أحمر' },
         { productId: p, quantity: 3, optionValue: 'أزرق' },

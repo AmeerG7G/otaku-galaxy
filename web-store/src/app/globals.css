@@ -849,3 +849,20 @@ textarea {
   background: var(--warning-pale);
   color: var(--warning-text);
 }
+
+/* Google Play link — text only (no store badge artwork), a full-size touch target. */
+.app-download {
+  margin-block-start: var(--space-6);
+  padding-block-start: var(--space-4);
+  border-block-start: 1px solid var(--outline);
+  text-align: center;
+}
+
+.app-download__link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding-inline: var(--space-4);
+  font-weight: 700;
+}

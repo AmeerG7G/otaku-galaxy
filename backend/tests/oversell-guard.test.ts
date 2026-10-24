@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../src/database/pool.js';
-import { api, createAdminUser, registerAndLogin, seedTestCatalog, purgeTestUsers } from './helpers.js';
+import { addProductOption, api, createAdminUser, registerAndLogin, seedTestCatalog, purgeTestUsers } from './helpers.js';
 
 /**
  * منع البيع فوق المخزون — كل المسارات.
@@ -160,6 +160,7 @@ describe('حراسة البيع فوق المخزون', () => {
     // `products.stock` عمود واحد للمنتج، فالحدّ على المنتج لا على الخيار.
     const buyer = await registerAndLogin();
     const id = await product('خيارات', 3);
+    await addProductOption(id);
 
     await api.post('/api/cart').set('Authorization', `Bearer ${buyer.token}`)
       .send({ productId: id, optionValue: 'أحمر', quantity: 2 }).expect(200);
@@ -181,6 +182,7 @@ describe('حراسة البيع فوق المخزون', () => {
   it('خياران ضمن الحدّ يمرّان ويُباعان مرة واحدة', async () => {
     const buyer = await registerAndLogin();
     const id = await product('خيارات صالحة', 3);
+    await addProductOption(id);
     await api.post('/api/cart').set('Authorization', `Bearer ${buyer.token}`)
       .send({ productId: id, optionValue: 'أحمر', quantity: 2 }).expect(200);
     await api.post('/api/cart').set('Authorization', `Bearer ${buyer.token}`)
@@ -217,6 +219,7 @@ describe('حراسة البيع فوق المخزون', () => {
   it('[CRITICAL] تعديل كمية سطر لا يتجاوز مخزون المنتج', async () => {
     const buyer = await registerAndLogin();
     const id = await product('تعديل', 3);
+    await addProductOption(id);
     await api.post('/api/cart').set('Authorization', `Bearer ${buyer.token}`)
       .send({ productId: id, optionValue: 'أحمر', quantity: 1 }).expect(200);
 

@@ -19,6 +19,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:otaku_galaxy/core/design_system/design_system.dart';
 import 'package:otaku_galaxy/core/errors/app_exception.dart';
+import 'package:otaku_galaxy/core/network/api_client.dart';
 import 'package:otaku_galaxy/core/router/app_router.dart';
 import 'package:otaku_galaxy/features/birthday/data/birthday_storage.dart';
 import 'package:otaku_galaxy/features/cart/domain/entities/cart_item.dart';
@@ -26,6 +27,7 @@ import 'package:otaku_galaxy/features/cart/domain/entities/cart_sync.dart';
 import 'package:otaku_galaxy/features/cart/domain/repositories/cart_repository.dart';
 import 'package:otaku_galaxy/features/cart/presentation/cubit/cart_cubit.dart';
 import 'package:otaku_galaxy/features/checkout/presentation/screens/order_review_screen.dart';
+import 'package:otaku_galaxy/features/orders/data/repositories/order_repository_impl.dart';
 import 'package:otaku_galaxy/features/orders/domain/entities/checkout_quote.dart';
 import 'package:otaku_galaxy/features/orders/domain/entities/order.dart';
 import 'package:otaku_galaxy/features/orders/domain/entities/order_data.dart';
@@ -75,11 +77,13 @@ class _StubOrderRepository implements OrderRepository {
 
   int placeCalls = 0;
   OrderData? lastData;
+  final keys = <String?>[];
 
   @override
   Future<Order> placeOrder(OrderData data) async {
     placeCalls++;
     lastData = data;
+    keys.add(data.idempotencyKey);
     if (gate != null) await gate!.future;
     if (error != null) throw error!;
     return const Order(
@@ -714,5 +718,75 @@ void main() {
       await tester.pumpAndSettle();
       expect(orders.placeCalls, 2, reason: 'الزرّ لم يبقَ معطَّلاً بعد الفشل');
     });
+
+    testWidgets(
+      '[CRITICAL] إعادة المحاولة من الشاشة نفسها ترسل مفتاح عدم التكرار نفسه — طلبٌ ضاع ردّه لا يتكرّر',
+      (tester) async {
+        final orders = _StubOrderRepository(
+          error: const AppException('انتهت مهلة الاتصال'),
+        );
+        await _pumpReview(tester, orders: orders);
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('تأكيد إرسال الطلب'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('تأكيد إرسال الطلب'));
+        await tester.pumpAndSettle();
+
+        expect(orders.keys, hasLength(2));
+        expect(orders.keys.first, isNotNull);
+        expect(orders.keys.first, matches(RegExp(r'^[A-Za-z0-9_-]{16,128}$')));
+        expect(orders.keys.last, orders.keys.first);
+      },
+    );
   });
+
+  group('مفتاح عدم التكرار', () {
+    test('عشوائيٌّ لكل إرسال وبصيغة الخادم', () {
+      final a = newOrderIdempotencyKey();
+      final b = newOrderIdempotencyKey();
+      expect(a, matches(RegExp(r'^[0-9a-f]{32}$')));
+      expect(a, isNot(b));
+    });
+
+    test('يُرسَل ترويسةً لا حقلاً في الجسم', () async {
+      final api = _RecordingApi();
+      final data = OrderData(
+        governorateId: 'g1',
+        province: 'بغداد',
+        deliveryCost: 5000,
+        fullAddress: 'بغداد، الكرادة',
+        phone: '+9647701234567',
+        items: const [],
+      ).withIdempotencyKey('k' * 32);
+      await OrderRepositoryImpl(api: api).placeOrder(data);
+      expect(api.headers, {'Idempotency-Key': 'k' * 32});
+      expect((api.body! as Map).containsKey('idempotencyKey'), isFalse);
+
+      await OrderRepositoryImpl(api: api).placeOrder(data.withIdempotencyKey('x' * 16));
+      expect(api.headers, {'Idempotency-Key': 'x' * 16});
+    });
+  });
+}
+
+class _RecordingApi extends ApiClient {
+  Map<String, String>? headers;
+  Object? body;
+
+  @override
+  Future<dynamic> post(String path, {Object? body, Map<String, String>? headers}) async {
+    this.body = body;
+    this.headers = headers;
+    return <String, dynamic>{
+      'id': 'o1',
+      'number': '1001',
+      'province': 'بغداد',
+      'deliveryCost': 5000,
+      'fullAddress': 'بغداد',
+      'phone': '+9647701234567',
+      'total': 5000,
+      'status': 'PENDING',
+      'items': <dynamic>[],
+    };
+  }
 }

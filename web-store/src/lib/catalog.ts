@@ -1,5 +1,6 @@
 import { cache } from 'react';
 import { apiFetch } from './api';
+import { playStoreUrl } from './app-link';
 import { mediaOrigin } from './config';
 import { resolveMediaUrl } from './media';
 import type { Category, Governorate, LoyaltyLevel, Paginated, Product, ProductSort, Zone } from './types';
@@ -70,6 +71,19 @@ export async function listLoyaltyLevels(): Promise<LoyaltyLevel[]> {
   const { data } = await apiFetch<{ items: LoyaltyLevel[] }>('/catalog/loyalty-levels');
   return data.items;
 }
+
+/**
+ * The Google Play link from the admin's app-update setting, or null. A failure
+ * here never breaks a page: the link is simply left out.
+ */
+export const getPlayStoreLink = cache(async (): Promise<string | null> => {
+  try {
+    const { data } = await apiFetch<{ androidStoreUrl?: unknown; updateUrl?: unknown }>('/catalog/app-version');
+    return playStoreUrl(data.androidStoreUrl) ?? playStoreUrl(data.updateUrl);
+  } catch {
+    return null;
+  }
+});
 
 /** UUID check before a path parameter reaches the API (it rejects others with 400). */
 export function isUuid(value: string): boolean {

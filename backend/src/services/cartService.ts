@@ -1,5 +1,6 @@
 import { db, withTransaction } from '../database/pool.js';
 import { planCartSync } from '../domain/cartSync.js';
+import { checkOptionValue } from '../domain/productOptions.js';
 import { cartRepo } from '../repositories/cartRepo.js';
 import { productRepo } from '../repositories/catalogRepo.js';
 import { Errors } from '../utils/errors.js';
@@ -30,6 +31,26 @@ export const cartService = {
   async addItem(userId: string, input: { productId: string; optionValue: string | null; quantity: number }) {
     const product = await productRepo.findById(db, input.productId);
     if (!product || !product.isActive) throw Errors.notFound('المنتج غير موجود');
+
+    // [CRITICAL] الخيار من خيارات المنتج نفسها لا نصّاً حرّاً. كان أي نصٍّ حتى
+    // ٨٠ حرفاً يُقبل — أو لا شيء لمنتجٍ له مقاس ولون — ثم يُنسخ إلى الطلب
+    // ويراه المسؤول كما هو، بمحارف التحكم والاتجاه إن وُجدت. القاعدة في
+    // `domain/productOptions.ts`.
+    //
+    // منتجٌ بلا خيارات يُرفض معه أي نصّ بدل أن يُسقَط بصمت: العميلان يرسلان
+    // `null` له، فنصٌّ هنا يعني عميلاً يرى منتجاً غير الذي في القاعدة (أزال
+    // المسؤول خياراته والصفحة مفتوحة) — يُبلَّغ ولا يُخمَّن عنه.
+    //
+    // يقع هنا وحده، عند الإضافة: سطرٌ قائم لم يعد مطابقاً (غيّر المسؤول الخيارات
+    // بعد إضافته، أو أقدم من هذا الفحص) لا تمسّه المزامنة ولا الطلب — ما خُزِّن
+    // يُطلب كما هو، ولا تنكسر عربةٌ قائمة.
+    const verdict = checkOptionValue(input.optionValue, await productRepo.findOptionValues(db, product.id));
+    if (verdict === 'unexpected') {
+      throw Errors.badRequest('هذا المنتج بلا خيارات', 'INVALID_PRODUCT_OPTION');
+    }
+    if (verdict === 'invalid') {
+      throw Errors.badRequest('اختر قيمة صالحة لكل خيار من خيارات المنتج', 'INVALID_PRODUCT_OPTION');
+    }
 
     // تحقق من المخزون بعد الدمج مع ما هو موجود فعلاً.
     //

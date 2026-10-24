@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { expect, test, type Browser, type BrowserContext } from '@playwright/test';
+import { playStoreUrl } from '../src/lib/app-link';
 import { e2eState, expectNoHorizontalOverflow, watchPageErrors } from './helpers';
 
 /**
@@ -111,5 +112,27 @@ test('the home page is the catalog itself — no landing page', async ({ browser
   // The first product is reachable without scrolling past a hero.
   const top = await page.locator('.product-card').first().evaluate((element) => element.getBoundingClientRect().top);
   expect(top).toBeLessThan(780);
+  await context.close();
+});
+
+test('the Google Play link follows the admin app-update setting — shown when it is a Play listing, absent otherwise', async ({ browser }) => {
+  const { apiUrl } = e2eState();
+  const setting = (await (await fetch(`${apiUrl}/catalog/app-version`)).json()) as { data: { androidStoreUrl?: string } };
+  const configured = setting.data.androidStoreUrl ?? '';
+  const context = await contextFor(browser, 360, false);
+  const page = await context.newPage();
+  await page.goto('/');
+  const link = page.getByRole('link', { name: 'حمّل تطبيق مجرة الأوتاكو من Google Play' });
+  // The page's own rule decides whether a link is expected — no second, looser copy here.
+  const expected = playStoreUrl(configured);
+  if (expected) {
+    await expect(link).toBeVisible();
+    await expect(link).toHaveAttribute('href', expected);
+    await expect(link).toHaveAttribute('rel', /noopener/);
+    const box = await link.boundingBox();
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+  } else {
+    await expect(link).toHaveCount(0);
+  }
   await context.close();
 });

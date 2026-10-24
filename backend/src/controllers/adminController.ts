@@ -84,6 +84,11 @@ export const adminController = {
     return ok(res, await adminService.listProducts(query));
   }) as RequestHandler,
 
+  getProduct: (async (req, res) => {
+    const id = parse(adminProductIdSchema, req.params).id;
+    return ok(res, await adminService.getProductForEdit(id));
+  }) as RequestHandler,
+
   updateProduct: (async (req, res) => {
     const id = parse(adminProductIdSchema, req.params).id;
     const input = parse(adminProductUpdateSchema, req.body);

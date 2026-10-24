@@ -1,4 +1,13 @@
+import 'dart:math';
+
 import '../../../cart/domain/entities/cart_item.dart';
+
+/// مفتاح عدم التكرار لإرسال طلب: ٣٢ محرفاً سداسياً عشوائياً آمناً — ضمن صيغة
+/// الخادم (`[A-Za-z0-9_-]{16,128}`).
+String newOrderIdempotencyKey([Random? random]) {
+  final rng = random ?? Random.secure();
+  return List.generate(32, (_) => rng.nextInt(16).toRadixString(16)).join();
+}
 
 class OrderData {
   const OrderData({
@@ -15,6 +24,7 @@ class OrderData {
     this.zoneId,
     this.zoneName,
     this.loyaltyGiftActivated = false,
+    this.idempotencyKey,
   });
 
   /// معرّف المحافظة لدى الخادم — إلزامي لإنشاء الطلب.
@@ -53,6 +63,31 @@ class OrderData {
 
   /// هل فعَّل الزبون هديةَ مستوى مرتبطة بهذا الطلب؟ — للعرض في المراجعة فقط.
   final bool loyaltyGiftActivated;
+
+  /// [CRITICAL] مفتاح `Idempotency-Key` لهذا الإرسال — ثابتٌ عبر كل محاولةٍ
+  /// من شاشة المراجعة نفسها. ردٌّ ضاع بعد التزام الخادم (مهلة ١٥ ثانية على
+  /// شبكةٍ بطيئة) كان يترك الزبون أمام «العربة فارغة» عند إعادة الضغط، فيعيد
+  /// إضافة المنتجات ويطلب مرةً ثانية. بالمفتاح نفسه يعيد الخادم الطلب الأول.
+  /// لا يدخل [toJson]: يُرسَل ترويسةً.
+  final String? idempotencyKey;
+
+  /// نسخةٌ تحمل [key] — تُبنى مرةً واحدة لكل شاشة مراجعة.
+  OrderData withIdempotencyKey(String key) => OrderData(
+    governorateId: governorateId,
+    province: province,
+    deliveryCost: deliveryCost,
+    fullAddress: fullAddress,
+    phone: phone,
+    items: items,
+    discount: discount,
+    loyaltyDiscount: loyaltyDiscount,
+    deliveryDiscount: deliveryDiscount,
+    quotedTotal: quotedTotal,
+    zoneId: zoneId,
+    zoneName: zoneName,
+    loyaltyGiftActivated: loyaltyGiftActivated,
+    idempotencyKey: key,
+  );
 
   double get productsTotal =>
       items.fold(0, (sum, item) => sum + item.lineTotal);

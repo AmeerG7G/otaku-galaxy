@@ -54,6 +54,7 @@ adminRoutes.patch('/notification-prefs', requireAnyAdmin, adminPushController.se
 
 adminRoutes.get('/products', can('products', 'offers', 'banners'), adminController.listProducts);
 adminRoutes.post('/products', can('products'), adminController.createProduct);
+adminRoutes.get('/products/:id', can('products'), adminController.getProduct);
 adminRoutes.patch('/products/:id', can('products'), adminController.updateProduct);
 adminRoutes.delete('/products/:id', can('products'), adminController.deleteProduct);
 adminRoutes.patch('/offers/:id', can('offers', 'products'), adminController.updateOfferFlags);

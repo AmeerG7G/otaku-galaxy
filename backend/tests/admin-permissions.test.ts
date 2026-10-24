@@ -47,6 +47,7 @@ const EXPECTED: Record<string, Guard> = {
   'patch /notification-prefs': 'any',
   'get /products': ['products', 'offers', 'banners'],
   'post /products': ['products'],
+  'get /products/:id': ['products'],
   'patch /products/:id': ['products'],
   'delete /products/:id': ['products'],
   'patch /offers/:id': ['offers', 'products'],

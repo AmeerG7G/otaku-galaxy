@@ -13,7 +13,7 @@ import {
 } from 'antd'
 import { ArrowRightOutlined } from '@ant-design/icons'
 import ProductCostCard from '../components/ProductCostCard'
-import ProductForm, { type ProductFormValues } from '../components/ProductForm'
+import ProductForm, { type ProductFormStore, type ProductFormValues } from '../components/ProductForm'
 import { useAdminProfile } from '../hooks/useAdminProfile'
 import { getProductForEdit, updateProduct, type ProductForEdit } from '../api/productsApi'
 import { ApiError } from '../api/client'
@@ -108,7 +108,7 @@ function LoadedProductEditor({ id, loaded }: { id: string; loaded: ProductForEdi
   const navigate = useNavigate()
   const { message } = App.useApp()
   const queryClient = useQueryClient()
-  const [form] = Form.useForm<ProductFormValues>()
+  const [form] = Form.useForm<ProductFormStore>()
   const [draft] = useState(loaded.draft)
   const [base, setBase] = useState(() => ({ stock: loaded.draft.stock, optionsLoaded: loaded.optionsLoaded }))
   const open = useRef(true)
