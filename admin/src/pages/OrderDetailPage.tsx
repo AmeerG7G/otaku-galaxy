@@ -116,7 +116,16 @@ export default function OrderDetailPage() {
       title: 'الإجمالي',
       dataIndex: 'lineTotal',
       key: 'lineTotal',
-      render: (value: number) => <Typography.Text strong>{formatCurrency(value)}</Typography.Text>,
+      // المبلغ المحفوظ كما دفعه الزبون. أقلّ من «السعر × الكمية» = عرض القطعتين
+      // (085) — يُوسَم فلا يبدو خطأً في الحساب.
+      render: (value: number, item: OrderItem) => (
+        <Space size={6} wrap>
+          <Typography.Text strong>{formatCurrency(value)}</Typography.Text>
+          {item.pairPrice != null && value < item.price * item.quantity && (
+            <Tag color="green">عرض قطعتين</Tag>
+          )}
+        </Space>
+      ),
     },
   ]
 

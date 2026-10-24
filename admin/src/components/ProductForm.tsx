@@ -21,6 +21,7 @@ import ImagesEditor from './ImagesEditor'
 import OptionsEditor from './OptionsEditor'
 import { optionsFromFields, optionsToFields, type OptionFields } from './optionFields'
 import type { ProductOptionInput } from '../types/products'
+import { formatCurrency } from '../utils/format'
 
 export interface ProductFormValues {
   /**
@@ -31,7 +32,21 @@ export interface ProductFormValues {
   descriptionAr: string
   nameCkb: string
   descriptionCkb: string
-  price: number
+  /**
+   * `null` = «السعر يُعلن لاحقاً» (084) — يُرسَل `null` صريحةً، لا صفراً. مصدره
+   * مفتاح `priceLater` في النموذج (انظر [normalizePricing]).
+   */
+  price: number | null
+  /**
+   * مفتاح النموذج وحده — لا يُرسَل. مُفعَّلاً: المنتج يُعرض في المتجر «قريباً —
+   * السعر يُعلن لاحقاً» ولا يُشترى، ولا يراه التطبيق المثبَّت.
+   */
+  priceLater?: boolean
+  /**
+   * سعر قطعتين من المنتج نفسه وإن اختلف الخيار (085)؛ `null` = لا عرض. يتكرّر:
+   * ٣ قطع = قطعتان + قطعة. بين سعر القطعة وضعفه، والخادم يفرضه أيضاً.
+   */
+  pairPrice?: number | null
   stock: number
   categoryId: string
   subcategoryId?: string | null
@@ -73,7 +88,17 @@ function trimContent(values: ProductFormStore): ProductFormValues {
   for (const field of CONTENT_FIELDS) {
     trimmed[field] = (values[field] ?? '').trim()
   }
-  return trimmed
+  return normalizePricing(trimmed)
+}
+
+/**
+ * «يُعلن لاحقاً» (084) يُفرغ الأسعار الثلاثة صراحةً: لا سعر قطعة، ولا «سعر قبل
+ * الخصم»، ولا عرض قطعتين — القاعدة ترفض الأخيرين بلا سعر. الحقل الفارغ `null`
+ * لا «غائب»، فالتعديل يمسح العرض المحفوظ بدل أن يُبقيه.
+ */
+function normalizePricing({ priceLater, ...values }: ProductFormValues): ProductFormValues {
+  if (priceLater) return { ...values, price: null, previousPrice: null, pairPrice: null }
+  return { ...values, price: values.price ?? null, pairPrice: values.pairPrice ?? null }
 }
 
 /**
@@ -130,6 +155,13 @@ export default function ProductForm({
   const selectedCategoryId = Form.useWatch('categoryId', form)
   const price = Form.useWatch('price', form)
   const previousPrice = Form.useWatch('previousPrice', form)
+  const priceLater = Form.useWatch('priceLater', form) === true
+  const pairPrice = Form.useWatch('pairPrice', form)
+  // ما يدفعه الزبون عن قطعتين — للعرض فقط، والحساب على الخادم (`pairPricedLineTotals`).
+  const pairSaving =
+    !priceLater && typeof price === 'number' && typeof pairPrice === 'number' && pairPrice < 2 * price
+      ? 2 * price - pairPrice
+      : null
 
   // النسبة معروضة فقط — مصدرها الحقيقي هو السعران على الخادم.
   const discountPercent =
@@ -166,7 +198,12 @@ export default function ProductForm({
       form={form}
       layout="vertical"
       requiredMark={false}
-      initialValues={{ ...initialValues, options: optionsToFields(initialValues?.options ?? []) }}
+      initialValues={{
+        ...initialValues,
+        // منتجٌ محفوظ بلا سعر (084) يُفتح والمفتاح مُفعَّل. الإنشاء يبدأ مسعَّراً.
+        priceLater: mode === 'edit' && initialValues?.price === null,
+        options: optionsToFields(initialValues?.options ?? []),
+      }}
       onFinish={(values) => onSubmit(trimContent(values))}
       style={{ maxWidth: 760 }}
     >
@@ -249,9 +286,18 @@ export default function ProductForm({
       <Card title="السعر والمخزون" variant="outlined" style={{ marginTop: 16 }}>
         <Space size="large" wrap>
           <Form.Item
+            name="priceLater"
+            label="السعر يُعلن لاحقاً"
+            valuePropName="checked"
+            tooltip="يظهر المنتج في المتجر «قريباً — السعر يُعلن لاحقاً» ولا يُضاف إلى العربة. لا يظهر في التطبيق المثبَّت حتى يُسعَّر."
+          >
+            <Switch />
+          </Form.Item>
+          <Form.Item
             name="price"
             label="السعر"
-            rules={[{ required: true, message: 'السعر مطلوب' }]}
+            hidden={priceLater}
+            rules={priceLater ? [] : [{ required: true, message: 'السعر مطلوب' }]}
           >
             <InputNumber
               min={0.01}
@@ -286,6 +332,15 @@ export default function ProductForm({
             />
           </Form.Item>
         </Space>
+        {priceLater && (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginTop: 12 }}
+            message="قريباً — السعر يُعلن لاحقاً"
+            description="يراه الزبون في المتجر بلا سعر ولا زرّ إضافة. أطفئ المفتاح واكتب السعر حين يُعلن."
+          />
+        )}
         <Form.Item
           noStyle
           shouldUpdate={(prev, next) =>
@@ -378,10 +433,13 @@ export default function ProductForm({
             name="previousPrice"
             label="السعر قبل الخصم"
             tooltip="يجب أن يكون أعلى من السعر الحالي."
+            dependencies={['priceLater']}
             rules={[
               {
                 validator: (_rule, value: number | null) => {
-                  if (value === null || value === undefined) return Promise.resolve()
+                  if (value === null || value === undefined || form.getFieldValue('priceLater') === true) {
+                    return Promise.resolve()
+                  }
                   const current = form.getFieldValue('price') as number
                   return value > current
                     ? Promise.resolve()
@@ -390,12 +448,55 @@ export default function ProductForm({
               },
             ]}
           >
-            <InputNumber min={0} style={{ width: 200 }} addonAfter="د.ع" precision={0} />
+            <InputNumber
+              min={0}
+              style={{ width: 200 }}
+              addonAfter="د.ع"
+              precision={0}
+              disabled={priceLater}
+            />
           </Form.Item>
           <Form.Item label="نسبة الخصم المحسوبة">
             <Typography.Text strong style={{ fontSize: 18 }}>
               {discountPercent === null ? '—' : `${discountPercent}%`}
             </Typography.Text>
+          </Form.Item>
+          <Form.Item
+            name="pairPrice"
+            label="سعر قطعتين"
+            tooltip="اختياري. سعر قطعتين من هذا المنتج وإن اختلف الخيار، ويتكرّر: ٣ قطع = قطعتان + قطعة. أقل من ضعف سعر القطعة ولا يقلّ عنه."
+            dependencies={['price', 'priceLater']}
+            rules={[
+              {
+                validator: (_rule, value: number | null | undefined) => {
+                  // «يُعلن لاحقاً» يُفرغ الحقل عند الإرسال (`normalizePricing`) — لا يُحجب الحفظ.
+                  if (value === null || value === undefined || form.getFieldValue('priceLater') === true) {
+                    return Promise.resolve()
+                  }
+                  const current = form.getFieldValue('price') as number | null | undefined
+                  if (typeof current !== 'number') return Promise.resolve()
+                  if (value < current) return Promise.reject(new Error('لا يقلّ عن سعر القطعة الواحدة'))
+                  if (value >= 2 * current) {
+                    return Promise.reject(new Error('يجب أن يكون أقل من ضعف سعر القطعة — وإلا فلا توفير'))
+                  }
+                  return Promise.resolve()
+                },
+              },
+            ]}
+            extra={
+              pairSaving !== null && typeof pairPrice === 'number' && typeof price === 'number'
+                ? `قطعة ${formatCurrency(price)} · قطعتان ${formatCurrency(pairPrice)} (توفير ${formatCurrency(pairSaving)}) · ٣ قطع ${formatCurrency(pairPrice + price)}`
+                : undefined
+            }
+          >
+            <InputNumber
+              min={0}
+              style={{ width: 200 }}
+              addonAfter="د.ع"
+              precision={0}
+              placeholder="بلا عرض"
+              disabled={priceLater}
+            />
           </Form.Item>
           <Form.Item
             name="hasDeliveryPromo"

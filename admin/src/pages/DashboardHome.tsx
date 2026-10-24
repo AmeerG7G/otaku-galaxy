@@ -28,6 +28,7 @@ import { SectionHeader } from '../components/ui/SectionHeader'
 import { StatCard } from '../components/ui/StatCard'
 import { ProductLink } from '../components/ui/ProductLink'
 import { useCan } from '../hooks/useAdminProfile'
+import ProductPriceText from '../components/ProductPriceText'
 
 function KpiCard({
   title,
@@ -134,7 +135,7 @@ export default function DashboardHome() {
       title: 'السعر',
       dataIndex: 'price',
       key: 'price',
-      render: (value: number) => formatCurrency(value),
+      render: (value: number | null) => <ProductPriceText price={value} />,
     },
     {
       title: 'المخزون',

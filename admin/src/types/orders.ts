@@ -18,7 +18,10 @@ export interface OrderItem {
   imageUrl: string | null
   optionValue: string | null
   price: number
+  /** لقطة سعر القطعتين وقت الطلب (085)؛ `null` = لا عرض أو طلبٌ أقدم. */
+  pairPrice?: number | null
   quantity: number
+  /** ما دفعه الزبون عن السطر — قد يقلّ عن `price × quantity` بعرض القطعتين. */
   lineTotal: number
   /**
    * مخزون المنتج **الآن** — يرسله `GET /admin/orders/:id` وحده، مقروءاً عند فتح

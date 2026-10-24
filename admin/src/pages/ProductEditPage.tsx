@@ -171,7 +171,9 @@ function LoadedProductEditor({ id, loaded }: { id: string; loaded: ProductForEdi
       ...(values.descriptionAr ? { descriptionAr: values.descriptionAr } : {}),
       ...(values.nameCkb ? { nameCkb: values.nameCkb } : {}),
       ...(values.descriptionCkb ? { descriptionCkb: values.descriptionCkb } : {}),
+      // `null` = «السعر يُعلن لاحقاً» (084)؛ `pairPrice: null` يزيل العرض المحفوظ.
       price: values.price,
+      pairPrice: values.pairPrice ?? null,
       categoryId: values.categoryId,
       subcategoryId: values.subcategoryId ?? null,
       ...(stockChanged ? { stock: values.stock, expectedStock: loadedStock } : {}),

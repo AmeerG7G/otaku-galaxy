@@ -51,6 +51,7 @@ const draft = {
   rating: null,
   reviewCount: 0,
   previousPrice: null,
+  pairPrice: null,
   hasDeliveryPromo: false,
   deliveryPromoAmount: 0,
   franchiseIds: [],

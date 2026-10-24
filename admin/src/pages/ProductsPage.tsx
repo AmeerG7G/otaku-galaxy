@@ -23,12 +23,12 @@ import { deleteProduct, listProducts } from '../api/productsApi'
 import { listAdminCategories } from '../api/categoriesApi'
 import { ApiError } from '../api/client'
 import type { Product } from '../types/products'
-import { formatCurrency } from '../utils/format'
 import EmptyState from '../components/EmptyState'
 import { ProductLink } from '../components/ui/ProductLink'
 import { SearchField } from '../components/ui/SearchField'
 import { PageHeader } from '../components/ui/PageHeader'
 import { useTableState } from '../hooks/useTableState'
+import ProductPriceText from '../components/ProductPriceText'
 
 const PAGE_LIMIT = 12
 
@@ -183,7 +183,9 @@ export default function ProductsPage() {
       title: 'السعر',
       dataIndex: 'price',
       key: 'price',
-      render: (value: number) => formatCurrency(value),
+      render: (value: number | null, product: Product) => (
+        <ProductPriceText price={value} pairPrice={product.pairPrice} />
+      ),
     },
     {
       title: 'المخزون',

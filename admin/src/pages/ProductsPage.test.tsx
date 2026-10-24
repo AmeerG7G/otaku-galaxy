@@ -52,6 +52,7 @@ function product(overrides: Partial<Product> = {}): Product {
     rating: null,
     reviewCount: 0,
     previousPrice: null,
+    pairPrice: null,
     discountPercent: null,
     hasDeliveryPromo: false,
     deliveryPromoAmount: 0,

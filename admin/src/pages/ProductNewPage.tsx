@@ -56,7 +56,9 @@ export default function ProductNewPage() {
       descriptionAr: values.descriptionAr,
       nameCkb: values.nameCkb,
       descriptionCkb: values.descriptionCkb,
+      // `null` = «السعر يُعلن لاحقاً» (084)؛ النموذج يُفرغ معه العرضين.
       price: values.price,
+      pairPrice: values.pairPrice ?? null,
       categoryId: values.categoryId,
       subcategoryId: values.subcategoryId ?? null,
       stock: values.stock,
@@ -116,6 +118,7 @@ export default function ProductNewPage() {
           hasDeliveryPromo: false,
           deliveryPromoAmount: 0,
           previousPrice: null,
+          pairPrice: null,
           franchiseIds: [],
         }}
         submitting={createMutation.isPending}

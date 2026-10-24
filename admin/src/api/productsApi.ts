@@ -88,6 +88,8 @@ function adminProductToDraft(product: Product, options: ProductOption[]): Produc
   return {
     ...contentDraft(product),
     price: product.price,
+    // خادمٌ أقدم من 085 لا يرسل الحقل: لا عرض.
+    pairPrice: product.pairPrice ?? null,
     stock: product.stock,
     categoryId: product.categoryId,
     subcategoryId: product.subcategoryId,

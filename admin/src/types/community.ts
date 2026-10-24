@@ -108,7 +108,8 @@ export interface DashboardStats {
     id: string
     name: string
     stock: number
-    price: number
+    /** `null` = «السعر يُعلن لاحقاً» (084). */
+    price: number | null
     imageUrl: string | null
   }[]
 }

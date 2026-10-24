@@ -122,9 +122,9 @@ describe('ضبط خصم التوصيل في نموذج المنتج', () => {
 
   it('التفعيل يُظهر حقل المبلغ لكل قطعة', async () => {
     renderForm({ hasDeliveryPromo: false })
-    const toggle = await screen.findByRole('switch', { name: '' }).catch(() => null)
-    const switches = screen.getAllByRole('switch')
-    await userEvent.click(toggle ?? switches[0]!)
+    await screen.findByText('ترويج توصيل')
+    // بمعرّف الحقل لا بالترتيب: «السعر يُعلن لاحقاً» (084) مفتاحٌ يسبقه في النموذج.
+    await userEvent.click(document.querySelector<HTMLButtonElement>('#hasDeliveryPromo')!)
     expect(
       await screen.findByText('قيمة خصم التوصيل / قطعة'),
     ).toBeInTheDocument()

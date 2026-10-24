@@ -26,7 +26,10 @@ export interface Product {
   descriptionCkb: string | null
   /** هل ينقص المنتجَ اسمٌ أو وصفٌ كردي؟ — حكم الخادم. */
   kurdishMissing: boolean
-  price: number
+  /** `null` = «السعر يُعلن لاحقاً» (084): يُعرض في المتجر ولا يُشترى. */
+  price: number | null
+  /** سعر قطعتين من المنتج نفسه (085)؛ `null` = لا عرض. */
+  pairPrice: number | null
   stock: number
   /**
    * موعد التوفر المتوقَّع — ISO-8601 أو `null` («بلا موعد»).
@@ -100,7 +103,10 @@ export interface ProductCreatePayload {
   descriptionAr: string
   nameCkb: string
   descriptionCkb: string
-  price: number
+  /** `null` = «السعر يُعلن لاحقاً» (084). */
+  price: number | null
+  /** سعر قطعتين (085) — بين سعر القطعة وضعفه؛ الخادم يفرضه (`INVALID_PAIR_PRICE`). */
+  pairPrice?: number | null
   categoryId: string
   subcategoryId?: string | null
   stock: number
@@ -130,7 +136,10 @@ export interface ProductUpdatePayload {
   descriptionAr?: string
   nameCkb?: string
   descriptionCkb?: string
-  price?: number
+  /** `null` يعيد المنتج «يُعلن لاحقاً» (084). */
+  price?: number | null
+  /** `null` يزيل عرض القطعتين (085). */
+  pairPrice?: number | null
   categoryId?: string
   subcategoryId?: string | null
   stock?: number
@@ -182,7 +191,10 @@ export interface PublicProduct {
   descriptionCkb: string | null
   /** هل ينقص المنتجَ اسمٌ أو وصفٌ كردي؟ — حكم الخادم. */
   kurdishMissing: boolean
-  price: number
+  /** `null` = «السعر يُعلن لاحقاً» (084): يُعرض في المتجر ولا يُشترى. */
+  price: number | null
+  /** سعر قطعتين من المنتج نفسه (085)؛ `null` = لا عرض. */
+  pairPrice: number | null
   stock: number
   /**
    * موعد التوفر المتوقَّع — ISO-8601 أو `null` («بلا موعد»).
@@ -215,7 +227,8 @@ export interface ProductFormDraft {
    */
   nameCkb: string
   descriptionCkb: string
-  price: number
+  price: number | null
+  pairPrice: number | null
   stock: number
   /**
    * موعد التوفر المتوقَّع — ISO-8601 أو `null` («بلا موعد»).

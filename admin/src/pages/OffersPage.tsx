@@ -16,10 +16,10 @@ import type { TablePaginationConfig } from 'antd'
 import { listProducts, patchProductFlags } from '../api/productsApi'
 import { ApiError } from '../api/client'
 import type { Product } from '../types/products'
-import { formatCurrency } from '../utils/format'
 import EmptyState from '../components/EmptyState'
 import { ProductLink } from '../components/ui/ProductLink'
 import { PageHeader } from '../components/ui/PageHeader'
+import ProductPriceText from '../components/ProductPriceText'
 
 const PAGE_LIMIT = 12
 
@@ -102,7 +102,9 @@ export default function OffersPage() {
       title: 'السعر',
       dataIndex: 'price',
       key: 'price',
-      render: (value: number) => formatCurrency(value),
+      render: (value: number | null, product: Product) => (
+        <ProductPriceText price={value} pairPrice={product.pairPrice} />
+      ),
     },
     {
       title: 'المخزون',

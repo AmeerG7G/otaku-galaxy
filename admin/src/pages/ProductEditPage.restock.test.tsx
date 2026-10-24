@@ -52,6 +52,7 @@ function adminListProduct(restockAt: string | null) {
     rating: null,
     reviewCount: 0,
     previousPrice: null,
+    pairPrice: null,
     discountPercent: null,
     hasDeliveryPromo: false,
     deliveryPromoAmount: 0,
