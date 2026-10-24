@@ -30,6 +30,7 @@ const RestockPage = lazy(() => import('./pages/RestockPage'))
 const ReviewsPage = lazy(() => import('./pages/ReviewsPage'))
 const FranchisesPage = lazy(() => import('./pages/FranchisesPage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
+const AppUpdatesPage = lazy(() => import('./pages/AppUpdatesPage'))
 const AdminsPage = lazy(() => import('./pages/AdminsPage'))
 
 /** كل صفحة خلف قسمها — انظر `RequirePermission`. */
@@ -83,6 +84,7 @@ function App() {
               <Route path="/reviews" element={guard('reviews', <ReviewsPage />)} />
               <Route path="/franchises" element={guard('franchises', <FranchisesPage />)} />
               <Route path="/settings" element={guard('settings', <SettingsPage />)} />
+              <Route path="/app-updates" element={guard('settings', <AppUpdatesPage />)} />
               <Route path="/admins" element={guard('admins', <AdminsPage />)} />
             </Route>
           </Route>

@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { App, Button, Card, Form, Input, Space, Switch } from 'antd'
+import { App, Button, Card, Form, Input, Space } from 'antd'
 import {
   LinkOutlined,
   SaveOutlined,
@@ -9,9 +9,7 @@ import {
   WhatsAppOutlined,
 } from '@ant-design/icons'
 import { fetchSettings, updateSettings } from '../api/communityApi'
-import { fetchAppVersionSettings, updateAppVersionSettings } from '../api/appVersionApi'
 import type { StoreSettings } from '../types/community'
-import { SEMVER_PATTERN, compareVersions, type AppVersionSettings } from '../types/appVersion'
 import { PageHeader } from '../components/ui/PageHeader'
 
 /**
@@ -115,132 +113,8 @@ export default function SettingsPage() {
 
       <ShareUrlCard settings={settingsQuery.data} loading={settingsQuery.isPending} />
 
-      <AppVersionCard />
+      {/* [NOTE] إجبار التحديث انتقل إلى صفحته «تحديث التطبيق» (STEP 70). */}
     </Space>
-  )
-}
-
-/**
- * إجبار تحديث التطبيق — ثلاثة حقول (STEP 64 §16).
- *
- * [CRITICAL] التفعيل يحجب التطبيق فوراً عن كل من يشغّل نسخةً أقدم من الحدّ —
- * بلا نشر خادم ولا بناء تطبيق. لذلك يُطلب تأكيدٌ صريح عند التفعيل أو رفع الحدّ
- * (بدل صندوق تحذيرٍ دائم)، والخادم يرفض التفعيل بلا حدٍّ صالح أو بلا رابط:
- * حجبٌ بلا زرٍّ يعمل حبسٌ لا تحديث.
- */
-function AppVersionCard() {
-  const { message, modal } = App.useApp()
-  const queryClient = useQueryClient()
-  const [form] = Form.useForm<AppVersionSettings>()
-  const enabled = Form.useWatch('enabled', form)
-
-  const query = useQuery({
-    queryKey: ['admin-app-version'],
-    queryFn: fetchAppVersionSettings,
-  })
-
-  useEffect(() => {
-    if (query.data) form.setFieldsValue(query.data)
-  }, [query.data, form])
-
-  const save = useMutation({
-    mutationFn: (values: AppVersionSettings) => updateAppVersionSettings(values),
-    onSuccess: async () => {
-      message.success('حُفظ إجبار التحديث')
-      await queryClient.invalidateQueries({ queryKey: ['admin-app-version'] })
-    },
-    onError: (error: Error) => message.error(error.message),
-  })
-
-  /** يطلب التأكيد حين يزيد الحفظُ الحجبَ: تفعيلٌ جديد أو رفعُ الحدّ وهو مفعَّل. */
-  function submit(values: AppVersionSettings) {
-    const next: AppVersionSettings = {
-      enabled: Boolean(values.enabled),
-      minimumVersion: (values.minimumVersion ?? '').trim(),
-      updateUrl: (values.updateUrl ?? '').trim(),
-    }
-    const saved = query.data
-    const blocksMore =
-      next.enabled &&
-      (!saved?.enabled ||
-        !saved.minimumVersion ||
-        (compareVersions(next.minimumVersion, saved.minimumVersion) ?? 1) > 0)
-    if (!blocksMore) {
-      save.mutate(next)
-      return
-    }
-    modal.confirm({
-      title: 'تفعيل إجبار التحديث؟',
-      content: `كل من يشغّل نسخةً أقدم من ${next.minimumVersion} سيرى شاشة التحديث فوراً ولن يستطيع استعمال التطبيق حتى يحدّث. تأكّد أن النسخة الجديدة منشورة على الرابط.`,
-      okText: 'تفعيل',
-      okButtonProps: { danger: true },
-      cancelText: 'إلغاء',
-      onOk: () => save.mutateAsync(next),
-    })
-  }
-
-  return (
-    <Card variant="outlined" title="إجبار التحديث" loading={query.isPending}>
-      <Form
-        form={form}
-        layout="vertical"
-        style={{ maxWidth: 520 }}
-        initialValues={{ enabled: false, minimumVersion: '', updateUrl: '' }}
-        onFinish={submit}
-      >
-        <Form.Item name="enabled" label="إجبار التحديث" valuePropName="checked">
-          <Switch checkedChildren="مفعَّل" unCheckedChildren="موقوف" />
-        </Form.Item>
-
-        <Form.Item
-          name="minimumVersion"
-          label="الحدّ الأدنى للنسخة"
-          dependencies={['enabled']}
-          rules={[
-            {
-              validator: (_rule, value: string) => {
-                if (!value) {
-                  return form.getFieldValue('enabled')
-                    ? Promise.reject(new Error('أدخل الحدّ الأدنى قبل التفعيل'))
-                    : Promise.resolve()
-                }
-                return SEMVER_PATTERN.test(value)
-                  ? Promise.resolve()
-                  : Promise.reject(new Error('أدخل نسخة بصيغة 1.2.3'))
-              },
-            },
-          ]}
-        >
-          <Input dir="ltr" placeholder="1.2.0" />
-        </Form.Item>
-
-        <Form.Item
-          name="updateUrl"
-          label="رابط التحديث"
-          dependencies={['enabled']}
-          rules={[
-            {
-              validator: (_rule, value: string) => {
-                if (!value) {
-                  return form.getFieldValue('enabled')
-                    ? Promise.reject(new Error('أدخل رابط التحديث قبل التفعيل'))
-                    : Promise.resolve()
-                }
-                return /^https?:\/\/.+/.test(value)
-                  ? Promise.resolve()
-                  : Promise.reject(new Error('أدخل رابطاً يبدأ بـ http(s)://'))
-              },
-            },
-          ]}
-        >
-          <Input dir="ltr" prefix={<LinkOutlined />} placeholder="https://play.google.com/store/apps/details?id=com.otakugalaxy.otaku_galaxy" />
-        </Form.Item>
-
-        <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={save.isPending} danger={Boolean(enabled)}>
-          حفظ
-        </Button>
-      </Form>
-    </Card>
   )
 }
 

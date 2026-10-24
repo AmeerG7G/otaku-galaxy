@@ -3,6 +3,7 @@ import {
   NotificationOutlined,
   AppstoreOutlined,
   BellOutlined,
+  CloudUploadOutlined,
   CommentOutlined,
   EnvironmentOutlined,
   FireOutlined,
@@ -83,6 +84,8 @@ export const NAV_ITEMS: MenuProps['items'] = [
     label: 'الإعدادات',
     children: [
       { key: '/settings', icon: <SettingOutlined />, label: 'إعدادات المتجر' },
+      // سياسة تحديث التطبيق (STEP 70) — صلاحية «الإعدادات» نفسها.
+      { key: '/app-updates', icon: <CloudUploadOutlined />, label: 'تحديث التطبيق' },
       { key: '/admins', icon: <UserSwitchOutlined />, label: 'المسؤولون' },
     ],
   },
@@ -112,6 +115,7 @@ export const SECTION_FOR_PATH: Record<string, AdminSection> = {
   '/notifications': 'notifications',
   '/banners': 'banners',
   '/settings': 'settings',
+  '/app-updates': 'settings',
   '/admins': 'admins',
 }
 
@@ -170,6 +174,7 @@ export function navTitleFor(key: string): string {
     '/notifications': 'الإشعارات',
     '/banners': 'البنرات',
     '/settings': 'إعدادات المتجر',
+    '/app-updates': 'تحديث التطبيق',
   }
   return index[key] ?? 'لوحة التحكم'
 }

@@ -1,11 +1,15 @@
 import { get, patch } from './client'
-import type { AppVersionSettings } from '../types/appVersion'
+import type { AppUpdateAdminView, AppUpdatePolicyInput } from '../types/appVersion'
 
-export function fetchAppVersionSettings(): Promise<AppVersionSettings> {
-  return get<AppVersionSettings>('/admin/settings/app-version')
+/** السياسة المحفوظة، وما تراه التطبيقات، ومن غيّرها، وآخر عشر لقطات. */
+export function fetchAppVersionSettings(): Promise<AppUpdateAdminView> {
+  return get<AppUpdateAdminView>('/admin/settings/app-version')
 }
 
-/** الحقول الثلاثة كلها في كل حفظ — الخادم يتحقّق من اتّساقها معاً. */
-export function updateAppVersionSettings(payload: AppVersionSettings) {
-  return patch<AppVersionSettings>('/admin/settings/app-version', payload)
+/**
+ * «إرسال التحديث»: ينشر السياسة إلى الخادم — لا يرفع شيئاً إلى Google Play.
+ * يحمل المراجعة التي فُتحت عليها الصفحة؛ غيرها ⇒ 409 فيُعاد التحميل.
+ */
+export function updateAppVersionSettings(payload: AppUpdatePolicyInput) {
+  return patch<AppUpdateAdminView>('/admin/settings/app-version', payload)
 }

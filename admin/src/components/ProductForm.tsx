@@ -498,6 +498,19 @@ export default function ProductForm({
               disabled={priceLater}
             />
           </Form.Item>
+          {/* [CRITICAL] قرار STEP 70: التطبيقات المثبَّتة قبل إصدار سعر القطعتين تحسب
+              السطر «السعر × الكمية» محلياً، فلا يُضبط عرضٌ في الإنتاج قبل نشر الإصدار
+              الجديد ورفع «أدنى إصدار مدعوم» (deploy/README §14). */}
+          {!priceLater && typeof pairPrice === 'number' ? (
+            <Alert
+              type="warning"
+              showIcon
+              style={{ marginBottom: 16, maxWidth: 560 }}
+              data-testid="pair-price-app-warning"
+              message="تطبيقات أندرويد المثبَّتة قبل إصدار «سعر قطعتين» تعرض السعر × الكمية"
+              description="تعرض ٨٠٠٠ لقطعتين بينما يُحسب الطلب بسعر القطعتين. في الإنتاج: لا تضبطه قبل نشر الإصدار الجديد على Google Play ثم رفع «أدنى إصدار مدعوم» من «تحديث التطبيق»."
+            />
+          ) : null}
           <Form.Item
             name="hasDeliveryPromo"
             label="ترويج توصيل"

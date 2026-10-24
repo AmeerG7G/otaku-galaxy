@@ -140,6 +140,19 @@ describe('[CRITICAL] «سعر قطعتين» في نموذج المنتج (085)'
     expect(onSubmit).not.toHaveBeenCalled()
   })
 
+  it('[CRITICAL] تحذير التطبيقات المثبَّتة يظهر بجانب سعر القطعتين متى ضُبط، ويختفي بلا عرض (STEP 70)', async () => {
+    renderForm('create')
+    const input = await screen.findByLabelText('سعر قطعتين')
+    expect(screen.queryByTestId('pair-price-app-warning')).toBeNull()
+    await userEvent.type(input, '7000')
+    const warning = await screen.findByTestId('pair-price-app-warning')
+    expect(warning).toHaveTextContent('السعر × الكمية')
+    expect(warning).toHaveTextContent('أدنى إصدار مدعوم')
+    expect(warning).toHaveTextContent('تحديث التطبيق')
+    await userEvent.clear(input)
+    await waitFor(() => expect(screen.queryByTestId('pair-price-app-warning')).toBeNull())
+  })
+
   it('مسح سعر القطعتين في منتجٍ له عرض يرسل null فيزيله', async () => {
     const { onSubmit, submit } = renderForm('edit', { pairPrice: 7000 })
     const input = await screen.findByLabelText('سعر قطعتين')
