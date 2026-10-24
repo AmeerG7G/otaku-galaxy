@@ -48,6 +48,8 @@ export const publicExtrasController = {
    * طلبه، ولا يستطيع قراءة رابط المتجر الذي يخرجه من القِدَم.
    */
   appVersion: (async (_req, res) => {
+    // لا وسيط ولا متصفّح يخبّئ السياسة: إجبارٌ نُشر الآن يجب أن يصل الآن.
+    res.set('Cache-Control', 'no-store');
     return ok(res, await appVersionService.config());
   }) as RequestHandler,
 };

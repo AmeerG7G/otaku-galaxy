@@ -80,8 +80,11 @@ describe('مقارنة النسخ الدلالية', () => {
 
 // ─────────────────────── مسار الإعداد العام ───────────────────────
 
-/** إجبارٌ نافذ: مفعَّل + حدّ + رابط — كما تحفظه اللوحة. */
-async function enforce(minimum: string, url = 'https://play.google.com/store/apps/details?id=x') {
+/** صفحة تطبيقنا على Google Play — الشكل الوحيد المقبول لرابط التحديث (STEP 70). */
+const PLAY = 'https://play.google.com/store/apps/details?id=com.otakugalaxy.otaku_galaxy';
+
+/** إجبارٌ نافذ كما حُفظ قبل STEP 70: مفعَّل + حدّ + رابط، بلا نوع ولا أحدث إصدار. */
+async function enforce(minimum: string, url = PLAY) {
   await setVersionSettings({
     app_force_update_enabled: 'true',
     app_min_supported_version: minimum,
@@ -99,11 +102,15 @@ describe('مسار إعدادات نسخة التطبيق', () => {
     expect(res.body.data).toEqual({
       forceUpdateEnabled: true,
       minimumSupportedVersion: '1.2.0',
-      updateUrl: 'https://play.google.com/store/apps/details?id=x',
-      // نسخة 1.0.0 تقرأ هذه: الرابط نفسه للمنصّتين، ولا رسالة مخصّصة ولا «أحدث».
+      // النوع الفارغ (ما قبل STEP 70) إجباريٌّ كما كان.
+      updateMode: 'mandatory',
+      updateUrl: PLAY,
+      revision: 0,
+      // نسخة 1.0.0 تقرأ هذه: الرابط نفسه للمنصّتين، ولا رسالة مخصّصة؛ ولا
+      // «أحدث» لأن هذه السياسة لم تضبطه.
       latestVersion: '',
-      androidStoreUrl: 'https://play.google.com/store/apps/details?id=x',
-      iosStoreUrl: 'https://play.google.com/store/apps/details?id=x',
+      androidStoreUrl: PLAY,
+      iosStoreUrl: PLAY,
       updateMessage: '',
       updateMessageCkb: '',
     });
@@ -156,7 +163,7 @@ describe('رفض النسخ غير المدعومة على الخادم', () => 
     expect(res.body.error.code).toBe('APP_UPDATE_REQUIRED');
     expect(res.body.error.details).toEqual({
       minimumSupportedVersion: '2.0.0',
-      updateUrl: 'https://play.google.com/store/apps/details?id=x',
+      updateUrl: PLAY,
     });
   });
 
@@ -233,45 +240,56 @@ describe('رفض النسخ غير المدعومة على الخادم', () => 
 
 // ─────────────────────── ضبطها من اللوحة ───────────────────────
 
-describe('ضبط إجبار التحديث من لوحة التحكم (ثلاثة حقول)', () => {
+describe('ضبط سياسة التحديث من لوحة التحكم', () => {
   afterEach(clearVersionSettings);
+
+  /** المراجعة التي يفتح عليها المسؤول الصفحة — الحفظ يحملها. */
+  const revision = async (token: string) =>
+    (await api.get('/api/admin/settings/app-version').set('Authorization', `Bearer ${token}`).expect(200)).body.data
+      .revision as number;
 
   const save = (token: string, body: unknown) =>
     api.patch('/api/admin/settings/app-version').set('Authorization', `Bearer ${token}`).send(body as object);
 
   it('[CRITICAL] المسؤول يفعّل الإجبار بلا نشر خادم جديد — ويسري فوراً', async () => {
     const token = await createAdminUser();
-    const saved = await save(token, {
-      enabled: true,
-      minimumVersion: '1.2.0',
-      updateUrl: 'https://example.com/app.apk',
-    });
-    expect(saved.status).toBe(200);
-    expect(saved.body.data).toEqual({ enabled: true, minimumVersion: '1.2.0', updateUrl: 'https://example.com/app.apk' });
+    const policy = { enabled: true, mode: 'mandatory', latestVersion: '1.3.0', minimumVersion: '1.2.0', updateUrl: PLAY };
+    const saved = await save(token, { ...policy, revision: await revision(token) });
+    expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+    expect(saved.body.data).toMatchObject({ ...policy, revision: 1, problem: null });
 
     // التخبئة تُبطَل مع الحفظ لا بعد مهلتها.
     const publicRes = await api.get('/api/catalog/app-version');
     expect(publicRes.body.data).toMatchObject({
       forceUpdateEnabled: true,
+      updateMode: 'mandatory',
       minimumSupportedVersion: '1.2.0',
-      updateUrl: 'https://example.com/app.apk',
+      latestVersion: '1.3.0',
+      updateUrl: PLAY,
+      revision: 1,
     });
 
     const read = await api.get('/api/admin/settings/app-version').set('Authorization', `Bearer ${token}`);
-    expect(read.body.data).toEqual({ enabled: true, minimumVersion: '1.2.0', updateUrl: 'https://example.com/app.apk' });
+    expect(read.body.data).toMatchObject({ ...policy, revision: 1 });
 
     // الإيقاف يُبقي القيم للمرة القادمة ويرفع الحجب.
-    await save(token, { enabled: false, minimumVersion: '1.2.0', updateUrl: 'https://example.com/app.apk' }).expect(200);
-    expect((await api.get('/api/catalog/app-version')).body.data.minimumSupportedVersion).toBe('');
+    await save(token, { enabled: false, revision: 1 }).expect(200);
+    expect((await api.get('/api/catalog/app-version')).body.data).toMatchObject({
+      minimumSupportedVersion: '',
+      updateMode: 'none',
+    });
+    expect((await save(token, { enabled: false, revision: 1 })).status).toBe(409);
+    const kept = await api.get('/api/admin/settings/app-version').set('Authorization', `Bearer ${token}`);
+    expect(kept.body.data).toMatchObject({ ...policy, enabled: false, revision: 2 });
   });
 
   it('[CRITICAL] التفعيل بلا حدٍّ أو بلا رابط مرفوض — لا حبس بلا زرّ يعمل', async () => {
     const token = await createAdminUser();
     for (const body of [
-      { enabled: true, minimumVersion: '', updateUrl: 'https://example.com/app' },
-      { enabled: true, minimumVersion: '1.0.0', updateUrl: '' },
+      { enabled: true, mode: 'mandatory', latestVersion: '1.0.0', minimumVersion: '', updateUrl: PLAY },
+      { enabled: true, mode: 'mandatory', latestVersion: '1.0.0', minimumVersion: '1.0.0', updateUrl: '' },
     ]) {
-      const res = await save(token, body);
+      const res = await save(token, { ...body, revision: 0 });
       expect(res.status).toBe(400);
       expect(res.body.error.code).toBe('VALIDATION_ERROR');
     }
@@ -280,16 +298,18 @@ describe('ضبط إجبار التحديث من لوحة التحكم (ثلاث�
 
   it('[CRITICAL] الحدّ بصيغة فاسدة يُرفض قبل الكتابة', async () => {
     const token = await createAdminUser();
-    const res = await save(token, { enabled: true, minimumVersion: 'v1.2', updateUrl: 'https://example.com' });
+    const res = await save(token, { enabled: true, mode: 'mandatory', minimumVersion: 'v1.2', updateUrl: PLAY, revision: 0 });
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
     expect((await api.get('/api/catalog/app-version')).body.data.minimumSupportedVersion).toBe('');
   });
 
-  it('رابط التحديث يجب أن يكون http(s) — لا javascript:', async () => {
+  it('رابط التحديث صفحة تطبيقنا على Google Play وحدها — لا javascript: ولا موقع آخر', async () => {
     const token = await createAdminUser();
-    const res = await save(token, { enabled: false, minimumVersion: '', updateUrl: 'javascript:alert(1)' });
-    expect(res.status).toBe(400);
+    for (const updateUrl of ['javascript:alert(1)', 'https://example.com/app.apk', 'http://play.google.com/store/apps/details?id=com.otakugalaxy.otaku_galaxy']) {
+      const res = await save(token, { enabled: false, updateUrl, revision: 0 });
+      expect(res.status, updateUrl).toBe(400);
+    }
   });
 
   it('الحقول القديمة مرفوضة لا مُسقَطة بصمت (جسمٌ صارم)', async () => {
@@ -301,7 +321,7 @@ describe('ضبط إجبار التحديث من لوحة التحكم (ثلاث�
 
   it('التغيير مسجَّل قبل/بعد في سجلّ نشاط الإدارة', async () => {
     const token = await createAdminUser();
-    await save(token, { enabled: true, minimumVersion: '3.1.0', updateUrl: 'https://example.com/v3' }).expect(200);
+    await save(token, { enabled: true, mode: 'mandatory', latestVersion: '3.1.0', minimumVersion: '3.1.0', updateUrl: PLAY, revision: 0 }).expect(200);
     const { rows } = await db.query<{ details: { changes: Record<string, { before: string; after: string }> } }>(
       `SELECT details FROM admin_audit_log WHERE action = 'settings.app_version_updated' ORDER BY id DESC LIMIT 1`,
     );
@@ -311,8 +331,9 @@ describe('ضبط إجبار التحديث من لوحة التحكم (ثلاث�
 
   it('[CRITICAL] غير المسؤول لا يملك حجب التطبيق', async () => {
     const { token } = await registerAndLogin();
-    const res = await save(token, { enabled: true, minimumVersion: '99.0.0', updateUrl: 'https://example.com' });
+    const res = await save(token, { enabled: true, mode: 'mandatory', minimumVersion: '99.0.0', updateUrl: PLAY, revision: 0 });
     expect(res.status).toBe(403);
+    expect((await api.get('/api/catalog/app-version')).body.data.forceUpdateEnabled).toBe(false);
   });
 });
 

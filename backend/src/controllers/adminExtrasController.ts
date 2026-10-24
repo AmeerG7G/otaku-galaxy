@@ -206,26 +206,21 @@ export const adminExtrasController = {
   // ── نسخة التطبيق (إجبار التحديث) ──
 
   getAppVersionSettings: (async (_req, res) => {
-    return ok(res, await appVersionService.settings());
+    return ok(res, await appVersionService.adminView());
   }) as RequestHandler,
 
   /**
-   * يضبط إجبار التحديث بلا نشر خادم جديد.
+   * ينشر سياسة تحديث التطبيق بلا نشر خادم جديد («إرسال التحديث» في اللوحة).
+   * لا يرفع شيئاً إلى Google Play ولا ينشر إصداراً هناك.
    *
-   * [CRITICAL] من يملك هذا الحقل يملك حجب التطبيق عن كل مستخدميه بحفظةٍ
-   * واحدة — المسار خلف صلاحية «الإعدادات»، والتغيير مسجَّلٌ قبل/بعد.
+   * [CRITICAL] من يملك هذا يملك حجب التطبيق عن كل مستخدميه بحفظةٍ واحدة —
+   * المسار خلف صلاحية «الإعدادات»، والتغيير مسجَّلٌ قبل/بعد مع لقطة السياسة
+   * داخل معاملة الحفظ نفسها.
    */
   updateAppVersionSettings: (async (req, res) => {
     res.locals.auditHandled = true;
     const body = parse(updateAppVersionSettingsSchema, req.body);
-    const before = await settingsService.getAll();
-    const saved = await settingsService.update({
-      app_force_update_enabled: body.enabled ? 'true' : 'false',
-      app_min_supported_version: body.minimumVersion,
-      app_update_url: body.updateUrl,
-    });
-    await recordSettingsChange(req.auth!.id, 'settings.app_version_updated', before, saved);
-    return ok(res, await appVersionService.settings(), 'حُفظت إعدادات النسخة');
+    return ok(res, await appVersionService.updatePolicy(req.auth!.id, body), 'نُشرت سياسة التحديث');
   }) as RequestHandler,
 
   // ── إشعار يدوي ──

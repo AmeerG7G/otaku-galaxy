@@ -46,10 +46,19 @@ export const SHARE_SETTING_KEYS = ['store_share_url'] as const;
  */
 export const APP_VERSION_SETTING_KEYS = [
   // STEP 64 (هجرة ٠٦٩): ثلاثة إعدادات لا ستّة — مفعَّل؟ الحدّ الأدنى، رابط
-  // التحديث. أُزيلت: أحدث نسخة، رابطا المتجرين، والرسالتان بلغتين (60.5).
+  // التحديث. أُزيلت: رابطا المتجرين، والرسالتان بلغتين (60.5).
+  //
+  // STEP 70 (قرار المالك 2026-10-24): «أحدث إصدار» ونوع التحديث (اختياري/
+  // إجباري) يعودان؛ الرسالة المخصّصة لا تعود. `app_force_update_enabled` صار
+  // «السياسة مفعّلة» بنوعيها — الاسم أقدم من النوع الاختياري. لا هجرة: الجدول
+  // مفتاح/قيمة، والنوع الفارغ (ما حُفظ قبل STEP 70) يُقرأ «إجباري» كما كان.
   'app_force_update_enabled',
+  'app_update_mode',
+  'app_latest_version',
   'app_min_supported_version',
   'app_update_url',
+  // يزيد مع كل حفظ: الحفظ على نسخةٍ قديمة من السياسة يُرفض (409).
+  'app_update_revision',
 ] as const;
 
 export const SETTING_KEYS = [
@@ -79,8 +88,11 @@ const EMPTY_SETTINGS: StoreSettings = {
   social_description: '',
   store_share_url: '',
   app_force_update_enabled: '',
+  app_update_mode: '',
+  app_latest_version: '',
   app_min_supported_version: '',
   app_update_url: '',
+  app_update_revision: '',
 };
 
 export const settingsRepo = {

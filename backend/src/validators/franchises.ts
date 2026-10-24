@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { isValidVersionString } from '../services/appVersionService.js';
+import { canonicalPlayStoreUrl } from '../utils/playStoreUrl.js';
 
 /**
  * المرادفات: أسماء بديلة يطابقها بحث العميل («قاتل الشياطين» لـDemon Slayer).
@@ -129,26 +130,35 @@ const optionalSemver = z
     'أدخل نسخة بصيغة 1.2.3 أو اتركها فارغة',
   );
 
+/** رابط صفحة تطبيقنا على Google Play أو فارغ؛ يُحفظ بشكله القانوني. */
+const optionalPlayStoreUrl = z
+  .string()
+  .trim()
+  .max(300)
+  .refine(
+    (value) => value === '' || canonicalPlayStoreUrl(value) !== null,
+    'الصق رابط صفحة التطبيق على Google Play: https://play.google.com/store/apps/details?id=com.otakugalaxy.otaku_galaxy',
+  )
+  .transform((value) => (value === '' ? '' : canonicalPlayStoreUrl(value)!));
+
 /**
- * إعدادات إجبار التحديث — ثلاثة حقول، كلّها في كل حفظ (STEP 64).
+ * سياسة تحديث التطبيق (STEP 64، ثم STEP 70: أحدث إصدار ونوع التحديث).
  *
  * [CRITICAL] الفصل عن `updateSettingsSchema` مقصود: الخطأ هنا يحجب التطبيق
- * عن كل مستخدميه، فلا يجوز أن يُحفظ حدٌّ أدنى بصيغة فاسدة لأنه مرّ ضمن
- * دفعة روابط تواصل. والتفعيل بلا حدٍّ صالح أو بلا رابط مرفوض: حجبٌ بلا زرٍّ
- * يعمل حبسٌ للمستخدم لا تحديث.
+ * عن كل مستخدميه، فلا يجوز أن يُحفظ حدٌّ بصيغة فاسدة لأنه مرّ ضمن دفعة روابط
+ * تواصل. هنا الصيغة وحدها؛ اتّساق السياسة المفعّلة (حدٌّ ≤ أحدث إصدار، رابطٌ
+ * قبل التفعيل...) يُفحص في `appVersionService.updatePolicy` على السياسة بعد
+ * دمج المحفوظ — فالحقل الغائب يبقى كما حُفظ، و`{ enabled: false, revision }`
+ * (الإيقاف) لا يُرفض أبداً.
  */
-export const updateAppVersionSettingsSchema = z
-  .strictObject({
-    enabled: z.boolean({ error: 'حدّد تفعيل إجبار التحديث' }),
-    minimumVersion: optionalSemver,
-    updateUrl: optionalUrl,
-  })
-  .superRefine((value, ctx) => {
-    if (!value.enabled) return;
-    if (!value.minimumVersion) {
-      ctx.addIssue({ code: 'custom', path: ['minimumVersion'], message: 'أدخل الحدّ الأدنى للنسخة قبل تفعيل الإجبار' });
-    }
-    if (!value.updateUrl) {
-      ctx.addIssue({ code: 'custom', path: ['updateUrl'], message: 'أدخل رابط التحديث قبل تفعيل الإجبار' });
-    }
-  });
+export const updateAppVersionSettingsSchema = z.strictObject({
+  enabled: z.boolean({ error: 'حدّد تفعيل سياسة التحديث' }),
+  mode: z.enum(['optional', 'mandatory'], { error: 'اختر نوع التحديث: اختياري أو إجباري' }).optional(),
+  latestVersion: optionalSemver.optional(),
+  minimumVersion: optionalSemver.optional(),
+  updateUrl: optionalPlayStoreUrl.optional(),
+  revision: z
+    .number({ error: 'أعد تحميل الصفحة — رقم مراجعة السياسة مفقود' })
+    .int('أعد تحميل الصفحة — رقم مراجعة السياسة غير صالح')
+    .nonnegative('أعد تحميل الصفحة — رقم مراجعة السياسة غير صالح'),
+});
