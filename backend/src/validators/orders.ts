@@ -47,6 +47,12 @@ export const createOrderSchema = z.object({
       z.object({
         productId: z.string().uuid('معرّف منتج غير صالح'),
         unitPrice: z.number().nonnegative(),
+        /**
+         * سعر القطعتين الذي راجعه الزبون (085)؛ `null` = لا عرض. الغائب (تطبيقٌ
+         * أقدم) = لا فحص له. بلا هذا كان تعديلُ العرض بين المراجعة والإرسال
+         * يمرّ بصمت: سعر الوحدة نفسه، والمجموع غير الذي رآه.
+         */
+        pairPrice: z.number().positive().nullable().optional(),
       }),
     )
     .optional(),

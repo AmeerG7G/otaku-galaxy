@@ -488,8 +488,13 @@ export const adminService = {
       // داخل معاملة التحديث نفسها — إمّا كاملة أو لا شيء.
       const cameBackInStock =
         input.stock !== undefined && previousStock === 0 && Number(input.stock) > 0;
+      // «قريباً» (084) أُعلن سعره ومخزونه موجود: صار قابلاً للشراء الآن، والمنتظرون
+      // الذين أُجِّل تبليغهم ما دام بلا سعر (`stockReturned`) يُبلَّغون الآن.
+      const stockAfter = input.stock !== undefined ? Number(input.stock) : previousStock;
+      const priceAnnounced =
+        existing.price === null && input.price !== undefined && input.price !== null && stockAfter > 0;
 
-      if (cameBackInStock) {
+      if (cameBackInStock || priceAnnounced) {
         // إشعارات المشتركين وفراغ اشتراكاتهم ومسح الموعد المتوقَّع — التعريف
         // نفسه الذي يستعمله رفضُ طلبٍ مقبول حين يُرجع القطعة.
         await restockService.stockReturned(tx, id, names);

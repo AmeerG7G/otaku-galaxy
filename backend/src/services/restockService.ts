@@ -166,6 +166,16 @@ export const restockService = {
     productId: string,
     productNames: ProductNames,
   ): Promise<number> {
+    // [CRITICAL] «قريباً — السعر يُعلن لاحقاً» (084): منتجٌ بلا سعر لا يُشترى،
+    // والتطبيق المثبَّت لا يراه أصلاً. «عاد للتوفر» عنه وعدٌ كاذب يستهلك
+    // الاشتراك فلا يُبلَّغ أحدٌ حين يُعلن السعر. التبليغ يُؤجَّل والاشتراكات
+    // تبقى؛ إعلان السعر على مخزونٍ موجود يستدعي هذا من جديد
+    // (`adminService.updateProduct`).
+    const { rows } = await tx.query<{ priced: boolean }>(
+      'SELECT price IS NOT NULL AS priced FROM products WHERE id = $1',
+      [productId],
+    );
+    if (rows[0]?.priced !== true) return 0;
     const created = await this.notifyRestocked(tx, productId, productNames);
     // الموعد المتوقَّع تحقّق، فلا معنى لبقائه.
     await tx.query('UPDATE products SET restock_at = NULL WHERE id = $1', [productId]);

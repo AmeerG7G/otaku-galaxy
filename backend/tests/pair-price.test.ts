@@ -267,6 +267,28 @@ describe('[CRITICAL] سعر القطعتين من اللوحة إلى المخز
     expect(await stock(id)).toBe(1);
   });
 
+  it('[CRITICAL] التطبيق يرسل سعر القطعتين الذي راجعه: تعديله قبل الإرسال ⇒ PRODUCT_PRICE_CHANGED ولا طلب', async () => {
+    // التطبيق يرسل `expectedPrices` لا بصمة المعاينة. سعر الوحدة باقٍ ٤٠٠٠، فبلا
+    // `pairPrice` في الفحص كان العرض المُزال يمرّ ويُحفظ الطلب بـ٨٠٠٠ لا ٧٠٠٠.
+    const id = await product('توقّع');
+    const shopper = await buyer();
+    await addToCart(shopper.auth, id, 2);
+    await api.patch(`/api/admin/products/${id}`).set(admin()).send({ pairPrice: null }).expect(200);
+
+    const res = await placeOrder(shopper.auth, { expectedPrices: [{ productId: id, unitPrice: 4000, pairPrice: 7000 }] });
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('PRODUCT_PRICE_CHANGED');
+    const { rows } = await db.query<{ n: number }>('SELECT count(*)::int AS n FROM orders WHERE user_id = $1', [shopper.userId]);
+    expect(rows[0]!.n).toBe(0);
+
+    // ما يطابق الحالي يمرّ؛ وعميلٌ أقدم بلا الحقل لا يُفحص له — كما كان.
+    const ok = await placeOrder(shopper.auth, { expectedPrices: [{ productId: id, unitPrice: 4000, pairPrice: null }] }).expect(201);
+    expect(ok.body.data.productsTotal).toBe(8000);
+    const legacy = await buyer();
+    await addToCart(legacy.auth, id, 2);
+    await placeOrder(legacy.auth, { expectedPrices: [{ productId: id, unitPrice: 4000 }] }).expect(201);
+  });
+
   it('سعر قطعتين تغيّر بعد المراجعة ⇒ QUOTE_CHANGED ولا طلب', async () => {
     const id = await product('مراجعة');
     const shopper = await buyer();

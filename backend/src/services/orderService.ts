@@ -218,16 +218,29 @@ async function orderDiscounts(
  * محاولتان متطابقتان بمسافة. العربة **ليست** فيها عمداً: المحاولة الأولى
  * تُفرغها، فإعادةٌ صادقة كانت ستختلف بصمتها دائماً.
  */
+/** ما راجعه الزبون لكل منتج — فحصٌ لا مصدر (`validators/orders.ts`). */
+interface ExpectedPrice {
+  productId: string;
+  unitPrice: number;
+  /** 085؛ الغائب = لا فحص (تطبيقٌ أقدم). */
+  pairPrice?: number | null;
+}
+
 function orderFingerprint(input: {
   governorateId: string;
   fullAddress: string;
   phone: string;
   zoneId?: string | null;
-  expectedPrices?: ReadonlyArray<{ productId: string; unitPrice: number }>;
+  expectedPrices?: ReadonlyArray<ExpectedPrice>;
   expectedQuote?: string;
 }): string {
+  // سعر القطعتين يدخل البصم حين يُرسَل وحده، فيبقى بصم العميل الأقدم كما كان حرفاً بحرف.
   const expectedPrices = [...(input.expectedPrices ?? [])]
-    .map((entry) => [entry.productId, entry.unitPrice] as const)
+    .map((entry) =>
+      entry.pairPrice === undefined
+        ? ([entry.productId, entry.unitPrice] as const)
+        : ([entry.productId, entry.unitPrice, entry.pairPrice] as const),
+    )
     .sort((a, b) => (a[0] === b[0] ? a[1] - b[1] : a[0] < b[0] ? -1 : 1));
   const canonical = JSON.stringify({
     v: 1,
@@ -285,7 +298,7 @@ export const orderService = {
       fullAddress: string;
       phone: string;
       zoneId?: string | null;
-      expectedPrices?: ReadonlyArray<{ productId: string; unitPrice: number }>;
+      expectedPrices?: ReadonlyArray<ExpectedPrice>;
       /** بصمة المعاينة التي راجعها الزبون (`checkoutQuote().fingerprint`) — فحصٌ لا مصدر. */
       expectedQuote?: string;
     },
@@ -330,7 +343,7 @@ export const orderService = {
       fullAddress: string;
       phone: string;
       zoneId?: string | null;
-      expectedPrices?: ReadonlyArray<{ productId: string; unitPrice: number }>;
+      expectedPrices?: ReadonlyArray<ExpectedPrice>;
       /** بصمة المعاينة التي راجعها الزبون (`checkoutQuote().fingerprint`) — فحصٌ لا مصدر. */
       expectedQuote?: string;
     },
@@ -417,9 +430,14 @@ export const orderService = {
         // تُبنى منها اللقطة أدناه وداخل هذه المعاملة بعد قفل العربة — لا قراءة
         // سابقة يمكن أن يسبقها تعديلٌ ملتزَم. يقع قبل حجز الخصمين وقبل إنشاء
         // الطلب، فالرفض لا يترك أثراً. السعر المتوقَّع فحصٌ لا مصدر.
+        // وسعر القطعتين (085) متى أرسله العميل: تعديل العرض يغيّر ما يُدفع ولو
+        // بقي سعر الوحدة كما هو.
         if (
           input.expectedPrices?.some(
-            (expected) => expected.productId === product.id && expected.unitPrice !== unitPrice,
+            (expected) =>
+              expected.productId === product.id &&
+              (expected.unitPrice !== unitPrice ||
+                (expected.pairPrice !== undefined && expected.pairPrice !== product.pairPrice)),
           )
         ) {
           throw Errors.conflict(

@@ -233,4 +233,42 @@ describe('[CRITICAL] منتجٌ بلا سعر بعد: يُعرض لمن يطلب
     const row = (list.body.data.items as Array<{ id: string; price: unknown }>).find((p) => p.id === res.body.data.id);
     expect(row?.price).toBeNull();
   });
+
+  it('[CRITICAL] «عاد للتوفر» لا يُرسَل عن منتجٍ بلا سعر — يُؤجَّل إلى إعلان السعر، والاشتراك يبقى', async () => {
+    const created = await createProduct('توفر', { price: 4000, stock: 0 }).expect(201);
+    const id = created.body.data.id as string;
+    const waiting = await registerAndLogin();
+    await api
+      .post('/api/restock-subscriptions')
+      .set('Authorization', `Bearer ${waiting.token}`)
+      .send({ productId: id })
+      .expect(200);
+    const notices = async () =>
+      Number(
+        (
+          await db.query<{ n: string }>(
+            "SELECT count(*)::text AS n FROM notifications WHERE user_id = $1 AND product_id = $2 AND type = 'backInStock'",
+            [waiting.userId, id],
+          )
+        ).rows[0]!.n,
+      );
+    const subscribed = async () =>
+      Number(
+        (await db.query<{ n: string }>('SELECT count(*)::text AS n FROM restock_subscriptions WHERE product_id = $1', [id]))
+          .rows[0]!.n,
+      );
+
+    // يُسحب السعر ثم يعود المخزون: لا يُشترى بعد، فلا خبر ويبقى الاشتراك.
+    await api.patch(`/api/admin/products/${id}`).set(admin()).send({ price: null }).expect(200);
+    await api.patch(`/api/admin/products/${id}`).set(admin()).send({ stock: 4 }).expect(200);
+    expect(await notices()).toBe(0);
+    expect(await subscribed()).toBe(1);
+
+    // إعلان السعر على مخزونٍ موجود هو لحظة «عاد للتوفر» — مرةً واحدة.
+    await api.patch(`/api/admin/products/${id}`).set(admin()).send({ price: 4500 }).expect(200);
+    expect(await notices()).toBe(1);
+    expect(await subscribed()).toBe(0);
+    await api.patch(`/api/admin/products/${id}`).set(admin()).send({ price: 4600 }).expect(200);
+    expect(await notices()).toBe(1);
+  });
 });
