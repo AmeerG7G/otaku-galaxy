@@ -11662,3 +11662,177 @@ Run on the deployed HTTPS domain (the `__Host-` cookie needs HTTPS):
 - Kurdish native review; Kurdish on the website (later, by decision).
 - Najaf real zone fees (owner data); product image licensing.
 - Push-notification delivery (deferred by decision).
+
+# STEP 69 — INTEGRATION OF THE THREE HISTORIES · RUNBOOK ISOLATION (R-17) · «COMING SOON» UNPRICED PRODUCTS · TWO-PIECE PRICE (2026-10-24)
+
+Branch `integration/step-68`, made from local `dev` @ `e3def17`. It has small local commits and is
+pushed to `origin/integration/step-68` at the owner's request. There is no PR, no merge and no
+deployment; `origin/dev`, `staging` and `prod` are unchanged (`d3fd23c` / `73a2736` / `64c09bb`).
+Every result below was observed in this session against a throwaway PostgreSQL 16 container that
+starts empty and is migrated only. No server, staging or production database was touched.
+
+## 69.1 Integration — one history from three
+
+Three histories had split from `origin/dev` `d3fd23c`:
+
+- **local `dev`** — 56 commits that existed only on this machine: STEP 67 analytics and FCM,
+  migrations 071–082;
+- **`claude/clever-brown-b00tod`** @ `4bfaefb` — the web store, idempotency and quote binding;
+- **`claude/compassionate-mayer-61v1pc`** @ `25d1fb0` — cart option validation.
+
+`integration/step-68` merges both cloud branches into local `dev`.
+
+- **Renumbering:**
+  - The cloud migration `071_order_idempotency.sql` became `083_…`. The rollback suite pins 071–080
+    to ten files, and 071 was already taken.
+  - The cloud spec's «STEP 67» became STEP 68.
+- **Not recoverable anywhere:** the cloud session's own integration commit (`744767a`), its STEP 68,
+  its `session-handoff.md`, and its old deploy §12. The work they described was rebuilt by
+  auditing the files the cloud branches actually shipped.
+- **Merge drift fixed:** `OrderData.withIdempotencyKey` dropped `loyaltyGiftActivated`. It is fixed
+  and covered by a regression test, which was shown red without the fix.
+- **A dashboard test that was already red on the cloud branch:** antd keeps a help node in the DOM
+  while it leaves. The assertions now ignore leaving nodes.
+
+## 69.2 R-17 — staging and production runbooks cannot touch each other
+
+`deploy/README.md` was rewritten under these isolation rules:
+
+- **Separate checkouts:** `/srv/otaku-galaxy-staging` and `/srv/otaku-galaxy`.
+- **Compose:** `-p otaku-staging` / `-p otaku-prod`, with `ENV_FILE`, `HOST_PORT` and `IMAGE_TAG`
+  all required (staging 4001, production 4000).
+- **PM2:** each app has its own `cwd`, and there is a web-store app per environment (3001 / 3000).
+- **Every block** is a `( set -e … )` subshell that first checks the branch.
+- **Clean environment:** migrations and PM2 run under `env -i`, and compose runs `build api migrate`.
+- **TLS:** the certificate is issued before nginx is enabled, and a failed `nginx -t` rolls back.
+- **Web store:** it fails closed when `API_INTERNAL_URL` is missing in production.
+
+The guard is `backend/tests/deploy-runbook.test.ts`, with 13 static tests. It caught 20 of 20
+mutations, and the unchanged runbook passes. Two independent review rounds were run, and their
+findings are fixed. §13, the web store on staging, stays «لا تُشغَّل» until it has run once on a
+real server.
+
+## 69.3 Feature A — announced before its price («قريباً — السعر يُعلن لاحقاً»)
+
+**Owner decision (2026-10-24):**
+
+- A price that is not set yet is **NULL, never 0**. Zero is a price; reading NULL as 0 would sell
+  the product for free.
+- The catalog hides unpriced products from any client that does not opt in with
+  `X-OG-Unpriced: 1`. The web store and the dashboard opt in. Installed apps parse `price ?? 0`,
+  so they must never see one.
+
+| Layer | Behaviour |
+|---|---|
+| DB (084) | `products.price` is nullable. `products_previous_price_needs_price` rejects a «was» price when there is no price. Order prices (`order_items.price`) are unchanged |
+| Catalog | `pricedOnly()` filters home, list, discover, search, detail, favorites and franchise counts unless the request opts in. Admin lists always include unpriced products |
+| Cart / quote / order | Cart add → 409 `PRODUCT_NOT_PRICED`. If the price is withdrawn after the add: the displayed cart drops the line, sync reports it, the quote lists the issue `PRODUCT_NOT_PRICED`, and create refuses the whole submit before any write |
+| Dashboard | The switch «السعر يُعلن لاحقاً» sends `price: null` and clears «سعر قبل الخصم» and «سعر قطعتين». Tables show «يُعلن لاحقاً», never «0 د.ع» |
+| Web store | Sends `X-OG-Unpriced: 1` on every call. Card and product page show «قريباً — السعر يُعلن لاحقاً» with no add-to-cart and no stock state. Checkout names the issue |
+
+## 69.4 Feature B — «قطعة بـ٤٠٠٠، قطعتان بـ٧٠٠٠»
+
+**Owner decision (2026-10-24):**
+
+- The pair price is an optional field the admin sets per product. It covers two pieces of the
+  **same product**, even with different options. Products without it keep their current pricing.
+- Pairs repeat: each pair is charged the pair price and a leftover piece the unit price
+  (3 = 11,000; 4 = 14,000).
+- Birthday and level discounts apply to the resulting products total, as today.
+
+**Database (085):**
+
+- `products.pair_price`, with the CHECK `products_pair_price_offer`:
+  `pair_price IS NULL OR (price IS NOT NULL AND pair_price >= price AND pair_price < 2 * price)`.
+  So every stored value is a real offer, and no line can be negative.
+- Changing the unit price later also goes through this CHECK. A new price that makes the old pair
+  price no offer is refused with `INVALID_PAIR_PRICE`, not accepted silently.
+- `order_items.pair_price` is a snapshot. Existing orders are NULL and are never recomputed.
+
+**One function: `domain/orderPricing.ts` `pairPricedLineTotals`.**
+
+- A product's pieces are counted across its cart lines in the order they were added (`createdAt`,
+  then `id`). The saving (2 × price − pair price) goes on the line that completes each pair: red
+  then blue = 4,000 + 3,000.
+- The cart (`listItems`, `listAllItems`, `listItemsForCheckout`), the checkout quote and order
+  creation all call it. Order creation calls it inside the transaction, on the same product read it
+  validates. `products_total` = Σ `line_total`, as before.
+- No amount is ever read from the client. The quote fingerprint already covers `productsTotal`, so a
+  pair-price change between review and submit → `QUOTE_CHANGED`.
+
+**Stock is unchanged:** it is still deducted only when the admin approves, by quantity, under row
+locks. A rejection while pending is a no-op; a rejection after approval restores the stock.
+
+**What each surface shows:**
+
+| Surface | Change |
+|---|---|
+| Dashboard | Form field «سعر قطعتين», checked against the price (≥ price, < 2 × price). It shows what the customer pays: unit / two / three pieces and the saving. Product, offers and low-stock tables show it. Order lines carry «عرض قطعتين» when the line total is below price × quantity |
+| Web store | Product page: «قطعتان بـ… بدل …». The card names the offer. Cart lines show the **server's** line total and «عرض قطعتين». Order detail tags the line |
+| Flutter app | `CartItem.lineTotal` is the server's `lineTotal` (cart and order snapshot); it falls back to price × quantity only for a line with no server total. The app shows no offer label yet (that needs new ar/ckb strings) |
+| Analytics | Gross sales already come from `products_total` and per-product sales from `line_total`, so they are net of the saving. The saving itself is not reported as a separate figure |
+
+## 69.5 Verification (observed in this session)
+
+Backend tests ran on a throwaway `postgres:16-alpine` container that started empty and was
+migrated only, as CI does.
+
+| Suite | Result |
+|---|---|
+| Backend, full | First run 2037 / 2038: the one failure was the exact shape of a quote line, updated for the additive `pairPrice` field. After the review fixes: **2040 / 2040**, including the performance-audit `[POOL]` tests that failed under CPU load earlier in the session |
+| `pair-price.test.ts` | 12 / 12. Five code mutations each caught (creation total, quote total, cart totals, order-item snapshot, pair price in `expectedPrices`); the unchanged code passes |
+| `unpriced-products.test.ts` | 10 / 10, including deferred restock notices (red without the guard) |
+| `migration-rollback.test.ts` | Up → down → up through 085 |
+| Dashboard, full | 369 / 370. The failure is the known load-timing `ProductEditPage` case, which passes 22 / 22 three times when run alone. `ProductForm.pricing.test.tsx`: 10 / 10 |
+| Web store | 51 / 51. Two mutations caught (header dropped; add-to-cart shown for an unpriced product). `tsc`, `eslint` and `next build` pass |
+| Flutter, related files | 127 / 127. `pair_price_line_total_test.dart`: 3 / 3, red when the server line total is not mapped |
+| Flutter, full | 1998 passed, 4 skipped, 17 failed. The failures are `api_integration` ×11 (it needs a live API on :4000; none was running, by design) plus exactly the six recorded as failing before this work on dev `9fe61f3`: character_art, character_art_placement, empty_states_centered, responsive_layout, sorani_review_queue ×2 |
+
+**Browser check against a local API on its own throwaway database:**
+
+- Without the header the API omits the unpriced product; with `X-OG-Unpriced: 1` it returns it
+  with `price: null`.
+- At 320 px:
+  - the unpriced product's card and page show «قريباً — السعر يُعلن لاحقاً», no price figure and
+    no add area (the signed-out priced page shows «سجّل الدخول للإضافة إلى السلة»);
+  - the pair-priced page shows «قطعتان بـ7000 د.ع بدل 8000 د.ع».
+- There is no horizontal scroll at 320, 768 or 1440 px.
+- The database refused a pair price below the unit price (`products_pair_price_offer`).
+
+**Not checked in a browser:**
+
+- the dashboard form and tables (component tests only);
+- the web store's cart and checkout, which need a signed-in shopper (covered by the API
+  integration tests).
+
+### Independent review (read-only agent, after the commits)
+
+No path sells an unpriced product, treats NULL as 0, or pairs across products. The review's
+findings were checked against the code, and all four are fixed:
+
+| Finding | Check | Fix |
+|---|---|---|
+| **The app could not detect a pair-price change between review and submit.** It sends `expectedPrices` (unit price only), not `expectedQuote`, so removing an offer let the order save at 8,000 after the customer reviewed 7,000 | Confirmed in `orderService.create` and `order_data.dart` | `expectedPrices[].pairPrice` (optional; `null` = no offer) is compared when sent → 409 `PRODUCT_PRICE_CHANGED`. The app sends it from the cart line. Older apps don't send it and stay unchecked (§69.6). The idempotency fingerprint is unchanged for requests without it. The test fails without the check |
+| **The `084` rollback was not atomic under `psql -f`.** When `SET NOT NULL` failed on NULL rows, the constraint was still dropped and the migration record deleted | Reproduced on a throwaway database: the old script left `constraint 0, record 0` with the NULL price still there | Both `084.down` and `085.down` now run inside `BEGIN … COMMIT`. On the same data the new script leaves everything unchanged. Deploy §14 gives the `ON_ERROR_STOP=1` command |
+| **«عاد للتوفر» went out for an unpriced product** (restock while «قريباً»), and the subscriptions were consumed | Confirmed in `restockService.stockReturned`, which has two callers | `stockReturned` does nothing while the price is NULL, and the subscriptions stay. An admin save that announces a price on a product in stock notifies them once. The test fails without the guard |
+| The app's review screen did not treat `PRODUCT_NOT_PRICED` as a cart conflict | Confirmed | Added to `_isCartConflict`, which returns the customer to the synced cart |
+
+## 69.6 Open
+
+- **Owner decision — installed apps and pair prices (UNRESOLVED).** Current app releases
+  have two gaps with a pair price:
+  - they compute cart lines locally (price × quantity), so they show 8,000 for a pair the server
+    charges 7,000;
+  - they do not send the reviewed pair price, so an offer change between review and submit goes
+    unnoticed.
+
+  Either raise «أدنى إصدار مدعوم» to the release with this STEP's Flutter changes before setting
+  any pair price in production, or accept both gaps for older apps (deploy §14).
+- **Missing displays.**
+  - The Flutter app shows no «قطعتان بـ…» label; that needs new ar and ckb strings.
+  - Analytics has no separate figure for the pair-offer saving.
+- **Not done on a real server:**
+  - the staging runbook, including §13, the web store on staging;
+  - migrations 083–085 on staging.
+- **`next dev` agent files.** Next 16 `next dev` writes `web-store/AGENTS.md` and `CLAUDE.md` on
+  every run; `agentRules: false` in `next.config` would stop it (owner's call).
