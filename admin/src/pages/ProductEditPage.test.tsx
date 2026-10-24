@@ -210,13 +210,21 @@ describe('ProductEditPage — Kurdish option translations', () => {
     await user.clear(screen.getAllByLabelText('القيمة بالكردية')[2]!)
     await user.click(screen.getByRole('button', { name: 'حفظ التعديلات' }))
 
-    expect(await screen.findByText('ترجم كل قيم الخيار أو اترك ترجمتها فارغة كلها')).toBeInTheDocument()
+    // antd يُبقي الخطأ السابق في DOM أثناء حركة خروجه (`…-leave`، شفافية ٠)
+    // حين يعيد الحفظ التحقّق، فقد يظهر النص مرتين؛ المطلوب أن يُرى مرةً على الأقل.
+    const shown = await screen.findAllByText('ترجم كل قيم الخيار أو اترك ترجمتها فارغة كلها')
+    expect(shown.some((el) => !el.closest('.ant-form-show-help-item-leave'))).toBe(true)
     expect(updateProduct).not.toHaveBeenCalled()
 
     // إفراغ البقية يُسقط الخطأ عن الصفّ الأول فوراً — لا يبقى خطأٌ قديم حتى الحفظ.
     for (const input of screen.getAllByLabelText('القيمة بالكردية').slice(0, 2)) await user.clear(input)
+    // لا خطأ ظاهر: ما يبقى في DOM عقدُ خروجٍ لا تُكمل حركتَها في jsdom.
     await waitFor(() =>
-      expect(screen.queryByText('ترجم كل قيم الخيار أو اترك ترجمتها فارغة كلها')).not.toBeInTheDocument(),
+      expect(
+        screen
+          .queryAllByText('ترجم كل قيم الخيار أو اترك ترجمتها فارغة كلها')
+          .filter((el) => !el.closest('.ant-form-show-help-item-leave')),
+      ).toHaveLength(0),
     )
   })
 })
