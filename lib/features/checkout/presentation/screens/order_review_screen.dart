@@ -136,7 +136,9 @@ class _OrderReviewScreenState extends State<OrderReviewScreen>
       error.statusCode == 409 &&
       (error.code == 'INSUFFICIENT_STOCK' ||
           error.code == 'PRODUCT_UNAVAILABLE' ||
-          error.code == 'PRODUCT_PRICE_CHANGED');
+          error.code == 'PRODUCT_PRICE_CHANGED' ||
+          // سعرٌ سُحب بعد الإضافة (084): السلة المُزامَنة تُسقط السطر وتبلّغ.
+          error.code == 'PRODUCT_NOT_PRICED');
 
   /// هذه الشاشة تعرض أسطراً ومجموعاً لم يعودا صحيحين، فلا يُعاد الإرسال منها:
   /// تُزامَن العربة ويعود الزبون إليها ليرى ما تغيّر. رسالة المزامنة المجمَّعة

@@ -189,7 +189,7 @@ void main() {
       // شيء: السعر المحفوظ سعر الخادم.
       expect(body.keys.toSet(), {'governorateId', 'fullAddress', 'phone', 'expectedPrices'});
       expect(body['expectedPrices'], [
-        {'productId': 'p1', 'unitPrice': _price},
+        {'productId': 'p1', 'unitPrice': _price, 'pairPrice': null},
       ]);
     });
   });

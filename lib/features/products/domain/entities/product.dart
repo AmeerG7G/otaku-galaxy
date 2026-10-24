@@ -51,6 +51,7 @@ class Product {
     this.deliveryPromoAmount = 0,
     this.franchiseIds = const [],
     this.restockAt,
+    this.pairPrice,
   });
 
   final String id;
@@ -109,6 +110,11 @@ class Product {
 
   /// قيمة خصم التوصيل عن كل قطعة — القيمة المعتمدة، والخادم هو من يطبّقها.
   final double deliveryPromoAmount;
+
+  /// سعر قطعتين من المنتج نفسه (085)؛ `null` = لا عرض. الخادم وحده يحسب به —
+  /// التطبيق يعرض `lineTotal` كما وصل، ويُرسل هذه القيمة في `expectedPrices`
+  /// ليُرفض الطلب إن تغيّر العرض بعد المراجعة.
+  final double? pairPrice;
 
   /// الأنمي/الامتيازات المرتبطة بالمنتج.
   final List<String> franchiseIds;
@@ -210,6 +216,7 @@ class Product {
       // الخادم يرسله ISO-8601 أو `null`. نصٌّ معطوب يُقرأ `null` لا يرمي:
       // موعدٌ إرشادي لا يستحق إسقاط صفحة المنتج.
       restockAt: DateTime.tryParse(json['restockAt']?.toString() ?? '')?.toLocal(),
+      pairPrice: (json['pairPrice'] as num?)?.toDouble(),
     );
   }
 
@@ -239,6 +246,7 @@ class Product {
       deliveryPromoAmount: deliveryPromoAmount,
       restockAt: restockAt,
       franchiseIds: franchiseIds,
+      pairPrice: pairPrice,
     );
   }
 }

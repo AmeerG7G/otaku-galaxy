@@ -780,8 +780,8 @@ void main() {
         items: [_item('l1', 'p1', quantity: 2), _item('l2', 'p2', price: 7000)],
       ).toJson();
       expect(body['expectedPrices'], [
-        {'productId': 'p1', 'unitPrice': 10000.0},
-        {'productId': 'p2', 'unitPrice': 7000.0},
+        {'productId': 'p1', 'unitPrice': 10000.0, 'pairPrice': null},
+        {'productId': 'p2', 'unitPrice': 7000.0, 'pairPrice': null},
       ]);
       for (final key in const ['items', 'total', 'productsTotal', 'discount', 'deliveryFee']) {
         expect(body.containsKey(key), isFalse, reason: '$key لا يُرسَل');
@@ -794,7 +794,7 @@ void main() {
 
       expect(find.text('تم إرسال طلبك'), findsOneWidget);
       expect(shop.lastOrderBody!['expectedPrices'], [
-        {'productId': 'p1', 'unitPrice': 10000},
+        {'productId': 'p1', 'unitPrice': 10000, 'pairPrice': null},
       ]);
     });
 
@@ -850,8 +850,8 @@ void main() {
       final (_, _, sent) = await _pumpReviewOverWire(tester, shop: shop);
       await _confirmOverWire(tester);
       expect(sent.lastOrderBody!['expectedPrices'], unorderedEquals([
-        {'productId': 'p1', 'unitPrice': 10000},
-        {'productId': 'p2', 'unitPrice': 7000},
+        {'productId': 'p1', 'unitPrice': 10000, 'pairPrice': null},
+        {'productId': 'p2', 'unitPrice': 7000, 'pairPrice': null},
       ]));
     });
 
@@ -867,7 +867,7 @@ void main() {
 
       expect(shop.requests[beforeSubmit], 'POST /orders', reason: 'لا قراءة سعرٍ قبل الإرسال');
       expect(shop.lastOrderBody!['expectedPrices'], [
-        {'productId': 'p1', 'unitPrice': 10000},
+        {'productId': 'p1', 'unitPrice': 10000, 'pairPrice': null},
       ], reason: 'ما رآه الزبون في المراجعة، لا آخر سعرٍ في الذاكرة');
     });
   });

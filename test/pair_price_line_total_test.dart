@@ -15,6 +15,7 @@ import 'package:otaku_galaxy/features/cart/data/repositories/cart_repository_imp
 import 'package:otaku_galaxy/features/cart/domain/entities/cart_item.dart';
 import 'package:otaku_galaxy/features/cart/presentation/cubit/cart_state.dart';
 import 'package:otaku_galaxy/features/orders/domain/entities/order.dart';
+import 'package:otaku_galaxy/features/orders/domain/entities/order_data.dart';
 import 'package:otaku_galaxy/features/products/domain/entities/product.dart';
 
 /// ردٌّ واحد بشكل `GET /cart` الحقيقي: «أحمر» ثم «أزرق» من المنتج نفسه.
@@ -65,6 +66,21 @@ void main() {
 
     expect(items.map((item) => item.lineTotal), [3000, 4000]);
     expect(CartLoaded(items: items).total, 7000);
+
+    // [CRITICAL] الطلب يحمل سعر القطعتين الذي راجعه الزبون: إن عُدِّل العرض قبل
+    // الإرسال رفضه الخادم (`PRODUCT_PRICE_CHANGED`) بدل أن يحفظ مبلغاً لم يره.
+    final body = OrderData(
+      governorateId: 'g1',
+      province: 'بغداد',
+      deliveryCost: 4000,
+      fullAddress: 'الكرادة',
+      phone: '07700000000',
+      items: items,
+    ).toJson();
+    expect(body['expectedPrices'], [
+      {'productId': 'p1', 'unitPrice': 4000.0, 'pairPrice': 7000.0},
+      {'productId': 'p1', 'unitPrice': 4000.0, 'pairPrice': 7000.0},
+    ]);
   });
 
   test('الطلب يعرض ما دفعه الزبون عن السطر — لقطة الخادم لا السعر × الكمية', () {

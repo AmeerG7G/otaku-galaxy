@@ -99,6 +99,7 @@ class CartRepositoryImpl implements CartRepository {
       hasDeliveryPromo: line['hasDeliveryPromo'] as bool? ?? false,
       deliveryPromoAmount:
           (line['deliveryPromoAmount'] as num?)?.toDouble() ?? 0,
+      pairPrice: (line['pairPrice'] as num?)?.toDouble(),
     );
     return CartItem(
       product: product,

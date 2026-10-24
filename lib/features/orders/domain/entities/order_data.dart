@@ -102,6 +102,9 @@ class OrderData {
   /// الإرسال. الخادم يقارنه بالسعر الحالي ويرفض أي اختلاف بـ`409
   /// PRODUCT_PRICE_CHANGED`. فحصٌ لا مصدر: لا يُرسَل مجموعٌ ولا خصمٌ، والسعر
   /// المحفوظ في الطلب سعر الخادم وحده.
+  ///
+  /// ومعه سعر القطعتين (085، `null` = لا عرض): تعديل العرض بين المراجعة
+  /// والإرسال يغيّر ما يُدفع وسعر الوحدة باقٍ — كان يمرّ بصمت.
   Map<String, dynamic> toJson() {
     return {
       'governorateId': governorateId,
@@ -110,7 +113,11 @@ class OrderData {
       if (zoneId != null) 'zoneId': zoneId,
       'expectedPrices': [
         for (final item in items)
-          {'productId': item.product.id, 'unitPrice': item.product.price},
+          {
+            'productId': item.product.id,
+            'unitPrice': item.product.price,
+            'pairPrice': item.product.pairPrice,
+          },
       ],
     };
   }
