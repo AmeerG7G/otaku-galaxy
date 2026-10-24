@@ -120,6 +120,9 @@ describe('تحديث التطبيق', () => {
     await fill(user, 'أدنى إصدار مدعوم', '1.3.0')
     await user.click(screen.getByRole('button', { name: /إرسال التحديث/ }))
     expect(await screen.findByText('أعلى من أحدث إصدار — لن تستطيع أي نسخة تجاوز شاشة التحديث')).toBeInTheDocument()
+    // المعاينة لا تعرض نطاقاتٍ متناقضة لسياسةٍ يرفضها الخادم.
+    expect(screen.getByTestId('affected-ranges')).toHaveTextContent('أدنى إصدار مدعوم أعلى من أحدث إصدار — صحّحه قبل الإرسال.')
+    expect(screen.getByTestId('affected-ranges')).not.toHaveTextContent('فما فوق')
     expect(await screen.findByText('الصق رابط صفحة التطبيق قبل التفعيل')).toBeInTheDocument()
 
     await fill(user, 'رابط التطبيق على Google Play', 'https://example.com/app.apk')

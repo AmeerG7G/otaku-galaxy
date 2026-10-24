@@ -226,13 +226,6 @@ function StatusCard({
         </Flex>
       }
       loading={loading}
-      extra={
-        view?.enabled ? (
-          <Button danger icon={<StopOutlined />} onClick={onDisable} loading={disabling}>
-            إيقاف السياسة
-          </Button>
-        ) : null
-      }
     >
       {view && (
         <Space direction="vertical" size={12} style={{ width: '100%' }}>
@@ -258,6 +251,12 @@ function StatusCard({
             </Descriptions.Item>
             <Descriptions.Item label="رقم المراجعة">{view.revision}</Descriptions.Item>
           </Descriptions>
+          {/* في جسم البطاقة لا في رأسها: على الهاتف يزاحم الزرّ العنوان. */}
+          {view.enabled ? (
+            <Button danger block icon={<StopOutlined />} onClick={onDisable} loading={disabling}>
+              إيقاف السياسة
+            </Button>
+          ) : null}
         </Space>
       )}
     </Card>
@@ -404,15 +403,18 @@ function PreviewCard({ values }: { values?: PolicyFormValues }) {
   const minimum = v?.enabled && v.mode === 'mandatory' && SEMVER_PATTERN.test(v.minimumVersion) ? v.minimumVersion : ''
   const latest = v?.enabled && SEMVER_PATTERN.test(v.latestVersion) ? v.latestVersion : ''
   const optionalBand = latest && (!minimum || (compareVersions(minimum, latest) ?? 0) < 0)
+  const minimumAboveLatest = Boolean(minimum && latest && (compareVersions(minimum, latest) ?? 0) > 0)
 
   const ranges = useMemo(() => {
     if (!v?.enabled) return ['السياسة موقوفة: لا أحد يرى تنبيهاً ولا حجباً.']
+    // الخادم يرفض هذه السياسة؛ عرضُ نطاقاتٍ لها يناقض نفسه.
+    if (minimumAboveLatest) return ['أدنى إصدار مدعوم أعلى من أحدث إصدار — صحّحه قبل الإرسال.']
     const lines: string[] = []
     if (minimum) lines.push(`النسخ الأقدم من ${minimum}: تُحجب حتى التحديث.`)
     if (optionalBand) lines.push(minimum ? `من ${minimum} إلى أقدم من ${latest}: تنبيهٌ يُغلق.` : `النسخ الأقدم من ${latest}: تنبيهٌ يُغلق.`)
     if (latest) lines.push(`${latest} فما فوق: لا شيء.`)
     return lines.length ? lines : ['أكمل الحقول لترى أثر السياسة.']
-  }, [v?.enabled, minimum, latest, optionalBand])
+  }, [v?.enabled, minimum, latest, optionalBand, minimumAboveLatest])
 
   return (
     <Card variant="outlined" title="معاينة ما يراه الزبون">
