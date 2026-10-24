@@ -36,6 +36,55 @@ export function fitProductDiscounts(
   return { birthday, loyalty };
 }
 
+/** سطرٌ مسعَّر قبل عرض القطعتين — من العربة أو من لقطة الطلب. */
+export interface PairPricedLine {
+  id: string;
+  productId: string;
+  quantity: number;
+  unitPrice: number;
+  /** سعر قطعتين من المنتج نفسه (085)؛ `null` = لا عرض. */
+  pairPrice: number | null;
+  createdAt: Date;
+}
+
+/**
+ * مبلغ كل سطر بعد عرض «قطعتان بسعر» (085) — للعربة والمعاينة والطلب معاً.
+ *
+ * قرار المالك (2026-10-24): العرض على قطعتين من **المنتج نفسه** وإن اختلف
+ * الخيار، ويتكرّر: كل قطعتين بسعر القطعتين والفردة بسعر القطعة (٤٠٠٠ / ٧٠٠٠ /
+ * ١١٠٠٠ / ١٤٠٠٠). مجموع المنتجات هو مجموع هذه المبالغ، وعليه يُحسب الخصمان.
+ *
+ * قطع المنتج تُعدّ عبر أسطره بترتيب الإضافة (`createdAt` ثم `id`) لا بترتيب
+ * المصفوفة، فالنتيجة واحدة في العربة (الأحدث أولاً) والطلب. التوفير
+ * (`2 × سعر القطعة − سعر القطعتين`) يقع على السطر الذي تكتمل فيه القطعتان:
+ * «أحمر» ثم «أزرق» = ٤٠٠٠ + ٣٠٠٠. القيد في القاعدة يحصره بين صفرٍ وسعر القطعة،
+ * والحصر هنا أيضاً فلا يصير سطرٌ سالباً مهما وصل.
+ *
+ * دالة خالصة: معرّف السطر ← مبلغه، لكل سطر.
+ */
+export function pairPricedLineTotals(lines: ReadonlyArray<PairPricedLine>): Map<string, number> {
+  const totals = new Map<string, number>();
+  const ordered = [...lines].sort((a, b) => {
+    const at = a.createdAt.getTime() - b.createdAt.getTime();
+    if (at !== 0) return at;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+  const unitsBefore = new Map<string, number>();
+  for (const line of ordered) {
+    const before = unitsBefore.get(line.productId) ?? 0;
+    unitsBefore.set(line.productId, before + line.quantity);
+    const full = line.unitPrice * line.quantity;
+    if (line.pairPrice === null) {
+      totals.set(line.id, full);
+      continue;
+    }
+    const saving = Math.min(Math.max(2 * line.unitPrice - line.pairPrice, 0), line.unitPrice);
+    const pairsCompleted = Math.floor((before + line.quantity) / 2) - Math.floor(before / 2);
+    totals.set(line.id, full - pairsCompleted * saving);
+  }
+  return totals;
+}
+
 export interface OrderPricingInput {
   productsTotal: number;
   deliveryFee: number;

@@ -160,6 +160,8 @@ export type ProductRow = {
   description_ckb: string | null;
   /** `null` = «السعر يُعلن قريباً» (084): يُعرض ولا يُشترى. لا يُقرأ صفراً أبداً. */
   price: string | number | null;
+  /** سعر قطعتين من المنتج نفسه (085)؛ `null` = لا عرض. */
+  pair_price: string | number | null;
   stock: number;
   is_active: boolean;
   is_offer: boolean;
@@ -260,6 +262,8 @@ export type OrderItemRow = {
   image_url: string | null;
   option_value: string | null;
   price: string | number;
+  /** لقطة سعر القطعتين وقت الطلب (085)؛ `null` = لا عرض أو طلبٌ أقدم. */
+  pair_price: string | number | null;
   quantity: number;
   line_total: string | number;
   created_at: Date;

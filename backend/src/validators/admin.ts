@@ -226,6 +226,11 @@ export const adminProductCreateSchema = z.object({
    * إلزامياً — غيابُه خطأ في العميل لا «بلا سعر» — والصفر مرفوض كما كان.
    */
   price: price.nullable(),
+  /**
+   * سعر قطعتين من المنتج نفسه (085) — اختياري، والغائب = لا عرض. العرض الحقيقي
+   * (بين سعر القطعة وضعفه، ولا عرض بلا سعر) تفرضه القاعدة: `INVALID_PAIR_PRICE`.
+   */
+  pairPrice: price.nullable().optional(),
   categoryId: z.string().uuid('معرّف قسم غير صالح'),
   subcategoryId: z.string().uuid('معرّف قسم فرعي غير صالح').nullable().optional(),
   stock: z.number().int().min(0).max(100000),
@@ -261,6 +266,8 @@ export const adminProductUpdateSchema = z.object({
   description: retiredKey('descriptionAr/descriptionCkb'),
   /** `null` يعيد المنتج «قريباً» بلا سعر (084)؛ الغائب لا يُمسّ. */
   price: price.nullable().optional(),
+  /** `null` يزيل عرض القطعتين (085)؛ الغائب لا يُمسّ. */
+  pairPrice: price.nullable().optional(),
   categoryId: z.string().uuid('معرّف قسم غير صالح').optional(),
   subcategoryId: z.string().uuid('معرّف قسم فرعي غير صالح').nullable().optional(),
   stock: z.number().int().min(0).max(100000).optional(),

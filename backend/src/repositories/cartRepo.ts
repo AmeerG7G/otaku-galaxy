@@ -1,5 +1,6 @@
 import type pg from 'pg';
 import type { CartAdjustment, CartSyncLine } from '../domain/cartSync.js';
+import { pairPricedLineTotals } from '../domain/orderPricing.js';
 import type { CartItemRow } from '../types/index.js';
 import { kurdishOrNull } from '../utils/locale.js';
 
@@ -19,6 +20,13 @@ export interface CartLine {
    * يراها الزبون (`listItems`) لا تعيد سطراً بلا سعر — التطبيق يقرأ الغائب صفراً.
    */
   unitPrice: number | null;
+  /** سعر قطعتين من المنتج نفسه (085)؛ `null` = لا عرض. */
+  pairPrice: number | null;
+  /**
+   * مبلغ السطر بعد عرض القطعتين، محسوباً عبر أسطر المنتج كلها في العربة
+   * (`pairPricedLineTotals`) — قد يقلّ عن `unitPrice × quantity`. العميل يعرضه
+   * كما هو ولا يحسبه.
+   */
   lineTotal: number | null;
   stock: number;
   /**
@@ -42,7 +50,7 @@ const LINE_FROM = `
   SELECT ci.id, ci.product_id AS "productId", ci.option_value AS "optionValue",
          ci.quantity, ci.created_at AS "createdAt",
          p.name AS "productName", p.name_ckb AS "productNameCkb",
-         p.stock, p.price AS "unitPrice",
+         p.stock, p.price AS "unitPrice", p.pair_price AS "pairPrice",
          p.has_delivery_promo AS "hasDeliveryPromo",
          p.delivery_promo_amount AS "deliveryPromoAmount",
          (SELECT pi.url FROM product_images pi
@@ -66,6 +74,8 @@ function mapLine(row: Record<string, unknown>): CartLine {
     quantity: Number(row.quantity),
     // `Number(null)` صفر — والصفر سعرٌ لا «بلا سعر».
     unitPrice: row.unitPrice === null ? null : Number(row.unitPrice),
+    pairPrice: row.pairPrice === null ? null : Number(row.pairPrice),
+    // مبدئي لسطرٍ وحده؛ `withPairTotals` يضبطه حين تُقرأ أسطر العربة معاً.
     lineTotal: row.unitPrice === null ? null : Number(row.unitPrice) * Number(row.quantity),
     stock: Number(row.stock),
     hasDeliveryPromo: row.hasDeliveryPromo === true,
@@ -74,12 +84,34 @@ function mapLine(row: Record<string, unknown>): CartLine {
   };
 }
 
+/**
+ * مبالغ الأسطر بعد عرض «قطعتان بسعر» (085) — على أسطر العربة **معاً**، لأن
+ * قطعتين بخيارين من المنتج نفسه عرضٌ واحد. سطرٌ بلا سعر يبقى `null`.
+ */
+function withPairTotals(lines: CartLine[]): CartLine[] {
+  const totals = pairPricedLineTotals(
+    lines.flatMap((line) =>
+      line.unitPrice === null
+        ? []
+        : [{
+            id: line.id,
+            productId: line.productId,
+            quantity: line.quantity,
+            unitPrice: line.unitPrice,
+            pairPrice: line.pairPrice,
+            createdAt: line.createdAt,
+          }],
+    ),
+  );
+  return lines.map((line) => ({ ...line, lineTotal: totals.get(line.id) ?? null }));
+}
+
 export const cartRepo = {
   async listItems(db: pg.Pool | pg.PoolClient, userId: string): Promise<CartLine[]> {
     const cartId = await ensureCart(db, userId);
     const { rows } = await db.query<Record<string, unknown>>(`${LINE_SELECT}
       ORDER BY ci.created_at DESC`, [cartId]);
-    return rows.map(mapLine);
+    return withPairTotals(rows.map(mapLine));
   },
 
   /**
@@ -93,7 +125,7 @@ export const cartRepo = {
     const cartId = await ensureCart(db, userId);
     const { rows } = await db.query<Record<string, unknown>>(`${LINE_FROM}
       ORDER BY ci.created_at DESC`, [cartId]);
-    return rows.map(mapLine);
+    return withPairTotals(rows.map(mapLine));
   },
 
   /**
@@ -117,7 +149,7 @@ export const cartRepo = {
     await tx.query('SELECT id FROM carts WHERE id = $1 FOR UPDATE', [cartId]);
     const { rows } = await tx.query<Record<string, unknown>>(`${LINE_FROM}
       ORDER BY ci.created_at DESC`, [cartId]);
-    return rows.map(mapLine);
+    return withPairTotals(rows.map(mapLine));
   },
 
   /**

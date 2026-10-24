@@ -19,6 +19,11 @@ export interface OrderItemSnapshot {
   imageUrl: string | null;
   optionValue: string | null;
   price: number;
+  /**
+   * لقطة «سعر القطعتين» وقت الطلب (085)؛ `null` = لم يكن للمنتج عرض، أو طلبٌ
+   * أقدم. `lineTotal` هو ما دفعه الزبون — قد يقلّ عن `price × quantity` بالعرض.
+   */
+  pairPrice: number | null;
   quantity: number;
   lineTotal: number;
 }
@@ -127,6 +132,7 @@ const ORDER_WITH_CUSTOMER = `
               'imageUrl', oi.image_url,
               'optionValue', oi.option_value,
               'price', oi.price,
+              'pairPrice', oi.pair_price,
               'quantity', oi.quantity,
               'lineTotal', oi.line_total
             ) ORDER BY oi.id)
@@ -387,8 +393,8 @@ export const orderRepo = {
       await db.query(
         `INSERT INTO order_items (
            order_id, product_id, product_name, product_name_ckb, image_url, option_value,
-           price, quantity, line_total
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+           price, quantity, line_total, pair_price
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [
           order.id,
           item.productId,
@@ -399,6 +405,7 @@ export const orderRepo = {
           item.price,
           item.quantity,
           item.lineTotal,
+          item.pairPrice,
         ],
       );
     }

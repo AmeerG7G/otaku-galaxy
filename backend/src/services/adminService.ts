@@ -54,6 +54,12 @@ function mapProductConstraintError(error: unknown): never {
       'INVALID_PREVIOUS_PRICE',
     );
   }
+  if (code === '23514' && constraint === 'products_pair_price_offer') {
+    throw Errors.badRequest(
+      'سعر القطعتين يجب ألا يقل عن سعر القطعة وأن يكون أقل من ضعفه — ولا عرض لمنتجٍ لم يُعلن سعره',
+      'INVALID_PAIR_PRICE',
+    );
+  }
   if (code === '23514') {
     throw Errors.badRequest('قيمة غير صالحة لأحد حقول المنتج', 'INVALID_PRODUCT_FIELD');
   }
@@ -240,6 +246,8 @@ export const adminService = {
     descriptionCkb: string;
     /** `null` = «السعر يُعلن قريباً» (084). */
     price: number | null;
+    /** سعر قطعتين (085)؛ الغائب/`null` = لا عرض. */
+    pairPrice?: number | null;
     categoryId: string;
     subcategoryId?: string | null;
     stock: number;
@@ -259,9 +267,9 @@ export const adminService = {
         `INSERT INTO products (
            name, description, price, category_id, subcategory_id, stock,
            is_offer, is_selected, previous_price, has_delivery_promo,
-           delivery_promo_amount, restock_at, name_ckb, description_ckb
+           delivery_promo_amount, restock_at, name_ckb, description_ckb, pair_price
          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
          RETURNING *`,
         [
           // `name`/`description` هما العمودان العربيان (046، موثَّقان في 066).
@@ -281,6 +289,7 @@ export const adminService = {
           input.restockAt ?? null,
           input.nameCkb,
           input.descriptionCkb,
+          input.pairPrice ?? null,
         ],
       );
       const product = rows[0]!;
@@ -356,6 +365,8 @@ export const adminService = {
       nameCkb?: string;
       descriptionCkb?: string;
       price?: number | null;
+      /** `null` يزيل عرض القطعتين (085)؛ الغائب لا يُمسّ. */
+      pairPrice?: number | null;
       categoryId?: string;
       subcategoryId?: string | null;
       stock?: number;
@@ -418,6 +429,7 @@ export const adminService = {
         'name_ckb',
         'description_ckb',
         'price',
+        'pair_price',
         'category_id',
         'subcategory_id',
         'stock',
@@ -435,6 +447,7 @@ export const adminService = {
         name_ckb: input.nameCkb,
         description_ckb: input.descriptionCkb,
         price: input.price,
+        pair_price: input.pairPrice,
         category_id: input.categoryId,
         subcategory_id: input.subcategoryId,
         stock: input.stock,

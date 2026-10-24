@@ -81,7 +81,10 @@ export const cartService = {
     }
 
     const line = await cartRepo.upsertItem(db, userId, input);
-    return { item: line, cart: await cartRepo.listItems(db, userId) };
+    const cart = await cartRepo.listItems(db, userId);
+    // السطر من العربة كلها لا وحده: مبلغه بعد عرض القطعتين (085) يعتمد على
+    // أسطر المنتج الأخرى.
+    return { item: cart.find((entry) => entry.id === line.id) ?? line, cart };
   },
 
   async updateQuantity(userId: string, itemId: string, quantity: number) {

@@ -75,6 +75,11 @@ export function mapProduct(
     kurdishMissing: nameCkb === null || descriptionCkb === null,
     /** `null` = لم يُعلن بعد (084) — العربة والطلب يرفضانه (`PRODUCT_NOT_PRICED`). */
     price,
+    /**
+     * سعر قطعتين من المنتج نفسه (085)؛ `null` = لا عرض. القيد في القاعدة
+     * يضمن أنه عرضٌ حقيقي: بين سعر القطعة وضعفه، ولا وجود له بلا سعر.
+     */
+    pairPrice: toNumber(row.pair_price),
     stock: row.stock,
     images: (row.images as string[]) ?? [],
     categoryId: row.category_id,

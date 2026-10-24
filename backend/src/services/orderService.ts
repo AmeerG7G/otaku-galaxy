@@ -16,8 +16,10 @@ import { adminEvents } from './adminEvents.js';
 import { birthdayDiscountAmount } from '../domain/birthday.js';
 import {
   fitProductDiscounts,
+  pairPricedLineTotals,
   priceOrder,
   quoteFingerprint,
+  type PairPricedLine,
   type QuotedLine,
 } from '../domain/orderPricing.js';
 import {
@@ -373,7 +375,13 @@ export const orderService = {
 
       if (cartItems.length === 0) throw Errors.badRequest('العربة فارغة — أضف منتجات أولاً', 'EMPTY_CART');
 
-      const snapshots: OrderItemSnapshot[] = [];
+      // الأسطر التي اجتازت كل فحص — تُسعَّر معاً بعد الحلقة لأن عرض القطعتين
+      // (085) يعدّ قطع المنتج عبر أسطره، فمبلغ السطر لا يُعرف من السطر وحده.
+      const accepted: Array<{
+        item: (typeof cartItems)[number];
+        product: NonNullable<ReturnType<typeof products.get>>;
+        unitPrice: number;
+      }> = [];
       // خصم التوصيل: مجموع مبالغ الترويج عن الكميات المطلوبة. يُحتسب على
       // الخادم من بيانات المنتج وقت الطلب — لا يُقرأ أي مبلغ من العميل.
       let deliveryPromoTotal = 0;
@@ -440,20 +448,36 @@ export const orderService = {
         if (product.hasDeliveryPromo && product.deliveryPromoAmount > 0) {
           deliveryPromoTotal += product.deliveryPromoAmount * item.quantity;
         }
-        snapshots.push({
-          productId: product.id,
-          // اللقطة باللغتين تُجمَّد الآن (066): تعديل اسم المنتج لاحقاً لا يغيّر
-          // طلباً قائماً، والزبون يرى طلبه بلغة واجهته.
-          productName: product.nameAr,
-          productNameAr: product.nameAr,
-          productNameCkb: product.nameCkb,
-          imageUrl: product.images[0] ?? null,
-          optionValue: item.optionValue,
-          price: unitPrice,
-          quantity: item.quantity,
-          lineTotal: unitPrice * item.quantity,
-        });
+        accepted.push({ item, product, unitPrice });
       }
+
+      // [CRITICAL] «قطعتان بسعر» (085): مبلغ كل سطر من الدالة نفسها التي تعاين
+      // بها العربة وشاشة الدفع، ومن قراءة المنتج **نفسها** داخل هذه المعاملة.
+      // السعران يُجمَّدان في اللقطة، فتعديل العرض لاحقاً لا يمسّ هذا الطلب.
+      const lineTotals = pairPricedLineTotals(
+        accepted.map(({ item, product, unitPrice }) => ({
+          id: item.id,
+          productId: product.id,
+          quantity: item.quantity,
+          unitPrice,
+          pairPrice: product.pairPrice,
+          createdAt: item.createdAt,
+        })),
+      );
+      const snapshots: OrderItemSnapshot[] = accepted.map(({ item, product, unitPrice }) => ({
+        productId: product.id,
+        // اللقطة باللغتين تُجمَّد الآن (066): تعديل اسم المنتج لاحقاً لا يغيّر
+        // طلباً قائماً، والزبون يرى طلبه بلغة واجهته.
+        productName: product.nameAr,
+        productNameAr: product.nameAr,
+        productNameCkb: product.nameCkb,
+        imageUrl: product.images[0] ?? null,
+        optionValue: item.optionValue,
+        price: unitPrice,
+        pairPrice: product.pairPrice,
+        quantity: item.quantity,
+        lineTotal: lineTotals.get(item.id)!,
+      }));
 
       // القسمة (سقفُ الزبون وفائضُ المتجر) تقع في `orderRepo.create` من
       // القيمة الخام وحدها، فلا موضعان يحسبانها وقد يتباعدان.
@@ -581,9 +605,8 @@ export const orderService = {
     const lines = await cartRepo.listAllItems(db, userId);
     const products = await productRepo.findByIds(db, [...new Set(lines.map((l) => l.productId))]);
 
-    let productsTotal = 0;
     let deliveryPromoRaw = 0;
-    const quotedLines: Array<QuotedLine & { lineTotal: number }> = [];
+    const pricedLines: Array<PairPricedLine & { optionValue: string | null }> = [];
     // ما سيرفض الإنشاءُ به الطلبَ كله — يُعرض قبل التأكيد لا بعده.
     const issues: Array<
       | { code: 'PRODUCT_UNAVAILABLE'; productId: string }
@@ -604,19 +627,32 @@ export const orderService = {
         issues.push({ code: 'PRODUCT_NOT_PRICED', productId: line.productId });
         continue;
       }
-      productsTotal += unitPrice * line.quantity;
       if (product.hasDeliveryPromo && product.deliveryPromoAmount > 0) {
         deliveryPromoRaw += product.deliveryPromoAmount * line.quantity;
       }
       orderedByProduct.set(product.id, (orderedByProduct.get(product.id) ?? 0) + line.quantity);
-      quotedLines.push({
+      pricedLines.push({
+        id: line.id,
         productId: product.id,
         optionValue: line.optionValue,
         quantity: line.quantity,
         unitPrice,
-        lineTotal: unitPrice * line.quantity,
+        pairPrice: product.pairPrice,
+        createdAt: line.createdAt,
       });
     }
+    // عرض القطعتين (085) بالدالة نفسها التي يحفظ بها الإنشاء.
+    const lineTotals = pairPricedLineTotals(pricedLines);
+    const quotedLines: Array<QuotedLine & { pairPrice: number | null; lineTotal: number }> =
+      pricedLines.map((line) => ({
+        productId: line.productId,
+        optionValue: line.optionValue,
+        quantity: line.quantity,
+        unitPrice: line.unitPrice,
+        pairPrice: line.pairPrice,
+        lineTotal: lineTotals.get(line.id)!,
+      }));
+    const productsTotal = quotedLines.reduce((sum, line) => sum + line.lineTotal, 0);
     // البوّابة نفسها التي يطبّقها الإنشاء: مجموع المنتج لا كمية السطر.
     for (const [productId, ordered] of orderedByProduct) {
       const available = Number(products.get(productId)!.stock);

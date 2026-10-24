@@ -119,7 +119,8 @@ describe('[CRITICAL] الإرسال مربوطٌ بالمعاينة التي ر�
     expect(shown.fingerprint).toMatch(/^q1:[0-9a-f]{64}$/);
     expect(shown.issues).toEqual([]);
     expect(shown.lines).toEqual([
-      { productId, optionValue: null, quantity: 2, unitPrice: 2500, lineTotal: 5000 },
+      // `pairPrice` (085): `null` = لا عرض قطعتين، فالسطر السعر × الكمية.
+      { productId, optionValue: null, quantity: 2, unitPrice: 2500, pairPrice: null, lineTotal: 5000 },
     ]);
     // المعاينة لا تكتب: إعادتها تعطي البصمة نفسها.
     expect((await quote(buyer.token, { governorateId: catalog.governorateId })).fingerprint).toBe(
