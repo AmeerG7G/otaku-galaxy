@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../src/database/pool.js';
 import { pairPricedLineTotals } from '../src/domain/orderPricing.js';
-import { addProductOption, api, createAdminUser, purgeTestUsers, registerAndLogin, seedTestCatalog } from './helpers.js';
+import { resetAppVersionCache } from '../src/services/appVersionService.js';
+import { addProductOption, api, createAdminUser, purgeTestUsers, registerAndLogin, seedTestCatalog, storeToday } from './helpers.js';
 
 /**
  * [CRITICAL] «قطعة بـ٤٠٠٠، قطعتان بـ٧٠٠٠» — سعر القطعتين للمنتج (STEP 69، هجرة 085).
@@ -47,6 +48,18 @@ describe('pairPricedLineTotals — حساب الأسطر', () => {
   it('منتجٌ بلا سعر قطعتين، ومنتجٌ آخر بجانبه، لا يتأثّران', () => {
     expect(totals([line('l1', 2, { pairPrice: null })])).toEqual({ l1: 8000 });
     expect(totals([line('l1', 1), line('l2', 1, { productId: 'p2' })])).toEqual({ l1: 4000, l2: 4000 });
+  });
+
+  it('الجدول كاملاً كما طلبه المالك: ١..٦ قطع = ٤٠٠٠، ٧٠٠٠، ١١٠٠٠، ١٤٠٠٠، ١٨٠٠٠، ٢١٠٠٠', () => {
+    const table = [4000, 7000, 11000, 14000, 18000, 21000];
+    table.forEach((expected, i) => expect(totals([line('l1', i + 1)]).l1, `${i + 1} قطع`).toBe(expected));
+    // الجدول نفسه مهما توزّعت القطع على الأسطر: كل قطعتين ٧٠٠٠ والفردة ٤٠٠٠.
+    const sum = (lines: Parameters<typeof pairPricedLineTotals>[0]) =>
+      Object.values(totals(lines)).reduce((a, b) => a + b, 0);
+    expect(totals([line('l1', 1), line('l2', 1), line('l3', 1)])).toEqual({ l1: 4000, l2: 3000, l3: 4000 });
+    expect(sum([line('l1', 1), line('l2', 1), line('l3', 1)])).toBe(11000);
+    expect(sum([line('l1', 3), line('l2', 2)])).toBe(18000);
+    expect(sum([line('l1', 1), line('l2', 3), line('l3', 2)])).toBe(21000);
   });
 });
 
@@ -303,5 +316,183 @@ describe('[CRITICAL] سعر القطعتين من اللوحة إلى المخز
       [shopper.phone],
     );
     expect(rows[0]!.n).toBe(0);
+  });
+
+  it('خصم الميلاد على مجموع المنتجات **بعد** عرض القطعتين: ٥٪ من ٧٠٠٠ = ٣٥٠ ⇒ ٢٥٠ (لا ٥٠٠ من ٨٠٠٠)', async () => {
+    const id = await product('ميلاد');
+    const seed = await product('ميلاد سابق', { pairPrice: null });
+    const shopper = await buyer();
+    // الأهلية: طلبٌ مكتمل سابق، ثم تاريخ الميلاد اليوم بتوقيت المتجر.
+    await addToCart(shopper.auth, seed, 1);
+    const first = await placeOrder(shopper.auth).expect(201);
+    for (const status of ['OUT_FOR_DELIVERY', 'COMPLETED']) await setStatus(first.body.data.id, status).expect(200);
+    const today = await storeToday();
+    await api.post('/api/birthday').set(shopper.auth).send({ day: today.day, month: today.month }).expect(200);
+
+    await addToCart(shopper.auth, id, 2);
+    const quote = await api.get('/api/orders/checkout-quote').query({ governorateId: catalog.governorateId }).set(shopper.auth).expect(200);
+    expect(quote.body.data, JSON.stringify(quote.body.data)).toMatchObject({ productsTotal: 7000, discount: 250 });
+    const order = await placeOrder(shopper.auth).expect(201);
+    const { deliveryFee, deliveryDiscount } = order.body.data;
+    expect(order.body.data).toMatchObject({ productsTotal: 7000, discount: 250 });
+    expect(order.body.data.total).toBe(7000 - 250 + Number(deliveryFee) - Number(deliveryDiscount));
+  });
+});
+
+/**
+ * [CRITICAL] التطبيق المثبَّت قبل سعر القطعتين (كل الإصدارات حتى اليوم تُعلن 1.0.0)
+ * — لماذا لا يكفي الخادم وحده، ولماذا يلزم رفع «الحدّ الأدنى» (القرار: STEP 70).
+ *
+ * عقده كما في شيفرته (`e3def17`): يقرأ `unitPrice` من سطر العربة ويحسب
+ * `unitPrice × quantity` محلياً (`cart_item.dart:18`) — لا يقرأ `lineTotal`؛
+ * ويعيد `unitPrice` نفسه في `expectedPrices` (`order_data.dart:76-78`)؛ ويعدّ
+ * أي تغيّرٍ في `unitPrice` بين مزامنتين «تغيّر السعر» (`cart_sync.dart:75`).
+ */
+describe('[CRITICAL] تطبيق 1.0.0 المثبَّت وسعر القطعتين — الدليل على البوّابة', () => {
+  const TAG = `PAIRLEGACY ${Date.now()}`;
+  const PLAY = 'https://play.google.com/store/apps/details?id=com.otakugalaxy.otaku_galaxy';
+  const LEGACY = { 'X-App-Version': '1.0.0' };
+  let catalog: Awaited<ReturnType<typeof seedTestCatalog>>;
+  let adminToken: string;
+  const admin = () => ({ Authorization: `Bearer ${adminToken}` });
+
+  beforeAll(async () => {
+    catalog = await seedTestCatalog();
+    adminToken = await createAdminUser();
+  });
+
+  async function clearPolicy() {
+    await db.query(`DELETE FROM store_settings WHERE key LIKE 'app_%'`);
+    await db.query(`DELETE FROM admin_audit_log WHERE action = 'settings.app_version_updated'`);
+    resetAppVersionCache();
+  }
+
+  afterAll(async () => {
+    await clearPolicy();
+    const owned = `(SELECT id FROM products WHERE name LIKE '${TAG}%')`;
+    await db.query(`DELETE FROM order_items WHERE product_id IN ${owned}`);
+    await db.query(`DELETE FROM cart_items WHERE product_id IN ${owned}`);
+    await db.query(`DELETE FROM product_options WHERE product_id IN ${owned}`);
+    await purgeTestUsers();
+    await db.query(`DELETE FROM products WHERE name LIKE '${TAG}%'`);
+  });
+
+  async function product(name: string, overrides: Record<string, unknown> = {}) {
+    const res = await api
+      .post('/api/admin/products')
+      .set(admin())
+      .send({
+        nameAr: `${TAG} ${name}`,
+        descriptionAr: 'وصف',
+        nameCkb: `${TAG} ${name}`,
+        descriptionCkb: 'وەسف',
+        price: 4000,
+        pairPrice: 7000,
+        categoryId: catalog.categoryId,
+        stock: 10,
+        ...overrides,
+      });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    return res.body.data.id as string;
+  }
+
+  async function legacyBuyer() {
+    const user = await registerAndLogin();
+    return { Authorization: `Bearer ${user.token}`, ...LEGACY };
+  }
+
+  const order = (auth: Record<string, string>, expectedPrices?: unknown) =>
+    api
+      .post('/api/orders')
+      .set(auth)
+      .send({ governorateId: catalog.governorateId, fullAddress: 'بغداد، الكرادة', phone: '07700000000', ...(expectedPrices ? { expectedPrices } : {}) });
+
+  /** ما يعرضه 1.0.0 لسطرٍ من العربة — حرفياً كما في `cart_item.dart` القديم. */
+  const legacyLineTotal = (line: { unitPrice: number; quantity: number }) => line.unitPrice * line.quantity;
+
+  it('ما يعرضه ٨٠٠٠ وما يحسبه الخادم ويُدفع ٧٠٠٠ — لا يدفع أكثر مما رأى، ولا يرى ما يدفع', async () => {
+    const id = await product('عرض');
+    const auth = await legacyBuyer();
+    await api.post('/api/cart').set(auth).send({ productId: id, quantity: 2 }).expect(200);
+    const cart = await api.get('/api/cart').set(auth).expect(200);
+    const line = cart.body.data.items[0];
+    expect(legacyLineTotal(line)).toBe(8000);
+    expect(line.lineTotal).toBe(7000);
+
+    const quote = await api.get('/api/orders/checkout-quote').query({ governorateId: catalog.governorateId }).set(auth).expect(200);
+    expect(quote.body.data.productsTotal).toBe(7000);
+
+    // جسم الطلب كما يرسله 1.0.0: سعر الوحدة وحده، بلا `pairPrice`.
+    const placed = await order(auth, [{ productId: id, unitPrice: line.unitPrice }]).expect(201);
+    expect(placed.body.data.productsTotal).toBe(7000);
+    expect(placed.body.data.productsTotal).toBeLessThan(legacyLineTotal(line));
+  });
+
+  it('تغيير العرض من اللوحة يصل بلا إصدار لمن يقرأ `lineTotal`؛ وما يعرضه 1.0.0 لا يتحرّك', async () => {
+    const id = await product('لاحق', { pairPrice: null });
+    const auth = await legacyBuyer();
+    await api.post('/api/cart').set(auth).send({ productId: id, quantity: 2 }).expect(200);
+    const before = (await api.get('/api/cart').set(auth).expect(200)).body.data.items[0];
+    expect([before.lineTotal, legacyLineTotal(before)]).toEqual([8000, 8000]);
+
+    await api.patch(`/api/admin/products/${id}`).set(admin()).send({ pairPrice: 7000 }).expect(200);
+    const after = (await api.get('/api/cart').set(auth).expect(200)).body.data.items[0];
+    expect(after.lineTotal).toBe(7000);
+    expect(legacyLineTotal(after)).toBe(8000);
+  });
+
+  it('[CRITICAL] لا حلّ من الخادم وحده: سعر وحدةٍ «فعلي» يعيده 1.0.0 فيرفضه فحص السعر', async () => {
+    // لو أرسل الخادم لهذا العميل `unitPrice = lineTotal / quantity` (٣٥٠٠) لصحّ
+    // مجموعه المعروض — لكنه يعيد القيمة نفسها في `expectedPrices`، والفحص
+    // (CA-14) يطابقها بسعر المنتج حرفياً ⇒ لا يستطيع الطلب أبداً.
+    const id = await product('فعلي');
+    await addProductOption(id);
+    const auth = await legacyBuyer();
+    await api.post('/api/cart').set(auth).send({ productId: id, quantity: 2, optionValue: 'أحمر' }).expect(200);
+    const rejected = await order(auth, [{ productId: id, unitPrice: 3500 }]);
+    expect(rejected.status).toBe(409);
+    expect(rejected.body.error.code).toBe('PRODUCT_PRICE_CHANGED');
+
+    // وبخيارين: السطران «الفعليّان» ٤٠٠٠ و٣٠٠٠ للمنتج نفسه، والفحص بالمنتج لا بالسطر.
+    await api.patch(`/api/cart/${(await api.get('/api/cart').set(auth)).body.data.items[0].id}`).set(auth).send({ quantity: 1 }).expect(200);
+    await api.post('/api/cart').set(auth).send({ productId: id, quantity: 1, optionValue: 'أزرق' }).expect(200);
+    const split = await order(auth, [
+      { productId: id, unitPrice: 4000 },
+      { productId: id, unitPrice: 3000 },
+    ]);
+    expect(split.status).toBe(409);
+    expect(split.body.error.code).toBe('PRODUCT_PRICE_CHANGED');
+  });
+
+  it('[CRITICAL] البوّابة: إجباريٌّ بحدّ 1.1.0 يرفض 1.0.0 (426) ويمرّر 1.1.0؛ والإيقاف يعيد 1.0.0 فوراً', async () => {
+    try {
+      const id = await product('بوابة');
+      const user = await registerAndLogin();
+      const as = (version: string) => ({ Authorization: `Bearer ${user.token}`, 'X-App-Version': version });
+      await api.post('/api/cart').set(as('1.0.0')).send({ productId: id, quantity: 2 }).expect(200);
+
+      const policy = (await api.get('/api/admin/settings/app-version').set(admin()).expect(200)).body.data;
+      await api
+        .patch('/api/admin/settings/app-version')
+        .set(admin())
+        .send({ enabled: true, mode: 'mandatory', latestVersion: '1.1.0', minimumVersion: '1.1.0', updateUrl: PLAY, revision: policy.revision })
+        .expect(200);
+
+      const blocked = await api.get('/api/cart').set(as('1.0.0'));
+      expect(blocked.status).toBe(426);
+      expect(blocked.body.error).toMatchObject({ code: 'APP_UPDATE_REQUIRED', details: { minimumSupportedVersion: '1.1.0', updateUrl: PLAY } });
+      expect((await order(as('1.0.0'))).status).toBe(426);
+      // تطبيقٌ قديم لا يرسل الرأس أصلاً (ما قبل STEP 64) يمرّ: البوّابة لا تحجب الغياب.
+      await api.get('/api/cart').set({ Authorization: `Bearer ${user.token}` }).expect(200);
+
+      const current = await api.get('/api/cart').set(as('1.1.0')).expect(200);
+      expect(current.body.data.items[0].lineTotal).toBe(7000);
+
+      // التراجع: «إيقاف» من اللوحة، بلا إصدار ولا نشر.
+      await api.patch('/api/admin/settings/app-version').set(admin()).send({ enabled: false, revision: policy.revision + 1 }).expect(200);
+      await api.get('/api/cart').set(as('1.0.0')).expect(200);
+    } finally {
+      await clearPolicy();
+    }
   });
 });
