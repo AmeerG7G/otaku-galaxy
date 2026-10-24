@@ -7,6 +7,7 @@ import { AppError, Errors } from '../utils/errors.js';
 import { resolveLocale } from '../utils/locale.js';
 import { normalizeIraqiPhone } from '../utils/phone.js';
 import { httpError } from '../utils/response.js';
+import { clientIp } from './client-ip.js';
 
 /**
  * هل هذا خطأ تحليل JSON قادم من `express.json()`؟
@@ -156,6 +157,15 @@ export function notFoundHandler(req: Request, res: Response) {
 }
 
 /**
+ * مفتاح العنوان لكل حدود المعدّل: عنوان الزبون الفعلي (`clientIp` — موقَّعاً من
+ * خادم الموقع، وإلا `req.ip`)، مجمَّعاً بشبكة IPv6 الفرعية (`ipKeyGenerator`)
+ * فلا يملك مشتركٌ واحد آلاف الدلاء بتدوير عناوين شبكته.
+ */
+export function clientRateLimitKey(req: Request): string {
+  return ipKeyGenerator(clientIp(req));
+}
+
+/**
  * مفتاح «الرقم + العنوان» لحدود المصادقة الحسّاسة.
  *
  * ربط الحدّ بالعنوان وحده هو ما كسر التسجيل والدخول: خلف NAT المشغّل — وهو
@@ -166,7 +176,7 @@ export function notFoundHandler(req: Request, res: Response) {
  * مفتوحاً للتخمين.
  */
 function phoneAndIpKey(req: Request): string {
-  const ipKey = ipKeyGenerator(req.ip ?? '');
+  const ipKey = clientRateLimitKey(req);
   const body = req.body as { phone?: unknown } | undefined;
   const raw = typeof body?.phone === 'string' ? body.phone : 'unknown';
   // [CRITICAL] الدلو بالرقم **المطبَّع** لا بالنصّ كما وصل: `07701234567` و
@@ -175,6 +185,13 @@ function phoneAndIpKey(req: Request): string {
   const phone = normalizeIraqiPhone(raw) ?? raw;
   return `${ipKey}:${phone}`;
 }
+
+/**
+ * الحدود معطّلة في الاختبارات — السويت كلها ترسل آلاف الطلبات من عنوانٍ واحد —
+ * إلا لسويتٍ تختبر الحدود نفسها (`rate-limits.test.ts`) فتطلبها صراحةً. يُقرأ
+ * عند كل طلب، وخارج الاختبارات لا أثر له أبداً.
+ */
+const skipRateLimit = () => isTest && process.env.RATE_LIMIT_ENFORCE_IN_TESTS !== '1';
 
 function limiter(options: {
   limit: number;
@@ -188,8 +205,8 @@ function limiter(options: {
     limit: options.limit,
     standardHeaders: true,
     legacyHeaders: false,
-    ...(options.keyGenerator ? { keyGenerator: options.keyGenerator } : {}),
-    skip: () => isTest,
+    keyGenerator: options.keyGenerator ?? clientRateLimitKey,
+    skip: skipRateLimit,
     handler: (req, res) => {
       httpError(
         res,
@@ -249,7 +266,7 @@ export function accountRequestRateLimiter() {
 export function uploadRateLimiter(options: { limit: number }) {
   return limiter({
     limit: options.limit,
-    keyGenerator: (req) => req.auth?.id ?? ipKeyGenerator(req.ip ?? ''),
+    keyGenerator: (req) => req.auth?.id ?? clientRateLimitKey(req),
     message: 'رفعٌ كثير في وقت قصير — حاول بعد قليل',
     code: 'UPLOAD_RATE_LIMITED',
   });
@@ -274,7 +291,8 @@ export function globalRateLimiter() {
     limit: config.rateLimit.globalMax,
     standardHeaders: true,
     legacyHeaders: false,
-    skip: () => isTest,
+    keyGenerator: clientRateLimitKey,
+    skip: skipRateLimit,
     handler: (req, res) => {
       httpError(res, Errors.tooManyRequests(), resolveLocale(req));
     },

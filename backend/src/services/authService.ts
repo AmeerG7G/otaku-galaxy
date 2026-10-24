@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import type pg from 'pg';
 import type { AppLocale } from '../utils/locale.js';
 import jwt from 'jsonwebtoken';
 import { config } from '../config/index.js';
@@ -69,8 +70,19 @@ export const authService = {
    * فيُفعَّل الحساب — أو ترفض فيبقى الطلب في السجل.
    *
    * [CRITICAL] الرقم المسجَّل بلا تفعيل **ليس** رقماً مأخوذاً: إعادة التسجيل
-   * تستأنف الصفّ المعلَّق (تحدّث الاسم والجنس وكلمة المرور) وتستأنف الطلب
-   * المعلَّق بدل أن تكدّس نسخاً. الرقم المفعَّل وحده هو المأخوذ.
+   * تستأنف الطلب المعلَّق بدل أن تكدّس نسخاً، وتُحدّث ما **أرسله** الطالب في
+   * الطلب ليراه المسؤول. الرقم المفعَّل وحده هو المأخوذ.
+   *
+   * [SECURITY] ما دام للرقم طلبٌ **معلَّق**، فالاستئناف **لا يمسّ كلمة مرور**
+   * الحساب. كان يكتب كلمة المرور الجديدة فوق الأولى، فمن يعرف رقم شخصٍ ينتظر
+   * الموافقة يعيد التسجيل بكلمته هو، ثم يتحقّق المسؤول عبر واتساب من صاحب
+   * الرقم الحقيقي ويوافق — فيُفعَّل الحساب بكلمة المهاجم. الآن تُفعِّل الموافقةُ
+   * كلمةَ صاحب الطلب المعلَّق. الاسم والجنس (بياناتٌ لا اعتماد) يُحدَّثان كما
+   * كانا، ويعدّلهما صاحب الحساب بعد الدخول إن شاء. من نسي كلمته قبل الموافقة
+   * يطلب إعادة تعيين من «نسيت كلمة المرور».
+   *
+   * بلا طلبٍ معلَّق (رُفض الطلب السابق، أو صفٌّ قديم بلا طلب) فهذا تسجيلٌ
+   * جديد على صفٍّ غير مفعَّل: تُكتب بياناته كما أُرسلت، ويُفتح طلبٌ جديد.
    */
   async register(input: {
     username: string;
@@ -79,33 +91,68 @@ export const authService = {
     gender: Gender;
   }) {
     const existing = await userRepo.findByPhone(db, input.phone);
-    const passwordHash = await bcrypt.hash(input.password, config.bcryptRounds);
 
     if (existing && existing.phone_verified_at !== null) {
       throw Errors.conflict('هذا الرقم مسجّل بالفعل — جرّب تسجيل الدخول', 'PHONE_TAKEN');
     }
 
+    const hasPendingRequest = async (client: pg.Pool | pg.PoolClient, phone: string) =>
+      (await accountRequestRepo.findLatest(client, 'registration', phone))?.status === 'pending';
+
+    // التجزئة قبل المعاملة عمداً (لا عمل حسابيّ ثقيل داخل قفل)، وبعد
+    // الفحوص: الرقم المأخوذ واستئناف المعلَّق لا يكتبان كلمة مرور، فلا تُستهلك
+    // عليهما دورة bcrypt.
+    const resumesPending = existing !== null && (await hasPendingRequest(db, existing.phone));
+    const passwordHash = resumesPending
+      ? null
+      : await bcrypt.hash(input.password, config.bcryptRounds);
+
     // [CRITICAL] الصفّ المعلَّق وطلبه وحدةٌ واحدة (CA-9). كانا كتابتين
     // منفصلتين، فعطلٌ بينهما يترك حساباً غير مفعَّل بلا طلب: اللوحة لا تراه،
-    // والدخول يقول للزبون «بانتظار موافقة الإدارة» عن طلبٍ لا يراه أحد. وفي
-    // الاستئناف كان يُكتب الاسم وكلمة المرور الجديدان بلا طلبٍ يحملهما.
-    // التجزئة قبل المعاملة عمداً — لا عمل حسابيّ ثقيل داخل قفل.
+    // والدخول يقول للزبون «بانتظار موافقة الإدارة» عن طلبٍ لا يراه أحد.
     const { user, request } = await withTransaction(async (tx) => {
-      // زيادة نسخة التوكن تُبطل أي توكن قد يكون صدر لمحاولةٍ مهجورة قبل أن
-      // يملكها شخص آخر.
-      const written: UserRow = existing
-        ? await userRepo.update(tx, existing.id, {
-          username: input.username,
-          gender: input.gender,
-          passwordHash,
-          bumpTokenVersion: true,
-        })
-        : await userRepo.create(tx, {
+      let written: UserRow;
+      if (existing) {
+        // [SECURITY] الحكم **كله** يُعاد تحت قفل الصفّ، لا من القراءتين قبله:
+        //   • تفعيلٌ وقع بينهما (وافقت الإدارة): الرقم صار مأخوذاً. كان الطلب
+        //     يمضي فيكتب كلمة مروره على حسابٍ مفعَّل — دخولٌ لمن لا يملكه.
+        //   • طلبٌ معلَّق رُفض بينهما: هذا تسجيلٌ جديد بكلمة مروره هو. كان
+        //     يُعامَل استئنافاً فيفتح طلباً جديداً على كلمة الطالب السابق.
+        // وتسجيلان متزامنان لا يقرأ أحدهما «لا طلب معلَّق» بعد أن فتحه الآخر.
+        const { rows } = await tx.query<{ phone_verified_at: Date | null }>(
+          'SELECT phone_verified_at FROM users WHERE id = $1 FOR UPDATE',
+          [existing.id],
+        );
+        if (!rows[0] || rows[0].phone_verified_at !== null) {
+          throw Errors.conflict('هذا الرقم مسجّل بالفعل — جرّب تسجيل الدخول', 'PHONE_TAKEN');
+        }
+        if (await hasPendingRequest(tx, existing.phone)) {
+          // استئناف معلَّق: الاسم والجنس فقط — كلمة المرور لا تُمسّ (انظر
+          // [SECURITY] أعلاه). زيادة النسخة كما كانت: لا توكن لحسابٍ معلَّق أصلاً.
+          written = await userRepo.update(tx, existing.id, {
+            username: input.username,
+            gender: input.gender,
+            bumpTokenVersion: true,
+          });
+        } else {
+          // تسجيلٌ جديد على صفٍّ غير مفعَّل. زيادة نسخة التوكن تُبطل أي توكن
+          // قد يكون صدر لمحاولةٍ سابقة. التجزئة هنا داخل القفل في حالةٍ واحدة
+          // نادرة: ظُنّ استئنافاً قبل القفل ثم رُفض الطلب.
+          written = await userRepo.update(tx, existing.id, {
+            username: input.username,
+            gender: input.gender,
+            passwordHash: passwordHash ?? (await bcrypt.hash(input.password, config.bcryptRounds)),
+            bumpTokenVersion: true,
+          });
+        }
+      } else {
+        written = await userRepo.create(tx, {
           username: input.username,
           phone: input.phone,
-          passwordHash,
+          passwordHash: passwordHash!,
           gender: input.gender,
         });
+      }
 
       const pending = await accountRequestRepo.upsertPending(tx, {
         kind: 'registration',

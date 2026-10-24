@@ -191,6 +191,15 @@ export const adminProductUpdateSchema = z.object({
   categoryId: z.string().uuid('معرّف قسم غير صالح').optional(),
   subcategoryId: z.string().uuid('معرّف قسم فرعي غير صالح').nullable().optional(),
   stock: z.number().int().min(0).max(100000).optional(),
+  /**
+   * المخزون الذي فُتحت عليه صفحة التعديل — فحصٌ لا قيمة تُكتب.
+   *
+   * [CRITICAL] `stock` قيمةٌ مطلقة، فحفظُ صفحةٍ فُتحت قبل قبول طلبٍ كان يُرجع
+   * القطع التي استهلكها القبول إلى البيع. مع هذا الحقل يقارن الخادم المخزون
+   * الحالي تحت القفل ويرفض بـ409 `STOCK_CHANGED` إن اختلف. غيابه (لوحةٌ أقدم)
+   * يُبقي السلوك القديم: القيمة المطلقة تُكتب كما هي.
+   */
+  expectedStock: z.number().int().min(0).max(100000).optional(),
   images: z.array(imageUrl).max(10).optional(),
   options: z
     .array(
@@ -213,7 +222,12 @@ export const adminProductUpdateSchema = z.object({
   deliveryPromoAmount: deliveryPromoAmount.optional(),
   franchiseIds: z.array(z.string().uuid('معرّف أنمي غير صالح')).max(20).optional(),
   restockAt,
-}).superRefine(assertDeliveryPromoCoherent);
+})
+  .superRefine(assertDeliveryPromoCoherent)
+  .refine((value) => value.expectedStock === undefined || value.stock !== undefined, {
+    message: 'المخزون المتوقَّع يُرسل مع المخزون الجديد فقط',
+    path: ['expectedStock'],
+  });
 
 /**
  * «العروض» — علَما العرض والاختيار وحدهما (STEP 64).

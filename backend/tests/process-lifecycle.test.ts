@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
+import { createServer, type AddressInfo } from 'node:net';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -121,5 +122,33 @@ describe('دورة حياة العملية', () => {
     expect(code).not.toBe(0);
     // العطل يُسجَّل ولا يُبتلع.
     expect(stderr).toContain('unhandledRejection');
+  }, 60_000);
+
+  it('[CRITICAL] فشل الربط (منفذ مشغول) يخرج برمز غير صفري ولا يطبع «running»', async () => {
+    const blocker = createServer();
+    await new Promise<void>((resolve) => blocker.listen(0, '127.0.0.1', resolve));
+    const { port } = blocker.address() as AddressInfo;
+    try {
+      const child = spawn('node', [...NODE_ARGS, 'src/server.ts'], {
+        cwd: BACKEND_ROOT,
+        env: { ...ENV, PORT: String(port), HOST: '127.0.0.1' },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      let stdout = '';
+      let stderr = '';
+      child.stdout?.on('data', (c: Buffer) => {
+        stdout += c.toString();
+      });
+      child.stderr?.on('data', (c: Buffer) => {
+        stderr += c.toString();
+      });
+
+      const { code } = await waitForExit(child, 40_000);
+      expect(code).toBe(1);
+      expect(stdout).not.toContain('Otaku Galaxy API running');
+      expect(stderr).toContain('EADDRINUSE');
+    } finally {
+      await new Promise<void>((resolve) => blocker.close(() => resolve()));
+    }
   }, 60_000);
 });

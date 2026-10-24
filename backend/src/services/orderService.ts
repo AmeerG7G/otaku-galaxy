@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type pg from 'pg';
 import { userRepo } from '../repositories/userRepo.js';
 import { renderNotification } from '../domain/notificationTemplates.js';
@@ -13,7 +14,12 @@ import { sendRatingReminderNow } from '../jobs/ratingReminderJob.js';
 import { db, withTransaction } from '../database/pool.js';
 import { adminEvents } from './adminEvents.js';
 import { birthdayDiscountAmount } from '../domain/birthday.js';
-import { fitProductDiscounts, priceOrder } from '../domain/orderPricing.js';
+import {
+  fitProductDiscounts,
+  priceOrder,
+  quoteFingerprint,
+  type QuotedLine,
+} from '../domain/orderPricing.js';
 import {
   eligiblePurchaseValue,
   purchasePointsFor,
@@ -29,7 +35,7 @@ import { productCostsRepo } from '../repositories/productCostsRepo.js';
 import { zoneRepo } from '../repositories/zonesRepo.js';
 import { ORDER_STATUSES as ALL_ORDER_STATUSES } from '../types/order-status.js';
 import { ORDER_STATUS_TRANSITIONS, type OrderStatus } from '../types/index.js';
-import { Errors } from '../utils/errors.js';
+import { AppError, Errors } from '../utils/errors.js';
 import { loyaltyRewardsService } from './loyaltyRewardsService.js';
 import { restockService } from './restockService.js';
 
@@ -203,6 +209,64 @@ async function orderDiscounts(
   };
 }
 
+/**
+ * بصمة إرسال الطلب — ما يميّز «المحاولة نفسها» عن طلبٍ مختلف بالمفتاح نفسه.
+ *
+ * تُحسب من المدخل **بعد** التحقق (العنوان مقصوص، الرقم مطبَّع) فلا تختلف
+ * محاولتان متطابقتان بمسافة. العربة **ليست** فيها عمداً: المحاولة الأولى
+ * تُفرغها، فإعادةٌ صادقة كانت ستختلف بصمتها دائماً.
+ */
+function orderFingerprint(input: {
+  governorateId: string;
+  fullAddress: string;
+  phone: string;
+  zoneId?: string | null;
+  expectedPrices?: ReadonlyArray<{ productId: string; unitPrice: number }>;
+  expectedQuote?: string;
+}): string {
+  const expectedPrices = [...(input.expectedPrices ?? [])]
+    .map((entry) => [entry.productId, entry.unitPrice] as const)
+    .sort((a, b) => (a[0] === b[0] ? a[1] - b[1] : a[0] < b[0] ? -1 : 1));
+  const canonical = JSON.stringify({
+    v: 1,
+    governorateId: input.governorateId,
+    zoneId: input.zoneId ?? null,
+    fullAddress: input.fullAddress,
+    phone: input.phone,
+    expectedPrices,
+    // الملخّص الذي راجعه الزبون جزءٌ من الطلب: المفتاح نفسه مع ملخّصٍ آخر
+    // طلبٌ آخر (422) لا إعادة. بلا ملخّص يبقى البصم كما كان حرفاً بحرف —
+    // `JSON.stringify` يُسقط الحقل غير المعرَّف — فلا يتغيّر شيء للتطبيق.
+    expectedQuote: input.expectedQuote,
+  });
+  return createHash('sha256').update(canonical).digest('hex');
+}
+
+/** القيد الفريد على (الزبون، المفتاح) — هجرة 083. */
+const IDEMPOTENCY_CONSTRAINT = 'uq_orders_user_idempotency_key';
+
+/**
+ * طلبٌ سابق لهذا الزبون بالمفتاح نفسه: يُعاد كما هو (بلا أي أثر جانبي)، أو
+ * يُرفض المفتاح إن حمل طلباً مختلفاً. `null` = لا طلب بهذا المفتاح بعد.
+ */
+async function replayIfSubmitted(
+  client: pg.Pool | pg.PoolClient,
+  userId: string,
+  idempotency: { key: string; fingerprint: string },
+): Promise<{ order: OrderWithItems | null; replayed: true } | null> {
+  const previous = await orderRepo.findByIdempotencyKey(client, userId, idempotency.key);
+  if (!previous) return null;
+  if (previous.fingerprint !== idempotency.fingerprint) {
+    // 422 لا 409: التطبيق يقرأ 409 تعارضاً في العربة (مخزون/سعر) فيعيد مزامنتها.
+    throw new AppError(
+      422,
+      'IDEMPOTENCY_KEY_REUSED',
+      'مفتاح الطلب استُعمل لطلبٍ مختلف — أعد المحاولة من صفحة المراجعة',
+    );
+  }
+  return { order: await orderRepo.findById(client, previous.id), replayed: true };
+}
+
 export const orderService = {
   /**
    * إنشاء طلب: معاملة واحدة — بوّابة الطلب، لقطات، إنشاء، تفريغ العربة.
@@ -220,6 +284,8 @@ export const orderService = {
       phone: string;
       zoneId?: string | null;
       expectedPrices?: ReadonlyArray<{ productId: string; unitPrice: number }>;
+      /** بصمة المعاينة التي راجعها الزبون (`checkoutQuote().fingerprint`) — فحصٌ لا مصدر. */
+      expectedQuote?: string;
     },
     /**
      * لغة الطلب — تسمّي المنتج في رسائل الرفض أدناه بلغة الزبون (066).
@@ -227,8 +293,60 @@ export const orderService = {
      * يجب أن يكون بلغة الواجهة نفسها لا عربياً وسط جملة كردية.
      */
     locale: AppLocale = DEFAULT_LOCALE,
-  ) {
+    /**
+     * مفتاح عدم التكرار من ترويسة `Idempotency-Key` (اختياري — هجرة 083).
+     *
+     * [CRITICAL] غيابه = السلوك القائم حرفياً (العربة هي المفتاح الضمني،
+     * وإعادة المحاولة بعد الالتزام تعود `EMPTY_CART`). حضوره يجعل إعادة
+     * المحاولة نفسها تُعيد الطلب الملتزَم بدل خطأٍ ملتبس.
+     */
+    idempotencyKey: string | null = null,
+  ): Promise<{ order: OrderWithItems | null; replayed: boolean }> {
+    const idempotency = idempotencyKey
+      ? { key: idempotencyKey, fingerprint: orderFingerprint(input) }
+      : null;
+    try {
+      return await orderService.createInTransaction(userId, input, locale, idempotency);
+    } catch (error) {
+      // شبكة أمان: القيد الفريد يحسم سباقاً لم يمنعه قفل العربة (لا يقع اليوم
+      // لأن القفل يُسلسل محاولات الزبون، لكنه يحرس أي إعادة ترتيبٍ مستقبلية).
+      // يسبق ترجمة 23505 العامّة التي كانت ستردّ `409 DUPLICATE_VALUE`.
+      const { code, constraint } = (error ?? {}) as { code?: string; constraint?: string };
+      if (idempotency && code === '23505' && constraint === IDEMPOTENCY_CONSTRAINT) {
+        const replay = await replayIfSubmitted(db, userId, idempotency);
+        if (replay) return replay;
+      }
+      throw error;
+    }
+  },
+
+  /** جسم الإنشاء داخل معاملته — انظر [create]. */
+  async createInTransaction(
+    userId: string,
+    input: {
+      governorateId: string;
+      fullAddress: string;
+      phone: string;
+      zoneId?: string | null;
+      expectedPrices?: ReadonlyArray<{ productId: string; unitPrice: number }>;
+      /** بصمة المعاينة التي راجعها الزبون (`checkoutQuote().fingerprint`) — فحصٌ لا مصدر. */
+      expectedQuote?: string;
+    },
+    locale: AppLocale,
+    idempotency: { key: string; fingerprint: string } | null,
+  ): Promise<{ order: OrderWithItems | null; replayed: boolean }> {
     return withTransaction(async (tx) => {
+      // [CRITICAL] العربة مقفولة لهذه المعاملة **أولاً**: إرسالٌ متزامن ينتظر ثم
+      // يجد عربةً فارغة — لا طلبين من عربة واحدة (انظر `listItemsForCheckout`).
+      // ويُسلسل القفلُ محاولات الزبون نفسه، فالبحث عن المفتاح بعده يرى محاولةً
+      // أولى التزمت أثناء الانتظار. الإعادة تسبق كل فحص آخر: محاولةٌ التزمت
+      // تُعاد كما هي ولو عُطِّلت محافظتها بعدها.
+      const cartItems = await cartRepo.listItemsForCheckout(tx, userId);
+      if (idempotency) {
+        const replay = await replayIfSubmitted(tx, userId, idempotency);
+        if (replay) return replay;
+      }
+
       const governorate = await governorateRepo.listActive(tx);
       const selected = governorate.find((g) => g.id === input.governorateId);
       if (!selected) throw Errors.badRequest('المحافظة غير موجودة أو غير نشطة');
@@ -253,9 +371,6 @@ export const orderService = {
         throw Errors.badRequest('هذه المحافظة بلا مناطق توصيل', 'ZONE_NOT_SUPPORTED');
       }
 
-      // [CRITICAL] العربة مقفولة لهذه المعاملة: إرسالٌ متزامن ينتظر ثم يجد
-      // عربةً فارغة — لا طلبين من عربة واحدة (انظر `listItemsForCheckout`).
-      const cartItems = await cartRepo.listItemsForCheckout(tx, userId);
       if (cartItems.length === 0) throw Errors.badRequest('العربة فارغة — أضف منتجات أولاً', 'EMPTY_CART');
 
       const snapshots: OrderItemSnapshot[] = [];
@@ -345,6 +460,34 @@ export const orderService = {
         'reserve',
       );
 
+      // [CRITICAL] ربط الإرسال بالمراجعة: البصمة من القيم التي ستُحفظ الآن بعينها
+      // (الأسطر، الوجهة برسومها، الخصمان المحجوزان) بالدالة نفسها التي تعاين بها
+      // شاشة الدفع. اختلافها ⇒ رفضٌ قبل أي كتابة — المزيّة المحجوزة يُرجعها
+      // تراجع المعاملة. غيابها (التطبيق اليوم) = لا فحص، كما كان.
+      if (input.expectedQuote !== undefined) {
+        const reviewed = quoteFingerprint({
+          lines: snapshots.map((item) => ({
+            productId: item.productId,
+            optionValue: item.optionValue,
+            quantity: item.quantity,
+            unitPrice: item.price,
+          })),
+          governorateId: selected.id,
+          zoneId,
+          deliveryFee,
+          pricing: priceOrder({
+            productsTotal,
+            deliveryFee,
+            deliveryPromoRaw: deliveryPromoTotal,
+            discount,
+            loyaltyDiscount: loyaltyReward?.amount ?? 0,
+          }),
+        });
+        if (reviewed !== input.expectedQuote) {
+          throw Errors.conflict('تغيّر ملخّص طلبك منذ راجعته', 'QUOTE_CHANGED');
+        }
+      }
+
       const order = await orderRepo.create(tx, {
         userId,
         governorateId: input.governorateId,
@@ -358,6 +501,7 @@ export const orderService = {
         discount,
         deliveryPromoRaw: deliveryPromoTotal,
         loyaltyDiscount: loyaltyReward?.amount ?? 0,
+        idempotency,
       });
 
       if (birthdayDiscount > 0) {
@@ -400,7 +544,7 @@ export const orderService = {
       const created = await orderRepo.findById(tx, order.id);
       // تنبيه هاتف المسؤول — في المعاملة نفسها: طلبٌ تراجع لا يرنّ هاتفاً.
       if (created) await adminEvents.newOrder(tx, created);
-      return created;
+      return { order: created, replayed: false };
     });
   },
 
@@ -424,26 +568,52 @@ export const orderService = {
     userId: string,
     input: { governorateId?: string | null; zoneId?: string | null },
   ) {
-    const lines = await cartRepo.listItems(db, userId);
+    const lines = await cartRepo.listAllItems(db, userId);
     const products = await productRepo.findByIds(db, [...new Set(lines.map((l) => l.productId))]);
 
     let productsTotal = 0;
     let deliveryPromoRaw = 0;
+    const quotedLines: Array<QuotedLine & { lineTotal: number }> = [];
+    // ما سيرفض الإنشاءُ به الطلبَ كله — يُعرض قبل التأكيد لا بعده.
+    const issues: Array<
+      | { code: 'PRODUCT_UNAVAILABLE'; productId: string }
+      | { code: 'INSUFFICIENT_STOCK'; productId: string; available: number }
+    > = [];
+    const orderedByProduct = new Map<string, number>();
     for (const line of lines) {
       const product = products.get(line.productId);
       // سطرٌ عُطِّل منتجه سيرفضه الإنشاء كله (`PRODUCT_UNAVAILABLE`)؛ لا يُحسب هنا.
-      if (!product || !product.isActive) continue;
+      if (!product || !product.isActive) {
+        issues.push({ code: 'PRODUCT_UNAVAILABLE', productId: line.productId });
+        continue;
+      }
       productsTotal += product.price * line.quantity;
       if (product.hasDeliveryPromo && product.deliveryPromoAmount > 0) {
         deliveryPromoRaw += product.deliveryPromoAmount * line.quantity;
       }
+      orderedByProduct.set(product.id, (orderedByProduct.get(product.id) ?? 0) + line.quantity);
+      quotedLines.push({
+        productId: product.id,
+        optionValue: line.optionValue,
+        quantity: line.quantity,
+        unitPrice: product.price,
+        lineTotal: product.price * line.quantity,
+      });
+    }
+    // البوّابة نفسها التي يطبّقها الإنشاء: مجموع المنتج لا كمية السطر.
+    for (const [productId, ordered] of orderedByProduct) {
+      const available = Number(products.get(productId)!.stock);
+      if (available < ordered) issues.push({ code: 'INSUFFICIENT_STOCK', productId, available });
     }
 
     let deliveryFee: number | null = null;
+    let governorateId: string | null = null;
+    let zoneId: string | null = null;
     if (input.governorateId) {
       const governorates = await governorateRepo.listActive(db);
       const selected = governorates.find((g) => g.id === input.governorateId);
       if (!selected) throw Errors.badRequest('المحافظة غير موجودة أو غير نشطة');
+      governorateId = selected.id;
       const zones = await zoneRepo.listForGovernorate(db, selected.id);
       if (zones.length === 0) {
         if (input.zoneId) {
@@ -454,6 +624,7 @@ export const orderService = {
         const zone = zones.find((entry) => entry.id === input.zoneId);
         if (!zone) throw Errors.badRequest('منطقة التوصيل غير صالحة', 'ZONE_INVALID');
         deliveryFee = zone.deliveryFee;
+        zoneId = zone.id;
       }
     }
 
@@ -486,6 +657,21 @@ export const orderService = {
       deliveryFee,
       deliveryDiscount: deliveryFee === null ? 0 : priced.deliveryDiscount,
       total: deliveryFee === null ? null : priced.total,
+      lines: quotedLines,
+      issues,
+      // يُرسل مع الطلب (`expectedQuote`) فيُرفض إن تغيّر شيءٌ مما رآه الزبون.
+      // `null` = لا شيء قابلٌ للإرسال بعد: الرسوم مجهولة، أو العربة فارغة، أو
+      // فيها ما سيرفضه الإنشاء.
+      fingerprint:
+        deliveryFee === null || governorateId === null || quotedLines.length === 0 || issues.length > 0
+          ? null
+          : quoteFingerprint({
+              lines: quotedLines,
+              governorateId,
+              zoneId,
+              deliveryFee,
+              pricing: priced,
+            }),
     };
   },
 

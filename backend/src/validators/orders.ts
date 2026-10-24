@@ -50,6 +50,17 @@ export const createOrderSchema = z.object({
       }),
     )
     .optional(),
+  /**
+   * بصمة المعاينة التي راجعها الزبون (`GET /orders/checkout-quote` → `fingerprint`).
+   *
+   * [CRITICAL] **فحصٌ لا مصدر**، كـ`expectedPrices`: الخادم يعيد حسابها من القيم
+   * التي سيحفظها؛ أي اختلاف ⇒ `409 QUOTE_CHANGED` ولا طلب. غيابها (التطبيق
+   * اليوم) = لا فحص.
+   */
+  expectedQuote: z
+    .string()
+    .regex(/^q1:[0-9a-f]{64}$/, 'ملخّص الطلب غير صالح — أعد فتح صفحة الدفع')
+    .optional(),
 });
 
 /**

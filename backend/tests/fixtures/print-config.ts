@@ -14,6 +14,8 @@ async function main() {
       isProduction: config.isProduction,
       jwtSecretLength: config.jwtSecret.length,
       databaseUrl: config.databaseUrl,
+      host: config.host ?? null,
+      bffSharedSecretSet: config.bffSharedSecret !== null,
     }),
   );
 }

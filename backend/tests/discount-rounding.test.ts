@@ -321,6 +321,7 @@ async function quote(token: string) {
     discount: number;
     deliveryFee: number;
     total: number;
+    fingerprint: string | null;
   };
 }
 
@@ -380,7 +381,10 @@ async function quoteThenCreate(
   expect(shown.discount).toBe(expected.birthday + expected.loyalty);
   expect(shown.total).toBe(shown.productsTotal + shown.deliveryFee - shown.discount);
 
-  const created = await placeOrder(user.token);
+  // مربوطاً بالمعاينة: الخصمان المحجوزان عند الإنشاء هما المعروضان بعينهما،
+  // وإلا ردّ الإنشاء `QUOTE_CHANGED` بدل أن يحفظ مبلغاً لم يره الزبون.
+  expect(shown.fingerprint).toMatch(/^q1:[0-9a-f]{64}$/);
+  const created = await placeOrder(user.token, { expectedQuote: shown.fingerprint });
   expect(created.status, JSON.stringify(created.body)).toBe(201);
   const orderId = created.body.data.id as string;
   const sameAsShown = {

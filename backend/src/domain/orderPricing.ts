@@ -11,6 +11,7 @@
  * (`birthdayDiscountAmount`، `discountRewardAmount`) — لا مبلغ من العميل.
  */
 
+import { createHash } from 'node:crypto';
 import { discountCeilingIqd } from './discountRounding.js';
 
 /**
@@ -86,4 +87,57 @@ export function priceOrder(input: OrderPricingInput): OrderPricing {
     payableDelivery,
     total,
   };
+}
+
+/** سطرٌ مسعَّر كما يراه الزبون في المراجعة ويُنشأ منه الطلب. */
+export interface QuotedLine {
+  productId: string;
+  optionValue: string | null;
+  quantity: number;
+  unitPrice: number;
+}
+
+export interface QuoteFingerprintInput {
+  lines: ReadonlyArray<QuotedLine>;
+  governorateId: string;
+  zoneId: string | null;
+  deliveryFee: number;
+  pricing: OrderPricing;
+}
+
+/**
+ * بصمة المعاينة — ما راجعه الزبون بعينه: الأسطر بكمياتها وأسعارها، والوجهة
+ * برسومها، وكل مبلغٍ يدفعه.
+ *
+ * [CRITICAL] المعاينة (`orderService.checkoutQuote`) تُرجعها، والإنشاء يعيد
+ * حسابها تحت الأقفال من القيم التي سيحفظها. اختلافهما ⇒ `409 QUOTE_CHANGED`
+ * ولا طلب: سطرٌ أُضيف من جهازٍ آخر، أو كميةٌ تغيّرت، أو رسومٌ عدّلتها الإدارة،
+ * أو خصمٌ سقط — كلّها كانت تمرّ بصمت لأن `expectedPrices` يحرس سعر الوحدة وحده.
+ *
+ * فائض ترويج التوصيل (`deliveryDiscountExcess`) خارجها عمداً: قيدٌ للمتجر لا
+ * يدفعه الزبون ولا يراه. الترتيب ثابت فلا تختلف بصمتان لترتيب الأسطر.
+ */
+export function quoteFingerprint(input: QuoteFingerprintInput): string {
+  const lines = input.lines
+    .map((line) => [line.productId, line.optionValue, line.quantity, line.unitPrice] as const)
+    .sort((a, b) => {
+      if (a[0] !== b[0]) return a[0] < b[0] ? -1 : 1;
+      const optionA = a[1] ?? '';
+      const optionB = b[1] ?? '';
+      if (optionA !== optionB) return optionA < optionB ? -1 : 1;
+      return a[2] - b[2];
+    });
+  const canonical = JSON.stringify({
+    v: 1,
+    lines,
+    governorateId: input.governorateId,
+    zoneId: input.zoneId,
+    deliveryFee: input.deliveryFee,
+    productsTotal: input.pricing.productsTotal,
+    discount: input.pricing.discount,
+    loyaltyDiscount: input.pricing.loyaltyDiscount,
+    deliveryDiscount: input.pricing.deliveryDiscount,
+    total: input.pricing.total,
+  });
+  return `q1:${createHash('sha256').update(canonical).digest('hex')}`;
 }

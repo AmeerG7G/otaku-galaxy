@@ -1,10 +1,11 @@
 import { execFile } from 'node:child_process';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { config } from '../src/config/index.js';
 import { db } from '../src/database/pool.js';
-import { api, approveAsAdmin, purgeTestUsers, registerAndLogin } from './helpers.js';
+import { accountRequestRepo } from '../src/repositories/accountRequestRepo.js';
+import { api, approveAsAdmin, createAdminUser, purgeTestUsers, registerAndLogin } from './helpers.js';
 
 const execFileAsync = promisify(execFile);
 const BACKEND_ROOT = path.resolve(import.meta.dirname, '..');
@@ -146,34 +147,241 @@ describe('تسجيل حساب جديد — المسار الحقيقي كامل�
     expect(login.body.data).toBeNull();
   });
 
-  it('تسجيل مهجور يُستأنف بدل أن يحبس الرقم إلى الأبد', async () => {
+  it('تسجيل معلَّق يُستأنف بدل أن يحبس الرقم — ولا يستبدل كلمة المرور', async () => {
     const phone = uniquePhone();
     await api
       .post('/api/auth/register')
       .send({ username: 'محاولة أولى', phone, password: 'first-pass', gender: 'male' })
       .expect(202);
 
-    // الرقم نفسه ثانيةً ببيانات جديدة: يُقبل ويحدّث الصفّ والطلب المعلَّق.
+    // الرقم نفسه ثانيةً ببيانات جديدة: يُقبل (لا 409) ويستأنف الطلب المعلَّق.
     const second = await api
       .post('/api/auth/register')
       .send({ username: 'محاولة ثانية', phone, password: 'second-pass', gender: 'female' })
       .expect(202);
 
-    const { rows } = await db.query<{ username: string; n: string }>(
-      `SELECT u.username,
+    const { rows } = await db.query<{ username: string; gender: string; n: string; submitted: string }>(
+      `SELECT u.username, u.gender,
               (SELECT COUNT(*)::text FROM account_requests r
-                WHERE r.kind = 'registration' AND r.submitted_phone = u.phone AND r.status = 'pending') AS n
+                WHERE r.kind = 'registration' AND r.submitted_phone = u.phone AND r.status = 'pending') AS n,
+              (SELECT r.submitted_username FROM account_requests r
+                WHERE r.kind = 'registration' AND r.submitted_phone = u.phone AND r.status = 'pending') AS submitted
          FROM users u WHERE u.phone = $1`,
       [phone],
     );
+    // الاسم والجنس يُحدَّثان (بياناتٌ لا اعتماد)، والطلب يحمل ما أُرسل ثانيةً.
     expect(rows[0]!.username).toBe('محاولة ثانية');
+    expect(rows[0]!.gender).toBe('female');
+    expect(rows[0]!.submitted).toBe('محاولة ثانية');
     // طلبٌ معلَّق واحد لا اثنان.
     expect(rows[0]!.n).toBe('1');
 
     await approveAsAdmin(second.body.data.request.id as string);
-    // كلمة المرور الأحدث هي النافذة.
-    await api.post('/api/auth/login').send({ phone, password: 'first-pass' }).expect(401);
-    await api.post('/api/auth/login').send({ phone, password: 'second-pass' }).expect(200);
+    // الموافقة تفعّل كلمة المرور الأولى — الاستئناف لا يستبدلها.
+    await api.post('/api/auth/login').send({ phone, password: 'first-pass' }).expect(200);
+    await api.post('/api/auth/login').send({ phone, password: 'second-pass' }).expect(401);
+  });
+
+  it('[SECURITY] من يعرف رقم طالبٍ معلَّق لا يضع كلمة مروره قبل الموافقة', async () => {
+    const phone = uniquePhone();
+    // الضحية تطلب حساباً.
+    const victim = await api
+      .post('/api/auth/register')
+      .send({ username: 'صاحب الرقم', phone, password: 'victim-pass-1', gender: 'female' })
+      .expect(202);
+    // المهاجم يعيد التسجيل على الرقم نفسه بكلمته — مراراً.
+    for (let i = 0; i < 3; i += 1) {
+      await api
+        .post('/api/auth/register')
+        .send({ username: 'صاحب الرقم', phone, password: `attacker-pass-${i}`, gender: 'female' })
+        .expect(202);
+    }
+    // المسؤول يتحقّق من صاحب الرقم الحقيقي عبر واتساب ويوافق.
+    await approveAsAdmin(victim.body.data.request.id as string);
+
+    for (let i = 0; i < 3; i += 1) {
+      await api.post('/api/auth/login').send({ phone, password: `attacker-pass-${i}` }).expect(401);
+    }
+    await api.post('/api/auth/login').send({ phone, password: 'victim-pass-1' }).expect(200);
+  });
+
+  it('بعد رفض الطلب: إعادة التسجيل تسجيلٌ جديد تُكتب بياناته وتُفعِّلها الموافقة', async () => {
+    const phone = uniquePhone();
+    const first = await api
+      .post('/api/auth/register')
+      .send({ username: 'طلب مرفوض', phone, password: 'rejected-pass', gender: 'male' })
+      .expect(202);
+    const adminToken = await createAdminUser();
+    await api
+      .post(`/api/admin/account-requests/${first.body.data.request.id}/reject`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ note: 'بيانات ناقصة' })
+      .expect(200);
+
+    const second = await api
+      .post('/api/auth/register')
+      .send({ username: 'طلب جديد', phone, password: 'fresh-pass-2', gender: 'male' })
+      .expect(202);
+    expect(second.body.data.request.id).not.toBe(first.body.data.request.id);
+
+    await approveAsAdmin(second.body.data.request.id as string);
+    await api.post('/api/auth/login').send({ phone, password: 'fresh-pass-2' }).expect(200);
+    await api.post('/api/auth/login').send({ phone, password: 'rejected-pass' }).expect(401);
+  });
+
+  /**
+   * [SECURITY] الحكم يُعاد تحت قفل الصفّ، لا من القراءتين قبله. الحالتان
+   * تقعان في نافذة جولةٍ واحدة على القاعدة؛ الاختبار يُدخل الحدث فيها بالضبط
+   * (عند أول قراءة لحال الطلب، قبل القفل).
+   */
+  async function registerWhile(event: () => Promise<void>, body: Record<string, string>) {
+    const original = accountRequestRepo.findLatest.bind(accountRequestRepo);
+    let fired = false;
+    const spy = vi.spyOn(accountRequestRepo, 'findLatest').mockImplementation(async (...args) => {
+      const before = await original(...args);
+      if (!fired) {
+        fired = true;
+        await event();
+      }
+      return before;
+    });
+    try {
+      return await api.post('/api/auth/register').send(body);
+    } finally {
+      spy.mockRestore();
+    }
+  }
+
+  it('[SECURITY] موافقةٌ تقع بين القراءة والقفل: الرقم صار مأخوذاً، ولا تُكتب كلمة مرور', async () => {
+    const phone = uniquePhone();
+    const owner = await api
+      .post('/api/auth/register')
+      .send({ username: 'صاحب الرقم', phone, password: 'owner-pass-1', gender: 'female' })
+      .expect(202);
+
+    const res = await registerWhile(() => approveAsAdmin(owner.body.data.request.id as string), {
+      username: 'منتحل',
+      phone,
+      password: 'intruder-pass-1',
+      gender: 'male',
+    });
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('PHONE_TAKEN');
+    await api.post('/api/auth/login').send({ phone, password: 'intruder-pass-1' }).expect(401);
+    await api.post('/api/auth/login').send({ phone, password: 'owner-pass-1' }).expect(200);
+  });
+
+  it('[SECURITY] رفضٌ يقع بين القراءة والقفل: تسجيلٌ جديد بكلمة صاحبه، لا بكلمة الطلب المرفوض', async () => {
+    const phone = uniquePhone();
+    const rejected = await api
+      .post('/api/auth/register')
+      .send({ username: 'طلب سيُرفض', phone, password: 'rejected-pass-1', gender: 'male' })
+      .expect(202);
+    const adminToken = await createAdminUser();
+
+    const res = await registerWhile(
+      async () => {
+        await api
+          .post(`/api/admin/account-requests/${rejected.body.data.request.id}/reject`)
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ note: 'ليس صاحب الرقم' })
+          .expect(200);
+      },
+      { username: 'صاحب الرقم', phone, password: 'owner-pass-2', gender: 'female' },
+    );
+    expect(res.status).toBe(202);
+    expect(res.body.data.request.id).not.toBe(rejected.body.data.request.id);
+
+    await approveAsAdmin(res.body.data.request.id as string);
+    await api.post('/api/auth/login').send({ phone, password: 'owner-pass-2' }).expect(200);
+    await api.post('/api/auth/login').send({ phone, password: 'rejected-pass-1' }).expect(401);
+  });
+
+  /**
+   * الحدث نفسه **داخل** القفل: بين قراءة حال الطلب تحت قفل الحساب وكتابة
+   * الطلب. لا يُنتظر الحدث داخل المعاملة (كان سينتظر قفلها إلى الأبد) — يبدأ،
+   * ثم يكمل التسجيل حين يقف الحدث على قفلٍ أو ينتهي.
+   */
+  async function registerWithConcurrent(event: () => Promise<void>, body: Record<string, string>) {
+    const original = accountRequestRepo.findLatest.bind(accountRequestRepo);
+    let calls = 0;
+    let pending: Promise<void> | null = null;
+    const spy = vi.spyOn(accountRequestRepo, 'findLatest').mockImplementation(async (...args) => {
+      const before = await original(...args);
+      calls += 1;
+      if (calls === 2) {
+        let settled = false;
+        pending = event().finally(() => {
+          settled = true;
+        });
+        pending.catch(() => {});
+        for (let i = 0; i < 1000 && !settled; i += 1) {
+          const { rows } = await db.query<{ n: number }>(
+            `SELECT COUNT(*)::int AS n FROM pg_stat_activity
+              WHERE datname = current_database() AND wait_event_type = 'Lock'`,
+          );
+          if (rows[0]!.n > 0) break;
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+      }
+      return before;
+    });
+    try {
+      const res = await api.post('/api/auth/register').send(body);
+      return { res, event: pending ?? Promise.resolve() };
+    } finally {
+      spy.mockRestore();
+    }
+  }
+
+  it('[SECURITY] رفضٌ يقع تحت قفل التسجيل: لا يُفتح طلبٌ يحمل كلمة الطالب المرفوض', async () => {
+    const phone = uniquePhone();
+    const rejected = await api
+      .post('/api/auth/register')
+      .send({ username: 'طلب سيُرفض', phone, password: 'rejected-pass-2', gender: 'male' })
+      .expect(202);
+    const adminToken = await createAdminUser();
+
+    const { res, event } = await registerWithConcurrent(
+      async () => {
+        await api
+          .post(`/api/admin/account-requests/${rejected.body.data.request.id}/reject`)
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ note: 'ليس صاحب الرقم' })
+          .expect(200);
+      },
+      { username: 'صاحب الرقم', phone, password: 'owner-pass-3', gender: 'female' },
+    );
+    await event;
+    expect(res.status).toBe(202);
+
+    // أيّ طلبٍ معلَّق بقي للرقم: موافقته لا تفعّل كلمة الطالب المرفوض.
+    const { rows } = await db.query<{ id: string }>(
+      `SELECT id FROM account_requests WHERE kind = 'registration' AND submitted_phone = $1 AND status = 'pending'`,
+      [phone],
+    );
+    for (const row of rows) await approveAsAdmin(row.id);
+    const login = await api.post('/api/auth/login').send({ phone, password: 'rejected-pass-2' });
+    expect(login.status).not.toBe(200);
+  });
+
+  it('[CONCURRENCY] موافقةٌ تقع تحت قفل إعادة التسجيل: تنتظر ولا تتقاطع (لا 40P01)', async () => {
+    const phone = uniquePhone();
+    const owner = await api
+      .post('/api/auth/register')
+      .send({ username: 'صاحب الرقم', phone, password: 'owner-pass-4', gender: 'female' })
+      .expect(202);
+
+    const { res, event } = await registerWithConcurrent(() => approveAsAdmin(owner.body.data.request.id as string), {
+      username: 'صاحب الرقم',
+      phone,
+      password: 'second-try-4',
+      gender: 'female',
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(202);
+    await expect(event).resolves.toBeUndefined();
+    await api.post('/api/auth/login').send({ phone, password: 'owner-pass-4' }).expect(200);
+    await api.post('/api/auth/login').send({ phone, password: 'second-try-4' }).expect(401);
   });
 
   it('الرقم المفعَّل مأخوذ فعلاً — لا تسجيل ثانٍ عليه', async () => {

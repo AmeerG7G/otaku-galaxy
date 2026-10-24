@@ -125,6 +125,14 @@ export interface ProductUpdatePayload {
   subcategoryId?: string | null
   stock?: number
   /**
+   * المخزون الذي فُتحت عليه الصفحة — يُرسَل مع `stock` وحده.
+   *
+   * [CRITICAL] الخادم يقارنه بالمخزون الحالي تحت القفل ويرفض بـ409
+   * `STOCK_CHANGED` إن تغيّر منذ فتح الصفحة (قبولُ طلبٍ مثلاً)، فلا تمحو
+   * قيمةٌ قديمة تنزيلاً وقع بعدها.
+   */
+  expectedStock?: number
+  /**
    * موعد التوفر المتوقَّع — ISO-8601 أو `null` («بلا موعد»).
    *
    * حقل `products.restock_at` القائم نفسه؛ الحالة المعروضة للزبون

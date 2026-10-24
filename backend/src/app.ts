@@ -8,6 +8,7 @@ import { pinLocale } from './middleware/locale.js';
 import { DEFAULT_LOCALE } from './utils/locale.js';
 import { requireSupportedAppVersion } from './middleware/app-version.js';
 import { errorHandler, globalRateLimiter, notFoundHandler } from './middleware/error-handler.js';
+import { resolveClientIp } from './middleware/client-ip.js';
 import { adminRoutes } from './routes/admin.js';
 import { authRoutes } from './routes/auth.js';
 import { catalogRoutes } from './routes/catalog.js';
@@ -29,6 +30,9 @@ export function createApp() {
   if (trustProxy !== 'false') {
     app.set('trust proxy', /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy);
   }
+  // عنوان الزبون الفعلي لحدود المعدّل — بعد الثقة بالوسيط (يقرأ `req.ip`) وقبل
+  // أول حدّ. ترويسة الموقع تُقبل بتوقيعٍ صحيح وحده (`middleware/client-ip.ts`).
+  app.use(resolveClientIp());
   // crossOriginResourcePolicy معطّل لأن الصور تُقدَّم لتطبيق على أصل مختلف.
   app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
   app.use(
