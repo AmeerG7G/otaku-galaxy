@@ -766,6 +766,34 @@ void main() {
       await OrderRepositoryImpl(api: api).placeOrder(data.withIdempotencyKey('x' * 16));
       expect(api.headers, {'Idempotency-Key': 'x' * 16});
     });
+
+    // [CRITICAL] المفتاح والهدية جاءا من فرعين منفصلين؛ نسخةٌ تسقط حقلاً تُرسل
+    // طلباً غير الذي راجعه الزبون.
+    test('نسخة المفتاح تحمل كل حقول الطلب كما هي', () {
+      final original = OrderData(
+        governorateId: 'g1',
+        province: 'النجف',
+        deliveryCost: 5000,
+        fullAddress: 'النجف، حي السعد',
+        phone: '+9647701234567',
+        items: const [],
+        discount: 1500,
+        loyaltyDiscount: 500,
+        deliveryDiscount: 1000,
+        quotedTotal: 12500,
+        zoneId: 'z1',
+        zoneName: 'حي السعد',
+        loyaltyGiftActivated: true,
+      );
+      final keyed = original.withIdempotencyKey('k' * 32);
+      expect(keyed.idempotencyKey, 'k' * 32);
+      expect(keyed.loyaltyGiftActivated, isTrue);
+      expect(keyed.toJson(), original.toJson());
+      expect(
+        [keyed.discount, keyed.loyaltyDiscount, keyed.deliveryDiscount, keyed.quotedTotal, keyed.zoneName],
+        [original.discount, original.loyaltyDiscount, original.deliveryDiscount, original.quotedTotal, original.zoneName],
+      );
+    });
   });
 }
 
