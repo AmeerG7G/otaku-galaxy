@@ -14,8 +14,12 @@ export interface CartLine {
   productImage: string | null;
   optionValue: string | null;
   quantity: number;
-  unitPrice: number;
-  lineTotal: number;
+  /**
+   * `null` فقط في أسطر الإرسال والمعاينة لمنتجٍ أُزيل سعره (084)؛ العربة التي
+   * يراها الزبون (`listItems`) لا تعيد سطراً بلا سعر — التطبيق يقرأ الغائب صفراً.
+   */
+  unitPrice: number | null;
+  lineTotal: number | null;
   stock: number;
   /**
    * ترويج التوصيل على المنتج — تحتاجه السلة والدفع لعرض «خصم التوصيل»
@@ -47,7 +51,8 @@ const LINE_FROM = `
   JOIN products p ON p.id = ci.product_id
   WHERE ci.cart_id = $1`;
 
-const LINE_SELECT = `${LINE_FROM} AND p.is_active = TRUE`;
+// العربة المعروضة: لا معطَّل ولا بلا سعر (084). الإرسال يرى الكل فيرفض بالسبب.
+const LINE_SELECT = `${LINE_FROM} AND p.is_active = TRUE AND p.price IS NOT NULL`;
 
 function mapLine(row: Record<string, unknown>): CartLine {
   return {
@@ -59,8 +64,9 @@ function mapLine(row: Record<string, unknown>): CartLine {
     productImage: (row.productImage as string | null) ?? null,
     optionValue: (row.optionValue as string | null) ?? null,
     quantity: Number(row.quantity),
-    unitPrice: Number(row.unitPrice),
-    lineTotal: Number(row.unitPrice) * Number(row.quantity),
+    // `Number(null)` صفر — والصفر سعرٌ لا «بلا سعر».
+    unitPrice: row.unitPrice === null ? null : Number(row.unitPrice),
+    lineTotal: row.unitPrice === null ? null : Number(row.unitPrice) * Number(row.quantity),
     stock: Number(row.stock),
     hasDeliveryPromo: row.hasDeliveryPromo === true,
     deliveryPromoAmount: Number(row.deliveryPromoAmount ?? 0),
@@ -133,9 +139,10 @@ export const cartRepo = {
       quantity: number;
       stock: number;
       is_active: boolean;
+      priced: boolean;
     }>(
       `SELECT ci.id, ci.product_id, p.name, p.name_ckb, ci.option_value, ci.quantity,
-              p.stock, p.is_active
+              p.stock, p.is_active, p.price IS NOT NULL AS priced
          FROM cart_items ci
          JOIN products p ON p.id = ci.product_id
         WHERE ci.cart_id = $1
@@ -151,6 +158,7 @@ export const cartRepo = {
       quantity: Number(row.quantity),
       stock: Number(row.stock),
       isActive: row.is_active,
+      priced: row.priced,
     }));
   },
 

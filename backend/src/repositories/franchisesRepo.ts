@@ -26,11 +26,14 @@ function shapeFranchise(row: FranchiseWithCount): FranchiseDto {
   };
 }
 
-/** العدّ يقتصر على المنتجات النشطة — وهو ما يراه العميل فعلياً. */
+/**
+ * العدّ يقتصر على المنتجات النشطة المسعَّرة — وهو ما يراه التطبيق المثبَّت فعلياً
+ * (منتجٌ «السعر يُعلن قريباً» لا يصله، 084).
+ */
 const SELECT_WITH_COUNT = `
   SELECT f.*,
          (SELECT COUNT(*)::text FROM product_franchises pf
-           JOIN products p ON p.id = pf.product_id AND p.is_active = TRUE
+           JOIN products p ON p.id = pf.product_id AND p.is_active = TRUE AND p.price IS NOT NULL
           WHERE pf.franchise_id = f.id) AS product_count
   FROM franchises f`;
 

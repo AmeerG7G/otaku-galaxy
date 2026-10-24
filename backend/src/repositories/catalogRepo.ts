@@ -19,6 +19,16 @@ const SORT_CLAUSES: Record<ProductSort, string> = {
   rating: 'p.rating DESC NULLS LAST, p.review_count DESC, p.created_at DESC',
 };
 
+/**
+ * «السعر يُعلن قريباً» (084): شرط الظهور في الكتالوج العام.
+ *
+ * [CRITICAL] التطبيق المثبَّت يقرأ السعر الغائب صفراً (`price ?? 0`)، فمنتجٌ
+ * بلا سعر يصله يُعرض «٠ د.ع». لا يُعاد إلا لعميلٍ يطلبه صراحةً
+ * (`X-OG-Unpriced: 1` — الموقع) أو للوحة التحكم. نصٌّ ثابت لا مُدخل.
+ */
+export const pricedOnly = (prefix: string, includeUnpriced = false) =>
+  includeUnpriced ? 'TRUE' : `${prefix}.price IS NOT NULL`;
+
 function toNumber(v: string | number | null | undefined): number | null {
   return v === null || v === undefined ? null : Number(v);
 }
@@ -41,7 +51,8 @@ function toNumber(v: string | number | null | undefined): number | null {
 export function mapProduct(
   row: ProductRow & { images?: unknown; franchise_ids?: unknown },
 ) {
-  const price = Number(row.price);
+  // [CRITICAL] `toNumber` لا `Number`: `Number(null)` صفرٌ، أي منتجٌ مجاني.
+  const price = toNumber(row.price);
   const previousPrice = toNumber(row.previous_price);
   const nameCkb = kurdishOrNull(row.name_ckb);
   const descriptionCkb = kurdishOrNull(row.description_ckb);
@@ -62,6 +73,7 @@ export function mapProduct(
      * ناقصة» في اللوحة، وملاحظة التطبيق حين يعرض العربية مكان الكردية.
      */
     kurdishMissing: nameCkb === null || descriptionCkb === null,
+    /** `null` = لم يُعلن بعد (084) — العربة والطلب يرفضانه (`PRODUCT_NOT_PRICED`). */
     price,
     stock: row.stock,
     images: (row.images as string[]) ?? [],
@@ -76,7 +88,7 @@ export function mapProduct(
     // فلا تظهر شارة خصم بلا سعر سابق فعلي أعلى من الحالي.
     previousPrice,
     discountPercent:
-      previousPrice !== null && previousPrice > price
+      price !== null && previousPrice !== null && previousPrice > price
         ? Math.round(((previousPrice - price) / previousPrice) * 100)
         : null,
     hasDeliveryPromo: row.has_delivery_promo ?? false,
@@ -193,6 +205,8 @@ export const productRepo = {
       isOffer?: boolean;
       isSelected?: boolean;
       includeInactive?: boolean;
+      /** منتجاتٌ بلا سعرٍ معلن (084) — للوحة ولمن يطلبها صراحةً. انظر [pricedOnly]. */
+      includeUnpriced?: boolean;
       /**
        * منتجاتٌ ينقصها اسمٌ أو وصفٌ كردي — للوحة التحكم («أكمل الكردية»).
        * الشرط هو شرط الفهرس الجزئي `idx_products_missing_ckb` حرفياً (066).
@@ -204,6 +218,7 @@ export const productRepo = {
     const conditions: string[] = [];
     const values: unknown[] = [];
     if (!options.includeInactive) conditions.push('p.is_active = TRUE');
+    if (!options.includeUnpriced) conditions.push(pricedOnly('p'));
     if (options.query && options.query.trim() !== '') {
       values.push(`%${escapeLike(options.query.trim())}%`);
       // بحث اللوحة: المسؤول يعرف المنتج باسمه العربي أو الكردي — الاثنان
@@ -263,10 +278,10 @@ export const productRepo = {
    * كان هذا الاستعلام يعيش في `catalogService` ومعه نسخة يدوية من التحويل
    * أسقطت `deliveryPromoAmount`. نُقل هنا ليمرّ بالمُحوِّل المعتمد.
    */
-  async listDiscover(db: pg.Pool | pg.PoolClient, seed: string, limit: number) {
+  async listDiscover(db: pg.Pool | pg.PoolClient, seed: string, limit: number, includeUnpriced = false) {
     const { rows } = await db.query<ProductRow & { images?: unknown; franchise_ids?: unknown }>(
       `${SELECT_WITH_IMAGES('p')}
-       WHERE p.is_active = TRUE
+       WHERE p.is_active = TRUE AND ${pricedOnly('p', includeUnpriced)}
        ORDER BY md5(p.id::text || $1)
        LIMIT $2`,
       [seed, limit],
@@ -284,7 +299,10 @@ export const productRepo = {
     db: pg.Pool | pg.PoolClient,
     id: string,
     /** لوحة التحكم تفتح الموقوف أيضاً (`adminService.getProductForEdit`). */
-    { includeInactive = false }: { includeInactive?: boolean } = {},
+    {
+      includeInactive = false,
+      includeUnpriced = includeInactive,
+    }: { includeInactive?: boolean; includeUnpriced?: boolean } = {},
   ) {
     const { rows } = await db.query<
       ProductRow & { images?: unknown; franchise_ids?: unknown; options?: unknown }
@@ -306,7 +324,8 @@ ${PRODUCT_RELATION_COLUMNS('p')},
                 '[]'::json
               ) AS options
        FROM products p
-       WHERE p.id = $1 AND (p.is_active = TRUE OR $2::boolean)`,
+       WHERE p.id = $1 AND (p.is_active = TRUE OR $2::boolean)
+         AND ${pricedOnly('p', includeUnpriced)}`,
       [id, includeInactive],
     );
     const row = rows[0];
@@ -351,6 +370,7 @@ ${PRODUCT_RELATION_COLUMNS('p')},
     page: number,
     limit: number,
     locale: AppLocale,
+    includeUnpriced = false,
   ): Promise<Paginated<ReturnType<typeof mapProduct>>> {
     // النمط يُبنى في القاعدة (`search_like_pattern`): يُطوى نصّ الزبون بالدالة
     // نفسها التي طُوي بها المخزَّن، ثم تُهرَّب `%`/`_`/`\` — حرفياً لا أنماطاً،
@@ -369,7 +389,8 @@ ${PRODUCT_RELATION_COLUMNS('p')},
     // استعمالهما)، ثم `products_pkey`. و`UNION` يجعل المنتج الذي يطابق اسمُه
     // ووصفُه وقسمُه معاً نتيجةً واحدة لا ثلاثاً.
     const nameMatches = `search_fold(${displayedName('p')}) LIKE ${pattern} ESCAPE '\\'`;
-    const matches = `p.is_active = TRUE AND p.id = ANY (ARRAY(
+    // شرط السعر على الصف الخارجي وحده: الفروع الداخلية تبقى على فهارسها.
+    const matches = `p.is_active = TRUE AND ${pricedOnly('p', includeUnpriced)} AND p.id = ANY (ARRAY(
            SELECT pn.id FROM products pn
             WHERE pn.is_active = TRUE
               AND ${document('pn')} LIKE ${pattern} ESCAPE '\\'

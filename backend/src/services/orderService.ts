@@ -394,6 +394,16 @@ export const orderService = {
             'PRODUCT_UNAVAILABLE',
           );
         }
+        // [CRITICAL] «قريباً — السعر يُعلن لاحقاً» (084): سعرٌ أُزيل بعد الإضافة
+        // إلى العربة. لا يُحسب صفراً ولا يُسقط السطر: الإرسال كله يُرفض قبل
+        // حجز أي خصم أو كتابة، كما يُرفض المعطَّل.
+        const unitPrice = product.price;
+        if (unitPrice === null) {
+          throw Errors.conflict(
+            `سعر «${shownName}» لم يُعلن بعد — أزله من العربة`,
+            'PRODUCT_NOT_PRICED',
+          );
+        }
         // [CRITICAL] اتّساق السعر (CA-14، الخيار أ): الزبون رأى في عربته المُزامَنة
         // سعراً غير الحالي ⇒ الإرسال كله يُرفض. المقارنة بالقراءة **نفسها** التي
         // تُبنى منها اللقطة أدناه وداخل هذه المعاملة بعد قفل العربة — لا قراءة
@@ -401,7 +411,7 @@ export const orderService = {
         // الطلب، فالرفض لا يترك أثراً. السعر المتوقَّع فحصٌ لا مصدر.
         if (
           input.expectedPrices?.some(
-            (expected) => expected.productId === product.id && expected.unitPrice !== product.price,
+            (expected) => expected.productId === product.id && expected.unitPrice !== unitPrice,
           )
         ) {
           throw Errors.conflict(
@@ -439,9 +449,9 @@ export const orderService = {
           productNameCkb: product.nameCkb,
           imageUrl: product.images[0] ?? null,
           optionValue: item.optionValue,
-          price: product.price,
+          price: unitPrice,
           quantity: item.quantity,
-          lineTotal: product.price * item.quantity,
+          lineTotal: unitPrice * item.quantity,
         });
       }
 
@@ -577,6 +587,7 @@ export const orderService = {
     // ما سيرفض الإنشاءُ به الطلبَ كله — يُعرض قبل التأكيد لا بعده.
     const issues: Array<
       | { code: 'PRODUCT_UNAVAILABLE'; productId: string }
+      | { code: 'PRODUCT_NOT_PRICED'; productId: string }
       | { code: 'INSUFFICIENT_STOCK'; productId: string; available: number }
     > = [];
     const orderedByProduct = new Map<string, number>();
@@ -587,7 +598,13 @@ export const orderService = {
         issues.push({ code: 'PRODUCT_UNAVAILABLE', productId: line.productId });
         continue;
       }
-      productsTotal += product.price * line.quantity;
+      // سعرٌ لم يُعلن (084): الإنشاء يرفضه كله (`PRODUCT_NOT_PRICED`)، ولا يُحسب صفراً.
+      const unitPrice = product.price;
+      if (unitPrice === null) {
+        issues.push({ code: 'PRODUCT_NOT_PRICED', productId: line.productId });
+        continue;
+      }
+      productsTotal += unitPrice * line.quantity;
       if (product.hasDeliveryPromo && product.deliveryPromoAmount > 0) {
         deliveryPromoRaw += product.deliveryPromoAmount * line.quantity;
       }
@@ -596,8 +613,8 @@ export const orderService = {
         productId: product.id,
         optionValue: line.optionValue,
         quantity: line.quantity,
-        unitPrice: product.price,
-        lineTotal: product.price * line.quantity,
+        unitPrice,
+        lineTotal: unitPrice * line.quantity,
       });
     }
     // البوّابة نفسها التي يطبّقها الإنشاء: مجموع المنتج لا كمية السطر.

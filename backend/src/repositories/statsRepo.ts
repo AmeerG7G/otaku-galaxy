@@ -132,7 +132,7 @@ export const statsRepo = {
       id: string;
       name: string;
       stock: number;
-      price: string;
+      price: string | null;
       image_url: string | null;
     }>(
       `SELECT p.id, p.name, p.stock, p.price,
@@ -148,7 +148,8 @@ export const statsRepo = {
       id: row.id,
       name: row.name,
       stock: row.stock,
-      price: Number(row.price),
+      // `null` = لم يُعلن سعره بعد (084) — لا صفر.
+      price: row.price === null ? null : Number(row.price),
       imageUrl: row.image_url,
     }));
   },

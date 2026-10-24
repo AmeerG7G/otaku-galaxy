@@ -27,6 +27,8 @@ export interface CartSyncLine {
   quantity: number;
   stock: number;
   isActive: boolean;
+  /** للمنتج سعرٌ معلن؟ (084) — بلا سعر يُعامَل كالمعطَّل: يُزال السطر. */
+  priced: boolean;
 }
 
 export type CartAdjustmentReason = 'unavailable' | 'reduced';
@@ -40,7 +42,7 @@ export interface CartAdjustment {
   productNameAr: string;
   productNameCkb: string | null;
   optionValue: string | null;
-  /** `unavailable`: المنتج معطَّل أو نفد — أُزيل السطر. `reduced`: خُفِّضت الكمية (إلى صفر = أُزيل). */
+  /** `unavailable`: المنتج معطَّل أو نفد أو بلا سعرٍ معلن — أُزيل السطر. `reduced`: خُفِّضت الكمية (إلى صفر = أُزيل). */
   reason: CartAdjustmentReason;
   previousQuantity: number;
   /** الكمية بعد المزامنة؛ صفرٌ يعني أن السطر أُزيل. */
@@ -65,7 +67,7 @@ export function planCartSync(lines: readonly CartSyncLine[]): CartAdjustment[] {
       previousQuantity: line.quantity,
     };
 
-    if (!line.isActive || line.stock <= 0) {
+    if (!line.isActive || !line.priced || line.stock <= 0) {
       adjustments.push({ ...base, reason: 'unavailable', quantity: 0 });
       continue;
     }

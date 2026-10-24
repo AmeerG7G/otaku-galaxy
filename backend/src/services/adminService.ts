@@ -48,6 +48,12 @@ function mapProductConstraintError(error: unknown): never {
       'INVALID_PREVIOUS_PRICE',
     );
   }
+  if (code === '23514' && constraint === 'products_previous_price_needs_price') {
+    throw Errors.badRequest(
+      'لا «سعر قبل الخصم» لمنتجٍ لم يُعلن سعره بعد',
+      'INVALID_PREVIOUS_PRICE',
+    );
+  }
   if (code === '23514') {
     throw Errors.badRequest('قيمة غير صالحة لأحد حقول المنتج', 'INVALID_PRODUCT_FIELD');
   }
@@ -232,7 +238,8 @@ export const adminService = {
     descriptionAr: string;
     nameCkb: string;
     descriptionCkb: string;
-    price: number;
+    /** `null` = «السعر يُعلن قريباً» (084). */
+    price: number | null;
     categoryId: string;
     subcategoryId?: string | null;
     stock: number;
@@ -332,6 +339,8 @@ export const adminService = {
       ...(selected !== undefined ? { isSelected: selected } : {}),
       ...(missingKurdish === true ? { missingKurdish: true } : {}),
       includeInactive: true,
+      // «السعر يُعلن قريباً» (084): المسؤول يرى ما أعلنه ليسعّره لاحقاً.
+      includeUnpriced: true,
     });
   },
 
@@ -346,7 +355,7 @@ export const adminService = {
       descriptionAr?: string;
       nameCkb?: string;
       descriptionCkb?: string;
-      price?: number;
+      price?: number | null;
       categoryId?: string;
       subcategoryId?: string | null;
       stock?: number;

@@ -59,6 +59,12 @@ async function withProductConstraints<T>(run: () => Promise<T>): Promise<T> {
         'INVALID_PREVIOUS_PRICE',
       );
     }
+    if (code === '23514' && constraint === 'products_previous_price_needs_price') {
+      throw Errors.badRequest(
+        'لا «سعر قبل الخصم» لمنتجٍ لم يُعلن سعره بعد',
+        'INVALID_PREVIOUS_PRICE',
+      );
+    }
     if (code === '23514') {
       throw Errors.badRequest('قيمة غير صالحة لأحد حقول المنتج', 'INVALID_PRODUCT_FIELD');
     }

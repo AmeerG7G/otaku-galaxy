@@ -36,7 +36,7 @@ function localizeCategory<
 
 export const catalogService = {
   /** بيانات الصفحة الرئيسية: بانرات، عروض، مختارات، أقسام، اكتشاف عشوائي. */
-  async getHome(locale: AppLocale) {
+  async getHome(locale: AppLocale, { includeUnpriced = false }: { includeUnpriced?: boolean } = {}) {
     // بذرة ثابتة ← ترتيب «اكتشف» مستقر بين الطلبات بدل قائمة تتبدّل بكل تحديث.
     const DISCOVER_SEED = 'home';
     const DISCOVER_LIMIT = 10;
@@ -46,12 +46,12 @@ export const catalogService = {
       bannerRepo.listActive(db),
       bannerRepo.listActive(db, 'hero'),
       bannerRepo.listActive(db, 'promo'),
-      productRepo.list(db, { page: 1, limit: 8, isOffer: true }),
-      productRepo.list(db, { page: 1, limit: 8, isSelected: true }),
+      productRepo.list(db, { page: 1, limit: 8, isOffer: true, includeUnpriced }),
+      productRepo.list(db, { page: 1, limit: 8, isSelected: true, includeUnpriced }),
       categoryRepo.list(db),
       // كان هنا استعلامٌ وتحويلٌ يدويان أسقطا `deliveryPromoAmount`، فتظهر
       // المنتجات في «اكتشف» بلا خصم التوصيل الذي تُظهره بقية الشاشات.
-      productRepo.listDiscover(db, DISCOVER_SEED, DISCOVER_LIMIT),
+      productRepo.listDiscover(db, DISCOVER_SEED, DISCOVER_LIMIT, includeUnpriced),
     ]);
 
     return {
@@ -85,6 +85,8 @@ export const catalogService = {
     isOffer?: boolean;
     isSelected?: boolean;
     sort?: ProductSort;
+    /** «السعر يُعلن قريباً» (084) — لمن يطلبه صراحةً فقط. */
+    includeUnpriced?: boolean;
   }, locale: AppLocale) {
     const page = await productRepo.list(db, options);
     return { ...page, items: page.items.map((p) => localizeProduct(p, locale)) };
@@ -95,14 +97,15 @@ export const catalogService = {
    * ترويسة `Accept-Language` التي يرسلها التطبيق بلغة واجهته). لا معامل
    * `?lang=` ثانٍ: آليةٌ واحدة للغة في الـAPI كله.
    */
-  async search(query: string, page: number, limit: number, locale: AppLocale) {
-    const result = await productRepo.search(db, query, page, limit, locale);
+  async search(query: string, page: number, limit: number, locale: AppLocale, includeUnpriced = false) {
+    const result = await productRepo.search(db, query, page, limit, locale, includeUnpriced);
     return { ...result, items: result.items.map((p) => localizeProduct(p, locale)) };
   },
 
-  async productDetail(id: string, locale: AppLocale) {
+  async productDetail(id: string, locale: AppLocale, includeUnpriced = false) {
     // تمثيل المنتج يأتي من المُحوِّل المعتمد؛ الخيارات وحدها إضافة التفاصيل.
-    const product = await productRepo.findDetailById(db, id);
+    // بلا سعرٍ معلن ولم يُطلب ⇒ ٤٠٤ كالمعطَّل: التطبيق المثبَّت لا يرى «٠ د.ع».
+    const product = await productRepo.findDetailById(db, id, { includeUnpriced });
     if (!product) throw Errors.notFound('المنتج غير موجود');
     const localized = localizeProduct(product, locale);
     const options = (product as { options?: unknown }).options;

@@ -221,7 +221,11 @@ export const adminProductCreateSchema = z.object({
   descriptionCkb: contentDescription('الكردية'),
   name: retiredKey('nameAr/nameCkb'),
   description: retiredKey('descriptionAr/descriptionCkb'),
-  price,
+  /**
+   * `null` صريحة = «السعر يُعلن قريباً» (084): يُعرض ولا يُشترى. الحقل يبقى
+   * إلزامياً — غيابُه خطأ في العميل لا «بلا سعر» — والصفر مرفوض كما كان.
+   */
+  price: price.nullable(),
   categoryId: z.string().uuid('معرّف قسم غير صالح'),
   subcategoryId: z.string().uuid('معرّف قسم فرعي غير صالح').nullable().optional(),
   stock: z.number().int().min(0).max(100000),
@@ -255,7 +259,8 @@ export const adminProductUpdateSchema = z.object({
   descriptionCkb: contentDescription('الكردية').optional(),
   name: retiredKey('nameAr/nameCkb'),
   description: retiredKey('descriptionAr/descriptionCkb'),
-  price: z.number().positive('السعر يجب أن يكون موجباً').max(1_000_000_000).optional(),
+  /** `null` يعيد المنتج «قريباً» بلا سعر (084)؛ الغائب لا يُمسّ. */
+  price: price.nullable().optional(),
   categoryId: z.string().uuid('معرّف قسم غير صالح').optional(),
   subcategoryId: z.string().uuid('معرّف قسم فرعي غير صالح').nullable().optional(),
   stock: z.number().int().min(0).max(100000).optional(),

@@ -31,6 +31,8 @@ export const cartService = {
   async addItem(userId: string, input: { productId: string; optionValue: string | null; quantity: number }) {
     const product = await productRepo.findById(db, input.productId);
     if (!product || !product.isActive) throw Errors.notFound('المنتج غير موجود');
+    // «قريباً — السعر يُعلن لاحقاً» (084): يُعرض ولا يُشترى، مهما طلب العميل.
+    if (product.price === null) throw Errors.conflict('سعر هذا المنتج لم يُعلن بعد', 'PRODUCT_NOT_PRICED');
 
     // [CRITICAL] الخيار من خيارات المنتج نفسها لا نصّاً حرّاً. كان أي نصٍّ حتى
     // ٨٠ حرفاً يُقبل — أو لا شيء لمنتجٍ له مقاس ولون — ثم يُنسخ إلى الطلب

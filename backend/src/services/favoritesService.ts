@@ -10,8 +10,8 @@ export const favoritesService = {
    * المفضلة منتجاتٌ كأي قائمة كتالوج: `name`/`description` بلغة الطلب،
    * والحقول الأربعة الصريحة معها (066). كانت تخرج عربيةً لكل زبون.
    */
-  async list(userId: string, page: number, limit: number, locale: AppLocale) {
-    const result = await favoriteRepo.list(db, userId, page, limit);
+  async list(userId: string, page: number, limit: number, locale: AppLocale, includeUnpriced = false) {
+    const result = await favoriteRepo.list(db, userId, page, limit, includeUnpriced);
     return { ...result, items: result.items.map((p) => localizeProduct(p, locale)) };
   },
 

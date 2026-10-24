@@ -158,7 +158,8 @@ export type ProductRow = {
    */
   name_ckb: string | null;
   description_ckb: string | null;
-  price: string | number;
+  /** `null` = «السعر يُعلن قريباً» (084): يُعرض ولا يُشترى. لا يُقرأ صفراً أبداً. */
+  price: string | number | null;
   stock: number;
   is_active: boolean;
   is_offer: boolean;
