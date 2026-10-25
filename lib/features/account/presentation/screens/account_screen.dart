@@ -605,7 +605,10 @@ class _ProfileCardState extends State<_ProfileCard> {
                                         'levelNumberAndNameLong',
                                         {
                                           'number': '${level.number}',
-                                          'name': level.nameFor(context.gender),
+                                          'name': level.nameFor(
+                                            context.gender,
+                                            context.language,
+                                          ),
                                         },
                                       ),
                                 // [CRITICAL] لا اقتطاع لاسم المستوى.

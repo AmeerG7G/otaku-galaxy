@@ -23,6 +23,8 @@ import 'package:otaku_galaxy/features/points/domain/entities/points_activity.dar
 import 'package:otaku_galaxy/features/points/domain/repositories/points_repository.dart';
 import 'package:otaku_galaxy/features/points/presentation/cubit/points_cubit.dart';
 import 'package:otaku_galaxy/features/settings/data/store_settings_repository.dart';
+import 'package:otaku_galaxy/features/settings/presentation/cubit/locale_cubit.dart';
+import 'package:otaku_galaxy/core/l10n/locale_scope.dart';
 
 import 'support/auth_stub.dart';
 import 'support/render_harness.dart';
@@ -53,6 +55,7 @@ OtakuLevel _level({
   String male = 'مستكشف المجرة',
   String female = _explorerFemale,
   String neutral = 'مستوى الاستكشاف',
+  String ckb = '',
 }) => OtakuLevel(
   key: 'explorer',
   number: number,
@@ -62,6 +65,7 @@ OtakuLevel _level({
   reward: 'خصم ٣٪',
   rewardKind: 'discount',
   threshold: 100,
+  nameCkb: ckb,
 );
 
 class _StubPoints implements PointsRepository {
@@ -98,6 +102,7 @@ Future<void> _pumpAccount(
   String? gender,
   String name = 'مدقق',
   Size size = const Size(390, 844),
+  AppLanguage language = AppLanguage.arabic,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -136,11 +141,14 @@ Future<void> _pumpAccount(
       ],
       child: MaterialApp(
         theme: AppTheme.light,
-        home: const Directionality(
-          textDirection: TextDirection.rtl,
-          // لا موجّه: `context.router` لا يُقرأ إلا داخل ردود النقر، والبناء
-          // وحده هو موضوع الاختبار.
-          child: Scaffold(body: AccountScreen()),
+        home: LocaleScope(
+          language: language,
+          child: const Directionality(
+            textDirection: TextDirection.rtl,
+            // لا موجّه: `context.router` لا يُقرأ إلا داخل ردود النقر، والبناء
+            // وحده هو موضوع الاختبار.
+            child: Scaffold(body: AccountScreen()),
+          ),
         ),
       ),
     ),
@@ -252,6 +260,23 @@ void main() {
       final text = tester.widget<Text>(find.textContaining(_explorerFemale));
       expect(text.maxLines, greaterThanOrEqualTo(2));
       expect(text.overflow, isNot(TextOverflow.ellipsis));
+    });
+
+    // [CRITICAL] كان السطر يستدعي `nameFor(context.gender)` بلا لغة، فتسقط
+    // إلى العربية: «ئاستی 2 — مستكشفة المجرة» في واجهةٍ كردية.
+    testWidgets('[CRITICAL] الواجهة الكردية تعرض الاسم الكردي لا العربي', (
+      tester,
+    ) async {
+      const explorerCkb = 'گەڕیدەی گەلاکسی';
+      await _pumpAccount(
+        tester,
+        level: _level(ckb: explorerCkb),
+        gender: 'female',
+        language: AppLanguage.kurdish,
+      );
+
+      expect(find.textContaining(_explorerFemale), findsNothing);
+      expect(find.text('ئاستی 2 — $explorerCkb'), findsOneWidget);
     });
   });
 }
