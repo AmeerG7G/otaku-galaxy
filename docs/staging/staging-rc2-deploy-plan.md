@@ -1,8 +1,11 @@
 # Staging release candidate 2 — deployment plan (2026-10-26)
 
-Release candidate: branch `release/staging-2`, code at `253c14a`, built on `origin/dev` `0e12e00`.
+Release candidate: branch `release/staging-2`, code at `253c14a`, built on `origin/dev` `0e12e00`;
+merged into `dev` as `e50c3657d26b5ae724bcce18935cbc8a68310577` (CI run 40238715129, 4 jobs green).
 Nothing in this plan has been executed on the server. Every step marked **(owner)** needs the
-owner's go-ahead at that point; the server is reachable only by the owner (no SSH key here).
+owner's go-ahead at that point. The server inventory in §3 was read on 2026-10-26 (read-only SSH,
+then `sudo docker` commands run by the owner); `otakugalaxy` is not in the `docker` group, so every
+Docker command below needs `sudo`.
 
 ## 1. What the candidate contains
 
@@ -31,19 +34,26 @@ Not included, on purpose:
 
 Not verified: CI on `69f6b5a`/`253c14a` (needs a push); the APK on a device; anything on the server.
 
-## 3. The real staging environment (as recorded 2026-10-25)
+## 3. The real staging environment (verified 2026-10-26)
 
 The runbook (deploy §2) assumes `/srv/otaku-galaxy-staging`, compose project `otaku-staging`,
 branch `staging`. The server does **not** match it:
 
 | | Runbook | Server |
 |---|---|---|
-| Checkout | `/srv/otaku-galaxy-staging` | `/srv/otaku-galaxy/staging` |
-| Branch | `staging` | local `dev` at `2bb8524` |
-| Compose project | `-p otaku-staging` | `staging` (container `staging-api-1`, volume `staging_uploads`) |
-| Host port | `4001` | unknown — the code at `2bb8524` defaulted to **4000** |
-| Database | — | host cluster PG 16.15, DB `otaku_galaxy_staging` at **070**, role `otaku_galaxy_staging` owns every object; reached via `host.docker.internal` |
-| Dashboard | — | `staging-admin.otakugalaxystore.com` is live; how it is served is unknown |
+| Host | — | `vmi3614219`, Ubuntu 24.04.5 LTS, 4 CPU, 7.9 GB RAM, no swap, 91 GB free; nginx 1.24.0 |
+| Checkout | `/srv/otaku-galaxy-staging` | `/srv/otaku-galaxy/staging`, clean |
+| Branch | `staging` | local `dev` at `2bb8524` (no local `staging` branch) |
+| Compose project | `-p otaku-staging` | **`staging`**, network `staging_default` |
+| API container | — | **`staging-api-1`**, image **`otaku-galaxy-api:staging-2bb8524`** (built 2026-09-30 00:27 UTC, after commit `2bb8524`), restart `unless-stopped`, healthy |
+| Host port | `4001` | **`127.0.0.1:4001` → 4000**; nginx upstream `otaku_staging_api` = `127.0.0.1:4001` |
+| Env file | `./backend/.env.staging` | **`./backend/.env.staging`** (the container's variable names match it). `APP_ENV=staging`; `MIGRATION_DATABASE_URL` empty, so migrations use `DATABASE_URL`; `PUSH_PROVIDER=fcm` with empty `FCM_*` (push stays "not configured", as today) |
+| Uploads | — | volume **`staging_uploads`** → `/app/uploads`, 2830 files, 48 MB |
+| Database | — | host cluster PG 16.15 (`16/main`), DB `otaku_galaxy_staging` at **070**, role `otaku_galaxy_staging` owns every object; reached via `host.docker.internal:5432` |
+| Dashboard | — | nginx serves static files from **`/srv/otaku-galaxy/staging/admin/dist`** (gitignored; built 2026-09-28 18:45, before the Admins/Analytics/App-update pages) |
+| Other images | — | `otaku-galaxy-api:latest` (2026-09-28, older than the running image), `staging-migrate:latest` (2026-09-30, migrations up to 070) |
+| Backups | — | `/srv/otaku-galaxy/backups/staging/` (root, 700): `staging-pre-dev-2bb8524-20260930-021835.dump` and `staging-pre-7ffacb1-20261025T180406Z.dump` |
+| Leftover | — | container **`og-086-rehearsal`** (postgres:16-alpine, `--network none`, no ports, the 10-25 backup mounted read-only, volume `og-086-rehearsal-data`): the manual 086 restore test of 2026-10-25. Isolated, but it holds a copy of staging data; removing it is the owner's decision. The rehearsal script ignores it (it only handles `og-rehearsal*`) |
 
 **[CRITICAL]** Use `-p staging` from `/srv/otaku-galaxy/staging`. The runbook's `-p otaku-staging`
 would create a new, empty `otaku-staging_uploads` volume, and every product image would vanish.
@@ -56,25 +66,30 @@ would create a new, empty `otaku-staging_uploads` volume, and every product imag
    (4 jobs) on the new `dev`.
 2. PR **base `staging` ← compare `dev`**, merge commit, after the 3 required checks pass.
 
-### B. Server inventory — read only (owner)
+### B. Server inventory — done 2026-10-26 (§3)
 
-Run deploy §0, then record these values. They are inputs to step D:
+Right before step D, re-check that nothing moved since §3 (read only):
 
 ```bash
-cd /srv/otaku-galaxy/staging && git status --short | head && git log -1 --oneline
-docker inspect staging-api-1 --format '{{.Config.Image}} {{json .HostConfig.PortBindings}}'
-docker inspect staging-api-1 --format '{{index .Config.Labels "com.docker.compose.project.config_files"}} {{index .Config.Labels "com.docker.compose.project.working_dir"}}'
-docker volume ls | grep uploads
-grep -rlE 'staging-admin' /etc/nginx/sites-enabled/ && grep -hE 'root|proxy_pass' $(grep -rlE 'staging-admin' /etc/nginx/sites-enabled/)
+sudo docker ps --format '{{.Names}}\t{{.Image}}\t{{.Ports}}\t{{.Status}}'
+git -C /srv/otaku-galaxy/staging --no-optional-locks status --short | head
 ```
 
-Stop if `git status` shows local changes in the checkout, or if the port is not one nginx proxies to.
+Expected: `staging-api-1  otaku-galaxy-api:staging-2bb8524  127.0.0.1:4001->4000/tcp  Up … (healthy)`
+and a clean checkout. Anything else: stop.
 
 ### C. Migration rehearsal on a copy of live staging (owner)
 
+The RC edition of the script is on `dev`; take it from there (`fetch` only updates remote refs):
+
 ```bash
-sudo TARGET=<full hash of the staging merge commit> bash og-staging-rehearsal.sh
+git -C /srv/otaku-galaxy/staging fetch origin
+git -C /srv/otaku-galaxy/staging --no-optional-locks show origin/dev:docs/staging/og-staging-rehearsal.sh > ~/og-staging-rehearsal.sh
+sudo TARGET=<full hash of the commit to deploy> bash ~/og-staging-rehearsal.sh
 ```
+
+`TARGET` is the commit that step D deploys: `e50c3657d26b5ae724bcce18935cbc8a68310577` today, or
+the `staging` merge commit once the PR is merged (rehearse that one if it differs).
 
 It reads the live database once (a fresh `pg_dump` into a new root-only file under
 `/srv/otaku-galaxy/backups/staging/`), and does everything else in a `--network none` container.
@@ -87,26 +102,51 @@ Proceed only on `RESULT: ALL CHECKS PASSED`. The new backup is the rollback poin
   cd /srv/otaku-galaxy/staging
   git fetch origin && git switch staging && git merge --ff-only origin/staging
   test "$(git rev-parse --abbrev-ref HEAD)" = staging
-  export ENV_FILE=<as found in B> HOST_PORT=<as found in B> IMAGE_TAG=staging-$(git rev-parse --short HEAD)
-  docker compose -p staging build api migrate
-  docker compose -p staging --profile tools run --rm migrate      # expects 16: 071 … 086
-  docker compose -p staging up -d api
-  docker compose -p staging ps
+  export ENV_FILE=./backend/.env.staging HOST_PORT=4001 IMAGE_TAG=staging-$(git rev-parse --short HEAD)
+  sudo -E docker compose -p staging build api migrate
+  sudo -E docker compose -p staging --profile tools run --rm migrate      # expects 16: 071 … 086
+  sudo -E docker compose -p staging up -d api
+  sudo -E docker compose -p staging ps
   curl -fsS "localhost:$HOST_PORT/health"
 )
 ```
+
+- `sudo -E` keeps the three exported variables (the new compose file refuses to run without them).
+- `git switch staging` creates the local `staging` branch from `origin/staging` (none exists yet).
+- `build api migrate` rebuilds both images. The `migrate` service has no `image:` key, so compose
+  names it `staging-migrate:latest`, which today holds the 070-era migrations; building only `api`
+  would run the old migrator.
+- `up -d api` recreates `staging-api-1` on the same `staging_uploads` volume and port 4001; nginx
+  needs no change.
 
 - Before `migrate`: the gender diagnostic in deploy §12 (class A must be 0).
 - After: the deploy §16 read-only check (two `|t` lines).
 - **Skip** the §12 `analytics:rebuild` backfill: the analytics job's first tick builds and closes
   past months itself (the rehearsal shows it), and a rebuild of a closed month fails without
   `--include-closed`.
-- The old image stays tagged `otaku-galaxy-api:latest` for a code rollback.
+- The running image keeps its tag **`otaku-galaxy-api:staging-2bb8524`**; that is the code-rollback
+  image (`otaku-galaxy-api:latest` is an older 2026-09-28 build — do not use it).
 
 ### E. Dashboard (owner)
 
-Publish `admin-dist-staging-253c14a.tar.gz` (`dist/`) to wherever B shows `staging-admin` is served.
-Keep the current files for rollback. Web push stays off (no Firebase), as today.
+nginx serves `/srv/otaku-galaxy/staging/admin/dist` directly; switching branches does not change it
+(it is gitignored). The new build is unpacked and the current one kept **outside** the checkout —
+only `dist` itself is ignored, so any `dist.*` beside it would make the checkout dirty:
+
+```bash
+( set -e
+  cd /srv/otaku-galaxy/staging/admin
+  KEEP=~/admin-dist-2bb8524-$(date -u +%Y%m%dT%H%M%SZ)
+  mkdir ~/admin-dist.new && tar -xzf ~/admin-dist-staging-253c14a.tar.gz -C ~/admin-dist.new --strip-components=1
+  test -f ~/admin-dist.new/index.html
+  mv dist "$KEEP" && mv ~/admin-dist.new dist          # same filesystem: two renames
+  echo "rollback copy: $KEEP"
+)
+```
+
+`admin-dist-staging-253c14a.tar.gz` (SHA-256 `de6fb3ae…597be1`) must be copied to the server first;
+it contains `dist/` built with `--mode staging` (API `staging-api.otakugalaxystore.com/api`, STAGING
+badge). Its code equals `e50c365`. Web push stays off (no Firebase), as today.
 
 ### F. Android
 
@@ -135,10 +175,13 @@ server must build from its own checkout (`npm ci && npm run build`) when §13 is
 
 ## 6. Rollback
 
-- Code only: `IMAGE_TAG=latest docker compose -p staging up -d api`. **Not verified** that the
-  `2bb8524` code works on the 086 schema; prefer the full rollback below if anything fails.
+- Code only: from `/srv/otaku-galaxy/staging`,
+  `ENV_FILE=./backend/.env.staging HOST_PORT=4001 IMAGE_TAG=staging-2bb8524 sudo -E docker compose -p staging up -d api`.
+  **Not verified** that the `2bb8524` code works on the 086 schema; prefer the full rollback below
+  if anything fails.
 - Full: stop the API, restore the step C backup into the database (pre-086 → deploy §16 path: exactly
-  2 expected errors), start the previous image. Data written after the deploy is lost.
+  2 expected errors), start `staging-2bb8524`. Data written after the deploy is lost.
+- Dashboard: in `/srv/otaku-galaxy/staging/admin`, `mv dist ~/admin-dist-bad && mv <rollback copy printed in E> dist`.
 
 ## 7. Before production (separate)
 
