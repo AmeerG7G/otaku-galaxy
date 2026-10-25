@@ -114,6 +114,9 @@ backend/
 | GET    | `/api/orders`                     | customer |
 | PATCH  | `/api/admin/orders/:id/status`    | admin |
 | POST   | `/api/admin/products`             | admin |
+| GET    | `/api/catalog/app-version`        | public، قراءة وحدها، `Cache-Control: no-store` — السياسة **الفعلية**: `updateMode` (`none`/`optional`/`mandatory`)، `minimumSupportedVersion`، `latestVersion`، `updateUrl` (صفحة Google Play أو فارغ)، `revision`، وحقول النسخ القديمة (`forceUpdateEnabled`، `androidStoreUrl`…) |
+| GET    | `/api/admin/settings/app-version` | admin «الإعدادات» — المحفوظ (`enabled`، `mode`، `latestVersion`، `minimumVersion`، `updateUrl`، `revision`) + `effective` + `problem` + آخر من غيّر ومتى + آخر ١٠ لقطات |
+| PATCH  | `/api/admin/settings/app-version` | admin «الإعدادات» — جسمٌ صارم `{ enabled, mode?, latestVersion?, minimumVersion?, updateUrl?, revision }`؛ الغائب يبقى؛ 400 `VALIDATION_ERROR`، 409 `APP_UPDATE_POLICY_CHANGED` (deploy §15) |
 | ...    | (أقسام، بنرات، محافظات، مستخدمون)  | admin |
 
 ## ملاحظات تصميم مهمة

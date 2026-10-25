@@ -11836,3 +11836,152 @@ findings were checked against the code, and all four are fixed:
   - migrations 083–085 on staging.
 - **`next dev` agent files.** Next 16 `next dev` writes `web-store/AGENTS.md` and `CLAUDE.md` on
   every run; `agentRules: false` in `next.config` would stop it (owner's call).
+
+# STEP 70 — APP UPDATE POLICY FROM THE DASHBOARD · PAIR PRICE AND INSTALLED APPS · BROWSER VERIFICATION (2026-10-25)
+
+Branch `integration/step-68` (worktree `.claude/worktrees/step-68-integration`), on top of `c04064f`.
+Local commits only: nothing pushed, merged or deployed, and no migration.
+
+## 70.1 Owner decisions (2026-10-25, chosen in chat)
+
+- **Update policy fields.** The STEP 64 model (on/off, minimum, one link) gains «أحدث إصدار» and a
+  mode, optional or mandatory. Builds below latest but at or above the minimum get a dismissible
+  prompt, once per version. There is still no admin message (the app's own ar/ckb wording) and no
+  build-code field: versions compare as semver on `versionName`.
+- **Pair price vs installed apps.** Try a server-authoritative fix first; if the installed app
+  cannot show the server's pair total safely, use the minimum-version gate. Result: §70.3.
+
+## 70.2 App update policy
+
+**Backend** (`services/appVersionService.ts`, `utils/playStoreUrl.ts`, `validators/franchises.ts`):
+
+- New `store_settings` keys: `app_update_mode`, `app_latest_version`, `app_update_revision`. A
+  key/value table needs no migration. An empty mode, as saved before STEP 70, reads as mandatory,
+  so an existing block keeps blocking.
+- The link must be our app's Google Play page: `https`, host `play.google.com`, path
+  `/store/apps/details`, exactly one `id` from the three flavor ids. It is stored canonical. A test
+  pins the id list to `android/app/build.gradle.kts`, and the same rules exist in the web store
+  (`app-link.ts`), the dashboard and the app (`store_url.dart`).
+- The public config stays "no block when in doubt". An enabled policy with a non-Play link, an
+  unknown mode or an invalid version publishes `updateMode: none`. A minimum is required for
+  mandatory, latest for optional, and minimum ≤ latest is checked on write.
+- **Publish:** `PATCH /admin/settings/app-version` (permission «الإعدادات»), one transaction:
+  - lock the revision row;
+  - a stale `revision` returns 409 `APP_UPDATE_POLICY_CHANGED`;
+  - write the keys;
+  - write an audit row (`settings.app_version_updated`) with the full policy snapshot. An audit
+    failure rolls everything back.
+
+  Omitted fields keep their stored values, so `{enabled:false, revision}` (rollback) always
+  succeeds. A save that changes nothing is a no-op.
+- `GET /admin/settings/app-version` returns: the saved policy, the effective config, the reason
+  if any, who changed it and when, and the last 10 snapshots.
+- `GET /catalog/app-version` is `Cache-Control: no-store`. The per-process 30 s cache is cleared on
+  save.
+- The 426 middleware is unchanged: it blocks only the effective mandatory minimum.
+
+**Dashboard:** a new section «تحديث التطبيق» (`/app-updates`, same «الإعدادات» permission); the
+card leaves «إعدادات المتجر». The page has:
+
+- status: what apps see now, the revision, last change, and «إيقاف السياسة»;
+- the form, with the package id shown and a warning when it is not the production id;
+- a live preview using the app's Arabic strings (a test reads `app_strings.dart`);
+- the affected version ranges;
+- a confirmation before every publish (danger wording for mandatory);
+- history with «استعادة هذه القيم»;
+- the workflow card, stating that nothing is published on Google Play.
+
+**App:** it reuses `ForceUpdateGate`, so there is no second update system.
+
+- `OptionalUpdatePrompt` floats over the live app; a `GlobalKey` keeps the router mounted.
+  «لاحقاً» or a scrim tap dismisses it and is persisted per latest version.
+- Mandatory is unchanged and never shows the prompt.
+- `openStoreListing` opens only a trusted store link; anything else shows
+  «رابط التحديث غير متوفر». A failed launch, or a `PlatformException`, shows «تعذّر فتح المتجر».
+- A check that did not reach the server retries at 15 s, 30 s, 1 min, 2 min, then every 5 min.
+- Cherry-picked `ceda7bc` (gate race: a 426 during an in-flight check is no longer lost).
+
+## 70.3 Pair price and installed apps — the server cannot fix the old display
+
+The pre-STEP 69 app code (`e3def17`, builds report `1.0.0+1`):
+
+- maps `unitPrice` from the cart line to `product.price` (`cart_repository_impl.dart:94`);
+- shows `price × quantity` on cart, order-data, review and order lines (`cart_item.dart:18`) and
+  ignores `lineTotal`;
+- echoes `unitPrice` in `expectedPrices` (`order_data.dart:76-78`);
+- flags any `unitPrice` change between syncs as «تغيّر السعر» (`cart_sync.dart:75`).
+
+A server-sent "effective unit price" (7,000 / 2 = 3,500) would fix the sum but fails in four ways:
+
+- the CA-14 check compares `expected.unitPrice !== unitPrice` exactly, so the order fails with 409
+  `PRODUCT_PRICE_CHANGED`;
+- the price-changed banner fires on every quantity change;
+- two option lines get different effective prices (4,000 + 3,000) under one product id;
+- old and new builds cannot be told apart.
+
+`pair-price.test.ts` («تطبيق 1.0.0 المثبَّت…») pins each fact. The old client sees 8,000 and is
+charged 7,000. An admin pair-price change reaches `lineTotal` without a release, but not the old
+display. Both "effective" bodies get 409. The gate's 1.0.0 → 426 / 1.1.0 → 200 and the rollback are
+covered too.
+
+**Path taken: the minimum-version gate.** No mandatory update was added only for this mismatch:
+the gate is the release order in deploy §14, and nothing is enforced automatically.
+
+The release order:
+
+1. Build the STEP 69–70 app above 1.0.0.
+2. Publish it on Play and verify it.
+3. Publish a mandatory minimum from «تحديث التطبيق».
+4. Only then set pair prices.
+
+A warning beside «سعر قطعتين» says the same. The app also shows «قطعتان بـ{price}» on product
+detail.
+
+## 70.4 Verification
+
+The full record is in `docs/staging/staging-readiness-2026-10-25.md`.
+
+**Tests:**
+
+- **Backend**, full suite on an empty migrated DB: 2066/2067. The one failure, CA-17a, is
+  intermittent: 26/26 ×3 and 2/2 ×5 on reruns. Its lock-count barrier is not specific to the
+  session under test.
+- **Pool safety:** 7/7 ×3. **Quote binding:** 8/8 ×3.
+- **Dashboard:** 385/387. The failures are the known `ProductEditPage` load flake, the same at
+  `939b20b`. `tsc -b`, `oxlint` and `build:staging` are clean.
+- **Web store:** 51/51, with typecheck, eslint and build clean.
+- **Flutter:** `flutter analyze` reports no issues (the four test-file issues were fixed). The
+  tests leave only the six failures from before this session.
+
+**Mutation checks:** backend 6/6 and Flutter 5/5 killed.
+
+**Real browser** (local throwaway stack):
+
+- **App updates:** validation; mandatory publish with confirmation; read-back; 426 for 1.0.0;
+  rollback; restore; two-tab 409; 375/768/1440 px. The rollback button was moved after the
+  375 px check.
+- **Product form:** pair line plus warning; unpriced saves NULL.
+- **Web store:** pair and unpriced pages; register → approve → login; cart 4,000 / 7,000 /
+  11,000; checkout 16,000; the order persisted with the same amounts.
+
+## 70.5 Open
+
+- **Staging verdict: NOT READY.** The causes are not STEP 70 code:
+  - CI's required Flutter job still has six failures from before this work: character art
+    ×2, empty states, responsive button, Sorani queue drift ×2;
+  - the staging infrastructure is unprovisioned;
+  - CI has never run on these commits.
+- **Owner:**
+  - push the commits;
+  - decide on the six tests;
+  - before any production pair price: the pair-aware release above 1.0.0, then the mandatory
+    minimum;
+  - `agentRules: false` for `next dev`.
+- **Not verified:** the Flutter UI on a device, the real Google Play intent and listing, and
+  anything on a server.
+- **Known limitations:**
+  - no per-version install counts;
+  - an app that has not reached the server does not know the policy;
+  - Android back is not intercepted by the optional prompt (it is dismissible);
+  - pre-STEP 64 builds show `latestVersion` as their "required" line;
+  - no iOS listing.

@@ -36,6 +36,9 @@
   - the app's review screen treats `PRODUCT_NOT_PRICED` as a cart conflict.
 
 ## Open — needs the owner
+> **2026-10-25:** item 1 is decided (minimum-version gate; the server cannot fix the old display).
+> See [session-handoff-2026-10-25.md](session-handoff-2026-10-25.md), spec §70.3, deploy §14.
+
 1. **Installed apps and pair prices.** Current app releases compute cart lines as price × quantity,
    so they show 8,000 for a pair the server charges 7,000. They also do not send the reviewed pair
    price. Either raise «أدنى إصدار مدعوم» to the
