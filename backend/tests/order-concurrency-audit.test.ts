@@ -608,14 +608,22 @@ describe('Orders + stock concurrency audit', () => {
   // ═══════════════════════════════════════════════════════════════════
 
   describe('Phase 13/14 — lock ordering and deadlock analysis', () => {
-    it('the product lock query locks in id order at the plan level (LockRows above Sort)', async () => {
+    it('the product lock query locks in id order at the plan level (LockRows above an id-ordered input)', async () => {
       const { rows } = await db.query<{ 'QUERY PLAN': string }>(
         `EXPLAIN (COSTS OFF) SELECT id, name, stock FROM products WHERE id = ANY($1::uuid[]) ORDER BY id FOR UPDATE`,
         [[catalog.productIds[0], catalog.productIds[1]]],
       );
       const plan = rows.map((r) => r['QUERY PLAN']);
       expect(plan[0]).toBe('LockRows');
-      expect(plan[1]).toMatch(/^\s+->\s+Sort$/);
+      // The planner picks by table statistics: a Sort on id while `products` is
+      // small (this file alone), a forward scan of products_pkey once earlier
+      // suites have filled it (full run, 2026-10-25). Both hand LockRows the rows
+      // in ascending id. A backward scan, or a Sort on anything else, would not.
+      if (/^\s+->\s+Sort$/.test(plan[1]!)) {
+        expect(plan[2]).toMatch(/^\s+Sort Key: (products\.)?id$/);
+      } else {
+        expect(plan[1]).toMatch(/^\s+->\s+Index (Only )?Scan using products_pkey on products$/);
+      }
     });
 
     it('[CRITICAL] two orders holding the same two products in opposite cart order serialize — no deadlock (40P01), both consistent', async () => {
