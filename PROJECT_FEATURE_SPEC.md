@@ -12037,3 +12037,67 @@ header-less builds (pre-STEP 64, e.g. from `origin/prod`/`origin/staging`) canno
   hosts (undecided); the first CI run on these commits; web-store as a required check.
 
 **Verdict: NOT READY FOR STAGING** (environment and CI, not code).
+
+# STEP 72 — MIGRATION 086: BACKUPS RESTORE WITH THE SEARCH INDEXES (2026-10-25)
+
+Branch `fix/search-fold-schema-qualified`, from `origin/dev` `7ffacb1`. Code commit `24097d7`.
+Local commits only: nothing pushed, merged or deployed, and 086 is applied to no real server.
+
+## 72.1 The defect
+
+In the pre-staging migration rehearsal (2026-10-25), `pg_restore` of a real backup failed on two
+indexes only, `idx_products_search_ar_trgm` and `idx_products_search_ckb_trgm`:
+`ERROR: function search_fold(text) does not exist`.
+
+- `pg_restore` runs with `search_path = ''`. `pg_dump` qualifies everything it writes itself, but
+  the **body** of a SQL function is stored text.
+- The 066 helpers `product_search_text_ar` and `product_search_text_ckb` called `search_fold`
+  unqualified. `CREATE INDEX` inlines them, so the body was parsed with the empty path.
+- Effect: every backup from every environment taken before 086 restores without the two search
+  indexes, or stops entirely with `--exit-on-error`. No other test saw it: they all run with the
+  application's search path.
+
+## 72.2 The fix (`086_search_fold_schema_qualified.sql`)
+
+- `CREATE OR REPLACE` of both helpers with the 066 bodies verbatim, except `public.search_fold(...)`.
+  Same signatures, `RETURNS TEXT`, `LANGUAGE sql`, `IMMUTABLE`, `PARALLEL SAFE`. The 066 comments,
+  grants and dependent indexes stay attached.
+- **No `SET search_path`** on the functions: a SQL function with `SET` is not inlined, and search
+  would lose its trigram index.
+- 066 is not edited (it is recorded in every environment). Forward-only; no table or data change.
+- `CREATE INDEX IF NOT EXISTS` for both indexes (the path for restoring a pre-086 backup), then
+  `REINDEX` of both. The catalogue is small; the write lock on `products` is brief.
+- Checked and left unchanged (`pg_depend`): these two indexes are the only objects that depend on
+  our functions. `franchise_search_text` (025) is not indexed and calls only `pg_catalog`.
+  `search_like_pattern` (064) calls `search_fold` at query time with the application's path, not
+  during a restore.
+- Rollback: `backend/scripts/rollback/086_search_fold_schema_qualified.down.sql`, one transaction.
+  It loses no data but **brings the defect back**.
+- Operators: deploy §16 covers applying, rollback, a read-only check, and restoring a pre-086 backup
+  (exactly two expected errors → apply 086 → both indexes rebuilt).
+
+## 72.3 Verification (observed in this session)
+
+Throwaway `postgres:16-alpine`, started empty and migrated only, `CI=1`.
+
+| Suite | Result |
+|---|---|
+| `migration-086-dump-restore.test.ts` | 6 / 6. Function attributes (`public.search_fold` only, no `proconfig`, `IMMUTABLE`/`PARALLEL SAFE`); both helpers under `search_path = ''` and `pg_catalog` give the same Arabic and Sorani folding as under the app path, including the Kurdish → Arabic fallback; real `pg_dump -Fc` → `pg_restore --exit-on-error` into an empty DB, both indexes valid; the repo's real search uses each language's trigram index on the restored DB |
+| Mutation: rollback script applied, 086 withheld | 6 / 6 red with `function search_fold(text) does not exist`, the rehearsal's error. The rollback script applied cleanly |
+| Search and migration files (kurdish, anime, admin-products, public-search-escape, migration-rollback, migration-fresh-chain) | All pass; `migration-rollback` discovers `086.down` itself |
+| Backend, full | **2075 / 2075**, 0 skipped |
+| `npm run typecheck`; `tsc` over `src` + the new test | Clean |
+
+A first full run had 22 failures in `config-fail-closed`, `migrate-entry-point` and
+`process-lifecycle`: the worktree's `node_modules` symlink was removed mid-run, so child processes
+could not resolve `tsx`. With the symlink restored (lockfile identical, 0 package mismatches): 25 / 25,
+then the full run above.
+
+## 72.4 Open
+
+- **Not done on a real server:** 086 on staging and production; a restore rehearsal with
+  `--exit-on-error` on a backup taken after 086.
+- Backups taken before 086 still need the deploy §16 path.
+- `anime-search.test.ts` leaves a «One Piece Test» franchise linked to a product in the test DB.
+  The 086 test asserts containment, not an exact count, so it does not depend on file order; the
+  leak itself is not fixed.

@@ -697,3 +697,45 @@ Google Play فالسياسة تتوقّف عن الحجب حتى يُعاد حف
 - لا إصدار iOS: الرابط صفحة Google Play وحدها.
 - مقارنة النسخ على `versionName` (`1.2.3`)؛ رقم البناء (`+2`) لا يدخل فيها.
 
+
+## ١٦. الهجرة 086 — النسخ الاحتياطية تُستعاد (`pg_dump` / `pg_restore`)
+
+**العطل (بروفة هجرة الاختبار المسبق، 2026-10-25):** `pg_restore` لنسخةٍ احتياطية حقيقية
+فشل في فهرسين فقط، `idx_products_search_ar_trgm` و`idx_products_search_ckb_trgm`:
+`ERROR: function search_fold(text) does not exist`. الاستعادة تعمل بمسار بحثٍ فارغ،
+ودالّتا مستند البحث (066) تستدعيان `search_fold` بلا اسم المخطّط. **يمسّ نسخ كل البيئات**
+المأخوذة قبل 086: تُستعاد بلا فهرسَي البحث، أو تقف كلياً مع `--exit-on-error`.
+
+| الهجرة | الأثر |
+|---|---|
+| `086_search_fold_schema_qualified` | الدالّتان بجسم 066 حرفياً، والفرق `public.search_fold(...)` وحده؛ تبقيان `IMMUTABLE PARALLEL SAFE` بلا `SET search_path` (وإلا لا تُدمجان ويخسر البحث فهرسه). تُنشئ الفهرسين إن غابا ثم `REINDEX` لهما. لا جدول ولا بيانات تتغيّر |
+
+- **التطبيق:** بخطوة الهجرة المعتادة (§٢ أو §٣)، إضافية. `REINDEX` يحجب الكتابة على
+  `products` لحظةً (الكتالوج صغير). لا ترتيب نشرٍ مع اللوحة أو التطبيق.
+- **التراجع:** `scripts/rollback/086_search_fold_schema_qualified.down.sql` بالطريقة نفسها
+  في §١٤، معاملةٌ واحدة. لا بيانات تضيع، لكنه **يعيد العطل**: كل نسخةٍ بعده تفشل في الاستعادة.
+- **التحقّق بعد الهجرة (للقراءة فقط) — نسخةٌ تُستعاد في قاعدةٍ فارغة بلا أي خطأ:**
+
+  ```bash
+  ( cd /srv/otaku-galaxy-staging/backend          # الإنتاج: /srv/otaku-galaxy/backend و.env.prod
+    DATABASE_URL="$(sed -n 's/^DATABASE_URL=//p' .env.staging | head -1)"
+    PGOPTIONS='-c default_transaction_read_only=on' \
+      psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atc "SELECT proname, prosrc ~ 'public\.search_fold\(' FROM pg_proc WHERE proname IN ('product_search_text_ar', 'product_search_text_ckb') ORDER BY 1" )
+  ```
+
+  السطران `product_search_text_ar|t` و`product_search_text_ckb|t`. ثم في بروفة الاستعادة
+  التالية: `pg_restore --exit-on-error` لنسخةٍ جديدة يجب أن ينتهي برمز ٠.
+- **[حرِج] استعادة نسخةٍ أقدم من 086** (أي نسخةٍ أُخذت قبل هذه الهجرة، على أي بيئة) — في
+  **قاعدةٍ فارغة جديدة** لا فوق قاعدةٍ قائمة:
+  1. `pg_restore` **بلا** `--exit-on-error`. المتوقَّع خطآن بالضبط، كلاهما
+     `function search_fold(text) does not exist` عند `CREATE INDEX` للفهرسين أعلاه، وآخر
+     الخرج `errors ignored on restore: 2`. أي خطأٍ آخر أو عددٍ آخر: توقّف وحقّق.
+  2. خطوة الهجرة المعتادة على القاعدة المستعادة: تطبّق 086 (والنسخة تقف عند ما قبلها)،
+     فتُصحَّح الدالّتان ويُنشأ الفهرسان.
+  3. تحقّق كما أعلاه، و`\d products` يُظهر الفهرسين.
+
+  جُرّب على نسخةٍ من 085: الخطآن ← 086 ← فهرسان صالحان ← نسخةٌ جديدة منها تُستعاد
+  بـ`--exit-on-error` بلا خطأ. الدليل الدائم: `backend/tests/migration-086-dump-restore.test.ts`.
+- **ما فُحص ولم يحتج تغييراً:** كل فهرسٍ وقيدٍ وقيمة افتراضية تعتمد على دالّةٍ من دوالّنا —
+  الفهرسان وحدهما. `franchise_search_text` ليست في فهرس ولا تستدعي إلا دوالّ النظام؛
+  `search_like_pattern` تستدعي `search_fold` وقت الاستعلام لا وقت الاستعادة.
