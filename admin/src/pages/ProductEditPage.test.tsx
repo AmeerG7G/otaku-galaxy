@@ -399,6 +399,15 @@ describe('ProductEditPage — حقل المخزون والمقارنة لا يف
   const stockField = () => screen.getByLabelText('المخزون') as HTMLInputElement
   const save = () => userEvent.setup().click(screen.getByRole('button', { name: 'حفظ التعديلات' }))
   const lastPayload = () => vi.mocked(updateProduct).mock.calls.at(-1)![1]
+  /**
+   * الحفظ الناجح ينتقل إلى القائمة بـ`navigate`، وReact Router 7 يجري كل انتقالٍ
+   * داخل `startTransition`: أولويةٌ منخفضة تتنازل لكل تحديثٍ عاجل في الصفحة
+   * المغادَرة — وانتهاءُ الطلب نفسه يعيد رسم النموذج كاملاً (`submitting`).
+   * قيس بين `navigate` وظهور القائمة 0.3–1.3 ث للملف وحده و2.5–3.5 ث تحت حمل
+   * المجموعة كاملة، وانتظار `findBy` الافتراضي ثانيةٌ واحدة. ميزانية وقتٍ لا
+   * تخفيف تحقّق: القائمة يجب أن تظهر، ولا شيء غيرها يُقبل بدلاً منها.
+   */
+  const listShown = () => screen.findByText('قائمة المنتجات', {}, { timeout: 10_000 })
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -446,7 +455,7 @@ describe('ProductEditPage — حقل المخزون والمقارنة لا يف
     await userEvent.setup().clear(stockField())
     await userEvent.setup().type(stockField(), '6')
     await save()
-    await screen.findByText('قائمة المنتجات')
+    await listShown()
     expect(lastPayload()).toMatchObject({ stock: 6, expectedStock: 3 })
     expect(server.stock).toBe(6)
   })
@@ -582,7 +591,7 @@ describe('ProductEditPage — حقل المخزون والمقارنة لا يف
     expect(stockField()).toHaveValue('9')
 
     await save()
-    await screen.findByText('قائمة المنتجات')
+    await listShown()
     expect(lastPayload()).toMatchObject({ stock: 9, expectedStock: 3 })
     expect(server.stock).toBe(9)
   })
@@ -593,7 +602,7 @@ describe('ProductEditPage — حقل المخزون والمقارنة لا يف
     await userEvent.setup().clear(stockField())
     await userEvent.setup().type(stockField(), '8')
     await save()
-    await screen.findByText('قائمة المنتجات')
+    await listShown()
     expect(server.stock).toBe(8)
 
     await act(async () => navigateTo('/products/p1/edit'))
