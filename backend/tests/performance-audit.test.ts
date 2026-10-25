@@ -242,9 +242,13 @@ describe('Performance / resource audit', () => {
       await db.query('VACUUM ANALYZE products, product_images, orders, order_items, order_status_history, notifications, reviews, points_ledger, users');
     }, 180_000);
 
+    // ميزانية وقتٍ لا تخفيف تحقّق: التطهير وحده ~٥٠ ثانية على جهاز التطوير
+    // (2026-10-25)، وفي التشغيل الكامل على قاعدةٍ ملأتها الملفّات السابقة تجاوز
+    // ١٢٠ ثانية — فبقي استعلامه جارياً على عميلٍ من المجمّع وسقطت فحوص Phase C
+    // الخمسة (`idle` 1 ≠ `total` 2) وهي محقّة في رؤيته مشغولاً.
     afterAll(async () => {
       await db.query(await loadSql('perf-dataset-purge.sql'));
-    }, 120_000);
+    }, 300_000);
 
     const perfOrderId = async () =>
       (await db.query<{ id: string }>("SELECT id FROM orders WHERE number = 'perf-3'")).rows[0]!.id;
