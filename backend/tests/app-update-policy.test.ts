@@ -331,6 +331,27 @@ describe('[CRITICAL] «إرسال التحديث» من اللوحة: تحقّق
     await purgeSubAdmins();
   });
 
+  it('[CRITICAL] «إعدادات المتجر» العامة لا تكتب السياسة — مفاتيحها تُسقَط هناك', async () => {
+    // لو صار مخطّط الإعدادات العامة `passthrough` لكتب حجباً إجبارياً بلا أي فحص ولا مراجعة.
+    const token = await createAdminUser();
+    await api
+      .patch('/api/admin/settings')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        social_tiktok: 'https://tiktok.com/@otaku',
+        app_force_update_enabled: 'true',
+        app_update_mode: 'mandatory',
+        app_min_supported_version: '99.0.0',
+        app_update_url: PLAY,
+        app_update_revision: '7',
+      })
+      .expect(200);
+    expect(await publicPolicy()).toMatchObject({ updateMode: 'none', minimumSupportedVersion: '', revision: 0 });
+    const { rows } = await db.query(`SELECT key FROM store_settings WHERE key LIKE 'app_%'`);
+    expect(rows).toEqual([]);
+    await db.query(`DELETE FROM store_settings WHERE key = 'social_tiktok'`);
+  });
+
   it('عميلٌ وزائر لا يكتبان؛ والمسار العامّ للقراءة وحدها', async () => {
     const { token } = await registerAndLogin();
     await api.patch('/api/admin/settings/app-version').set('Authorization', `Bearer ${token}`).send({ ...mandatory, revision: 0 }).expect(403);
