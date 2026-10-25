@@ -9,7 +9,6 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otaku_galaxy/core/design_system/design_system.dart';
-import 'package:otaku_galaxy/core/l10n/app_strings.dart';
 import 'package:otaku_galaxy/core/l10n/locale_scope.dart';
 import 'package:otaku_galaxy/features/settings/presentation/cubit/locale_cubit.dart';
 import 'package:otaku_galaxy/features/home/presentation/widgets/home_compositions.dart';

@@ -19,7 +19,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otaku_galaxy/core/design_system/design_system.dart';
-import 'package:otaku_galaxy/core/l10n/app_strings.dart';
 import 'package:otaku_galaxy/core/l10n/locale_scope.dart';
 import 'package:otaku_galaxy/features/auth/presentation/cubit/auth_cubit.dart';
 import 'package:otaku_galaxy/features/community/presentation/screens/community_screen.dart';
@@ -39,7 +38,6 @@ import 'package:otaku_galaxy/features/visuals/presentation/character_artwork.dar
 import 'package:otaku_galaxy/features/visuals/domain/visual_slot.dart';
 
 import 'support/auth_stub.dart';
-import 'support/render_harness.dart';
 
 const _category = Category(id: 'c1', name: 'قرطاسية');
 

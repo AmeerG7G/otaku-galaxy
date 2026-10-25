@@ -26,7 +26,7 @@ class _CartReply implements HttpClientAdapter {
     Stream<Uint8List>? requestStream,
     Future<void>? cancelFuture,
   ) async {
-    final line = (String id, String option, num total) => {
+    Map<String, Object?> line(String id, String option, num total) => {
       'id': id,
       'productId': 'p1',
       'productNameAr': 'حقيبة',
