@@ -703,6 +703,7 @@ class _OrderDataScreenState extends State<OrderDataScreen> with LocaleRefetch {
               _buildPriceRow(
                 context.strings('productsPrice'),
                 formatPrice(subtotal),
+                labelTranslations: AppStrings.across('productsPrice'),
               ),
               _buildPriceRow(
                 context.strings('delivery'),
@@ -711,6 +712,14 @@ class _OrderDataScreenState extends State<OrderDataScreen> with LocaleRefetch {
                           ? context.strings('deliverySetAfterZone')
                           : context.strings('deliverySetAfterProvince'))
                     : formatPrice(deliveryCost),
+                labelTranslations: AppStrings.across('delivery'),
+                valueTranslations: _effectiveDeliveryCost == null
+                    ? AppStrings.across(
+                        _hasZones
+                            ? 'deliverySetAfterZone'
+                            : 'deliverySetAfterProvince',
+                      )
+                    : const [],
               ),
               if (deliveryDiscount > 0)
                 _buildPriceRow(
@@ -745,8 +754,13 @@ class _OrderDataScreenState extends State<OrderDataScreen> with LocaleRefetch {
                 valueColor: AppColors.secondary,
               ),
               const SizedBox(height: 10),
-              Text(
+              // فقرة تحجز أسطر أطول ترجماتها (البوّابة ٨).
+              BoundedText(
                 context.strings('codNoOnlinePayment'),
+                maxLines: 12,
+                minScale: 1,
+                reserveFor: AppStrings.across('codNoOnlinePayment'),
+                alignment: AlignmentDirectional.topStart,
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
                   height: 1.6,
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -759,43 +773,69 @@ class _OrderDataScreenState extends State<OrderDataScreen> with LocaleRefetch {
     );
   }
 
+  /// سطر سعر: تسميةٌ عند البداية وقيمةٌ عند النهاية.
+  ///
+  /// [CRITICAL] (البوّابة ٨، 2026-10-10) كانا `Text` بلا حدّ في `Row`:
+  /// «دوای هەڵبژاردنی پارێزگا دیاری دەکرێت» الكردية تتجاوز ١٢ يميناً عند
+  /// ×١٫٣. التسمية منطقة سطرٍ تُصغَّر أولاً، والقيمة لا تأخذ أكثر من
+  /// ٦٠٪ من السطر وتحجز — حين تكون نصّاً — ما تحتاجه أطول ترجماتها.
   Widget _buildPriceRow(
     String label,
     String value, {
     bool isTotal = false,
     Color? valueColor,
+    List<String> labelTranslations = const [],
+    List<String> valueTranslations = const [],
   }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            label,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              fontSize: isTotal ? 16 : 13.5,
-              fontWeight: isTotal
-                  ? AppDimens.weightExtraBold
-                  : AppDimens.weightRegular,
-              color: isTotal
-                  ? Theme.of(context).colorScheme.onSurface
-                  : Theme.of(context).colorScheme.onSurfaceVariant,
+      child: LayoutBuilder(
+        builder: (context, constraints) => Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: BoundedText(
+                label,
+                maxLines: 2,
+                reserveFor: labelTranslations,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontSize: isTotal ? 16 : 13.5,
+                  fontWeight: isTotal
+                      ? AppDimens.weightExtraBold
+                      : AppDimens.weightRegular,
+                  color: isTotal
+                      ? Theme.of(context).colorScheme.onSurface
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
             ),
-          ),
-          Text(
-            value,
-            textDirection: TextDirection.ltr,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              fontFamily: isTotal ? AppFonts.heading : null,
-              fontFamilyFallback: isTotal ? AppFonts.headingFallback : null,
-              fontSize: isTotal ? 20 : 13.5,
-              fontWeight: isTotal
-                  ? AppDimens.weightBlack
-                  : AppDimens.weightSemiBold,
-              color: valueColor ?? Theme.of(context).colorScheme.onSurface,
+            const SizedBox(width: 12),
+            ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: constraints.maxWidth * 0.6),
+              child: Directionality(
+                textDirection: valueTranslations.isEmpty
+                    ? TextDirection.ltr
+                    : Directionality.of(context),
+                child: BoundedText(
+                  value,
+                  maxLines: 3,
+                  reserveFor: valueTranslations,
+                  alignment: AlignmentDirectional.topStart,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontFamily: isTotal ? AppFonts.heading : null,
+                    fontFamilyFallback: isTotal ? AppFonts.headingFallback : null,
+                    fontSize: isTotal ? 20 : 13.5,
+                    fontWeight: isTotal
+                        ? AppDimens.weightBlack
+                        : AppDimens.weightSemiBold,
+                    color:
+                        valueColor ?? Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -844,6 +884,10 @@ class _OrderDataScreenState extends State<OrderDataScreen> with LocaleRefetch {
                   onPressed: _continue,
                   loading: _continuing,
                   height: AppDimens.buttonHeightXl,
+                  // [CRITICAL] (البوّابة ٨، 2026-10-10) زرٌّ بجوار المجموع:
+                  // بحشوة ٢٤ لم تتّسع «پێداچوونەوەی داواکاری» حتى عند حدّها
+                  // على ٣٢٠×١٫٣. التسمية موسَّطة فلا يتغيّر ما يتّسع.
+                  horizontalPadding: AppDimens.space4,
                 ),
               ),
             ],

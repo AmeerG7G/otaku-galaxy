@@ -120,7 +120,9 @@ function OwnProfileTab() {
       form.setFieldsValue({ currentPassword: '', newPassword: '', confirmPassword: '' })
       message.success('حُفظ ملفّك')
     },
-    onError: (error) => message.error(errorText(error, 'تعذّر الحفظ')),
+    onError: (error) => {
+      message.error(errorText(error, 'تعذّر الحفظ'))
+    },
   })
 
   if (!profile) return null
@@ -209,12 +211,16 @@ function AdminEditor({ state, onClose }: { state: EditorState; onClose: () => vo
   const create = useMutation({
     mutationFn: (input: CreateSubAdminInput) => createSubAdmin(input),
     onSuccess: () => done('أُنشئ المسؤول'),
-    onError: (error) => message.error(errorText(error, 'تعذّر الإنشاء')),
+    onError: (error) => {
+      message.error(errorText(error, 'تعذّر الإنشاء'))
+    },
   })
   const update = useMutation({
     mutationFn: ({ id, input }: { id: string; input: UpdateSubAdminInput }) => updateSubAdmin(id, input),
     onSuccess: () => done('حُدّث المسؤول'),
-    onError: (error) => message.error(errorText(error, 'تعذّر الحفظ')),
+    onError: (error) => {
+      message.error(errorText(error, 'تعذّر الحفظ'))
+    },
   })
 
   return (
@@ -298,7 +304,9 @@ function SubAdminsTab() {
       void queryClient.invalidateQueries({ queryKey: ['admin-audit'] })
       message.success('حُذف المسؤول')
     },
-    onError: (error) => message.error(errorText(error, 'تعذّر الحذف')),
+    onError: (error) => {
+      message.error(errorText(error, 'تعذّر الحذف'))
+    },
   })
 
   const actions = (admin: SubAdmin) => (

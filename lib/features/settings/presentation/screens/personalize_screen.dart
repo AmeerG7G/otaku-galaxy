@@ -155,8 +155,15 @@ class PersonalizeScreen extends StatelessWidget {
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(22, 14, 22, 8),
                     children: [
-                      Text(
+                      // [CRITICAL] (2026-10-10، ذيل البوّابة ٣) فقرة التعريف
+                      // تحجز أسطر أطول ترجماتها (قرار الفقرات): الكردية أطول
+                      // بسطر على ٣٢٠×١٫٣ فكانت بطاقات اللغة والمظهر تنزل ٣١.
+                      BoundedText(
                         context.strings('personalizeBody'),
+                        maxLines: 12,
+                        minScale: 1,
+                        reserveFor: AppStrings.across('personalizeBody'),
+                        alignment: AlignmentDirectional.topStart,
                         style: theme.textTheme.bodyMedium?.copyWith(
                           fontSize: 13.5,
                           height: 1.75,

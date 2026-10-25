@@ -82,6 +82,8 @@ class _OrdersScreenState extends State<OrdersScreen> with LocaleRefetch {
             OtakuScreenHeader(
               title: context.strings('myOrders'),
               subtitle: context.strings('ordersSubtitle'),
+              titleTranslations: AppStrings.across('myOrders'),
+              subtitleTranslations: AppStrings.across('ordersSubtitle'),
               artworkSlot: VisualSlots.ordersHeader,
               // أصغر ٢٠٪ وداخل الشاشة كلّه (2026-09-28). كان يتجاوز الحافة
               // اليسرى بـ٤٠ (`defaultArtworkEnd`) فيُقصّ جانبه، ويبدأ ١٤ فوق
@@ -91,6 +93,12 @@ class _OrdersScreenState extends State<OrdersScreen> with LocaleRefetch {
                   OtakuScreenHeader.defaultArtworkWidth * OrdersScreen.artScale,
               artworkEnd: 0,
               artworkBelowStatusBar: true,
+              // [CRITICAL] (2026-10-13) العنوان والسطر الوصفي بجوار الشخصية لا
+              // تحتها: الكردي «هەنگاو بە هەنگاو …» كان يمتدّ تحت صندوقها عند
+              // ×١٫٣ فيلامس قدميها. الآن يُصغَّر داخل سطره بجوارها (حتى حدّ
+              // مقاس التصميم)، والترجمات أعلاه تجعل أيّ سطرٍ زائد يحتاجه يوماً
+              // محجوزاً بكل لغة فلا تتغيّر الترويسة بتغيّر اللغة.
+              textClearOfArtwork: true,
               onBack: () => context.router.maybePop(),
             ),
             const SizedBox(height: 8),

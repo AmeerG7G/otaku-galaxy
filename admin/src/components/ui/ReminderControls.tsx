@@ -67,8 +67,9 @@ export function ReminderControls({ order, variant = 'inline', onDone }: Reminder
       message.success('حُدّث موعد التذكير')
       invalidate()
     },
-    onError: (error) =>
-      message.error(error instanceof ApiError ? error.message : 'تعذر التحديث'),
+    onError: (error) => {
+      message.error(error instanceof ApiError ? error.message : 'تعذر التحديث')
+    },
   })
 
   const sendNow = useMutation({
@@ -77,8 +78,9 @@ export function ReminderControls({ order, variant = 'inline', onDone }: Reminder
       message.success('أُرسل الإشعار للعميل')
       invalidate()
     },
-    onError: (error) =>
-      message.error(error instanceof ApiError ? error.message : 'تعذر الإرسال'),
+    onError: (error) => {
+      message.error(error instanceof ApiError ? error.message : 'تعذر الإرسال')
+    },
   })
 
   const busy = reschedule.isPending || sendNow.isPending

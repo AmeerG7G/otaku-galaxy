@@ -4,6 +4,7 @@ import '../../../l10n/app_strings.dart';
 import '../../../l10n/gender.dart';
 import '../../tokens/app_dimens.dart';
 import '../../tokens/app_theme_colors.dart';
+import '../typography/bounded_text.dart';
 
 /// اختيار الجنس ببطاقتين مرئيتين — لا حقل نصّي.
 ///
@@ -32,6 +33,7 @@ class GenderSelector extends StatelessWidget {
     required this.onChanged,
     this.label,
     this.errorText,
+    this.labelTranslations = const [],
   });
 
   /// الاختيار الحالي — `null` يعني «لم يُختَر بعد».
@@ -49,6 +51,12 @@ class GenderSelector extends StatelessWidget {
   /// رسالة التحقق — تظهر تحت البطاقتين عند الإرسال بلا اختيار.
   final String? errorText;
 
+  /// ترجمات [label] بكل اللغات. [CRITICAL] (البوّابة ١٠، 2026-10-12) عنوانٌ
+  /// يمرّره المستدعي جملةً («اختيارك يُستخدم لمخاطبتك…») فقرةٌ تحجز أطول
+  /// ترجماتها: الكردية أطول بسطر فكانت البطاقتان والزرّ تحتهما تنزل ١٨–٢٣.
+  /// بلا ترجمات: كما كان.
+  final List<String> labelTranslations;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -57,12 +65,24 @@ class GenderSelector extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label ?? context.strings('gender'),
-          style: theme.textTheme.labelMedium?.copyWith(
-            fontWeight: AppDimens.weightBold,
+        if (labelTranslations.isEmpty)
+          Text(
+            label ?? context.strings('gender'),
+            style: theme.textTheme.labelMedium?.copyWith(
+              fontWeight: AppDimens.weightBold,
+            ),
+          )
+        else
+          BoundedText(
+            label ?? context.strings('gender'),
+            maxLines: 12,
+            minScale: 1,
+            reserveFor: labelTranslations,
+            alignment: AlignmentDirectional.topStart,
+            style: theme.textTheme.labelMedium?.copyWith(
+              fontWeight: AppDimens.weightBold,
+            ),
           ),
-        ),
         SizedBox(height: AppDimens.space2),
         Row(
           children: [

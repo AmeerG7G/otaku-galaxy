@@ -90,6 +90,8 @@ class OnboardingSlideText extends StatelessWidget {
     this.titleWidthFactor = 0.86,
     this.bodyWidthFactor = 0.88,
     this.gap = 10,
+    this.titleTranslations = const [],
+    this.bodyTranslations = const [],
   });
 
   final String title;
@@ -99,39 +101,60 @@ class OnboardingSlideText extends StatelessWidget {
   final double bodyWidthFactor;
   final double gap;
 
+  /// ترجمات [title] و[body] بكل اللغات (`AppStrings.across`).
+  ///
+  /// [CRITICAL] (البوّابة ٨، 2026-10-10) العنوان سطرٌ يُصغَّر أولاً والنصّ فقرة،
+  /// وكلاهما يحجز ما تحتاجه أطول ترجماته: نصٌّ كردي أطول كان يطيل الشريحة ٥١
+  /// على ٣٢٠×١٫٣ ويرفع رسمها. بلا ترجمات: كما كان.
+  final List<String> titleTranslations;
+  final List<String> bodyTranslations;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final titleStyle = theme.textTheme.headlineMedium?.copyWith(
+      fontFamily: AppFonts.heading,
+      fontFamilyFallback: AppFonts.headingFallback,
+      fontSize: titleSize,
+      height: 1.3,
+      letterSpacing: -0.6,
+      fontWeight: AppDimens.weightBlack,
+      color: theme.colorScheme.onSurface,
+    );
+    final bodyStyle = theme.textTheme.bodyMedium?.copyWith(
+      fontSize: 14.5,
+      height: 1.85,
+      color: theme.colorScheme.onSurfaceVariant,
+    );
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         FractionallySizedBox(
           widthFactor: titleWidthFactor,
-          child: Text(
-            title,
-            style: theme.textTheme.headlineMedium?.copyWith(
-              fontFamily: AppFonts.heading,
-              fontFamilyFallback: AppFonts.headingFallback,
-              fontSize: titleSize,
-              height: 1.3,
-              letterSpacing: -0.6,
-              fontWeight: AppDimens.weightBlack,
-              color: theme.colorScheme.onSurface,
-            ),
-          ),
+          child: titleTranslations.isEmpty
+              ? Text(title, style: titleStyle)
+              : BoundedText(
+                  title,
+                  maxLines: 4,
+                  reserveFor: titleTranslations,
+                  alignment: AlignmentDirectional.topStart,
+                  style: titleStyle,
+                ),
         ),
         SizedBox(height: gap),
         FractionallySizedBox(
           widthFactor: bodyWidthFactor,
-          child: Text(
-            body,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontSize: 14.5,
-              height: 1.85,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
+          child: bodyTranslations.isEmpty
+              ? Text(body, style: bodyStyle)
+              : BoundedText(
+                  body,
+                  maxLines: 12,
+                  minScale: 1,
+                  reserveFor: bodyTranslations,
+                  alignment: AlignmentDirectional.topStart,
+                  style: bodyStyle,
+                ),
         ),
       ],
     );
@@ -289,6 +312,8 @@ class OnboardingSlideOne extends StatelessWidget {
                 child: OnboardingSlideText(
                   title: context.strings('onbWelcomeTitle'),
                   body: context.strings('onbWelcomeBody'),
+                  titleTranslations: AppStrings.across('onbWelcomeTitle'),
+                  bodyTranslations: AppStrings.across('onbWelcomeBody'),
                   titleSize: 30,
                   titleWidthFactor: 0.88,
                   bodyWidthFactor: 0.9,
@@ -357,6 +382,8 @@ class OnboardingSlideTwo extends StatelessWidget {
                 title: context.strings('onbWorldTitle'),
                 body:
                     context.strings('onbWorldBody'),
+                titleTranslations: AppStrings.across('onbWorldTitle'),
+                bodyTranslations: AppStrings.across('onbWorldBody'),
               ),
             ),
 
@@ -603,6 +630,8 @@ class OnboardingSlideThree extends StatelessWidget {
               child: OnboardingSlideText(
                 title: context.strings('onbCodTitle'),
                 body: context.strings('onbCodBody'),
+                titleTranslations: AppStrings.across('onbCodTitle'),
+                bodyTranslations: AppStrings.across('onbCodBody'),
                 titleWidthFactor: 0.84,
                 bodyWidthFactor: 0.76,
               ),

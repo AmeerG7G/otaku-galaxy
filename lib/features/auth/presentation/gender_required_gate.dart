@@ -163,13 +163,23 @@ class _GenderRequiredScreenState extends State<GenderRequiredScreen> {
                       children: [
                         const OtakuStoreLogoSimple(size: 38),
                         const SizedBox(width: 11),
-                        Text(
-                          context.strings('brandName'),
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontFamily: AppFonts.heading,
-                            fontFamilyFallback: AppFonts.headingFallback,
-                            fontSize: 15.5,
-                            fontWeight: AppDimens.weightExtraBold,
+                        // [CRITICAL] (البوّابة ١٥، 2026-10-17) اسم المتجر نصّ
+                        // ترويسة كاسم الرئيسية: يُصغَّر حتى ٠٫٨ من مقاس التصميم،
+                        // ويحجز سطراً ثانياً بكل لغة إن لم تتّسع ترجمةٌ حتى عنده.
+                        // كان `Text` بلا حدّ في الصفّ: «گەلاکسی ئۆتاکو» يتجاوز
+                        // يميناً ١٧ على ٣٢٠ عند ×٢٫٠ (مصفوفة القياس الموثّقة).
+                        Flexible(
+                          child: BoundedText(
+                            context.strings('brandName'),
+                            maxLines: 2,
+                            floorAtDesignSize: true,
+                            reserveFor: AppStrings.across('brandName'),
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontFamily: AppFonts.heading,
+                              fontFamilyFallback: AppFonts.headingFallback,
+                              fontSize: 15.5,
+                              fontWeight: AppDimens.weightExtraBold,
+                            ),
                           ),
                         ),
                       ],
@@ -208,8 +218,18 @@ class _GenderRequiredScreenState extends State<GenderRequiredScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Text(
+                                  // [CRITICAL] (البوّابة ١٠، 2026-10-12) العنوان
+                                  // سطرٌ يُصغَّر أولاً، والرسالة والتنبيه فقرات،
+                                  // وكلٌّ يحجز أطول ترجماته: الكردية أطول بسطر
+                                  // أو اثنين فكانت البطاقة تطول ٢٣–٦٢ وتُنزل
+                                  // البطاقتين والزرّين.
+                                  BoundedText(
                                     context.strings('genderGateTitle'),
+                                    maxLines: 3,
+                                    reserveFor: AppStrings.across(
+                                      'genderGateTitle',
+                                    ),
+                                    alignment: AlignmentDirectional.topStart,
                                     style: theme.textTheme.headlineSmall
                                         ?.copyWith(
                                           fontFamily: AppFonts.heading,
@@ -220,8 +240,14 @@ class _GenderRequiredScreenState extends State<GenderRequiredScreen> {
                                         ),
                                   ),
                                   const SizedBox(height: 10),
-                                  Text(
+                                  BoundedText(
                                     context.strings('genderGateMessage'),
+                                    maxLines: 12,
+                                    minScale: 1,
+                                    reserveFor: AppStrings.across(
+                                      'genderGateMessage',
+                                    ),
+                                    alignment: AlignmentDirectional.topStart,
                                     style: theme.textTheme.bodyMedium?.copyWith(
                                       fontSize: 14,
                                       height: 1.85,
@@ -232,6 +258,9 @@ class _GenderRequiredScreenState extends State<GenderRequiredScreen> {
                                   GenderSelector(
                                     value: _picked,
                                     label: context.strings('genderPickerNote'),
+                                    labelTranslations: AppStrings.across(
+                                      'genderPickerNote',
+                                    ),
                                     errorText: _showRequired && _picked == null
                                         ? context.strings('genderRequired')
                                         : null,

@@ -66,7 +66,9 @@ export default function AdminPushDrawer({ open, onClose }: { open: boolean; onCl
   const setPref = useMutation({
     mutationFn: ({ key, enabled }: { key: AdminPushEvent; enabled: boolean }) => setAdminNotificationPref(key, enabled),
     onSuccess: (data) => queryClient.setQueryData(['admin-push-prefs'], data),
-    onError: (error: Error) => message.error(error.message),
+    onError: (error: Error) => {
+      message.error(error.message)
+    },
   })
 
   const serverReady = status.data?.configured ?? false

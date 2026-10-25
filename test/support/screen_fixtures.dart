@@ -38,20 +38,29 @@ import 'package:otaku_galaxy/features/notifications/presentation/cubit/notificat
 import 'package:otaku_galaxy/features/onboarding/data/onboarding_storage.dart';
 import 'package:otaku_galaxy/features/orders/domain/entities/order.dart';
 import 'package:otaku_galaxy/features/orders/domain/repositories/order_repository.dart';
+import 'package:otaku_galaxy/features/orders/domain/entities/order_data.dart';
+import 'package:otaku_galaxy/features/orders/domain/usecases/fetch_checkout_quote_usecase.dart';
 import 'package:otaku_galaxy/features/orders/domain/usecases/fetch_my_orders_usecase.dart';
 import 'package:otaku_galaxy/features/orders/domain/usecases/fetch_order_details_usecase.dart';
+import 'package:otaku_galaxy/features/orders/domain/usecases/place_order_usecase.dart';
 import 'package:otaku_galaxy/features/points/domain/repositories/points_repository.dart';
 import 'package:otaku_galaxy/features/points/presentation/cubit/points_cubit.dart';
 import 'package:otaku_galaxy/features/products/domain/entities/category.dart';
+import 'package:otaku_galaxy/features/products/domain/entities/governorate.dart';
 import 'package:otaku_galaxy/features/products/domain/entities/home_data.dart';
 import 'package:otaku_galaxy/features/products/domain/entities/product.dart';
 import 'package:otaku_galaxy/features/products/domain/entities/product_page.dart';
+import 'package:otaku_galaxy/features/products/domain/repositories/governorate_repository.dart';
 import 'package:otaku_galaxy/features/products/domain/repositories/product_repository.dart';
 import 'package:otaku_galaxy/features/products/domain/usecases/fetch_categories_usecase.dart';
+import 'package:otaku_galaxy/features/products/domain/usecases/fetch_category_products_usecase.dart';
+import 'package:otaku_galaxy/features/products/domain/entities/product_sort.dart';
 import 'package:otaku_galaxy/features/products/domain/usecases/fetch_home_usecase.dart';
 import 'package:otaku_galaxy/features/products/domain/usecases/fetch_product_details_usecase.dart';
+import 'package:otaku_galaxy/features/products/domain/usecases/fetch_governorates_usecase.dart';
 import 'package:otaku_galaxy/features/products/domain/usecases/fetch_products_usecase.dart';
 import 'package:otaku_galaxy/features/products/domain/usecases/search_products_usecase.dart';
+import 'package:otaku_galaxy/features/restock/data/restock_repository.dart';
 import 'package:otaku_galaxy/features/reviews/domain/entities/review.dart';
 import 'package:otaku_galaxy/features/reviews/domain/repositories/review_repository.dart';
 import 'package:otaku_galaxy/features/reviews/presentation/cubit/reviews_cubit.dart';
@@ -93,6 +102,13 @@ const kGeoFullContentViews = <GeoView>[
   GeoView(Size(320, 3000), 1.3),
 ];
 
+/// أكبر تكبيرٍ في مصفوفة القياس الموثّقة (١٫٠ / ١٫٣ / ٢٫٠،
+/// `docs/localization/sorani-style-lock.md` §10) — خارج المقاسات المطلوبة.
+const kGeoLargestScaleViews = <GeoView>[
+  GeoView(Size(412, 892), 2.0),
+  GeoView(Size(320, 568), 2.0),
+];
+
 /// شريط الحالة المحاكى.
 const double kStatusBar = 24;
 
@@ -106,15 +122,69 @@ void useGeoView(WidgetTester tester, GeoView view) {
 
 // ── بيانات وهمية ─────────────────────────────────────────────────────────
 
+/// منتجٌ بلغتين كما في الكتالوج بعد الهجرة ٠٦٦ (اسم ووصف عربي وكردي).
+///
+/// [NOTE] (البوّابة ٧، 2026-10-10) كان بلا كردية، فتعرض الكردية تنبيه «لم
+/// يُكتب بالكردية بعد» في تفاصيل المنتج — فرقٌ دلالي مقصود يُدخل عنصراً
+/// غير موجود بالعربية ويُنزل كل ما تحته، فلا يقيس الهندسة. التنبيه نفسه
+/// يحرسه `bilingual_product_content_test.dart` (يظهر بالكردية وحدها حين تغيب).
 Product fixtureProduct(int i) => Product(
   id: 'p$i',
   nameAr: 'منتج $i',
   descriptionAr: 'وصف المنتج $i',
+  nameCkb: 'بەرهەمی $i',
+  descriptionCkb: 'وەسفی بەرهەمی $i',
   price: 5000 + i * 250,
   images: const [],
   stock: 9,
   categoryId: 'c1',
 );
+
+/// معرّف منتجٍ نفد مخزونه — تفاصيله تعرض زرّ «أعلمني عند توفره» (التوفّر).
+const fixtureOutOfStockId = 'p-out';
+
+Product fixtureOutOfStockProduct() => Product(
+  id: fixtureOutOfStockId,
+  nameAr: 'منتج نافد',
+  descriptionAr: 'وصف المنتج النافد',
+  nameCkb: 'بەرهەمی تەواوبوو',
+  descriptionCkb: 'وەسفی بەرهەمی تەواوبوو',
+  price: 6000,
+  images: const [],
+  stock: 0,
+  categoryId: 'c1',
+);
+
+/// بيانات طلبٍ جاهزة لشاشة المراجعة.
+OrderData fixtureOrderData() => OrderData(
+  governorateId: 'g1',
+  province: 'بغداد',
+  deliveryCost: 5000,
+  fullAddress: 'الكرادة، شارع ٦٢',
+  phone: '07701234567',
+  items: [
+    CartItem(product: fixtureProduct(1)),
+    CartItem(product: fixtureProduct(2), quantity: 2),
+  ],
+);
+
+class FixtureGovernorates implements GovernorateRepository {
+  @override
+  Future<List<Governorate>> fetchGovernorates() async => const [
+    Governorate(id: 'g1', name: 'بغداد', deliveryFee: 5000),
+    Governorate(id: 'g2', name: 'البصرة', deliveryFee: 7000),
+  ];
+  /// بغداد مقسّمةٌ إلى مناطق — لتُقاس ورقة المنطقة؛ المحافظة غير مختارة عند
+  /// فتح الشاشة، فلا يتغيّر شيءٌ قبل اختيارها.
+  @override
+  Future<List<DeliveryZone>> fetchZones(String governorateId) async =>
+      governorateId == 'g1'
+      ? const [
+          DeliveryZone(id: 'z1', name: 'الكرادة', deliveryFee: 5000),
+          DeliveryZone(id: 'z2', name: 'المنصور', deliveryFee: 6000),
+        ]
+      : const [];
+}
 
 List<Category> fixtureCategories(int n) => [
   for (var i = 0; i < n; i++) Category(id: 'c$i', name: 'قسم $i'),
@@ -176,9 +246,18 @@ class FixtureCatalog implements ProductRepository {
     items: [for (var i = 0; i < 6; i++) fixtureProduct(i)],
     hasMore: false,
   );
+  /// (البوّابة ١٥، 2026-10-12) كان غائباً هو ومزوّد حالة استخدامه، فكانت
+  /// حالة `category-products` تقيس صفحة خطأ المزوّد لا شبكة المنتجات.
+  @override
+  Future<List<Product>> fetchCategoryProducts(
+    String categoryId, {
+    ProductSort? sort,
+  }) async => [for (var i = 0; i < 6; i++) fixtureProduct(i)];
   @override
   Future<Product> fetchProductDetails(String id) async =>
-      fixtureProduct(int.tryParse(id.substring(1)) ?? 1);
+      id == fixtureOutOfStockId
+      ? fixtureOutOfStockProduct()
+      : fixtureProduct(int.tryParse(id.substring(1)) ?? 1);
   @override
   dynamic noSuchMethod(Invocation invocation) => Completer<Object?>().future;
 }
@@ -254,6 +333,19 @@ class _NoBirthday implements BirthdayStorage {
   bool get isRewardAvailable => false;
   @override
   bool get isUnlocked => false;
+  @override
+  int get discountPercent => 10;
+  @override
+  int? get day => null;
+  @override
+  int? get month => null;
+  @override
+  dynamic noSuchMethod(Invocation invocation) => Completer<Object?>().future;
+}
+
+class _NoRestock implements RestockRepository {
+  @override
+  Future<List<RestockWaiting>> mine() async => const [];
   @override
   dynamic noSuchMethod(Invocation invocation) => Completer<Object?>().future;
 }
@@ -347,6 +439,7 @@ Future<void> pumpFixtureApp(
   sl.registerSingleton<PersonalizeStorage>(PersonalizeStorage(prefs));
   sl.registerSingleton<OnboardingStorage>(OnboardingStorage(prefs));
   sl.registerSingleton<NotificationPrefsRepository>(_NoPrefs());
+  sl.registerSingleton<RestockRepository>(_NoRestock());
   addTearDown(sl.reset);
 
   final products = FixtureCatalog();
@@ -385,11 +478,19 @@ Future<void> pumpFixtureApp(
         providers: [
           RepositoryProvider.value(value: FetchHomeUsecase(products)),
           RepositoryProvider.value(value: FetchCategoriesUsecase(products)),
+          RepositoryProvider.value(
+            value: FetchCategoryProductsUsecase(products),
+          ),
           RepositoryProvider.value(value: FetchProductsUsecase(products)),
           RepositoryProvider.value(value: FetchProductDetailsUsecase(products)),
           RepositoryProvider.value(value: SearchProductsUsecase(products)),
           RepositoryProvider.value(value: FetchMyOrdersUsecase(orders)),
           RepositoryProvider.value(value: FetchOrderDetailsUsecase(orders)),
+          RepositoryProvider.value(value: FetchCheckoutQuoteUsecase(orders)),
+          RepositoryProvider.value(value: PlaceOrderUsecase(orders)),
+          RepositoryProvider.value(
+            value: FetchGovernoratesUsecase(FixtureGovernorates()),
+          ),
           RepositoryProvider<ReviewRepository>.value(value: reviews),
         ],
         child: MaterialApp(
@@ -498,4 +599,27 @@ Future<void> settleFixture(WidgetTester tester) async {
     );
     await tester.pump(const Duration(milliseconds: 300));
   }
+}
+
+/// يفتح ورقةً أو حواراً بعد أول إطار — لقياس الأوراق كالشاشات.
+class FixtureSheetHost extends StatefulWidget {
+  const FixtureSheetHost({super.key, required this.open});
+
+  final void Function(BuildContext context) open;
+
+  @override
+  State<FixtureSheetHost> createState() => _FixtureSheetHostState();
+}
+
+class _FixtureSheetHostState extends State<FixtureSheetHost> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.open(context);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => const Scaffold(body: SizedBox.expand());
 }

@@ -33,7 +33,9 @@ export default function SettingsPage() {
       message.success('حُفظت الإعدادات')
       await queryClient.invalidateQueries({ queryKey: ['admin-settings'] })
     },
-    onError: (error: Error) => message.error(error.message),
+    onError: (error: Error) => {
+      message.error(error.message)
+    },
   })
 
   return (
@@ -139,7 +141,9 @@ function ShareUrlCard({ settings, loading }: { settings?: StoreSettings; loading
       message.success('حُفظ رابط المشاركة')
       await queryClient.invalidateQueries({ queryKey: ['admin-settings'] })
     },
-    onError: (error: Error) => message.error(error.message),
+    onError: (error: Error) => {
+      message.error(error.message)
+    },
   })
 
   return (

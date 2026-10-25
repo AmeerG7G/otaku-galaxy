@@ -177,6 +177,37 @@ describe('طلبات التوفر على الهاتف', () => {
     await waitFor(() => expect(setRestockAt).toHaveBeenCalledWith('p1', null))
   })
 
+  /**
+   * فشل الحفظ يحرّر الزرّ فوراً لا بعد اختفاء التنبيه.
+   *
+   * كان `onError: (error) => message.error(error.message)` يُرجع وعد التنبيه،
+   * وReact Query ينتظر ما يُرجعه `onError` قبل أن يُنهي الطلب — فيبقى الزرّ
+   * يدور ويبتلع النقرات ~3 ثوانٍ (مدّة التنبيه) بعد أن فشل الطلب فعلاً.
+   * المهلة هنا ثانيةٌ واحدة: أقلّ من عمر التنبيه، فلا تمرّ إلا إن لم يُنتظَر.
+   */
+  it('فشل «إلغاء الموعد» يعيد الزرّ قابلاً للنقر قبل أن يختفي التنبيه', async () => {
+    vi.mocked(listRestockDemand).mockResolvedValue([row({ restockAt: '2026-12-01T09:00:00.000Z' })])
+    vi.mocked(setRestockAt).mockRejectedValue(new Error('تعذّر الحفظ'))
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByText('حقيبة أنمي')
+
+    // أنتديب يعيد بناء الزرّ بين حالتَي التحميل: يُستعلَم عنه من جديد كل مرة.
+    const cancelButton = () => screen.getByText('إلغاء الموعد').closest('button')!
+    await user.click(cancelButton())
+    await screen.findByText('تعذّر الحفظ')
+
+    await waitFor(
+      () => {
+        expect(cancelButton()).not.toHaveClass('ant-btn-loading')
+        expect(cancelButton()).toBeEnabled()
+      },
+      { timeout: 1000 },
+    )
+    await user.click(cancelButton())
+    await waitFor(() => expect(setRestockAt).toHaveBeenCalledTimes(2), { timeout: 1000 })
+  })
+
   it('«حفظ» معطَّل بلا موعدٍ مختار', async () => {
     vi.mocked(listRestockDemand).mockResolvedValue([row()])
     const user = userEvent.setup()

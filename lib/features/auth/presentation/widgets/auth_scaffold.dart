@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../../../core/design_system/design_system.dart';
@@ -22,10 +24,15 @@ class AuthScaffold extends StatelessWidget {
     this.artworkWidth = 142,
     this.artworkBottom = -12,
     this.subtitleSpacing,
+    this.subtitleTranslations = const [],
   });
 
   final String title;
   final String subtitle;
+
+  /// ترجمات [subtitle] بكل اللغات (`AppStrings.across` / `gAcross`): منطقة
+  /// التوضيح تأخذ أسطر أطولها، فلا يتغيّر ارتفاع الرأس بتغيّر اللغة.
+  final List<String> subtitleTranslations;
 
   /// محتوى بطاقة النموذج العائمة.
   final Widget form;
@@ -69,6 +76,12 @@ class AuthScaffold extends StatelessWidget {
   /// النصّ التوضيحي في الرأس: `13` بارتفاع سطر `1.7` كما في المرجع، في
   /// منطقةٍ ثابتة من سطرين (`BoundedText`) في كل لغة.
   ///
+  /// [CRITICAL] (البوّابة ١٥، 2026-10-17) سطران ما دامت كل ترجمةٍ تتّسع لهما
+  /// عند ٠٫٨ — كل مقاسٍ مطلوب حتى ×١٫٣. فوق ذلك (×١٫٦ و×٢٫٠ من مصفوفة القياس
+  /// الموثّقة) كان «نسيت كلمة المرور» الكردي (وعند ×٢٫٠ العربي أيضاً) يُقصّ
+  /// في سطرين: المنطقة الآن تأخذ أكثر ما تحتاجه أيّ ترجمة حتى
+  /// [_subtitleMaxLines]، بالعدد نفسه بكل لغة، ويطول الرأس به.
+  ///
   /// [CRITICAL] كانت الكردية وحدها أصغر (١١٫٥ / ١٫٥٥، 2026-09-27) لأن سطرها
   /// كان أطول من العربي باحتياط Noto. باحتياط `AppFonts` المطابق صار السطر
   /// الكردي بارتفاع العربي، وجُمل الكردية الثلاث تتّسع لسطرين بالمقاس نفسه
@@ -76,21 +89,19 @@ class AuthScaffold extends StatelessWidget {
   /// المساحة لا اللغة.
   static const double _subtitleSize = 13;
   static const double _subtitleHeight = 1.7;
+  static const int _subtitleMaxLines = 6;
 
-  /// أصغر نسبةٍ للعنوان — دون ٠٫٨ الافتراضية عمداً.
-  ///
-  /// [PRODUCT] العنوان سطرٌ واحد بالتصميم: الرأس ثابت الارتفاع ([_headerHeight])، وسطرٌ
-  /// ثانٍ يدفع النصّ التوضيحي خارجه (كان هذا تجاوز «نسيت كلمة المرور»
-  /// العربي عند ×١٫٣). «وشەی نهێنی لەبیرچوو» عند ×١٫٣ يحتاج ٠٫٦٥ ليتّسع
-  /// سطراً — وهو المقاس الذي كان يُرسم به أصلاً (`FittedBox` بلا حدّ).
-  static const double _titleMinScale = 0.65;
+  /// عرض عمود العنوان والتوضيح، وحشوة الرأس الجانبية.
+  static const double _textMaxWidth = 240;
+  static const double _headerInset = 22;
 
   /// ارتفاع الرأس بمقياس الخطّ ١٫٠ — كما في المرجع.
   ///
   /// [CRITICAL] يطول بقدر ما يضيفه تكبير خطّ النظام إلى منطقتي العنوان
   /// والتوضيح، لا أكثر: عند ×١٫٣ كان سطر التوضيح الثاني يقع تحت البطاقة
   /// العائمة (بكل لغة — العربية أيضاً). الزيادة من مقاييس النمطين ومقياس
-  /// الخطّ وحدها، فهي واحدةٌ لكل لغة، وصفرٌ عند ١٫٠.
+  /// الخطّ وحدها، فهي واحدةٌ لكل لغة، وصفرٌ عند ١٫٠. ويطول بأسطر التوضيح
+  /// الزائدة على السطرين حين تلزم (انظر [_subtitleSize]) — بالعدد نفسه بكل لغة.
   static const double _headerHeight = 214;
 
   @override
@@ -120,8 +131,36 @@ class AuthScaffold extends StatelessWidget {
         lines *
         (BoundedText.lineHeight(style, scaler, direction) -
             BoundedText.lineHeight(style, TextScaler.noScaling, direction));
-    final headerHeight =
-        _headerHeight + growth(titleStyle, 1) + growth(subtitleStyle, 2);
+
+    // أسطر التوضيح: سطران، أو أكثر ما تحتاجه أيٌّ من ترجماته — العدد نفسه
+    // بكل لغة. يُقاس بسياقٍ تحت `Material` (ما تراه منطقة التوضيح نفسها)
+    // وبعرض عمودها.
+    int subtitleLinesIn(BuildContext context, double width) {
+      final textWidth = math.min(
+        _textMaxWidth,
+        width - 2 * _headerInset - MediaQuery.paddingOf(context).horizontal,
+      );
+      var lines = 2;
+      for (final text in [subtitle, ...subtitleTranslations]) {
+        lines = math.max(
+          lines,
+          BoundedText(
+            text,
+            lines: 2,
+            maxLines: _subtitleMaxLines,
+            style: subtitleStyle,
+          ).linesAt(context, textWidth),
+        );
+      }
+      return lines;
+    }
+
+    double headerHeightIn(BuildContext context, double width) =>
+        _headerHeight +
+        growth(titleStyle, 1) +
+        growth(subtitleStyle, 2) +
+        (subtitleLinesIn(context, width) - 2) *
+            BoundedText.lineHeight(subtitleStyle, scaler, direction);
 
     return Scaffold(
       body: Container(
@@ -161,7 +200,7 @@ class AuthScaffold extends StatelessWidget {
                         bottomRight: Radius.circular(42),
                       ),
                       child: Container(
-                        height: headerHeight,
+                        height: headerHeightIn(context, constraints.maxWidth),
                         decoration: BoxDecoration(
                           gradient: isDark
                               ? AppThemeColors.authGradientDark
@@ -210,9 +249,9 @@ class AuthScaffold extends StatelessWidget {
                               bottom: false,
                               child: Padding(
                                 padding: const EdgeInsets.fromLTRB(
-                                  22,
+                                  _headerInset,
                                   16,
-                                  22,
+                                  _headerInset,
                                   0,
                                 ),
                                 child: Column(
@@ -236,7 +275,7 @@ class AuthScaffold extends StatelessWidget {
                                     const SizedBox(height: AppDimens.space5),
                                     ConstrainedBox(
                                       constraints: const BoxConstraints(
-                                        maxWidth: 240,
+                                        maxWidth: _textMaxWidth,
                                       ),
                                       child: Column(
                                         mainAxisSize: MainAxisSize.min,
@@ -251,7 +290,21 @@ class AuthScaffold extends StatelessWidget {
                                             textKey: const Key(
                                               'auth_header_title',
                                             ),
-                                            minScale: _titleMinScale,
+                                            // [PRODUCT] العنوان سطرٌ واحد
+                                            // بالتصميم: الرأس ثابت الارتفاع،
+                                            // وسطرٌ ثانٍ يدفع النصّ التوضيحي
+                                            // خارجه. حدّه حدّ عناوين الشاشات
+                                            // (٠٫٨ من مقاس التصميم، 2026-10-05).
+                                            //
+                                            // (البوّابة ١٣، 2026-10-12) كان
+                                            // استثناءً ثابتاً (٠٫٦٥) سبق القاعدة:
+                                            // عند ١٫٠ و×١٫٣ لا فرق يُرى (أضيق
+                                            // عنوان «وشەی نهێنی لەبیرچوو» ×١٫٣
+                                            // = ٠٫٨٥ من التصميم؛ المقاس يختلف
+                                            // بأقلّ من ٠٫٠٣ بكسل)، وعند ×١٫٦ كان
+                                            // عنوانا التسجيل والاستعادة
+                                            // الكرديّان لا يتّسعان حتى عنده.
+                                            floorAtDesignSize: true,
                                             style: titleStyle,
                                           ),
                                           SizedBox(
@@ -263,7 +316,10 @@ class AuthScaffold extends StatelessWidget {
                                             textKey: const Key(
                                               'auth_header_subtitle',
                                             ),
-                                            lines: 2,
+                                            lines: subtitleLinesIn(
+                                              context,
+                                              constraints.maxWidth,
+                                            ),
                                             alignment:
                                                 AlignmentDirectional.topStart,
                                             style: subtitleStyle,

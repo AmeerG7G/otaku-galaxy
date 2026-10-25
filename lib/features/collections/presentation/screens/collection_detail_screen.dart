@@ -11,6 +11,7 @@ import '../../../products/domain/entities/product.dart';
 import '../../../products/domain/usecases/fetch_product_details_usecase.dart';
 import '../cubit/collections_cubit.dart';
 import '../../../main_navigation/presentation/screens/main_navigation_screen.dart';
+import '../../../settings/presentation/cubit/locale_cubit.dart';
 
 /// تفاصيل مجموعة بتصميم Otaku Galaxy v2.
 ///
@@ -138,6 +139,13 @@ class _CollectionDetailScreenState extends State<CollectionDetailScreen> {
       confirmLabel: context.strings('remove'),
       cancelLabel: context.strings('cancel'),
       destructive: true,
+      titleTranslations: AppStrings.across('removeFromCollection'),
+      messageTranslations: [
+        for (final l in AppLanguage.values)
+          AppStrings.of(l).p('removeFromCollectionConfirm', {
+            'name': localizedProductName(product, l),
+          }),
+      ],
     );
     if (confirmed != true || !mounted) return;
     await context.read<CollectionsCubit>().removeProduct(

@@ -5,6 +5,7 @@ import '../../tokens/app_dimens.dart';
 import '../../tokens/app_theme_colors.dart';
 import '../buttons/anime_primary_button.dart';
 import '../layout/scroll_insets.dart';
+import '../typography/bounded_text.dart';
 import '../../../../features/visuals/presentation/character_artwork.dart';
 
 /// حالة فارغة بتصميم Otaku Galaxy v2 — لوحة تحريرية مستديرة مع هالة لونية
@@ -23,6 +24,8 @@ class AnimeEmptyState extends StatelessWidget {
     this.centered = false,
     this.artworkHeight = 150,
     this.fitContent = false,
+    this.titleTranslations = const [],
+    this.subtitleTranslations = const [],
   });
 
   final String title;
@@ -65,6 +68,44 @@ class AnimeEmptyState extends StatelessWidget {
   /// [_fitArtworkMin])، وما زاد بعد ذلك يُمرَّر لا يفيض. خيارٌ اختياري:
   /// «طلباتي» وحدها تطلبه اليوم (STEP 64 §22).
   final bool fitContent;
+
+  /// ترجمات [title] و[subtitle] بكل اللغات (`AppStrings.across` / `gAcross`).
+  ///
+  /// [CRITICAL] (البوّابة ٨، 2026-10-10) في التخطيط الموسَّط يأخذ الرسم
+  /// (`Flexible`) ما يتركه النصّ — نصٌّ كردي أطول بسطر كان يُصغّر الرسم حتى
+  /// ٣٦ بكسل. بالترجمات يحجز العنوان والتوضيح ما تحتاجه أطول ترجماتهما فيبقى
+  /// الرسم بمقاسٍ واحد. بلا ترجمات: كما كان.
+  final List<String> titleTranslations;
+  final List<String> subtitleTranslations;
+
+  Widget _title(TextStyle? style, {TextAlign? align}) =>
+      titleTranslations.isEmpty
+      ? Text(title, textAlign: align, style: style)
+      : BoundedText(
+          title,
+          maxLines: 3,
+          reserveFor: titleTranslations,
+          textAlign: align,
+          alignment: align == TextAlign.center
+              ? Alignment.topCenter
+              : AlignmentDirectional.topStart,
+          style: style,
+        );
+
+  Widget _subtitle(TextStyle? style, {TextAlign? align}) =>
+      subtitleTranslations.isEmpty
+      ? Text(subtitle!, textAlign: align, style: style)
+      : BoundedText(
+          subtitle!,
+          maxLines: 12,
+          minScale: 1,
+          reserveFor: subtitleTranslations,
+          textAlign: align,
+          alignment: align == TextAlign.center
+              ? Alignment.topCenter
+              : AlignmentDirectional.topStart,
+          style: style,
+        );
 
   static const double _fitArtworkShare = 0.4;
   static const double _fitArtworkMin = 110;
@@ -196,11 +237,8 @@ class AnimeEmptyState extends StatelessWidget {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Text(
-                                    title,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .titleLarge
+                                  _title(
+                                    Theme.of(context).textTheme.titleLarge
                                         ?.copyWith(
                                           fontSize: 20,
                                           height: 1.4,
@@ -209,11 +247,8 @@ class AnimeEmptyState extends StatelessWidget {
                                   ),
                                   if (subtitle != null) ...[
                                     const SizedBox(height: AppDimens.space3),
-                                    Text(
-                                      subtitle!,
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodyMedium
+                                    _subtitle(
+                                      Theme.of(context).textTheme.bodyMedium
                                           ?.copyWith(
                                             height: 1.8,
                                             color: Theme.of(
@@ -289,26 +324,24 @@ class AnimeEmptyState extends StatelessWidget {
           // الرسم **فوق** الإجراء — وهو جوهر الطلب.
           if (art != null) Flexible(child: art),
           const SizedBox(height: AppDimens.space4),
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: theme.textTheme.titleLarge?.copyWith(
+          _title(
+            theme.textTheme.titleLarge?.copyWith(
               fontSize: 20,
               height: 1.4,
               fontWeight: AppDimens.weightBlack,
             ),
+            align: TextAlign.center,
           ),
           if (subtitle != null) ...[
             const SizedBox(height: AppDimens.space3),
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 280),
-              child: Text(
-                subtitle!,
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodyMedium?.copyWith(
+              child: _subtitle(
+                theme.textTheme.bodyMedium?.copyWith(
                   height: 1.8,
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
+                align: TextAlign.center,
               ),
             ),
           ],

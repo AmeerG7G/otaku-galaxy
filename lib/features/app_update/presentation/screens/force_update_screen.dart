@@ -89,13 +89,23 @@ class ForceUpdateScreen extends StatelessWidget {
                         // صار يمرّ بمكوّن الشعار الوحيد فلا يمكن أن ينحرف عنه.
                         const OtakuStoreLogoSimple(size: 38),
                         const SizedBox(width: 11),
-                        Text(
-                          context.strings('brandName'),
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontFamily: AppFonts.heading,
-                            fontFamilyFallback: AppFonts.headingFallback,
-                            fontSize: 15.5,
-                            fontWeight: AppDimens.weightExtraBold,
+                        // [CRITICAL] (البوّابة ١٥، 2026-10-17) اسم المتجر نصّ
+                        // ترويسة كاسم الرئيسية: يُصغَّر حتى ٠٫٨ من مقاس التصميم،
+                        // ويحجز سطراً ثانياً بكل لغة إن لم تتّسع ترجمةٌ حتى عنده.
+                        // كان `Text` بلا حدّ في الصفّ: «گەلاکسی ئۆتاکو» يتجاوز
+                        // يميناً ١٧ على ٣٢٠ عند ×٢٫٠ (مصفوفة القياس الموثّقة).
+                        Flexible(
+                          child: BoundedText(
+                            context.strings('brandName'),
+                            maxLines: 2,
+                            floorAtDesignSize: true,
+                            reserveFor: AppStrings.across('brandName'),
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontFamily: AppFonts.heading,
+                              fontFamilyFallback: AppFonts.headingFallback,
+                              fontSize: 15.5,
+                              fontWeight: AppDimens.weightExtraBold,
+                            ),
                           ),
                         ),
                       ],
@@ -173,8 +183,14 @@ class _UpdateCard extends StatelessWidget {
             color: AppColors.secondary,
           ),
           const SizedBox(height: 20),
-          Text(
+          // [CRITICAL] (البوّابة ٨، 2026-10-10) عنوانٌ يُصغَّر أولاً ورسالةٌ
+          // فقرة، وكلاهما يحجز أطول ترجماته: نصٌّ كردي أطول كان يطيل البطاقة
+          // ٥٧–٧٤ ويُنزل زرّ التحديث.
+          BoundedText(
             context.strings('updateRequiredTitle'),
+            maxLines: 3,
+            reserveFor: AppStrings.across('updateRequiredTitle'),
+            alignment: AlignmentDirectional.topStart,
             style: theme.textTheme.headlineSmall?.copyWith(
               fontFamily: AppFonts.heading,
               fontFamilyFallback: AppFonts.headingFallback,
@@ -184,8 +200,12 @@ class _UpdateCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          Text(
+          BoundedText(
             message,
+            maxLines: 12,
+            minScale: 1,
+            reserveFor: AppStrings.across(ForceUpdateScreen.defaultMessageKey),
+            alignment: AlignmentDirectional.topStart,
             style: theme.textTheme.bodyMedium?.copyWith(
               fontSize: 14,
               height: 1.85,
