@@ -7,6 +7,7 @@ import '../../../../core/design_system/design_system.dart';
 import '../../../../core/router/app_router.dart';
 import '../../domain/entities/collection.dart';
 import '../cubit/collections_cubit.dart';
+import '../../../settings/presentation/cubit/locale_cubit.dart';
 import '../../../visuals/domain/visual_slot.dart';
 
 /// تبويب «مجموعاتي» بتصميم Otaku Galaxy v2.
@@ -72,6 +73,13 @@ class _CollectionsTabState extends State<CollectionsTab> {
       confirmLabel: context.strings('delete'),
       cancelLabel: context.strings('cancel'),
       destructive: true,
+      titleTranslations: AppStrings.across('deleteCollection'),
+      messageTranslations: [
+        for (final l in AppLanguage.values)
+          AppStrings.of(
+            l,
+          ).p('deleteCollectionConfirm', {'name': collection.name}),
+      ],
     );
     if (confirmed != true || !mounted) return;
     await context.read<CollectionsCubit>().delete(collection.id);

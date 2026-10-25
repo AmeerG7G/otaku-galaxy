@@ -30,6 +30,11 @@ class RateOrderScreen extends StatefulWidget {
   static const double artWidth = 168;
   static const double artEnd = -49;
 
+  /// حافة الرسم المقصوصة (الصف 766 من 820): الترويسة الأطول من موضعها عند
+  /// العرض أعلاه (خطٌّ مكبَّر، عنوانٌ في سطرين بجوار الوجه) تُنزل الرسم معها
+  /// فلا يظهر القصّ (2026-10-12).
+  static const double artCutAt = 766 / 820;
+
   @override
   State<RateOrderScreen> createState() => _RateOrderScreenState();
 }
@@ -77,12 +82,20 @@ class _RateOrderScreenState extends State<RateOrderScreen> {
             OtakuScreenHeader(
               title: '⭐ ${context.g(GenderedStrings.rateOrderProducts)}',
               subtitle: context.strings('rateOrderSubtitle'),
+              titleTranslations: [
+                for (final t in context.gAcross(GenderedStrings.rateOrderProducts))
+                  '⭐ $t',
+              ],
+              subtitleTranslations: AppStrings.across('rateOrderSubtitle'),
               artworkSlot: VisualSlots.rateOrder,
               // يبدأ الرسم تحت شريط الحالة (2026-09-28): كان رأس الشخصية يقع
               // تحت أيقونات البطارية والشبكة. العرض والإزاحة: انظر الثوابت.
               artworkWidth: RateOrderScreen.artWidth,
               artworkEnd: RateOrderScreen.artEnd,
               artworkBelowStatusBar: true,
+              // العنوان والسطر الوصفي بجوار الوجه لا فوقه (2026-10-12).
+              textClearOfArtwork: true,
+              artworkCutAt: RateOrderScreen.artCutAt,
               onBack: () => context.router.maybePop(),
             ),
             Expanded(
@@ -114,8 +127,13 @@ class _RateOrderScreenState extends State<RateOrderScreen> {
                             const SizedBox(height: 12),
                           ],
                           const SizedBox(height: 4),
-                          Text(
+                          // فقرة تحجز أسطر أطول ترجماتها (البوّابة ٧).
+                          BoundedText(
                             context.strings('oneReviewPerProductReviewed'),
+                            maxLines: 8,
+                            minScale: 1,
+                            reserveFor: AppStrings.across('oneReviewPerProductReviewed'),
+                            alignment: Alignment.topCenter,
                             textAlign: TextAlign.center,
                             style: theme.textTheme.bodySmall?.copyWith(
                               fontSize: 11.5,

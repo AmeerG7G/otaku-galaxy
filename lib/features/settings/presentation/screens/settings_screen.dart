@@ -254,6 +254,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       builder: (sheetContext) => OtakuSheet(
         title: context.strings('gender'),
+        titleTranslations: AppStrings.across('gender'),
         titleSize: 19,
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -261,6 +262,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             GenderSelector(
               value: current.isKnown ? current : null,
               label: context.strings('genderPickerNote'),
+              labelTranslations: AppStrings.across('genderPickerNote'),
               onChanged: (value) => Navigator.of(sheetContext).pop(value),
             ),
             const SizedBox(height: 12),
@@ -457,6 +459,7 @@ class _ChangePasswordFormState extends State<_ChangePasswordForm> {
       padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
       child: OtakuSheet(
         title: context.strings('resetPassword'),
+        titleTranslations: AppStrings.across('resetPassword'),
         titleSize: 19,
         child: SingleChildScrollView(
           child: Form(

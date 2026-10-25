@@ -16,6 +16,7 @@ import '../../../favorites/presentation/cubit/favorites_cubit.dart';
 import '../../../favorites/presentation/cubit/favorites_state.dart';
 import '../../../points/presentation/cubit/points_cubit.dart';
 import '../../../settings/data/store_settings_repository.dart';
+import '../../../settings/presentation/cubit/locale_cubit.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/constants/api_endpoints.dart';
@@ -226,24 +227,24 @@ class AccountScreen extends StatelessWidget {
           ),
           _SocialRow(
             icon: Icons.music_note_rounded,
-            name: context.strings('socialTiktok'),
-            subtitle: context.strings('socialTiktokSub'),
+            nameKey: 'socialTiktok',
+            subtitleKey: 'socialTiktokSub',
             tint: const Color(0xFF1C1B22),
             url: links.tiktok,
           ),
           const SizedBox(height: 10),
           _SocialRow(
             icon: Icons.camera_alt_outlined,
-            name: context.strings('socialInstagram'),
-            subtitle: context.strings('socialInstagramSub'),
+            nameKey: 'socialInstagram',
+            subtitleKey: 'socialInstagramSub',
             tint: const Color(0xFFE1306C),
             url: links.instagram,
           ),
           const SizedBox(height: 10),
           _SocialRow(
             icon: Icons.chat_bubble_outline,
-            name: context.strings('socialWhatsapp'),
-            subtitle: context.strings('socialWhatsappSub'),
+            nameKey: 'socialWhatsapp',
+            subtitleKey: 'socialWhatsappSub',
             tint: const Color(0xFF25D366),
             url: links.whatsapp,
           ),
@@ -349,6 +350,8 @@ class AccountScreen extends StatelessWidget {
       confirmLabel: context.strings('logout'),
       cancelLabel: context.strings('cancel'),
       destructive: true,
+      titleTranslations: AppStrings.across('logout'),
+      messageTranslations: AppStrings.across('logoutConfirm'),
     );
     if (confirmed != true) return;
     await auth.logout();
@@ -406,8 +409,14 @@ class _GuestCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.center,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
+          // [CRITICAL] (البوّابة ٦، 2026-10-10) العنوان سطرٌ يُصغَّر أولاً ويحجز
+          // ما تحتاجه أطول ترجمتيه: «وەک میوان دەگەڕێیت» كان يلتفّ سطرين على
+          // ٣٢٠×١٫٣ فتطول البطاقة ٣٧ وتنزل كل الصفوف تحتها.
+          BoundedText(
             context.strings('browsingAsGuest'),
+            maxLines: 2,
+            reserveFor: AppStrings.across('browsingAsGuest'),
+            alignment: Alignment.topCenter,
             textAlign: TextAlign.center,
             style: theme.textTheme.titleLarge?.copyWith(
               fontFamily: AppFonts.heading,
@@ -594,7 +603,12 @@ class _ProfileCardState extends State<_ProfileCard> {
                                 ],
                               ),
                               const SizedBox(height: 4),
-                              Text(
+                              // [CRITICAL] (البوّابة ٦، 2026-10-10) منطقةٌ تحجز
+                              // ما تحتاجه أطول ترجماتها (سطرٌ يُصغَّر أولاً حتى
+                              // ٠٫٨، وسطرٌ ثانٍ بكل لغة لما لا يتّسع): «خاڵەکانی
+                              // گەلاکسی» كان يلتفّ سطرين على ٣٢٠×١٫٣ فتطول
+                              // البطاقة ١٣ وتنزل الصورة والصفوف.
+                              BoundedText(
                                 // قبل وصول السلّم من الخادم لا نخترع مستوى.
                                 level == null
                                     ? context.strings('galaxyPoints')
@@ -619,7 +633,21 @@ class _ProfileCardState extends State<_ProfileCard> {
                                 // يُفرغها. يلتفّ الآن إلى سطرين ويصغر خطّه
                                 // قليلاً عند الحاجة بدل أن يختفي.
                                 maxLines: 2,
-                                softWrap: true,
+                                reserveFor: [
+                                  for (final l in AppLanguage.values)
+                                    level == null
+                                        ? AppStrings.of(l)('galaxyPoints')
+                                        : AppStrings.of(l).p(
+                                            'levelNumberAndNameLong',
+                                            {
+                                              'number': '${level.number}',
+                                              'name': level.nameFor(
+                                                context.gender,
+                                                l,
+                                              ),
+                                            },
+                                          ),
+                                ],
                                 style: theme.textTheme.bodyMedium?.copyWith(
                                   fontSize: 13,
                                   height: 1.35,
@@ -867,15 +895,21 @@ class _AvatarBusy extends StatelessWidget {
 class _SocialRow extends StatelessWidget {
   const _SocialRow({
     required this.icon,
-    required this.name,
-    required this.subtitle,
+    required this.nameKey,
+    required this.subtitleKey,
     required this.tint,
     required this.url,
   });
 
   final IconData icon;
-  final String name;
-  final String subtitle;
+
+  /// مفتاحا الاسم والوصف في `AppStrings` — منهما النصّ وترجماته كلها.
+  ///
+  /// [CRITICAL] (البوّابة ٦، 2026-10-10) الاسم والوصف منطقتا سطرٍ تحجزان ما
+  /// تحتاجه أطول ترجماتهما: «نوێترین بەرهەم و داشکاندنەکان» الكردي كان يلتفّ
+  /// سطرين على ٣٢٠×١٫٣ فيطول الصفّ ٢١ وينزل كل صفٍّ بعده.
+  final String nameKey;
+  final String subtitleKey;
   final Color tint;
   final String url;
 
@@ -905,16 +939,20 @@ class _SocialRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  name,
+                BoundedText(
+                  context.strings(nameKey),
+                  maxLines: 2,
+                  reserveFor: AppStrings.across(nameKey),
                   style: theme.textTheme.bodyMedium?.copyWith(
                     fontSize: 13.5,
                     fontWeight: AppDimens.weightBold,
                   ),
                 ),
                 const SizedBox(height: 2),
-                Text(
-                  subtitle,
+                BoundedText(
+                  context.strings(subtitleKey),
+                  maxLines: 2,
+                  reserveFor: AppStrings.across(subtitleKey),
                   style: theme.textTheme.bodySmall?.copyWith(
                     fontSize: 11,
                     color: theme.colorScheme.onSurfaceVariant,

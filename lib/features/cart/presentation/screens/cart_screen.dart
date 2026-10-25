@@ -15,6 +15,7 @@ import '../../../products/domain/entities/product.dart';
 import '../../domain/entities/cart_item.dart';
 import '../cubit/cart_cubit.dart';
 import '../cubit/cart_state.dart';
+import '../../../settings/presentation/cubit/locale_cubit.dart';
 import '../../../visuals/domain/visual_slot.dart';
 
 /// تبويب السلة بتصميم Otaku Galaxy v2.
@@ -452,6 +453,13 @@ class _CartItemCard extends StatelessWidget {
       confirmLabel: context.strings('remove'),
       cancelLabel: context.strings('cancel'),
       destructive: true,
+      titleTranslations: AppStrings.across('removeProduct'),
+      messageTranslations: [
+        for (final l in AppLanguage.values)
+          AppStrings.of(l).p('removeProductConfirm', {
+            'name': localizedProductName(item.product, l),
+          }),
+      ],
     );
     if (confirmed != true) return;
     await cart.remove(item.product.id, selectedOption: item.selectedOption);

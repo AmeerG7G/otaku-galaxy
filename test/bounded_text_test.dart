@@ -390,6 +390,15 @@ void main() {
       expect(_renderedSize(tester), 25);
     });
 
+    testWidgets('لا تصغير بلا داعٍ: المنطقة لا تقلّ عن أسطر أقصر النصوص الطبيعية', (tester) async {
+      // كلاهما يلتفّ سطرين بمقاسه في ١٣٥، وكلاهما يتّسع لسطرٍ عند ٠٫٨: لا نصّ
+      // أطول من أقصرهما، فلا يُصغَّر أيٌّ منهما.
+      final errors = await _pump(tester, 'لنُهيّئ تجربتكم', width: 135, maxLines: 3, reserveFor: ['بۆ ئەزموونەکەت']);
+      expect(errors, isEmpty);
+      expect(_renderedSize(tester), 25);
+      expect(tester.getSize(find.byKey(_probe)).height, 2 * _lineHeight(1));
+    });
+
     testWidgets('نصوصٌ بالطول نفسه: لا سطر زائد', (tester) async {
       await _pump(tester, _shortArabic, reserveFor: ['لنُهيّئ تجربتك']);
       expect(tester.getSize(find.byKey(_probe)).height, _lineHeight(1));
@@ -472,6 +481,43 @@ void main() {
       find.descendant(of: find.byKey(const Key('free')), matching: find.byType(Text)),
     );
     expect(text.style!.fontSize, 25);
+  });
+
+  // (البوّابة ١٥، 2026-10-17) أبٌ ثابت الارتفاع (رأس المصادقة) يحجز مكان
+  // المنطقة مسبقاً بـ`linesAt`: إن اختلف عمّا ترسمه المنطقة وقع سطرها الأخير
+  // تحت البطاقة العائمة أو بقي في الرأس فراغ.
+  group('linesAt — ما ترسمه المنطقة بالضبط', () {
+    final configs = <String, ({String text, int lines, int? maxLines, double scale, List<String> reserve})>{
+      'قصيرٌ يتّسع': (text: _shortArabic, lines: 1, maxLines: null, scale: 1, reserve: const []),
+      'طويلٌ ينمو': (text: _longKurdish, lines: 1, maxLines: 8, scale: 1, reserve: const []),
+      'سطران مكبَّران ينموان': (text: _longKurdish, lines: 2, maxLines: 10, scale: 1.3, reserve: const []),
+      'قصيرٌ يحجز للطويل': (text: _shortArabic, lines: 1, maxLines: 8, scale: 1, reserve: const [_longKurdish]),
+    };
+    for (final entry in configs.entries) {
+      testWidgets(entry.key, (tester) async {
+        final c = entry.value;
+        final errors = await _pump(
+          tester,
+          c.text,
+          lines: c.lines,
+          maxLines: c.maxLines,
+          textScale: c.scale,
+          reserveFor: c.reserve,
+        );
+        expect(errors, isEmpty);
+        final drawn = tester.getSize(find.byKey(_probe)).height / _lineHeight(c.scale);
+        final measured = BoundedText(
+          c.text,
+          style: _base,
+          lines: c.lines,
+          maxLines: c.maxLines,
+          reserveFor: c.reserve,
+        ).linesAt(tester.element(find.byKey(_probe)), 140);
+        expect(measured, drawn.round());
+        expect(drawn, closeTo(drawn.round(), 0.001));
+        if (entry.key != 'قصيرٌ يتّسع') expect(measured, greaterThan(c.lines));
+      });
+    }
   });
 
   test('[TRIPWIRE] BoundedText لا يعرف اللغة', () {

@@ -57,8 +57,14 @@ class _DeliveryConfirmationBody extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
+                    // [CRITICAL] (البوّابة ٨، 2026-10-10) السؤال سطرٌ يُصغَّر أولاً
+                    // والتوضيح فقرة، وكلاهما يحجز أطول ترجماته: الكردية أطول
+                    // بسطر على ٣٢٠×١٫٣ فكانت أزرار الورقة تنزل.
+                    BoundedText(
                       context.strings('receivedOrderQuestion'),
+                      maxLines: 3,
+                      reserveFor: AppStrings.across('receivedOrderQuestion'),
+                      alignment: AlignmentDirectional.topStart,
                       style: theme.textTheme.titleLarge?.copyWith(
                         fontFamily: AppFonts.heading,
                         fontFamilyFallback: AppFonts.headingFallback,
@@ -67,8 +73,12 @@ class _DeliveryConfirmationBody extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 7),
-                    Text(
+                    BoundedText(
                       context.strings('receivedOrderNote'),
+                      maxLines: 12,
+                      minScale: 1,
+                      reserveFor: AppStrings.across('receivedOrderNote'),
+                      alignment: AlignmentDirectional.topStart,
                       style: theme.textTheme.bodySmall?.copyWith(
                         fontSize: 12.5,
                         height: 1.6,

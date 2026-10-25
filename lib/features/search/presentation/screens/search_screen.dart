@@ -311,6 +311,8 @@ class _SearchScreenState extends State<SearchScreen> with LocaleRefetch {
         OtakuEditorialPanel(
           title: context.strings('searchIdleTitle'),
           body: context.g(GenderedStrings.searchHintBody),
+          titleTranslations: AppStrings.across('searchIdleTitle'),
+          bodyTranslations: context.gAcross(GenderedStrings.searchHintBody),
           artworkSlot: VisualSlots.searchHeader,
           margin: const EdgeInsets.only(top: 24),
           artHeight: 150,

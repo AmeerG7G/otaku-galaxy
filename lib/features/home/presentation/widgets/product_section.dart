@@ -20,6 +20,12 @@ class ProductSection extends StatelessWidget {
   final List<Product> products;
   final VoidCallback? onSeeAll;
 
+  /// ارتفاع الصفّ المصمَّم: بطاقةٌ بلا سطر ترويج عند مقياس ١٫٠ (٢٤٠) وهامشها.
+  static const double designHeight = 246;
+
+  /// عرض البطاقة في الصفّ.
+  static const double cardWidth = 158;
+
   @override
   Widget build(BuildContext context) {
     if (products.isEmpty) return const SizedBox.shrink();
@@ -28,16 +34,30 @@ class ProductSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SectionHeader(title: title, onSeeAll: onSeeAll),
-        SizedBox(
-          height: 246,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 18),
-            itemCount: products.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 13),
-            itemBuilder: (context, index) => SizedBox(
-              width: 158,
-              child: ProductCard(product: products[index]),
+        // [CRITICAL] (البوّابة ٩، 2026-10-12) الصفّ بارتفاع أطول بطاقاته، ولا
+        // يقلّ عن [designHeight]. كان ٢٤٦ ثابتاً والبطاقة لا تعرفه: تكبر مع
+        // مقياس الخطّ (٢٥٠ عند ×١٫٣) وبسطر ترويج التوصيل (٢٦١ عند ١٫٠)،
+        // فيتجاوزها عمودها ٤–٢٩ بكسل بالعربية والكردية معاً. البطاقات كلّها
+        // بارتفاعٍ واحد (`IntrinsicHeight`)، وعددها ثمانية على الأكثر (حدّ
+        // الخادم)، فبناؤها دفعةً واحدة لا كلفة له.
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 18),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: designHeight),
+            child: IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final (index, product) in products.indexed) ...[
+                    if (index > 0) const SizedBox(width: 13),
+                    SizedBox(
+                      width: cardWidth,
+                      child: ProductCard(product: product),
+                    ),
+                  ],
+                ],
+              ),
             ),
           ),
         ),

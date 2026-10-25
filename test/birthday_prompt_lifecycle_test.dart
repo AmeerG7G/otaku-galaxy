@@ -182,6 +182,36 @@ void main() {
     expect(find.byType(SnackBar), findsOneWidget);
   });
 
+  // [CRITICAL] (البوّابة ١٥، 2026-10-18) أصغر هاتفٍ بخطٍّ مكبَّر ولوحة المفاتيح
+  // مفتوحة: النموذج أطول ممّا فوقها، فكان يتجاوز أسفله والحفظ تحت لوحة
+  // المفاتيح بلا وصول — باللغتين. الآن يُمرَّر.
+  for (final language in AppLanguage.values) {
+    testWidgets(
+        '[CRITICAL] ٣٢٠×٥٦٨ ×١٫٣ ولوحة المفاتيح مفتوحة (${language.code}): '
+        'بلا تجاوز، والحفظ يُبلَغ بالتمرير', (tester) async {
+      final locale = await _pump(tester);
+      tester.view.physicalSize = const Size(320, 568);
+      tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await locale.setLanguage(language);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(TextFormField).first);
+      await tester.pump();
+      tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+
+      final save = find.text(AppStrings.of(language)('save'));
+      await tester.ensureVisible(save);
+      await tester.pumpAndSettle();
+      expect(tester.getRect(save).bottom, lessThanOrEqualTo(568 - 300));
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('التكرار بعد تبديل اللغة إلى الكردية', (tester) async {
     final locale = await _pump(tester);
     await locale.setLanguage(AppLanguage.kurdish);

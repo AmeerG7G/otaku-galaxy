@@ -6,6 +6,7 @@ import '../../tokens/app_breakpoints.dart';
 import '../../tokens/app_dimens.dart';
 import '../../tokens/app_theme_colors.dart';
 import '../buttons/anime_primary_button.dart';
+import '../typography/bounded_text.dart';
 
 /// ورقة سفلية تُعرض عند محاولة زائر تنفيذ إجراء يحتاج تسجيل دخول
 /// (إتمام الطلب، طلباتي، الحساب...). تعيد `true` إذا اختار المستخدم
@@ -111,8 +112,19 @@ class _LoginGateSheet extends StatelessWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
+                              // [CRITICAL] (البوّابة ٨، 2026-10-10) العنوان سطرٌ
+                              // يُصغَّر أولاً والنصّ فقرة؛ النصّ الافتراضي يحجز
+                              // أطول ترجماته فلا تطول الورقة بالكردية. نصٌّ
+                              // يمرّره المستدعي: بلغته وحدها.
+                              BoundedText(
                                 title ?? context.g(GenderedStrings.loginFirst),
+                                maxLines: 3,
+                                reserveFor: title != null
+                                    ? const []
+                                    : context.gAcross(
+                                        GenderedStrings.loginFirst,
+                                      ),
+                                alignment: AlignmentDirectional.topStart,
                                 style: Theme.of(context).textTheme.titleMedium
                                     ?.copyWith(
                                       fontSize: 19,
@@ -120,9 +132,15 @@ class _LoginGateSheet extends StatelessWidget {
                                     ),
                               ),
                               const SizedBox(height: 6),
-                              Text(
+                              BoundedText(
                                 body ??
                                     context.strings('loginGateDefaultBody'),
+                                maxLines: 12,
+                                minScale: 1,
+                                reserveFor: body != null
+                                    ? const []
+                                    : AppStrings.across('loginGateDefaultBody'),
+                                alignment: AlignmentDirectional.topStart,
                                 style: Theme.of(context).textTheme.bodySmall
                                     ?.copyWith(
                                       fontSize: 13,

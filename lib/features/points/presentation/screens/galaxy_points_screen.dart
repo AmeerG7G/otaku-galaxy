@@ -83,6 +83,8 @@ class _GalaxyPointsScreenState extends State<GalaxyPointsScreen> {
             OtakuScreenHeader(
               title: context.strings('galaxyPointsTitle'),
               subtitle: context.strings('galaxyPointsSubtitle'),
+              titleTranslations: AppStrings.across('galaxyPointsTitle'),
+              subtitleTranslations: AppStrings.across('galaxyPointsSubtitle'),
               onBack: () => context.router.maybePop(),
             ),
             Expanded(
@@ -129,6 +131,10 @@ class _GalaxyPointsScreenState extends State<GalaxyPointsScreen> {
                           title: context.strings('noActivityTitle'),
                           body:
                               context.strings('noActivityBody'),
+                          titleTranslations: AppStrings.across(
+                            'noActivityTitle',
+                          ),
+                          bodyTranslations: AppStrings.across('noActivityBody'),
                           artworkSlot: VisualSlots.points,
                           margin: EdgeInsets.zero,
                           minHeight: 170,
@@ -199,8 +205,12 @@ class _LevelLadder extends StatelessWidget {
     final colors = context.themeColors;
     if (levels.isEmpty) {
       // لا سلّم بديل: عرض عتبات محفوظة في التطبيق أسوأ من الصمت.
-      return Text(
+      return BoundedText(
         context.strings('levelsLoadFailed'),
+        maxLines: 8,
+        minScale: 1,
+        reserveFor: AppStrings.across('levelsLoadFailed'),
+        alignment: AlignmentDirectional.topStart,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
           color: Theme.of(context).colorScheme.onSurfaceVariant,
         ),
@@ -468,8 +478,15 @@ class _PointsExplainer extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
+                // [CRITICAL] (البوّابة ٨، 2026-10-10) فقرات الشرح والقواعد تحجز
+                // ما تحتاجه أطول ترجماتها: نصوصٌ كردية أطول كانت تطيل البطاقة
+                // ٥٤ (٢٠٥ على ٣٢٠×١٫٣) وتُنزل سجلّ النقاط ورسمه.
+                BoundedText(
                   context.strings('pointsExplainerIntro'),
+                  maxLines: 12,
+                  minScale: 1,
+                  reserveFor: AppStrings.across('pointsExplainerIntro'),
+                  alignment: AlignmentDirectional.topStart,
                   style: theme.textTheme.bodySmall?.copyWith(
                     fontSize: 12,
                     height: 1.75,
@@ -477,15 +494,25 @@ class _PointsExplainer extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
-                _Rule(points: context.strings('pointsNumeral5'), label: context.strings('rulePerPurchase')),
-                _Rule(points: context.strings('pointsNumeral1'), label: context.strings('rulePerWrittenReview')),
                 _Rule(
                   points: context.strings('pointsNumeral5'),
-                  label: context.strings('rulePerPhotoReview'),
+                  labelKey: 'rulePerPurchase',
+                ),
+                _Rule(
+                  points: context.strings('pointsNumeral1'),
+                  labelKey: 'rulePerWrittenReview',
+                ),
+                _Rule(
+                  points: context.strings('pointsNumeral5'),
+                  labelKey: 'rulePerPhotoReview',
                 ),
                 const SizedBox(height: 8),
-                Text(
+                BoundedText(
                   context.strings('pointsReviewCaveat'),
+                  maxLines: 12,
+                  minScale: 1,
+                  reserveFor: AppStrings.across('pointsReviewCaveat'),
+                  alignment: AlignmentDirectional.topStart,
                   style: theme.textTheme.bodySmall?.copyWith(
                     fontSize: 11.5,
                     height: 1.75,
@@ -496,8 +523,12 @@ class _PointsExplainer extends StatelessWidget {
                 // القاعدة الموثّقة (§40.2): النقاط على قيمة المنتجات بعد الخصم،
                 // لا على أجور التوصيل. تُقال للزبون حتى لا يقرأ ٣٢٬٠٠٠ إجمالياً
                 // ويتوقّع ١٥ نقطة بينما مشترياته ٢٨٬٠٠٠.
-                Text(
+                BoundedText(
                   context.strings('pointsDeliveryExcluded'),
+                  maxLines: 12,
+                  minScale: 1,
+                  reserveFor: AppStrings.across('pointsDeliveryExcluded'),
+                  alignment: AlignmentDirectional.topStart,
                   style: theme.textTheme.bodySmall?.copyWith(
                     fontSize: 11.5,
                     height: 1.75,
@@ -515,10 +546,12 @@ class _PointsExplainer extends StatelessWidget {
 
 /// سطر قاعدة كسب واحد: عدد النقاط ثم سببها.
 class _Rule extends StatelessWidget {
-  const _Rule({required this.points, required this.label});
+  const _Rule({required this.points, required this.labelKey});
 
   final String points;
-  final String label;
+
+  /// مفتاح السبب — منه النصّ وترجماته (سطرٌ يُصغَّر أولاً ويحجز أطولها).
+  final String labelKey;
 
   @override
   Widget build(BuildContext context) {
@@ -550,8 +583,11 @@ class _Rule extends StatelessWidget {
           ),
           const SizedBox(width: 9),
           Expanded(
-            child: Text(
-              label,
+            child: BoundedText(
+              context.strings(labelKey),
+              maxLines: 4,
+              reserveFor: AppStrings.across(labelKey),
+              alignment: AlignmentDirectional.topStart,
               style: theme.textTheme.bodySmall?.copyWith(
                 fontSize: 12,
                 height: 1.6,

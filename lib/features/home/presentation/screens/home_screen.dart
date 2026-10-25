@@ -316,16 +316,25 @@ class _HomeScreenState extends State<HomeScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
+                  // [CRITICAL] (البوّابة ٥، 2026-10-10) سطرا الترحيب والاسم
+                  // منطقتا سطرٍ تحجزان ما تحتاجه أطول ترجمتيهما: «گەلاکسی
+                  // ئۆتاکو» كان يلتفّ سطرين على ٣٢٠×١٫٣ فيطول الصفّ ٣٥ ويُنزل
+                  // الشعار والجرس. الاسم نصّ ترويسة: الحدّ من مقاس التصميم.
                   children: [
-                    Text(
+                    BoundedText(
                       context.strings('welcomeTo'),
+                      maxLines: 2,
+                      reserveFor: AppStrings.across('welcomeTo'),
                       style: theme.textTheme.bodySmall?.copyWith(
                         fontSize: 12,
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
-                    Text(
+                    BoundedText(
                       context.strings('brandName'),
+                      maxLines: 2,
+                      floorAtDesignSize: true,
+                      reserveFor: AppStrings.across('brandName'),
                       style: theme.textTheme.titleLarge?.copyWith(
                         fontFamily: AppFonts.heading,
                         fontFamilyFallback: AppFonts.headingFallback,
@@ -382,11 +391,20 @@ class _HomeScreenState extends State<HomeScreen>
               ),
             ),
             const SizedBox(width: 10),
-            Text(
-              context.strings('homeSearchHint'),
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontSize: 13.5,
-                color: theme.colorScheme.onSurfaceVariant,
+            // [CRITICAL] (البوّابة ٥، 2026-10-10) تسمية زرّ البحث في منطقةٍ
+            // محدودة: كانت `Text` بلا حدّ فتتجاوز يميناً على ٣٢٠×١٫٣ بالكردية.
+            // تسمية زرّ: الحدّ ٠٫٨ من مقاس التصميم؛ ويُحجز سطرٌ ثانٍ بكل لغة
+            // لما لا يتّسع حتى عنده.
+            Expanded(
+              child: BoundedText(
+                context.strings('homeSearchHint'),
+                maxLines: 2,
+                floorAtDesignSize: true,
+                reserveFor: AppStrings.across('homeSearchHint'),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontSize: 13.5,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
           ],

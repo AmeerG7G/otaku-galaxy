@@ -151,58 +151,80 @@ class _OfflineGateScreenState extends State<OfflineGateScreen>
                         // صار يمرّ بمكوّن الشعار الوحيد فلا يمكن أن ينحرف عنه.
                         const OtakuStoreLogoSimple(size: 38),
                         const SizedBox(width: 11),
-                        Text(
-                          context.strings('brandName'),
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontFamily: AppFonts.heading,
-                            fontFamilyFallback: AppFonts.headingFallback,
-                            fontSize: 15.5,
-                            fontWeight: AppDimens.weightExtraBold,
+                        // [CRITICAL] (البوّابة ١٥، 2026-10-17) اسم المتجر نصّ
+                        // ترويسة كاسم الرئيسية: يُصغَّر حتى ٠٫٨ من مقاس التصميم،
+                        // ويحجز سطراً ثانياً بكل لغة إن لم تتّسع ترجمةٌ حتى عنده.
+                        // كان `Text` بلا حدّ في الصفّ: «گەلاکسی ئۆتاکو» يتجاوز
+                        // يميناً ١٧ على ٣٢٠ عند ×٢٫٠ (مصفوفة القياس الموثّقة).
+                        Flexible(
+                          child: BoundedText(
+                            context.strings('brandName'),
+                            maxLines: 2,
+                            floorAtDesignSize: true,
+                            reserveFor: AppStrings.across('brandName'),
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontFamily: AppFonts.heading,
+                              fontFamilyFallback: AppFonts.headingFallback,
+                              fontSize: 15.5,
+                              fontWeight: AppDimens.weightExtraBold,
+                            ),
                           ),
                         ),
                       ],
                     ),
                   ),
+                  // [CRITICAL] (البوّابة ٩، 2026-10-12) موسَّطٌ ما دام يتّسع،
+                  // ويُمرَّر حين لا يتّسع: البطاقة والحالة والزرّ أطول من
+                  // ٣٢٠×٥٦٨ عند ×١٫٣، فكان العمود الموسَّط يتجاوز أسفله (٧٢
+                  // بالعربية) ويقع الزرّ خارج الشاشة بلا وصول. حين يتّسع: كما
+                  // كان تماماً.
                   Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          const _OfflineCard(),
-                          const SizedBox(height: 20),
-                          Row(
+                    child: LayoutBuilder(
+                      builder: (context, constraints) => SingleChildScrollView(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            minHeight: constraints.maxHeight,
+                          ),
+                          child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              FadeTransition(
-                                opacity: _pulse,
-                                child: Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: const BoxDecoration(
-                                    color: AppColors.error,
-                                    shape: BoxShape.circle,
+                              const _OfflineCard(),
+                              const SizedBox(height: 20),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  FadeTransition(
+                                    opacity: _pulse,
+                                    child: Container(
+                                      width: 8,
+                                      height: 8,
+                                      decoration: const BoxDecoration(
+                                        color: AppColors.error,
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
                                   ),
-                                ),
+                                  const SizedBox(width: 9),
+                                  Text(
+                                    context.strings('offlineShort'),
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      fontSize: 12.5,
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(width: 9),
-                              Text(
-                                context.strings('offlineShort'),
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  fontSize: 12.5,
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                ),
+                              const SizedBox(height: 22),
+                              AnimePrimaryButton(
+                                label: context.strings('retry'),
+                                onPressed: widget.onRetry,
+                                height: AppDimens.buttonHeightXl,
                               ),
                             ],
                           ),
-                          const SizedBox(height: 22),
-                          AnimePrimaryButton(
-                            label: context.strings('retry'),
-                            onPressed: widget.onRetry,
-                            height: AppDimens.buttonHeightXl,
-                          ),
-                        ],
+                        ),
                       ),
                     ),
                   ),
@@ -254,8 +276,15 @@ class _OfflineCard extends StatelessWidget {
               color: theme.colorScheme.onSurfaceVariant,
             ),
             const SizedBox(height: 18),
-            Text(
+            // [CRITICAL] (البوّابة ٨، 2026-10-10) البطاقة موسَّطة ورسمها في
+            // أعلاها: عنوانٌ أو نصٌّ كردي أطول بسطر كان يطيلها ٣١–٤٠ فيصعد
+            // الرسم والأيقونة نصفها. العنوان سطرٌ يُصغَّر أولاً والنصّ فقرة،
+            // وكلاهما يحجز أطول ترجماته.
+            BoundedText(
               context.strings('offlineTitle'),
+              maxLines: 3,
+              reserveFor: AppStrings.across('offlineTitle'),
+              alignment: Alignment.topCenter,
               textAlign: TextAlign.center,
               style: theme.textTheme.headlineSmall?.copyWith(
                 fontFamily: AppFonts.heading,
@@ -266,8 +295,12 @@ class _OfflineCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 10),
-            Text(
+            BoundedText(
               context.strings('offlineBody'),
+              maxLines: 12,
+              minScale: 1,
+              reserveFor: AppStrings.across('offlineBody'),
+              alignment: Alignment.topCenter,
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium?.copyWith(
                 fontSize: 14,

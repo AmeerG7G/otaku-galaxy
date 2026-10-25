@@ -14,6 +14,7 @@ import '../cubit/auth_cubit.dart' show AuthCubit;
 import '../widgets/auth_field.dart';
 import '../widgets/auth_scaffold.dart';
 import '../../../visuals/domain/visual_slot.dart';
+import '../../../settings/presentation/cubit/locale_cubit.dart';
 
 @RoutePage()
 class RegisterScreen extends StatefulWidget {
@@ -148,6 +149,10 @@ class _RegisterScreenState extends State<RegisterScreen>
             AppGender.unknown,
             context.language,
           ),
+          subtitleTranslations: [
+            for (final l in AppLanguage.values)
+              GenderedStrings.galaxyResident.ofLocale(AppGender.unknown, l),
+          ],
           artworkSlot: VisualSlots.registerHeader,
           artworkHeight: 178,
           artworkWidth: 150,
@@ -259,12 +264,23 @@ class _RegisterScreenState extends State<RegisterScreen>
 
                 SizedBox(height: AppDimens.space3),
 
-                Text(
+                // [CRITICAL] (البوّابة ٨، 2026-10-10) فقرةٌ تحجز أسطر أطول
+                // صيغها — بكل لغة وكل جنس، فلا تطول بطاقة النموذج بتغيّر
+                // اللغة (+١٩–٢٤ بالكردية) ولا باختيار الجنس.
+                BoundedText(
                   // بلغة الواجهة — لا `of` التي تُرجع العربية دائماً.
                   GenderedStrings.termsNotice.ofLocale(
                     _gender ?? AppGender.unknown,
                     context.language,
                   ),
+                  maxLines: 12,
+                  minScale: 1,
+                  reserveFor: [
+                    for (final g in AppGender.values)
+                      for (final l in AppLanguage.values)
+                        GenderedStrings.termsNotice.ofLocale(g, l),
+                  ],
+                  alignment: Alignment.topCenter,
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
                     height: 1.7,

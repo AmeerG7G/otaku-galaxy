@@ -97,11 +97,10 @@ class BoundedText extends StatelessWidget {
   /// سطراً ثانياً إلا لنصٍّ لا يتّسع حتى عنده. لا يعرف اللغة: يقيس نصوصاً.
   final List<String> reserveFor;
 
-  @override
-  Widget build(BuildContext context) {
+  _Fit _fitFor(BuildContext context, String text, List<String> reserveFor) {
     final scaler = MediaQuery.textScalerOf(context);
-    final fit = _Fit(
-      data: data,
+    return _Fit(
+      data: text,
       style: DefaultTextStyle.of(context).style.merge(style),
       scaler: scaler,
       direction: Directionality.of(context),
@@ -113,6 +112,39 @@ class BoundedText extends StatelessWidget {
           ? math.min(minScale, minScale / scaler.scale(1))
           : minScale,
     );
+  }
+
+  /// عدد الأسطر الذي ترسمه المنطقة في عرض [maxWidth] — الحساب نفسه الذي
+  /// يجريه `build`، بسياقٍ يرى ما تراه المنطقة (`DefaultTextStyle` نفسه).
+  ///
+  /// لأبٍ ثابت الارتفاع يحجز مكانها مسبقاً: رأسٌ يطول بقدر أسطرها لا يعرف
+  /// كم سطراً تأخذ إلا بالقياس نفسه. لا يعرف اللغة: يقيس [data] وحده.
+  int linesAt(BuildContext context, double maxWidth) =>
+      _fitFor(context, data, reserveFor).resolve(maxWidth).lines;
+
+  /// أعرضُ ما تأخذه المنطقة بأيٍّ من [data] و[reserveFor] في عرض [maxWidth] —
+  /// بالحساب نفسه الذي يخطّطها (المقاس وعدد الأسطر).
+  ///
+  /// [CRITICAL] (2026-10-12) لمن يضع شيئاً بجوار المنطقة (رسم شخصية بجوار
+  /// عنوان): عرض النصّ المعروض يتغيّر بالترجمة، وهذا لا يتغيّر — فلا يتحرّك
+  /// الجار بتغيّر اللغة، كما لا تتغيّر أسطر المنطقة.
+  double reservedWidth(BuildContext context, double maxWidth) {
+    final all = [data, ...reserveFor];
+    var widest = 0.0;
+    for (final text in all.toSet()) {
+      final size = _fitFor(
+        context,
+        text,
+        all,
+      ).sizeFor(BoxConstraints(maxWidth: maxWidth));
+      widest = math.max(widest, size.width);
+    }
+    return widest;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fit = _fitFor(context, data, reserveFor);
 
     return _BoundedLayout(
       fit: fit,
@@ -233,6 +265,14 @@ class _Fit {
     return fits;
   }
 
+  /// أسطر [text] بمقاسه الأصلي في [maxWidth] بلا حدّ.
+  int _naturalLines(String text, double maxWidth) {
+    final painter = _painter(1, null, text)..layout(maxWidth: maxWidth);
+    final count = painter.computeLineMetrics().length;
+    painter.dispose();
+    return count;
+  }
+
   /// أقصى ما تطوله المنطقة: [maxLines]، ولا أكثر مما يتّسع له [maxHeight]
   /// (ولا أقلّ من [lines] — المنطقة المصمَّمة لا تُقصّ).
   int _capFor(double maxHeight) {
@@ -254,13 +294,27 @@ class _Fit {
   /// المقاس وعدد الأسطر لعرض [maxWidth]. عرضٌ غير محدود: المقاس الأصلي.
   ///
   /// مع [reserveFor]: عدد الأسطر أكثرُ ما يحتاجه أيٌّ من النصوص بقواعد المنطقة
-  /// نفسها، ثم يُوضَع [data] فيه كالمعتاد (أصلياً إن اتّسع، وإلا مصغَّراً).
+  /// نفسها، ولا يقلّ عن أسطر **أقصرها** بمقاسه الأصلي — ثم يُوضَع [data] فيه
+  /// كالمعتاد (أصلياً إن اتّسع، وإلا مصغَّراً).
+  ///
+  /// [CRITICAL] (2026-10-10) الحدّ الأدنى «أسطر الأقصر الطبيعية»: بدونه تُحسب
+  /// المنطقة بالمقاس الأدنى لكل نصّ، فعنوانٌ يلتفّ طبيعياً ثلاثة أسطر ويتّسع
+  /// لسطرين عند ٠٫٨ كان سيُصغَّر إلى سطرين وإن لم تحتج أيّ ترجمة إلى ذلك. الآن
+  /// لا يُصغَّر إلا النصّ الأطول من أقصر الترجمات، ولا يُحجز سطرٌ زائد إلا لما
+  /// لا يتّسع حتى عند الحدّ. للفقرة (`minScale: 1`) لا فرق: أسطرها الطبيعية.
   ///
   /// [maxHeight] (ما يمنحه الأب) يحدّ النموّ: انظر [_capFor].
   _FitResult resolve(double maxWidth, [double maxHeight = double.infinity]) {
     if (!maxWidth.isFinite) return (scale: 1.0, lines: lines, unfit: false);
     final cap = _capFor(maxHeight);
     var used = _linesFor(null, maxWidth, cap);
+    if (reserveFor.isNotEmpty) {
+      var shortest = cap;
+      for (final text in [data, ...reserveFor]) {
+        shortest = math.min(shortest, _naturalLines(text, maxWidth));
+      }
+      used = math.max(used, shortest);
+    }
     for (final text in reserveFor) {
       used = math.max(used, _linesFor(text, maxWidth, cap));
     }

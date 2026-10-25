@@ -46,16 +46,22 @@ class _AccountPendingScreenState extends State<AccountPendingScreen>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // [CRITICAL] (البوّابة ٧، 2026-10-10) كل نصوص الشاشة مناطق `BoundedText`
+    // تحجز ما تحتاجه أطول ترجماتها، فلا يُنزل نصٌّ كرديٌّ أطول الكبسولةَ
+    // ولوحةَ الخطوات (كانت +١٢ إلى +٧٢). العنوان والكبسولة والخطوات أسطرٌ
+    // تُصغَّر أولاً؛ التوضيح فقرة.
+    final titleKey = _isRegistration ? 'accountPendingTitle' : 'resetPendingTitle';
+    final bodyKey = _isRegistration ? 'accountPendingBody' : 'resetPendingBody';
     final steps = _isRegistration
-        ? [
-            context.strings('stepAdminContactsWhatsapp'),
-            context.strings('stepAdminApprovesAccount'),
-            context.strings('stepLoginWithPassword'),
+        ? const [
+            'stepAdminContactsWhatsapp',
+            'stepAdminApprovesAccount',
+            'stepLoginWithPassword',
           ]
-        : [
-            context.strings('stepAdminContactsWhatsapp'),
-            context.strings('stepAdminSetsPassword'),
-            context.strings('stepLoginWithNewPassword'),
+        : const [
+            'stepAdminContactsWhatsapp',
+            'stepAdminSetsPassword',
+            'stepLoginWithNewPassword',
           ];
 
     return Scaffold(
@@ -96,12 +102,11 @@ class _AccountPendingScreenState extends State<AccountPendingScreen>
                           ),
                         ),
                         const SizedBox(height: 8),
-                        Text(
-                          context.strings(
-                            _isRegistration
-                                ? 'accountPendingTitle'
-                                : 'resetPendingTitle',
-                          ),
+                        BoundedText(
+                          context.strings(titleKey),
+                          maxLines: 3,
+                          reserveFor: AppStrings.across(titleKey),
+                          alignment: Alignment.topCenter,
                           textAlign: TextAlign.center,
                           style: theme.textTheme.headlineSmall?.copyWith(
                             fontFamily: AppFonts.heading,
@@ -112,18 +117,16 @@ class _AccountPendingScreenState extends State<AccountPendingScreen>
                           ),
                         ),
                         const SizedBox(height: 14),
-                        _StatusCapsule(
-                          label: context.strings('pendingAdminReview'),
-                        ),
+                        const _StatusCapsule(labelKey: 'pendingAdminReview'),
                         const SizedBox(height: 16),
                         ConstrainedBox(
                           constraints: const BoxConstraints(maxWidth: 300),
-                          child: Text(
-                            context.strings(
-                              _isRegistration
-                                  ? 'accountPendingBody'
-                                  : 'resetPendingBody',
-                            ),
+                          child: BoundedText(
+                            context.strings(bodyKey),
+                            maxLines: 12,
+                            minScale: 1,
+                            reserveFor: AppStrings.across(bodyKey),
+                            alignment: Alignment.topCenter,
                             textAlign: TextAlign.center,
                             style: theme.textTheme.bodyMedium?.copyWith(
                               fontSize: 13.5,
@@ -150,9 +153,9 @@ class _AccountPendingScreenState extends State<AccountPendingScreen>
                                 ),
                               ),
                               const SizedBox(height: 14),
-                              for (final (index, label) in steps.indexed) ...[
+                              for (final (index, key) in steps.indexed) ...[
                                 if (index > 0) const SizedBox(height: 13),
-                                _StepRow(number: index + 1, label: label),
+                                _StepRow(number: index + 1, labelKey: key),
                               ],
                             ],
                           ),
@@ -193,9 +196,9 @@ class _AccountPendingScreenState extends State<AccountPendingScreen>
 }
 
 class _StatusCapsule extends StatelessWidget {
-  const _StatusCapsule({required this.label});
+  const _StatusCapsule({required this.labelKey});
 
-  final String label;
+  final String labelKey;
 
   @override
   Widget build(BuildContext context) {
@@ -225,10 +228,12 @@ class _StatusCapsule extends StatelessWidget {
             ),
             const SizedBox(width: 9),
             Flexible(
-              child: Text(
-                label,
+              child: BoundedText(
+                context.strings(labelKey),
+                maxLines: 2,
+                reserveFor: AppStrings.across(labelKey),
                 textAlign: TextAlign.center,
-                softWrap: true,
+                alignment: Alignment.center,
                 style: theme.textTheme.labelMedium?.copyWith(
                   fontSize: 12.5,
                   fontWeight: AppDimens.weightBold,
@@ -244,10 +249,10 @@ class _StatusCapsule extends StatelessWidget {
 }
 
 class _StepRow extends StatelessWidget {
-  const _StepRow({required this.number, required this.label});
+  const _StepRow({required this.number, required this.labelKey});
 
   final int number;
-  final String label;
+  final String labelKey;
 
   @override
   Widget build(BuildContext context) {
@@ -276,8 +281,11 @@ class _StepRow extends StatelessWidget {
         ),
         const SizedBox(width: 12),
         Expanded(
-          child: Text(
-            label,
+          child: BoundedText(
+            context.strings(labelKey),
+            maxLines: 3,
+            reserveFor: AppStrings.across(labelKey),
+            alignment: AlignmentDirectional.topStart,
             style: theme.textTheme.bodyMedium?.copyWith(
               fontSize: 13,
               height: 1.5,

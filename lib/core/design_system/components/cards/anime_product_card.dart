@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import '../../../l10n/app_strings.dart';
 import '../../../../features/products/domain/entities/product.dart';
@@ -9,6 +11,7 @@ import '../../tokens/app_theme_colors.dart';
 import '../feedback/product_photo_slot.dart';
 import '../feedback/delivery_promo_label.dart';
 import '../feedback/product_stock_pill.dart';
+import '../typography/bounded_text.dart';
 
 /// بطاقة المنتج بتصميم Otaku Galaxy v2.
 ///
@@ -47,6 +50,14 @@ class AnimeProductCard extends StatelessWidget {
     // تناقضٌ يقرؤه الزبون في بطاقةٍ واحدة.
     final availability = product.availability;
     final comingSoon = availability == ProductAvailability.comingSoon;
+    final nameStyle = DefaultTextStyle.of(context).style.merge(
+      Theme.of(context).textTheme.bodySmall?.copyWith(
+        fontSize: 12.5,
+        height: 1.4,
+        fontWeight: AppDimens.weightSemiBold,
+        color: Theme.of(context).colorScheme.onSurface,
+      ),
+    );
 
     final card = Container(
       decoration: BoxDecoration(
@@ -122,18 +133,24 @@ class AnimeProductCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // [CRITICAL] (البوّابة ١٣، 2026-10-12) الاسم يحجز سطرين
+                    // بمقياس الخطّ لا بمقاس ١٫٠: كان ٣٦ ثابتاً فيُقصّ سطره
+                    // الثاني عند ×١٫٣ (يحتاج ٤٦) بكل لغة. عند ١٫٠ كما كان (٣٦).
                     SizedBox(
-                      height: 36,
+                      height: math.max(
+                        36,
+                        2 *
+                            BoundedText.lineHeight(
+                              nameStyle,
+                              MediaQuery.textScalerOf(context),
+                              Directionality.of(context),
+                            ),
+                      ),
                       child: Text(
                         localizedProductName(product, context.language),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          fontSize: 12.5,
-                          height: 1.4,
-                          fontWeight: AppDimens.weightSemiBold,
-                          color: Theme.of(context).colorScheme.onSurface,
-                        ),
+                        style: nameStyle,
                       ),
                     ),
                     const SizedBox(height: AppDimens.space2),

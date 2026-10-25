@@ -25,6 +25,30 @@ class AnimeTextButton extends StatelessWidget {
   /// كالمعتاد ويُبلَّغ ما لا يتّسع.
   final IconData? fallbackIcon;
 
+  /// عرضٌ يتّسع لأعرض هذه التسميات (بنمط الزرّ وحشوته وتكبير الخطّ) — لخانةٍ
+  /// ثابتة لا يتغيّر عرضها بتغيّر اللغة فلا يتغيّر ما بجوارها. لا يقلّ عن
+  /// أصغر عرضٍ للزرّ (٦٤).
+  static double slotWidthFor(BuildContext context, Iterable<String> labels) {
+    final style = DefaultTextStyle.of(context).style.merge(
+      Theme.of(
+        context,
+      ).textTheme.labelLarge?.copyWith(fontWeight: AppDimens.weightSemiBold),
+    );
+    var widest = 0.0;
+    for (final label in labels) {
+      final painter = TextPainter(
+        text: TextSpan(text: label, style: style),
+        textScaler: MediaQuery.textScalerOf(context),
+        textDirection: Directionality.of(context),
+        maxLines: 1,
+      )..layout();
+      if (painter.width > widest) widest = painter.width;
+      painter.dispose();
+    }
+    final width = widest + 2 * AppDimens.space3;
+    return width < 64 ? 64 : width.ceilToDouble();
+  }
+
   @override
   Widget build(BuildContext context) {
     return TextButton(
