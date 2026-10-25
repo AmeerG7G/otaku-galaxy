@@ -1,17 +1,43 @@
-# Session handoff — 2026-10-25 (integration/step-68, STEP 70)
+# Session handoff — 2026-10-25 (integration/step-68, STEP 70 → STEP 71)
 
 Continues [session-handoff-2026-10-24.md](session-handoff-2026-10-24.md).
 
+## Current state (STEP 71, later on 2026-10-25) — read this first
+
 - **Worktree:** `/home/ameer/otaku_galaxy/.claude/worktrees/step-68-integration`.
-- **Branch:** `integration/step-68`. It was `origin/integration/step-68` at `c04064f`; this session's
-  commits are **local only, not pushed**. There is no PR or merge, and `origin/dev`, `staging` and
-  `prod` are unchanged (`d3fd23c` / `73a2736` / `64c09bb`).
-- **Spec:** STEP 70 in `PROJECT_FEATURE_SPEC.md`. **Readiness:**
-  [docs/staging/staging-readiness-2026-10-25.md](staging/staging-readiness-2026-10-25.md).
-- **Verdict: NOT READY FOR STAGING.** The STEP 69–70 work is done and tested. What blocks it:
-  - CI's required Flutter job still has six failures from before this work;
-  - the staging infrastructure is unprovisioned;
-  - these commits have never run in CI.
+- **Branch:** `integration/step-68`. `origin/integration/step-68` = `e0a3ddc` (the STEP 70 work
+  below was pushed on your request). STEP 71 added **9 local commits, not pushed**
+  (`git log e0a3ddc..integration/step-68`). No PR, no merge. `origin/dev`/`staging`/`prod` =
+  `d3fd23c`/`73a2736`/`64c09bb`, unchanged; local `dev` `e3def17`, unchanged.
+- **Readiness:** [staging-readiness-2026-10-25.md](staging/staging-readiness-2026-10-25.md),
+  "STEP 71 update". **Verdict: NOT READY FOR STAGING** — no staging environment, CI never run on
+  these commits, two staging hosts undecided. Code-side checks all pass.
+- **Done in STEP 71:**
+  - the six Flutter failures fixed by porting the owner-approved fixes that never reached `dev`
+    (`376288f`, `cfd04b0`, `3c27b6c` from `release/rc-pre-staging`; `9dd52de` from
+    `ui/kurdish-geometry-gates`; `1fe4c79` Sorani queue 533 → 536). Flutter 2035/2035;
+  - pair price re-verified against 1.0.0's code; new gate limit documented (header-less
+    pre-STEP 64 builds pass the gate) in deploy §14 and spec §70.3;
+  - `backend/.env.staging.example` staging API host fixed + `env-templates.test.ts` guard (`77e1ad7`);
+  - backend tests: lock-order plan check accepts both id-ordered plans; perf purge hook budget
+    120 → 300 s (`7dbde63`). Final full run 2069/2069 on a fresh DB;
+  - README §10 stale rows corrected.
+- **Needs you:**
+  1. OK to push the 7 commits; then the `dev` merge or a PR to `staging` so CI runs.
+  2. Decide the staging dashboard host and the staging web-store host.
+  3. Provision staging (server, DB, DNS/TLS, secrets) — deploy §0–§5.
+  4. Before any production pair price: Play build from STEP 64+ code above 1.0.0 → mandatory
+     minimum (deploy §14–§15); confirm no older build is distributed.
+  5. Optional: make the web-store CI job a required check; `agentRules: false` for `next dev`.
+- **Known flake, not fixed:** dashboard `ProductEditPage` (3 tests wait for the post-save
+  navigation; full-suite load only; 12/12 isolated 3×-parallel runs pass; dashboard CI runs no
+  vitest). A longer wait budget was tried and reverted — not proven.
+- **Throwaway DB:** container `og-step71` (postgres:16-alpine, 127.0.0.1:55471, password in this
+  session's scratchpad). `docker stop og-step71` removes it.
+
+---
+
+## Earlier: STEP 70 (the state below is history; the push and Git lines are superseded above)
 
 ## Done (committed here)
 

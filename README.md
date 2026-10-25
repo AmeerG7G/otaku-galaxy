@@ -428,11 +428,11 @@ Two defects that made CI fail were fixed in this audit (see §10).
 |---|---|---|
 | Staging database | 🔧 | not provisioned; only a config template exists |
 | Staging backend host | 🔧 | not deployed |
-| Real API hostnames | 🔧 | `*.otaku-galaxy.example` does not resolve |
+| Real API hostnames | ⚠️ | staging API decided: `staging-api.otakugalaxystore.com` (app flavor, dashboard and backend templates, guarded by `backend/tests/env-templates.test.ts`); DNS not verified. Staging dashboard and web-store hosts undecided; production API still `api.otaku-galaxy.example` |
 | Staging secrets | 🔧 | `JWT_SECRET` must be generated (no SMS credentials — accounts are admin-managed) |
-| Android build verification | ❌ | no JDK in the current environment — `flutter build` unverified |
+| Android build verification | ⚠️ | see `docs/staging/staging-readiness-2026-10-25.md` (STEP 71 section) |
 | iOS flavors | ❌ | schemes and xcconfigs not configured |
-| Green CI run | ⚠️ | fixes are in `dev`; the next push is the first real test |
+| Green CI run | ⚠️ | last run: `origin/dev` `d3fd23c` green (2026-09-30). CI triggers on push to dev/staging/prod and PRs to staging/prod only — `integration/*` pushes never run it. The web-store job is not one of the 3 required checks |
 | Catalogue data decision | ⚠️ | see the known failing test above |
 
 ### ⚠️ Remaining before production
@@ -450,7 +450,7 @@ Two defects that made CI fail were fixed in this audit (see §10).
 
 ### Not applicable
 
-- **Firebase** — not used anywhere in the project.
+- ~~Firebase~~ — superseded: FCM push is used since STEP 64 (optional per environment; deploy/README §11–§12).
 
 ## 11. Admin dashboard capabilities ✅ IMPLEMENTED
 

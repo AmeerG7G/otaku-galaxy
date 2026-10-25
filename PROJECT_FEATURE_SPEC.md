@@ -11937,6 +11937,15 @@ The release order:
 A warning beside «سعر قطعتين» says the same. The app also shows «قطعتان بـ{price}» on product
 detail.
 
+**Limit of the gate (re-verified 2026-10-25, STEP 71):** the gate blocks only a *present*
+`X-App-Version` below the minimum; an absent header passes by design
+(`middleware/app-version.ts`, asserted in `pair-price.test.ts`). The header exists since STEP 64.
+App code on `origin/prod` `64c09bb` and `origin/staging` `73a2736` never sends it, so a build made
+from either cannot be gated and would show 8,000 for a pair. Today such builds cannot reach a real
+server (their staging/prod flavors point at `.example` hosts). Condition added to deploy §14: the
+Play build must come from STEP 64+ code, and no pair price is set in production while an older
+build is distributed.
+
 ## 70.4 Verification
 
 The full record is in `docs/staging/staging-readiness-2026-10-25.md`.
@@ -11985,3 +11994,46 @@ The full record is in `docs/staging/staging-readiness-2026-10-25.md`.
   - Android back is not intercepted by the optional prompt (it is dismissible);
   - pre-STEP 64 builds show `latestVersion` as their "required" line;
   - no iOS listing.
+
+# STEP 71 — PRE-STAGING CLOSURE: CI FLUTTER FAILURES · PAIR-PRICE GATE RE-CHECK · STAGING AUDIT (2026-10-25)
+
+Local commits on `integration/step-68` after `e0a3ddc`; nothing pushed, merged or deployed.
+Full record: `docs/staging/staging-readiness-2026-10-25.md` («STEP 71 update»).
+
+## 71.1 The six Flutter failures
+
+All six predate STEP 69–70. Five fixes already existed as owner-approved commits on local
+branches that never reached `dev`, and were cherry-picked:
+
+- `e18f07a` → `376288f`: character numbers 40/42/44 documented as retired (never committed
+  anywhere; owner decision 2026-10-10).
+- `220ffe8` → `cfd04b0`: «الأقسام» art back to `top: 0`, as §63.2 documents; `a83fdf9` had
+  contradicted it.
+- `4672296` → `3c27b6c`: `38.png` restored for the empty collection state (owner decision
+  2026-10-10).
+- `363b7b8` → `9dd52de`: `AnimePrimaryButton` may take a second centred line inside its fixed
+  height; `BoundedText` growth capped by the parent's height (fixes the regression from `9fe61f3`).
+  Only the height cap was taken from that branch.
+- `2716272` ported as `1fe4c79`: Sorani queue tracks the six level-gift keys (536 keys;
+  `native_approved_count` stays 0).
+
+## 71.2 Pair price on 1.0.0
+
+Re-verified against `e3def17`: 1.0.0 cannot display the 7,000 pair total (every total is
+`unitPrice × quantity`; `lineTotal` is never read). §70.3 stands. Added there and in deploy §14:
+header-less builds (pre-STEP 64, e.g. from `origin/prod`/`origin/staging`) cannot be gated.
+
+## 71.3 Staging audit
+
+- `backend/.env.staging.example` named the old placeholder host; now
+  `staging-api.otakugalaxystore.com` like the app and dashboard, guarded by
+  `backend/tests/env-templates.test.ts`.
+- `order-concurrency-audit` plan test: accepts either id-ordered plan (Sort on id, or forward
+  `products_pkey` scan); the planner switches with table statistics in a full run.
+- `performance-audit` purge hook 120 → 300 s (`7dbde63`): an overrunning purge kept a pooled
+  client busy and failed the five Phase C pool checks. Final full run on a fresh DB: 2069/2069.
+- Android staging release APK builds locally (debug-signed; only the staging API host compiled in).
+- Open, needs the owner: staging server/DB/DNS/TLS/secrets; staging dashboard and web-store
+  hosts (undecided); the first CI run on these commits; web-store as a required check.
+
+**Verdict: NOT READY FOR STAGING** (environment and CI, not code).
