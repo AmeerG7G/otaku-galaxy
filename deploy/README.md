@@ -508,62 +508,70 @@ compose و`kill_timeout: 15000` في PM2 أطول من ذلك عمداً.
 
 ## ١٣. STEP 68 — الموقع (`web-store/`) على الاختبار المسبق — **لا تُشغَّل**
 
-> **[حرِج] لا تُشغَّل هذا القسم.** صُحِّح من مراجعة R-17 لكنه لم يُنفَّذ على خادم،
-> ولم يُراجَع بعدُ على الخادم الحقيقي، وملف nginx للموقع **غير موجود** في
-> `deploy/nginx/`. يُرفع هذا التحذير بعد: (١) §٠ على الخادم، (٢) كتابة ملف nginx
-> للموقع ومراجعته، (٣) تنفيذٍ كامل على الاختبار المسبق تُسجَّل مخرجاته.
+> **[حرِج] لا تُشغَّل هذا القسم.** كُتب للمسار الأول (Docker) بعد فحص الخادم الحقيقي
+> للقراءة فقط (2026-10-26: لا node ولا PM2 على المضيف، والـAPI في حاوية)، لكنه لم
+> يُنفَّذ بعد. خادم الاختبار المسبق القائم لا يطابق أسماء هذا الدليل (المجلّد واسم
+> المشروع): الأوامر الدقيقة له في `docs/staging/staging-store-deploy-plan.md`. يُرفع
+> هذا التحذير بعد تنفيذٍ كامل تُسجَّل مخرجاته.
 
-**ما تغيّر عن النسخة السابقة من هذا القسم (المفقودة مع حاوية الجلسة السحابية):**
-البناء في نسخة الاختبار المسبق لا في مجلّد الإنتاج؛ PM2 يشغّل ملف Next التنفيذي
-نفسه (`otaku-web-staging`) لا أمراً لا يبدأ Next؛ المنفذ 3001 لا 3000؛
-`API_INTERNAL_URL` إلزامي في الإنتاج (كان غيابه يعني API الإنتاج على 4000)؛ nginx
-بعد الشهادة لا قبلها.
+**الشكل.** الموقع خادم Next.js (لا ملفات ثابتة): خدمة `web` في `docker-compose.yml`
+خلف الملف الشخصي `web`، صورتها `otaku-galaxy-web:<IMAGE_TAG>` من `web-store/Dockerfile`،
+في مشروع البيئة نفسه فتصل الـAPI باسم خدمته (`http://api:4000/api`)، ومنشورةٌ على
+`127.0.0.1:3001` وحده خلف nginx. لا `depends_on`: `up --no-deps web` لا يلمس `api`.
 
-**قبله:** API الاختبار المسبق يعمل على 4001 (§٢ أو §٣) والهجرة **083**
-(`083_order_idempotency.sql`، إضافية) مطبَّقة، و`BFF_SHARED_SECRET` مضبوط في
-`backend/.env.staging`.
+**[حرِج] متغيّرا الموقع لهما بديلٌ فاشل لا `:?`** — compose يفسّر الملف كله، فـ`:?`
+كانت ستوقف أوامر §٢ كلها. `WEB_ENV_FILE` غائب ⇒ لا تُنشأ الحاوية؛ `WEB_HOST_PORT`
+غائب ⇒ منفذٌ عشوائي محلي (nginx يعطي 502، ولا يقع على منفذ الإنتاج). لذلك تتحقّق
+الكتلة أدناه من المنفذ المنشور.
+
+**قبله:**
+- API الاختبار المسبق يعمل (§٢) والهجرة **083** (`083_order_idempotency.sql`) مطبَّقة.
+- `BFF_SHARED_SECRET` (`openssl rand -hex 32`) في `backend/.env.staging`، ثم إعادة
+  إنشاء `api` (§٢) — الـAPI لا يقبل عنوان الزبون الموقَّع بدونه.
+- ملف بيئة الموقع، على الخادم وحده (`web-store/.gitignore` و`.dockerignore` يستبعدانه):
 
 ```bash
-# مرةً واحدة — الإعدادات على الخادم وحده، لا تدخل Git (web-store/.gitignore).
-# لا تُنشأ فوق ملفٍ موجود: `install /dev/null` يفرّغه.
-F=/srv/otaku-galaxy-staging/web-store/.env.production.local
+# مرةً واحدة. لا يُنشأ فوق ملفٍ موجود: `install /dev/null` يفرّغه.
+F=/srv/otaku-galaxy-staging/web-store/.env.staging
 [ -e "$F" ] || install -m 600 /dev/null "$F"
 $EDITOR "$F"
-#   API_INTERNAL_URL=http://127.0.0.1:4001/api       ← API الاختبار المسبق لا 4000
+#   API_INTERNAL_URL=http://api:4000/api              ← اسم الخدمة ومنفذ الحاوية، لا 127.0.0.1
 #   MEDIA_ORIGIN=https://staging-api.example.com
 #   SITE_ORIGIN=https://staging.example.com
 #   SESSION_SEAL_KEYS=<مفتاحٌ للاختبار المسبق وحده>
 #   BFF_SHARED_SECRET=<القيمة نفسها في backend/.env.staging>
+```
 
-# كل إصدار
+**كل إصدار:**
+
+```bash
 ( set -e
   cd /srv/otaku-galaxy-staging
   test "$(git rev-parse --abbrev-ref HEAD)" = staging
-  cd web-store
-  npm ci && npm run build
-  cd ..
-  # `env -i`: Next لا يطغى على متغيّرٍ موجود من `.env.production.local`، وPM2 يدمج
-  # القشرة — `API_INTERNAL_URL` أو `PORT` مُصدَّران هنا كانا سيغلبان ملف البيئة.
-  env -i HOME="$HOME" PATH="$PATH" pm2 start deploy/pm2/ecosystem.config.cjs --only otaku-web-staging
-  pm2 save
+  export ENV_FILE=./backend/.env.staging HOST_PORT=4001 IMAGE_TAG=staging-$(git rev-parse --short HEAD)
+  export WEB_ENV_FILE=./web-store/.env.staging WEB_HOST_PORT=3001
+  docker compose -p otaku-staging --profile web build web
+  docker compose -p otaku-staging --profile web up -d --no-deps web
+  test "$(docker compose -p otaku-staging --profile web port web 3000)" = 127.0.0.1:3001
+  docker compose -p otaku-staging --profile web ps web    # healthy خلال دقيقة
+  curl -fsS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3001/
 )
 ```
 
-**التحقّق — كلّه يجب أن ينجح قبل nginx:**
+**التحقّق قبل nginx:** `200` أعلاه يعني أن الصفحة قرأت الـAPI. ثم منتجٌ تجريبي تنشئه
+لوحة الاختبار المسبق يظهر على `127.0.0.1:3001` **ولا يظهر** على موقع الإنتاج — هذا هو
+دليل العزل، لا رمز الحالة وحده. وسجلّ الحاوية بلا «is required in production».
 
-```bash
-ss -ltnp | grep ':3001 '                             # node على 127.0.0.1:3001 وحده
-curl -fsS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3001/     # 200 — الصفحة تقرأ الـAPI
-pm2 logs otaku-web-staging --lines 30 --nostream     # لا «API_INTERNAL_URL is required»
-```
+**nginx:** `deploy/nginx/staging-store.conf` (يضمّن
+`deploy/nginx/snippets/cloudflare-real-ip.conf`) — الشهادة أولاً (§٥ ثم §٤). الملف:
+`proxy_pass http://127.0.0.1:3001`؛ كتابةٌ فوق `X-Real-IP` و`X-Forwarded-For`
+بـ`$remote_addr` بعد استعادة العنوان الحقيقي من Cloudflare (وإلا اختار الزائر دلو
+حدوده، أو صار كل الزوّار دلواً واحداً)؛ كلمة مرورٍ للمختبِرين (`auth_basic`)؛
+`X-Robots-Tag: noindex` و`robots.txt` يمنع الكل؛ ولا HSTS قبل التحقّق من HTTPS.
 
-ثم منتجٌ تجريبي تنشئه لوحة الاختبار المسبق يظهر على `127.0.0.1:3001` **ولا يظهر**
-على موقع الإنتاج — هذا هو دليل العزل، لا رمز الحالة وحده.
-
-**nginx للموقع:** لا ملف له بعد. حين يُكتب: الشهادة أولاً (§٥ ثم §٤)، و`proxy_pass
-http://127.0.0.1:3001` للاختبار المسبق، وكتابةٌ فوق `X-Real-IP` و`X-Forwarded-For`
-بـ`$remote_addr` (الكتلة في `web-store/README.md`) — وإلا اختار الزائر دلو حدوده.
-
+**الإنتاج:** الكتلة نفسها من `/srv/otaku-galaxy` بـ`-p otaku-prod` و`.env.prod`
+و`WEB_HOST_PORT=3000` — لا تُشغَّل قبل إصدارٍ منفصل مُراجَع؛ ملف nginx للإنتاج غير
+موجود.
 
 ---
 

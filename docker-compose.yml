@@ -107,5 +107,66 @@ services:
     command: ["npx", "tsx", "scripts/migrate.ts"]
     restart: "no"
 
+  # ---------------------------------------------------------------------------
+  # الموقع (`web-store/`) — خادم Next.js، واجهةٌ وسيطة فوق الـAPI.
+  #
+  #   ENV_FILE=… HOST_PORT=… IMAGE_TAG=staging-<commit> \
+  #     WEB_ENV_FILE=./web-store/.env.staging WEB_HOST_PORT=3001 \
+  #     docker compose -p otaku-staging --profile web up -d --no-deps web
+  #
+  # [CRITICAL] ملفّ بيئةٍ خاص بالموقع، لا `ENV_FILE`: ملف الـAPI يحمل وصلة القاعدة
+  # وسرّ JWT، والموقع لا يحتاج منهما شيئاً. السرّ المشترك `BFF_SHARED_SECRET`
+  # يُكتب في الملفين بالقيمة نفسها.
+  #
+  # [CRITICAL] لماذا `:-` هنا لا `:?` كبقية الملف: compose يفسّر الملف كله مع كل
+  # أمر، حتى الخدمات خارج ملفّها الشخصي، فـ`:?` كانت ستُفشل أوامر الـAPI والهجرة
+  # الموثّقة كلها ما لم تحمل متغيّرات الموقع أيضاً. البديلان يفشلان مغلقَين:
+  #   • `WEB_ENV_FILE` غائب ⇒ مسارٌ لا وجود له، و`required: true` يرفض إنشاء الحاوية.
+  #   • `WEB_HOST_PORT` غائب ⇒ منفذٌ عشوائي على الواجهة المحلية: nginx لا يجده
+  #     (502)، ولا يقع أبداً على منفذ البيئة الأخرى. خطوة النشر تتحقّق من المنفذ.
+  #
+  # لا `depends_on`: كانت `up web` ستعيد إنشاء `api` بوسم الصورة الحالي. والخدمة
+  # خلف الملف الشخصي `web` فلا يشغّلها `up` بلا اسمها.
+  #
+  # يصل الـAPI عبر شبكة المشروع باسم الخدمة: `API_INTERNAL_URL=http://api:4000/api`
+  # (منفذ الحاوية الثابت، لا منفذ المضيف؛ 127.0.0.1 داخل الحاوية هو الحاوية نفسها).
+  # ---------------------------------------------------------------------------
+  web:
+    profiles: ["web"]
+    build:
+      context: ./web-store
+      target: runtime
+      args:
+        NODE_VERSION: "22"
+    image: otaku-galaxy-web:${IMAGE_TAG:?IMAGE_TAG مطلوب — وسمٌ خاص بالبيئة والإصدار، مثل staging-<commit> أو prod-<commit>}
+    env_file:
+      - path: ${WEB_ENV_FILE:-./web-store/.env.WEB_ENV_FILE-is-required}
+        required: true
+    environment:
+      # يطغى على أي قيمة في ملف البيئة: المنفذ داخل الحاوية ثابت (انظر `api`).
+      NODE_ENV: production
+      PORT: "3000"
+    ports:
+      # الواجهة المحلية وحدها: nginx هو الوحيد الذي يواجه الإنترنت، والموقع يثق
+      # بـ`X-Real-IP` لأنه لا يصله غير nginx.
+      - "127.0.0.1:${WEB_HOST_PORT:-}:3000"
+    restart: unless-stopped
+    stop_grace_period: 15s
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "require('http').get('http://127.0.0.1:3000/',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
 volumes:
   uploads:

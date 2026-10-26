@@ -93,7 +93,8 @@ Screenshots land in `test-results/screens/`. This is browser emulation; see the 
 
 ## Deployment notes (not done in this phase)
 
-- Run `npm start`. It listens on **127.0.0.1 only** (`PORT`, default 3000), behind nginx. Staging runs from its own checkout with its own `PORT` and `API_INTERNAL_URL` — see `deploy/README.md` §13 (marked «لا تُشغَّل» until reviewed on a server).
+- Staging runs as the compose service `web` (`web-store/Dockerfile`, profile `web`) in the API's own compose project, published on `127.0.0.1:3001` behind nginx. Its variables come from a server-only `web-store/.env.staging` (`WEB_ENV_FILE`), never from the API's env file, and it reaches the API by service name: `API_INTERNAL_URL=http://api:4000/api`. See `deploy/README.md` §13 (marked «لا تُشغَّل» until run on a server) and, for the real staging server, `docs/staging/staging-store-deploy-plan.md`.
+- Without containers, run `npm start`. It listens on **127.0.0.1 only** (`PORT`, default 3000), behind nginx, with its own `PORT` and `API_INTERNAL_URL` per environment.
 - nginx must:
   - **overwrite** both client IP headers. The site signs whatever `X-Real-IP` it receives as the shopper's IP, so a value passed through from the browser would let a visitor choose their own rate-limit bucket:
 
@@ -109,9 +110,10 @@ Screenshots land in `test-results/screens/`. This is browser emulation; see the 
 
   - redirect `www.otakugalaxystore.com` to `https://otakugalaxystore.com`;
   - send HSTS.
+- `deploy/nginx/staging-store.conf` is the staging site: all of the above plus Cloudflare `real_ip` (`deploy/nginx/snippets/cloudflare-real-ip.conf`), a tester password (`auth_basic`, the `Authorization` header is not passed on), `X-Robots-Tag: noindex` on every response and a `robots.txt` that disallows everything. HSTS is added only after HTTPS is verified there.
 - If Cloudflare is put in front, nginx needs `real_ip` configuration for Cloudflare's ranges first. Otherwise every shopper appears as a Cloudflare address.
 - Set the same `BFF_SHARED_SECRET` on the API and here. Use a different secret per environment.
-- `API_INTERNAL_URL` must be loopback or TLS. The signed IP headers are only as private as that hop.
+- `API_INTERNAL_URL` must be loopback, the host-internal compose network (`http://api:4000/api`), or TLS. The signed IP headers are only as private as that hop.
 - Every API call is made per request with the shopper's signed IP. Nothing is cached in Next's fetch cache (see `src/lib/api.ts`), so each page view counts against that shopper's API limits (`RATE_LIMIT_GLOBAL_MAX`, 300 per 15 minutes by default, shared with the app on the same IP).
   - Link prefetching is off (`src/components/Link.tsx`). With it, every card and chip in view was a server render, and a listing page cost 11–32 API calls.
   - Without it a page view costs what the page reads, one to three calls, like a screen in the app. `e2e/budget.spec.ts` browses 42 pages as one shopper.

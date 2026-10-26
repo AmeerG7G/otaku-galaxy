@@ -169,11 +169,11 @@ describe('[R-17] كل كتلة أوامر تخصّ بيئةً واحدة وتت�
   it('كل أمر docker compose يسمّي مشروع بيئته، و`migrate` تُبنى قبل تشغيلها', () => {
     const block = COMPOSE.slice(COMPOSE.indexOf('\nservices:'), COMPOSE.indexOf('\nvolumes:'));
     const services = new Set([...block.matchAll(/^ {2}([a-z][\w-]*):\s*$/gm)].map((m) => m[1]!));
-    expect(services).toEqual(new Set(['api', 'migrate']));
+    expect(services).toEqual(new Set(['api', 'migrate', 'web']));
     const commands = bashLines(RUNBOOK).filter((line) => /docker compose (?!ls\b)/.test(line));
     expect(commands.length).toBeGreaterThan(0);
     for (const line of commands) {
-      expect(line, line).toMatch(/(^|\s)docker compose -p otaku-(staging|prod) /);
+      expect(line, line).toMatch(/(^|[\s(])docker compose -p otaku-(staging|prod) /);
       for (const m of line.matchAll(/(?:up -d|run --rm|build)((?: [a-z][\w-]*)+)/g)) {
         for (const svc of m[1]!.trim().split(/\s+/)) expect(services.has(svc), line).toBe(true);
       }
@@ -248,6 +248,26 @@ describe('[R-17] الملفات تعزل الاختبار المسبق عن ال
     // اسمٌ ثابت للحاوية أو للحجم يجعله واحداً لكل مشروع — أي للبيئتين.
     expect(COMPOSE).not.toMatch(/^\s*container_name:/m);
     expect(COMPOSE.slice(COMPOSE.indexOf('\nvolumes:'))).not.toMatch(/^\s+name:/m);
+  });
+
+  it('docker-compose.yml: الموقع ملفّ بيئته وحده، ومنفذه محلي، ولا يجرّ `api` ولا يبدأ إلا باسمه', () => {
+    const web = serviceBlock('web');
+    expect(web).toMatch(/\n {4}profiles: \["web"\]\n/);
+    expect(web).toMatch(/\n {4}image: otaku-galaxy-web:\$\{IMAGE_TAG:\?[^}]+\}\n/);
+    // ملف الـAPI يحمل وصلة القاعدة وسرّ JWT: لا يصل الموقع.
+    expect(web).not.toMatch(/ENV_FILE:\?/);
+    // البديل مسارٌ غير موجود، و`required: true` يرفض الإنشاء بدونه.
+    expect(web).toMatch(/\n {6}- path: \$\{WEB_ENV_FILE:-\.\/web-store\/\.env\.WEB_ENV_FILE-is-required\}\n {8}required: true\n/);
+    // بلا منفذٍ معطى: منفذٌ عشوائي محلي، لا منفذ بيئةٍ أخرى.
+    expect(web).toMatch(/\n {6}- "127\.0\.0\.1:\$\{WEB_HOST_PORT:-\}:3000"\n/);
+    expect(web).not.toMatch(/depends_on:/);
+    // الكتلة في الدليل تتحقّق من المنفذ المنشور قبل أن تعدّ النشر ناجحاً.
+    const blocks = subshells(RUNBOOK).filter((b) => b.some((line) => /up -d --no-deps web$/.test(line)));
+    expect(blocks).toHaveLength(1);
+    const b = blocks[0]!;
+    const up = b.findIndex((line) => /up -d --no-deps web$/.test(line));
+    const port = b.findIndex((line) => /^test "\$\(docker compose -p otaku-staging --profile web port web 3000\)" = 127\.0\.0\.1:3001$/.test(line));
+    expect(port, b.join(' ⏎ ')).toBe(up + 1);
   });
 
   it('كل تطبيق PM2 في مجلّد بيئته، ولا مجلّدان ولا منفذان مشتركان', () => {
