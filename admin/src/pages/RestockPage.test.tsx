@@ -153,7 +153,8 @@ describe('طلبات التوفر على الهاتف', () => {
   })
 
   it('«حفظ» يرسل الموعد عبر المسار الضيّق؛ «تراجع» لا يرسل شيئاً', async () => {
-    const at = '2026-12-01T09:00:00.000Z'
+    // موعدٌ بعيد: «حفظ» يرفض الماضي (بتوقيت بغداد)، فتاريخٌ ثابت قريب يفشل يوم يمضي.
+    const at = '2099-12-01T09:00:00.000Z'
     vi.mocked(listRestockDemand).mockResolvedValue([row({ restockAt: at })])
     const user = userEvent.setup()
     renderPage()
@@ -215,5 +216,41 @@ describe('طلبات التوفر على الهاتف', () => {
     await screen.findByText('حقيبة أنمي')
     await user.click(screen.getByText('تحديد'))
     expect(screen.getByText('حفظ').closest('button')).toBeDisabled()
+  })
+
+  /** إدخالٌ يدوي (2026-10-26): `YYYY-MM-DD` و`HH:mm` بتوقيت بغداد، والتقويم اختياري. */
+  it('[CRITICAL] كتابةٌ يدوية بأرقام عربية-هندية ← لحظة بغداد', async () => {
+    vi.mocked(listRestockDemand).mockResolvedValue([row()])
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByText('حقيبة أنمي')
+    await user.click(screen.getByText('تحديد'))
+    await user.click(screen.getByLabelText('تاريخ التوفر المتوقّع'))
+    await user.paste('٢٠٩٩١١٠٥')
+    expect(screen.getByLabelText('تاريخ التوفر المتوقّع')).toHaveValue('2099-11-05')
+    await user.click(screen.getByLabelText('الوقت'))
+    await user.paste('1430')
+    expect(screen.getByLabelText('الوقت')).toHaveValue('14:30')
+    await user.click(screen.getByText('حفظ'))
+    await waitFor(() => expect(setRestockAt).toHaveBeenCalledWith('p1', '2099-11-05T11:30:00.000Z'))
+  })
+
+  it('[CRITICAL] تاريخٌ مستحيل أو في الماضي يُرفض برسالةٍ عربية ولا يُرسَل', async () => {
+    vi.mocked(listRestockDemand).mockResolvedValue([row()])
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByText('حقيبة أنمي')
+    await user.click(screen.getByText('تحديد'))
+    const date = screen.getByLabelText('تاريخ التوفر المتوقّع')
+    await user.click(date)
+    await user.paste('2099-02-30')
+    await user.click(screen.getByText('حفظ'))
+    expect(await screen.findByText('اليوم غير صالح — الشهر 02 من 2099 فيه 28 يوماً')).toBeInTheDocument()
+
+    await user.clear(date)
+    await user.paste('2001-01-01')
+    await user.click(screen.getByText('حفظ'))
+    expect(await screen.findByText(/الموعد في الماضي/)).toBeInTheDocument()
+    expect(setRestockAt).not.toHaveBeenCalled()
   })
 })

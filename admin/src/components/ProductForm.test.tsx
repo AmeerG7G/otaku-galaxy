@@ -330,3 +330,52 @@ describe('[CRITICAL] محتوى المنتج بلغتين في النموذج', 
     })
   })
 })
+
+/** «متوقع التوفر» يُكتب باليد (2026-10-26) — يومٌ في بغداد، فارغه `null`. */
+describe('[CRITICAL] موعد التوفر — إدخال يدوي', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(listAdminCategories).mockResolvedValue({
+      items: [{ id: 'c1', name: 'قسم', subcategories: [] }],
+    } as never)
+    vi.mocked(listFranchises).mockResolvedValue({ items: [] } as never)
+  })
+
+  const filled = { nameAr: 'حقيبة', descriptionAr: 'وصف' }
+
+  it('أرقام عربية-هندية بلا فواصل ← منتصف ليل بغداد', async () => {
+    const { onSubmit } = renderFormIn('edit', filled)
+    const field = await screen.findByLabelText('متوقع التوفر')
+    await userEvent.click(field)
+    await userEvent.paste('٢٠٩٩١١٠٥')
+    expect(field).toHaveValue('2099-11-05')
+    await userEvent.click(screen.getByRole('button', { name: 'حفظ التعديلات' }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
+    expect(onSubmit.mock.calls[0]![0].restockAt).toBe('2099-11-04T21:00:00.000Z')
+  })
+
+  it('تاريخٌ مستحيل يُرفض برسالةٍ عربية ولا يُحفظ', async () => {
+    const { onSubmit } = renderFormIn('edit', filled)
+    await userEvent.click(await screen.findByLabelText('متوقع التوفر'))
+    await userEvent.paste('2099-02-29')
+    await userEvent.click(screen.getByRole('button', { name: 'حفظ التعديلات' }))
+    expect(await screen.findByText('اليوم غير صالح — الشهر 02 من 2099 فيه 28 يوماً')).toBeInTheDocument()
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('الموعد المحمَّل يُعرض بيومه في بغداد، ويُحفظ كما هو إن لم يُلمس، ومسحه `null`', async () => {
+    const loaded = '2099-11-04T21:00:00.000Z'
+    const { onSubmit } = renderFormIn('edit', { ...filled, restockAt: loaded })
+    const field = await screen.findByLabelText('متوقع التوفر')
+    expect(field).toHaveValue('2099-11-05')
+    await userEvent.click(screen.getByRole('button', { name: 'حفظ التعديلات' }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
+    expect(onSubmit.mock.calls[0]![0].restockAt).toBe(loaded)
+
+    await userEvent.clear(field)
+    await userEvent.click(screen.getByRole('button', { name: 'حفظ التعديلات' }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2))
+    expect(onSubmit.mock.calls[1]![0].restockAt).toBeNull()
+  })
+})
+
