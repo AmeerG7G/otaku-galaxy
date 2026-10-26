@@ -103,6 +103,40 @@ class LocalDiskStorage implements StorageDriver {
 export const uploadsRoot = path.resolve(process.cwd(), config.uploads.directory);
 
 /**
+ * فحص الكتابة عند الإقلاع — مجلّد كل غرضٍ لهذا الشهر، كما يكتب `save`.
+ *
+ * [CRITICAL] (2026-10-26) رفعُ البنرات على الاختبار المسبق فشل بـ`STORAGE_FAILED`
+ * والسبب (`EACCES`/`ENOSPC`…) لا يظهر إلا في سجلّ الحاوية لحظة الرفع. مجلّدٌ لا
+ * يكتبه مستخدم الحاوية (حجمٌ مُركَّب أنشأ الجذرُ بعض مجلّداته) يُفشل غرضاً واحداً
+ * ويترك البقية تعمل، فلا يلاحظه أحد حتى يحاول مسؤولٌ الرفع. الفحص يكتب ملفاً
+ * مؤقتاً ويحذفه في كل مجلّد، ويطبع تحذيراً واحداً لكل غرضٍ فاشل في **السجلّ
+ * وحده** — لا مسار ولا تفاصيل في أي استجابة عامة. لا يمنع الإقلاع: القراءة
+ * (`/uploads`) وبقية الخدمة تعمل، والفشل نفسه يبقى `STORAGE_FAILED` عند الرفع.
+ */
+export async function probeUploadsWritable(
+  purposes: readonly MediaPurpose[],
+  root: string = uploadsRoot,
+  now: Date = new Date(),
+): Promise<Array<{ purpose: MediaPurpose; code: string }>> {
+  const month = `${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+  const failures: Array<{ purpose: MediaPurpose; code: string }> = [];
+  for (const purpose of purposes) {
+    const dir = path.join(root, purpose, month);
+    const probe = path.join(dir, `.write-probe-${randomUUID()}`);
+    try {
+      await mkdir(dir, { recursive: true });
+      await writeFile(probe, '');
+      await unlink(probe);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code ?? 'UNKNOWN';
+      failures.push({ purpose, code });
+      console.warn(`[uploads] NOT writable: purpose=${purpose} month=${month} code=${code} — uploads of this type will fail with STORAGE_FAILED`);
+    }
+  }
+  return failures;
+}
+
+/**
  * الروابط تُخزَّن **نسبية** (`/uploads/...`) لا مطلقة.
  *
  * الأصل المطلق لا يصلح أن يُخبز وقت الرفع: الخادم نفسه يُرى بعناوين مختلفة
