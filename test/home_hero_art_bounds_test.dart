@@ -7,6 +7,12 @@
 //
 // الحدّ: الرسم في صندوقٍ داخل البطاقة بإزاحة r·(1 − 1/√2) من كل جهة — أصغر
 // إزاحةٍ متساوية تُبقي زاوية الصورة داخل انحناء زاوية البطاقة (r = ٣٨).
+//
+// (2026-10-26) لا بطل مضمَّن ولا شخصية بديلة: البطاقة لبنرٍ نشط، والمقيس هو
+// صورة المسؤول نفسها — تُقدَّم بايتاتها (الصورة 29 بأبعادها الحقيقية) عبر
+// `serveNetworkImages`، فتبقى الحدود مقيسةً على صورةٍ مفكوكة لا على صندوق.
+
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -15,10 +21,13 @@ import 'package:otaku_galaxy/core/l10n/locale_scope.dart';
 import 'package:otaku_galaxy/features/home/presentation/widgets/home_compositions.dart';
 import 'package:otaku_galaxy/features/products/domain/entities/banner.dart' as model;
 import 'package:otaku_galaxy/features/settings/presentation/cubit/locale_cubit.dart';
-import 'package:otaku_galaxy/features/visuals/domain/visual_slot.dart';
 import 'package:otaku_galaxy/features/visuals/presentation/character_artwork.dart';
 
+import 'support/fake_network_image.dart';
 import 'support/render_harness.dart';
+
+/// رابط صورة البنر في الاختبار — يُجاب ببايتات الصورة 29.
+const _img = 'https://fixture.test/uploads/banner/hero.png';
 
 const _phones = <String, Size>{
   'هاتف صغير': Size(320, 640),
@@ -32,22 +41,43 @@ const _phones = <String, Size>{
 /// البنر الرئيسي في قاعدة التطوير — عنوانه وبلا عنوانٍ فرعي.
 const _devHero = model.Banner(
   id: 'hero',
+  imageUrl: _img,
   titleAr: 'اكتشف، اجمع، واستمتع!',
   placement: 'hero',
 );
 
 final double _inset = AppDimens.radiusXl * (1 - 0.7071067811865476);
 
+/// بنرٌ بلغتين وسطرٍ ثانٍ — أطول نصّاً من بنر التطوير.
+const _bilingualHero = model.Banner(
+  id: 'hero-2',
+  imageUrl: _img,
+  titleAr: 'موسم جديد من\nعالم الأنمي',
+  subtitleAr: 'تشكيلة جديدة',
+  titleCkb: 'وەرزێکی نوێ لە\nجیهانی ئەنیمە',
+  subtitleCkb: 'کۆکراوەیەکی نوێ',
+  placement: 'hero',
+);
+
 Future<void> _pump(
   WidgetTester tester, {
+  bool serve = true,
   required Size size,
-  model.Banner? banner,
+  required model.Banner banner,
   double textScale = 1.0,
   AppLanguage language = AppLanguage.arabic,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
+  if (banner.imageUrl case final url? when serve) {
+    await tester.runAsync(
+      () => cacheNetworkImage(
+        url,
+        projectAssetBytes('assets/art/characters/29.png'),
+      ),
+    );
+  }
 
   await tester.pumpWidget(
     MaterialApp(
@@ -72,10 +102,6 @@ Future<void> _pump(
     ),
   );
   await tester.runAsync(() async {
-    await precacheImage(
-      AssetImage(CharacterArt.forSlot(VisualSlots.homeHero)!),
-      tester.element(find.byType(Scaffold)),
-    );
     await Future<void>.delayed(const Duration(milliseconds: 200));
   });
   await tester.pump();
@@ -93,7 +119,7 @@ Rect _card(WidgetTester tester) => tester.getRect(
 Rect _art(WidgetTester tester) => tester.getRect(
   find.descendant(
     of: find.byType(HomeHeroCard),
-    matching: find.byType(CharacterArtwork),
+    matching: find.byType(RawImage),
   ),
 );
 
@@ -143,8 +169,8 @@ void main() {
   group('[CRITICAL] داخل البطاقة على كل مقاس', () {
     for (final language in AppLanguage.values) {
       for (final entry in _phones.entries) {
-        for (final banner in [null, _devHero]) {
-          final which = banner == null ? 'بلا بنر' : 'بنر التطوير';
+        for (final banner in [_devHero, _bilingualHero]) {
+          final which = banner == _devHero ? 'بنر التطوير' : 'بنر بلغتين وسطرٍ ثانٍ';
           testWidgets('${language.name} — ${entry.key} — $which', (
             tester,
           ) async {
@@ -191,7 +217,15 @@ void main() {
           // الأصلي حيث يتّسع المكان (اللوح).
           expect(art.right, lessThanOrEqualTo(_textLeft(tester) + 0.5));
           expect(art.height, lessThanOrEqualTo(168 + 0.5));
-          if (entry.value.width >= 834) expect(art.height, closeTo(168, 0.5));
+          // حيث يتّسع العرض (اللوح) يأخذ الارتفاع كلّه: ١٦٨ أو ما يبقى بين
+          // الإزاحتين — بطاقةٌ بلا سطرٍ ثانٍ عند حدّها الأدنى (١٧٤) أقصر من
+          // الرسم (منذ 2026-10-26 لا كبسولة مخترعة تطيلها).
+          if (entry.value.width >= 834) {
+            expect(
+              art.height,
+              closeTo(math.min(168, card.height - 2 * _inset), 0.5),
+            );
+          }
         },
       );
     }
@@ -207,6 +241,7 @@ void main() {
               size: const Size(393, 852),
               banner: const model.Banner(
                 id: 'hero',
+                imageUrl: _img,
                 titleAr: 'اكتشف، اجمع، واستمتع!',
                 titleCkb: 'بدۆزەرەوە، کۆبکەرەوە و چێژ وەربگرە!',
                 placement: 'hero',
@@ -247,7 +282,12 @@ void main() {
       await _pump(
         tester,
         size: const Size(834, 1112),
-        banner: const model.Banner(id: 'h', titleAr: 'عرض', subtitleAr: 'جديد'),
+        banner: const model.Banner(
+          id: 'h',
+          imageUrl: _img,
+          titleAr: 'عرض',
+          subtitleAr: 'جديد',
+        ),
       );
       final card = _card(tester);
       final art = _art(tester);
@@ -279,12 +319,14 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('صورة المسؤول تفشل — الشخصية البديلة في الحدود نفسها', (
+    testWidgets('صورة المسؤول تفشل — لا شخصية بديلة، والبطاقة سليمة', (
       tester,
     ) async {
-      // `flutter test` يجيب كل طلب شبكة بـ٤٠٠، فتعود الصورة إلى البديل عبر
-      // `errorBuilder` — المسار نفسه الذي يأخذه جهازٌ بلا اتصال.
+      // بلا `serveNetworkImages`: `flutter test` يجيب كل طلب شبكة بـ٤٠٠ — المسار
+      // نفسه الذي يأخذه جهازٌ بلا اتصال. كان البديل الشخصية 29؛ أُزيل
+      // (2026-10-26): لا صورة تُخترع مكان صورة المسؤول.
       await _pump(
+        serve: false,
         tester,
         size: const Size(412, 892),
         banner: const model.Banner(
@@ -297,11 +339,21 @@ void main() {
         () => Future<void>.delayed(const Duration(milliseconds: 300)),
       );
       await tester.pump();
-      final card = _card(tester);
-      final art = _art(tester);
-      expect(art.left, closeTo(card.left + _inset, 0.5));
-      expect(art.top - card.top, closeTo(card.bottom - art.bottom, 0.5));
-      _expectInsideRoundedCard(art, card);
+      expect(
+        find.descendant(
+          of: find.byType(HomeHeroCard),
+          matching: find.byType(CharacterArtwork),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(HomeHeroCard),
+          matching: find.byType(RawImage),
+        ),
+        findsNothing,
+      );
+      expect(find.text('اكتشف، اجمع، واستمتع!'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   });

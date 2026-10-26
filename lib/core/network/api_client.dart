@@ -63,6 +63,12 @@ class ApiClient {
           if (language != null && language.isNotEmpty) {
             options.headers['Accept-Language'] = language;
           }
+          // «قريباً — السعر يُعلن لاحقاً» (084): الكتالوج يُخفي المنتج بلا سعر
+          // عن كل عميلٍ لا يطلبه، لأن النسخ المثبَّتة الأقدم تقرأ السعر الغائب
+          // صفراً. هذه النسخة تعرضه بلا سعر ولا زرّ إضافة (`priceAnnounced`)،
+          // فتطلبه كما يفعل المتجر على الويب — فيرى الزبون في التطبيق ما يراه
+          // هناك (2026-10-26).
+          options.headers['X-OG-Unpriced'] = '1';
           _log(
             '▶ [$platformLabel] base=${_dio.options.baseUrl} '
             '${options.method} ${options.uri}',

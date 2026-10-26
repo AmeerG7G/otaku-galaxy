@@ -199,15 +199,20 @@ export const governorateRepo = {
     return rows.map((row) => ({
       id: row.id,
       name: row.name,
+      // اللوحة تعدّل الاسم الكردي (اختياري، 2026-10-26) فتحتاج قيمته المحفوظة.
+      nameCkb: row.name_ckb,
       deliveryFee: Number(row.delivery_fee),
       isActive: row.is_active,
     }));
   },
 
-  async create(db: pg.Pool | pg.PoolClient, input: { name: string; deliveryFee: number }) {
+  async create(
+    db: pg.Pool | pg.PoolClient,
+    input: { name: string; nameCkb?: string | null; deliveryFee: number },
+  ) {
     const { rows } = await db.query<GovernorateRow>(
-      'INSERT INTO governorates (name, delivery_fee) VALUES ($1, $2) RETURNING *',
-      [input.name, input.deliveryFee],
+      'INSERT INTO governorates (name, name_ckb, delivery_fee) VALUES ($1, $2, $3) RETURNING *',
+      [input.name, input.nameCkb ?? null, input.deliveryFee],
     );
     return rows[0]!;
   },
@@ -215,13 +220,17 @@ export const governorateRepo = {
   async update(
     db: pg.Pool | pg.PoolClient,
     id: string,
-    input: { name?: string; deliveryFee?: number; isActive?: boolean },
+    input: { name?: string; nameCkb?: string | null; deliveryFee?: number; isActive?: boolean },
   ): Promise<GovernorateRow | null> {
     const sets: string[] = [];
     const values: unknown[] = [id];
     if (input.name !== undefined) {
       values.push(input.name);
       sets.push(`name = $${values.length}`);
+    }
+    if (input.nameCkb !== undefined) {
+      values.push(input.nameCkb);
+      sets.push(`name_ckb = $${values.length}`);
     }
     if (input.deliveryFee !== undefined) {
       values.push(input.deliveryFee);

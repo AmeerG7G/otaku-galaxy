@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatDateTime, formatIqd, localPhone, orderStatusLabel } from './format';
+import { displayRestockAt, formatDateTime, formatIqd, formatShortStoreDate, localPhone, orderStatusLabel } from './format';
 import { resolveMediaUrl } from './media';
 
 describe('formatIqd', () => {
@@ -45,5 +45,34 @@ describe('resolveMediaUrl', () => {
     for (const value of ['javascript:alert(1)', 'data:image/png;base64,AAAA', '//evil.example/a.png', 'uploads/a.png', '', '   ', null, undefined]) {
       expect(resolveMediaUrl(value, origin), String(value)).toBeNull();
     }
+  });
+});
+
+describe('formatShortStoreDate — the Baghdad calendar day, like the app', () => {
+  it('Baghdad midnight stored as 21:00Z reads as the chosen day, not the day before', () => {
+    expect(formatShortStoreDate('2026-10-12T21:00:00.000Z')).toBe('13 أكتوبر');
+    expect(formatShortStoreDate('2026-10-12T20:59:00.000Z')).toBe('12 أكتوبر');
+  });
+  it('crosses month, year and leap-day boundaries in the store timezone', () => {
+    expect(formatShortStoreDate('2026-12-31T21:00:00.000Z')).toBe('1 يناير');
+    expect(formatShortStoreDate('2028-02-28T21:00:00.000Z')).toBe('29 فبراير');
+  });
+});
+
+describe('displayRestockAt — one rule with the app', () => {
+  const now = new Date('2026-10-26T12:00:00Z');
+  const future = '2026-11-04T21:00:00.000Z';
+  const past = '2026-10-12T21:00:00.000Z';
+  it('no announced price: the date while it is ahead, never a past one', () => {
+    expect(displayRestockAt({ price: null, stock: 1, restockAt: future }, now)).toBe(future);
+    expect(displayRestockAt({ price: null, stock: 1, restockAt: past }, now)).toBeNull();
+  });
+  it('priced: only when out of stock (coming soon), never when buyable', () => {
+    expect(displayRestockAt({ price: 5000, stock: 0, restockAt: future }, now)).toBe(future);
+    expect(displayRestockAt({ price: 5000, stock: 3, restockAt: future }, now)).toBeNull();
+  });
+  it('no date: nothing', () => {
+    expect(displayRestockAt({ price: null, stock: 0, restockAt: null }, now)).toBeNull();
+    expect(displayRestockAt({ price: 5000, stock: 0, restockAt: null }, now)).toBeNull();
   });
 });

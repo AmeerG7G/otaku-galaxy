@@ -85,7 +85,8 @@ Future<ValueNotifier<AppLanguage>> _pumpHome(
             child: Scaffold(
               body: ListView(
                 children: [
-                  HomeHeroCard(onShop: () {}, banner: data.heroBanner),
+                  if (data.heroBanner case final hero?)
+                    HomeHeroCard(onShop: () {}, banner: hero),
                   HomePromoRail(onTap: () {}, banners: data.promoBanners),
                 ],
               ),
@@ -213,7 +214,7 @@ void main() {
     });
 
     testWidgets(
-      'بلا نصٍّ بأي لغة ← النصّ الافتراضي للواجهة بلغتها، لا سطرٌ فارغ',
+      'بلا نصٍّ بأي لغة ← بنرٌ صورةٌ فقط: لا عنوان ولا سطرٌ مخترع (2026-10-26)',
       (tester) async {
         final data = _home(
           hero: _bannerJson(
@@ -226,15 +227,21 @@ void main() {
           ),
         );
         final language = await _pumpHome(tester, data);
-        final ar = AppStrings.of(AppLanguage.arabic);
-        expect(_inHero(ar('heroNewSeason')), findsOneWidget);
-        expect(_inHero(ar('heroNewCollection')), findsOneWidget);
-
-        language.value = AppLanguage.kurdish;
-        await tester.pump();
-        final ckb = AppStrings.of(AppLanguage.kurdish);
-        expect(_inHero(ckb('heroNewSeason')), findsOneWidget);
-        expect(_inHero(ckb('heroNewCollection')), findsOneWidget);
+        for (final l in AppLanguage.values) {
+          language.value = l;
+          await tester.pump();
+          // البطاقة تبقى (البنر نشط) وزرّها وحده نصّها — لا بديل عن العنوان.
+          final texts = tester
+              .widgetList<RichText>(
+                find.descendant(
+                  of: find.byType(HomeHeroCard),
+                  matching: find.byType(RichText),
+                ),
+              )
+              .map((t) => t.text.toPlainText())
+              .toList();
+          expect(texts, [AppStrings.of(l)('shopNow')], reason: '$l');
+        }
       },
     );
 

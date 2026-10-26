@@ -12101,3 +12101,40 @@ then the full run above.
 - `anime-search.test.ts` leaves a «One Piece Test» franchise linked to a product in the test DB.
   The 086 test asserts containment, not an exact count, so it does not depend on file order; the
   leak itself is not fixed.
+
+# STEP 73 — STAGING REMEDIATION: HERO, CATEGORIES ART, OPTIONAL KURDISH, MANUAL DATES, UNPRICED IN THE APP (2026-10-26)
+
+Branch `fix/staging-remediation` from `origin/dev` `64636fd`. Owner decisions of 2026-10-26, taken
+after a read-only Staging audit. They supersede the earlier STEPs named below.
+
+## 73.1 Decisions
+
+| Topic | Decision | Supersedes |
+|---|---|---|
+| Home hero | No built-in hero. The card renders only for an active hero banner; no banner = no card and no reserved space. No invented title/kicker for a text-less banner; no substitute character when its image fails. | The `heroNewSeason`/`heroNewCollection` fallback and `VisualSlots.homeHero` (29) |
+| Banner art | Stays uncropped (`BoxFit.contain` inside the r·(1−1/√2) inset box). A waist-up look comes from a pre-cropped upload, not runtime cropping. | — (confirms STEP 62 / STEP 64 §17) |
+| Categories character (39) | Starts below the status bar and ends at the first category card (scaled with its aspect, max width 110). The header gradient still uses the status-bar area. | STEP 63 «الأقسام» row (art in the status-bar area), commit `cfd04b0` |
+| Kurdish content | Optional everywhere a `*_ckb` column exists: products, options, banners, categories, subcategories, governorates, zones. Arabic stays required where it was. Missing/blank Kurdish → Arabic (unchanged read path). PATCH `null`/blank clears one Kurdish field. No migration. | STEP 61 "Create: all four required" |
+| Dates in the dashboard | Typed `YYYY-MM-DD` (and `HH:mm`), calendar optional, Arabic-Indic digits accepted, strict calendar validation. Date-only = Baghdad midnight; date-time = Baghdad time (UTC+03:00, no DST). Wire format unchanged (ISO UTC). | antd `DatePicker` (`YYYY/MM/DD`, browser timezone) |
+| Unpriced products in the app | New app builds send `X-OG-Unpriced: 1` and show «السعر لم يُعلن بعد» — no price, no stock state, no add-to-cart. Installed older builds stay protected by the server rule. | STEP 69.3 "installed apps must never see one" (now: builds that cannot render it) |
+| Expected availability date | Shown by the same rule on app and web: dated out-of-stock («قريباً يتوفر» + date), or an unpriced product while its date is ahead. Day = Baghdad calendar day. | Web store never showed the date |
+
+## 73.2 Root causes recorded
+
+- **«موسم جديد من عالم الأنمي» after deleting every banner:** not data. `GET /catalog/home` returned
+  `heroBanner: null`; `HomeHeroCard` drew built-in copy and character 29.
+- **Product on the web store but not in the app:** the product («ععع») had `price NULL`; the
+  catalog hides unpriced products from clients without `X-OG-Unpriced: 1`. Its date was irrelevant.
+- **Dazai instead of Frieren (Orders empty state, slot 20):** the swap existed only as an uncommitted
+  working-tree file since 2026-10-04; every Staging APK bundled Dazai.
+- **Banner upload `STORAGE_FAILED`:** thrown only when `storage.save` (mkdir/writeFile under
+  `/app/uploads/<purpose>/YYYY/MM`) fails. The errno is only in the container log. A boot-time probe
+  now logs `[uploads] NOT writable: purpose=… code=…` per unwritable purpose (server log only).
+- **Birthday:** the app accepted 31/4 and 30/2; the server already rejected them in
+  `birthdayService` (after the unlock check). The app now checks month length (29/2 valid).
+
+## 73.3 Notifications (unchanged code, state recorded)
+
+In-app notifications work without Firebase. Push is code-complete but unconfigured on Staging:
+server `FCM_*` empty, Staging APK built without `FIREBASE_*` dart-defines, dashboard built without
+`VITE_FIREBASE_*`. Real delivery has never been proven. Remaining owner steps: deploy/README §11.

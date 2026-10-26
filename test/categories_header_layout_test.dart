@@ -1,16 +1,16 @@
 // ترويسة الأقسام — رسم الشخصية (39)، موضعه، وعدم قصّه بالترويسة.
 //
 // الثوابت المحكومة:
-//   0 <= characterTop < statusBarBottom (الرسم يمتدّ إلى منطقة شريط الحالة — قرار المالك لهذه الشاشة وحدها)
-//   العنوان تحت شريط الحالة                (لا نصَّ تحت أيقونات النظام)
-//   characterBottom > categoriesHeaderBottom  (الرسم يمتدّ أسفل الترويسة عند 390px فأكثر؛ عند 360px ينتهي قبل حافتها بثلاثة بكسلات)
+//   characterTop == statusBarBottom          (لا يقع رأس الشخصية تحت الساعة والبطارية)
+//   characterBottom <= أعلى البطاقة الأولى    (لا يدخل في بطاقة القسم الأولى)
+//   characterWidth <= 110                     (يُصغَّر بنسبته حين لا يتّسع، ولا يكبر)
+//   العنوان تحت شريط الحالة                    (لا نصَّ تحت أيقونات النظام)
 //   الرسم خارج صندوق OtakuScreenHeader        (لا قصّ بـ Clip.hardEdge)
-//   الرسم آخر طفلٍ في المكدّس                  (يُرسم فوق الجميع)
+//   الرسم آخر ما يُرسم                         (فوق القائمة حين تُمرَّر)
 //
-// [CRITICAL] `top: 0`: الرسم والترويسة يمتدّان إلى منطقة شريط الحالة في هذه
-// الشاشة وحدها، ويبقى النصّ التفاعلي تحت شريط الحالة (SafeArea الترويسة) والرسم
-// IgnorePointer فلا يعترض لمساً. `a83fdf9` أنزل الرسم إلى أسفل شريط الحالة وهذا
-// ناقض القرار ولاختبار `character_art_placement_test`.
+// [CRITICAL] (المالك، 2026-10-26) يحلّ محلّ قرار 2026-10-10 «`top: 0`، الرسم في
+// منطقة شريط الحالة»: الرأس كان تحت الساعة والبطارية. وإنزاله وحده (`a83fdf9`)
+// يُدخل أسفله ٢٣ بكسل في البطاقة الأولى، فالرسم محصورٌ بين الحدّين.
 
 import 'dart:io';
 
@@ -68,11 +68,15 @@ Future<void> _pump(
   WidgetTester tester, {
   TextDirection direction = TextDirection.rtl,
   Size viewSize = const Size(412, 892),
+  double statusBar = _statusBarHeight,
+  double textScale = 1.0,
 }) async {
   tester.view.physicalSize = viewSize;
   tester.view.devicePixelRatio = 1.0;
-  tester.view.padding = FakeViewPadding(top: _statusBarHeight);
+  tester.view.padding = FakeViewPadding(top: statusBar);
+  tester.platformDispatcher.textScaleFactorTestValue = textScale;
   addTearDown(tester.view.reset);
+  addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
 
   await tester.pumpWidget(
     RepositoryProvider<FetchCategoriesUsecase>(
@@ -93,8 +97,20 @@ Future<void> _pump(
       ),
     ),
   );
+  // الرسم بلا عرضٍ ثابت: مقاسه من الصورة المفكوكة، فتُفكّ قبل القياس.
+  await tester.runAsync(
+    () => precacheImage(
+      AssetImage(CharacterArt.forSlot(VisualSlots.categoriesHeader)!),
+      tester.element(find.byType(CategoriesScreen)),
+    ),
+  );
   await tester.pumpAndSettle();
 }
+
+/// أعلى البطاقة الأولى — أسفل الترويسة + فراغ القائمة.
+double _firstCardTop(WidgetTester tester) =>
+    tester.getRect(find.byType(OtakuScreenHeader)).bottom +
+    CategoriesScreen.listTop;
 
 Finder _charFinder() => find.byWidgetPredicate(
   (w) => w is CharacterArtwork && w.slot == VisualSlots.categoriesHeader,
@@ -128,83 +144,88 @@ void main() {
     );
   });
 
-  // ── 4: الرسم طبقةٌ أمامية (آخر طفلٍ في المكدّس) ────────────────────────
+  // ── 4: الرسم طبقةٌ أمامية (آخر ما يُرسم) ─────────────────────────────
 
-  testWidgets('[CRITICAL] 4 — الرسم آخر طفلٍ في المكدّس الخارجي', (tester) async {
+  testWidgets('[CRITICAL] 4 — الرسم آخر طفلٍ في التخطيط (فوق القائمة)', (tester) async {
     await _pump(tester);
-    // الـ Stack الخارجي: أقرب Stack لا يحتوي OtakuScreenHeader مباشرةً.
-    Stack? outerStack;
-    tester.widgetList<Stack>(find.byType(Stack)).forEach((s) {
-      if (s.children.any((c) => c is PositionedDirectional)) {
-        outerStack ??= s;
-      }
+    final layout = tester.widget<CustomMultiChildLayout>(
+      find.descendant(
+        of: find.byType(CategoriesScreen),
+        matching: find.byType(CustomMultiChildLayout),
+      ).first,
+    );
+    expect(
+      find.descendant(
+        of: find.byWidget(layout.children.last),
+        matching: _charFinder(),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  // ── 5: تحت شريط الحالة تماماً، بأي ارتفاعٍ له ──────────────────────────
+
+  for (final statusBar in [24.0, 48.0]) {
+    testWidgets('[CRITICAL] 5 — شريط حالة $statusBar: الرسم يبدأ أسفله تماماً', (tester) async {
+      await _pump(tester, statusBar: statusBar);
+      final art = tester.getRect(_charFinder());
+      expect(art.top, closeTo(statusBar, 0.01), reason: 'رأس الشخصية تحت أيقونات النظام');
+      expect(art.height, greaterThan(0), reason: 'الرسم لم يُفكّ');
+      expect(art.bottom, lessThanOrEqualTo(_firstCardTop(tester) + 0.01),
+          reason: 'الرسم يدخل في البطاقة الأولى');
     });
-    expect(outerStack, isNotNull, reason: 'لم يُعثر على Stack بـ PositionedDirectional');
-    expect(
-      outerStack!.children.last,
-      isNot(isA<OtakuScreenHeader>()),
-      reason: 'OtakuScreenHeader هو الطفل الأخير — الرسم يُرسم تحته',
-    );
+  }
+
+  // ── 6&7: محصورٌ بين الحدّين، يُصغَّر بنسبته ولا يتجاوز ١١٠ ──────────────
+
+  testWidgets('[CRITICAL] 6&7 — ينتهي عند البطاقة الأولى ويحفظ نسبته', (tester) async {
+    await _pump(tester);
+    final art = tester.getRect(_charFinder());
+    expect(art.width, lessThanOrEqualTo(CategoriesScreen.artMaxWidth + 0.01));
+    // 39.png = ٧٣٦×٨٨٤: النسبة محفوظة (لا تمطيط).
+    expect(art.width / art.height, closeTo(736 / 884, 0.01));
+    // بلا مساحةٍ ضائعة: إمّا العرض الأقصى، وإمّا يملأ الارتفاع حتى البطاقة.
+    final fillsHeight = (art.bottom - _firstCardTop(tester)).abs() < 0.5;
+    final fullWidth = (art.width - CategoriesScreen.artMaxWidth).abs() < 0.5;
+    expect(fillsHeight || fullWidth, isTrue, reason: '$art');
   });
 
-  // ── 5: الرسم يمتدّ إلى منطقة شريط الحالة ─────────────────────────────────
-
-  testWidgets('[CRITICAL] 5 — الرسم يمتدّ إلى منطقة شريط الحالة ولا يخرج من الشاشة', (tester) async {
-    await _pump(tester);
-    final charTop = tester.getRect(_charFinder()).top;
-    expect(charTop, greaterThanOrEqualTo(0), reason: 'الرسم خرج من أعلى الشاشة');
-    expect(charTop, lessThan(_statusBarHeight), reason: 'الرسم لا يستعمل منطقة شريط الحالة');
-  });
-
-  // ── 6 & 7: الرسم يمتدّ أسفل الترويسة ولا يُقصّ ──────────────────────────
-
-  testWidgets('[CRITICAL] 6&7 — الرسم يمتدّ أسفل الترويسة ولا يقصّه صندوقها', (tester) async {
-    await _pump(tester);
-    final charBottom = tester.getRect(_charFinder()).bottom;
-    final headerBottom = tester.getRect(find.byType(OtakuScreenHeader)).bottom;
-    expect(
-      charBottom,
-      greaterThan(headerBottom),
-      reason: 'الرسم لا يمتدّ أسفل الترويسة — شريط الحالة لم يُحتسب في top',
-    );
+  testWidgets('خطّ ×١٫٣ — الترويسة أطول فيتّسع الرسم، ويبقى ضمن الحدّين', (tester) async {
+    await _pump(tester, textScale: 1.3);
+    final art = tester.getRect(_charFinder());
+    expect(art.top, closeTo(_statusBarHeight, 0.01));
+    expect(art.bottom, lessThanOrEqualTo(_firstCardTop(tester) + 0.01));
+    expect(art.width, lessThanOrEqualTo(CategoriesScreen.artMaxWidth + 0.01));
   });
 
   // ── 8: الترويسة لا تتحرّك بسبب الرسم ───────────────────────────────────
 
-  testWidgets('8 — موضع الترويسة لا يتأثّر بالرسم', (tester) async {
+  testWidgets('8 — الترويسة (تدرّجها) تبدأ من أعلى الشاشة', (tester) async {
     await _pump(tester);
-    // الترويسة تبدأ عند الصفر (أعلى Stack) وتمتدّ أسفله — مستقلّةٌ عن top الرسم.
-    final headerTop = tester.getRect(find.byType(OtakuScreenHeader)).top;
-    expect(headerTop, equals(0.0),
-        reason: 'الترويسة تحرّكت — يجب أن تبدأ دائماً من أعلى الصفحة');
+    expect(tester.getRect(find.byType(OtakuScreenHeader)).top, equals(0.0));
   });
 
-  // ── 9-11: عروض متعدّدة (360 / 390 / 412 px) ─────────────────────────────
+  // ── 9-11: عروض متعدّدة (320 / 360 / 390 / 412 / 430 px) ────────────────
 
-  for (final width in [360.0, 390.0, 412.0]) {
+  for (final width in [320.0, 360.0, 390.0, 412.0, 430.0]) {
     final size = Size(width, 892);
 
-    testWidgets('[CRITICAL] ${width.toInt()}px — الرسم في منطقة شريط الحالة غير مقصوص، والعنوان تحتها', (tester) async {
+    testWidgets('[CRITICAL] ${width.toInt()}px — تحت شريط الحالة، فوق البطاقة، والعنوان ظاهر', (tester) async {
       await _pump(tester, viewSize: size);
 
-      final charRect   = tester.getRect(_charFinder());
-      final headerRect = tester.getRect(find.byType(OtakuScreenHeader));
-
-      expect(charRect.top, inInclusiveRange(0.0, _statusBarHeight - 0.01),
-          reason: '${width.toInt()}px: الرسم لا يستعمل منطقة شريط الحالة');
+      final charRect = tester.getRect(_charFinder());
+      expect(charRect.top, closeTo(_statusBarHeight, 0.01));
+      expect(charRect.bottom, lessThanOrEqualTo(_firstCardTop(tester) + 0.01));
+      expect(charRect.left, greaterThanOrEqualTo(-CategoriesScreen.artEndOverhang - 0.01));
       expect(tester.getRect(find.text(AppStrings.arabic('navCategories'))).top,
           greaterThanOrEqualTo(_statusBarHeight),
           reason: '${width.toInt()}px: العنوان تحت أيقونات النظام');
-      // لا يُشترط امتداده أسفل الترويسة: `top: 0` يرفعه، وعند 360px ينتهي قبل حافتها
-      // بثلاثة بكسلات. المهمّ أنه خارج صندوقها (فلا يقصّه) وداخل الشاشة.
-      expect(charRect.bottom, greaterThan(headerRect.top),
-          reason: '${width.toInt()}px: الرسم خارج الشاشة');
-
       expect(
         find.ancestor(of: _charFinder(), matching: find.byType(OtakuScreenHeader)),
         findsNothing,
         reason: '${width.toInt()}px: الرسم داخل صندوق الترويسة',
       );
+      expect(tester.takeException(), isNull);
     });
   }
 

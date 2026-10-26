@@ -76,7 +76,19 @@ describe('ProductNewPage — المحتوى بلغتين', () => {
     expect(payload).not.toHaveProperty('description')
   })
 
-  it('لا يُرسَل شيء ما دام حقلٌ من الأربعة فارغاً', async () => {
+  it('لا يُرسَل شيء ما دام حقلٌ عربي فارغاً', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await user.type(await screen.findByLabelText('اسم المنتج بالعربي'), 'حقيبة')
+    await user.type(screen.getByLabelText('ناوی بەرهەم بە کوردی'), 'جانتا')
+    await user.type(screen.getByLabelText('السعر'), '1000')
+    await user.type(screen.getByLabelText('المخزون'), '1')
+    await user.click(screen.getByRole('button', { name: 'إضافة المنتج' }))
+    expect(await screen.findByText('وصف المنتج بالعربية مطلوب')).toBeInTheDocument()
+    expect(createProduct).not.toHaveBeenCalled()
+  })
+
+  it('[CRITICAL] كرديةٌ ناقصة لا تمنع الإنشاء — الفارغ يُرسَل `null`', async () => {
     const user = userEvent.setup()
     renderPage()
     await user.type(await screen.findByLabelText('اسم المنتج بالعربي'), 'حقيبة')
@@ -85,7 +97,12 @@ describe('ProductNewPage — المحتوى بلغتين', () => {
     await user.type(screen.getByLabelText('السعر'), '1000')
     await user.type(screen.getByLabelText('المخزون'), '1')
     await user.click(screen.getByRole('button', { name: 'إضافة المنتج' }))
-    expect(await screen.findByText('وصف المنتج بالكردية مطلوب')).toBeInTheDocument()
-    expect(createProduct).not.toHaveBeenCalled()
+    await waitFor(() => expect(createProduct).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(createProduct).mock.calls[0]![0]).toMatchObject({
+      nameAr: 'حقيبة',
+      descriptionAr: 'وصف',
+      nameCkb: 'جانتا',
+      descriptionCkb: null,
+    })
   })
 })

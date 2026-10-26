@@ -7,8 +7,9 @@ import { api, createAdminUser, registerAndLogin, seedTestCatalog } from './helpe
  * [CRITICAL] محتوى المنتج بلغتين (066): اسمٌ ووصفٌ عربيان، واسمٌ ووصفٌ كرديان.
  *
  * ما يُثبَّت هنا، بالمسار الحقيقي (HTTP ← خدمة ← PostgreSQL):
- *   ١. الإنشاء يُلزم الحقول الأربعة ويحفظها كما كُتبت (يونيكود كامل).
- *   ٢. التعديل لغةً بلغة: العربية لا تلمس الكردية ولا العكس.
+ *   ١. الإنشاء يُلزم العربية ويحفظ المحتوى كما كُتب (يونيكود كامل). الكردية
+ *      اختيارية (المالك، 2026-10-26): غيابها لا يمنع الحفظ ويُخزَّن NULL.
+ *   ٢. التعديل لغةً بلغة: العربية لا تلمس الكردية ولا العكس؛ والكردية تُمسح بـ`null`.
  *   ٣. الـAPI يُخرج اللغتين صريحتين، و`name` هو اختيارها بلغة الطلب.
  *   ٤. البحث بلغة الواجهة: عربيٌّ في العربية، كرديٌّ في الكردية، اسماً ووصفاً.
  *   ٥. المنتج القديم بلا كردية «ناقص» صراحةً لا مترجَمٌ زيفاً.
@@ -119,7 +120,7 @@ afterAll(async () => {
 // ١ · الإنشاء
 // ═══════════════════════════════════════════════════════════════════════
 
-describe('إنشاء منتج — أربعة حقول إلزامية', () => {
+describe('إنشاء منتج — العربية إلزامية، والكردية اختيارية', () => {
   it('يُنشأ بالعربية والكردية ويُحفظ كل حقلٍ في عموده', async () => {
     const res = await createProduct({ ...NARUTO });
     expect(res.status).toBe(201);
@@ -134,7 +135,7 @@ describe('إنشاء منتج — أربعة حقول إلزامية', () => {
     });
   });
 
-  it.each(['nameAr', 'descriptionAr', 'nameCkb', 'descriptionCkb'] as const)(
+  it.each(['nameAr', 'descriptionAr'] as const)(
     'يرفض غياب %s برسالةٍ تسمّي الحقل ولغته — ولا يُنشئ شيئاً',
     async (field) => {
       const body: Record<string, unknown> = content();
@@ -143,15 +144,14 @@ describe('إنشاء منتج — أربعة حقول إلزامية', () => {
       const res = await createProduct(body);
       expect(res.status).toBe(400);
       expect(res.body.error.code).toBe('VALIDATION_ERROR');
-      const language = field.endsWith('Ar') ? 'بالعربية' : 'بالكردية';
       const kind = field.startsWith('name') ? 'اسم المنتج' : 'وصف المنتج';
-      expect(res.body.message).toBe(`${kind} ${language} مطلوب`);
+      expect(res.body.message).toBe(`${kind} بالعربية مطلوب`);
       const after = await db.query('SELECT COUNT(*)::int AS n FROM products');
       expect(after.rows[0].n).toBe(before.rows[0].n);
     },
   );
 
-  it.each(['nameAr', 'descriptionAr', 'nameCkb', 'descriptionCkb'] as const)(
+  it.each(['nameAr', 'descriptionAr'] as const)(
     'يرفض %s الفارغ أو المسافات وحدها (بعد القصّ)',
     async (field) => {
       for (const blank of ['', '   ', '\t \n']) {
@@ -161,6 +161,54 @@ describe('إنشاء منتج — أربعة حقول إلزامية', () => {
       }
     },
   );
+
+  it('[CRITICAL] بلا كردية إطلاقاً (غائبة، null، فارغة): يُنشأ ويُحفظ NULL ويُعلَن ناقصاً', async () => {
+    const variants: Array<Record<string, unknown>> = [
+      {},
+      { nameCkb: null, descriptionCkb: null },
+      { nameCkb: '', descriptionCkb: '   ' },
+    ];
+    for (const ckb of variants) {
+      const body: Record<string, unknown> = content();
+      delete body.nameCkb;
+      delete body.descriptionCkb;
+      const res = await createProduct({ ...body, ...ckb });
+      expect(res.status, JSON.stringify(ckb)).toBe(201);
+      expect(res.body.data).toMatchObject({ nameCkb: null, descriptionCkb: null, kurdishMissing: true });
+      const row = await dbContent(res.body.data.id);
+      expect(row).toMatchObject({ name: body.nameAr, name_ckb: null, description_ckb: null });
+
+      // الزبون الكردي يرى العربية — لا فراغ ولا نصٌّ مخترع.
+      const ckbView = await api
+        .get(`/api/catalog/products/${res.body.data.id}`)
+        .set('Accept-Language', 'ckb')
+        .expect(200);
+      expect(ckbView.body.data.name).toBe(body.nameAr);
+      expect(ckbView.body.data.description).toBe(body.descriptionAr);
+    }
+  });
+
+  it('كرديةٌ لأحد الحقلين وحده تُقبل — والآخر يسقط إلى العربية', async () => {
+    const res = await createProduct(content({ descriptionCkb: undefined }));
+    expect(res.status).toBe(201);
+    const row = await dbContent(res.body.data.id);
+    expect(row.name_ckb).not.toBeNull();
+    expect(row.description_ckb).toBeNull();
+    const ckbView = await api
+      .get(`/api/catalog/products/${res.body.data.id}`)
+      .set('Accept-Language', 'ckb')
+      .expect(200);
+    expect(ckbView.body.data.name).toBe(row.name_ckb);
+    expect(ckbView.body.data.description).toBe(row.description);
+  });
+
+  it('الكردية الحاضرة تحترم حدود العربية: اسمٌ من حرفٍ واحد أو أطول من ١٢٠ مرفوض', async () => {
+    for (const nameCkb of ['ک', 'ک'.repeat(121)]) {
+      const res = await createProduct(content({ nameCkb }));
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/اسم المنتج بالكردية/);
+    }
+  });
 
   it('يقصّ المسافات المحيطة ويحفظ اليونيكود الكردي كما كُتب (ێ ۆ ڵ ڕ ە و ZWNJ)', async () => {
     const nameCkb = `قه${ZWNJ}ڵه${ZWNJ}می ڕەنگکردنی ێ ۆ ${STAMP}`;
@@ -255,16 +303,44 @@ describe('تعديل منتج — كل لغة مستقلة', () => {
   });
 
   it.each([
-    ['nameCkb', null],
-    ['nameCkb', '   '],
-    ['descriptionCkb', ''],
     ['nameAr', ' '],
+    ['nameAr', null],
     ['descriptionAr', null],
-  ] as const)('لا يُفرَّغ محتوى بالتعديل: %s = %j مرفوض ولا يتغيّر شيء', async (field, value) => {
+    ['descriptionAr', ''],
+  ] as const)('العربية لا تُفرَّغ بالتعديل: %s = %j مرفوض ولا يتغيّر شيء', async (field, value) => {
     const before = await dbContent(id);
     const res = await api.patch(`/api/admin/products/${id}`).set(A()).send({ [field]: value });
     expect(res.status).toBe(400);
     expect(await dbContent(id)).toEqual(before);
+  });
+
+  it('[CRITICAL] مسح الكردية (null أو فارغ): تُخزَّن NULL والعربية لا تُمسّ، والزبون الكردي يرى العربية', async () => {
+    const own = (await createProduct(content())).body.data.id as string;
+    const before = await dbContent(own);
+    await api
+      .patch(`/api/admin/products/${own}`)
+      .set(A())
+      .send({ nameCkb: null, descriptionCkb: '   ' })
+      .expect(200);
+    const after = await dbContent(own);
+    expect(after).toMatchObject({
+      name: before.name,
+      description: before.description,
+      name_ckb: null,
+      description_ckb: null,
+    });
+    const ckbView = await api.get(`/api/catalog/products/${own}`).set('Accept-Language', 'ckb').expect(200);
+    expect(ckbView.body.data).toMatchObject({ name: before.name, kurdishMissing: true });
+
+    // إضافة الترجمة لاحقاً تظهر للزبون الكردي بلا إعادة إنشاء.
+    await api
+      .patch(`/api/admin/products/${own}`)
+      .set(A())
+      .send({ nameCkb: `ناوی دواتر ${STAMP}` })
+      .expect(200);
+    const later = await api.get(`/api/catalog/products/${own}`).set('Accept-Language', 'ckb').expect(200);
+    expect(later.body.data.name).toBe(`ناوی دواتر ${STAMP}`);
+    expect((await dbContent(own)).name).toBe(before.name);
   });
 
   it('تعديل غير المحتوى لا يلمس المحتوى', async () => {

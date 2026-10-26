@@ -1,9 +1,25 @@
 import 'package:flutter/material.dart';
 
+import '../../features/products/domain/entities/product.dart';
 import '../l10n/app_strings.dart';
 
 String formatPrice(BuildContext context, num price) {
   return context.strings.p('priceIqd', {'amount': price.toStringAsFixed(0)});
+}
+
+/// سعر المنتج للعرض — أو «السعر لم يُعلن بعد» (084)، لا «٠ د.ع» أبداً.
+String formatProductPrice(BuildContext context, Product product) =>
+    product.priceAnnounced
+        ? formatPrice(context, product.price)
+        : context.strings('priceNotAnnounced');
+
+/// إزاحة توقيت المتجر (بغداد) — UTC+03:00 ثابتة، العراق بلا توقيت صيفي منذ ٢٠٠٨.
+const Duration storeUtcOffset = Duration(hours: 3);
+
+/// اليوم التقويمي في توقيت المتجر — مستقلٌّ عن منطقة الجهاز الزمنية.
+DateTime storeCalendarDate(DateTime instant) {
+  final store = instant.toUtc().add(storeUtcOffset);
+  return DateTime(store.year, store.month, store.day);
 }
 
 void showSnackBar(BuildContext context, String message) {
@@ -46,10 +62,13 @@ const _monthKeys = <String>[
 /// تاريخ قصير بالعربية: «١٥ سبتمبر».
 ///
 /// بلا سنة عمداً: المواعيد المعروضة للزبون قريبة (موعد توفر منتج)، وذكرُ
-/// السنة يضيف ضجيجاً لا معلومة. التحويل إلى التوقيت المحلي أولاً — الخادم
-/// يرسل UTC، وموعدٌ في العاشرة مساءً يقع في اليوم التالي بلا ذلك.
+/// السنة يضيف ضجيجاً لا معلومة.
+///
+/// [CRITICAL] (2026-10-26) اليوم في **توقيت المتجر** (بغداد) لا الجهاز: المسؤول
+/// يختار «١٣ أكتوبر» فيُخزَّن منتصف ليل بغداد (`21:00Z` من اليوم السابق).
+/// بتوقيت الجهاز كان هاتفٌ خارج العراق يقول «١٢ أكتوبر».
 String formatShortArabicDate(BuildContext context, DateTime date) {
-  final local = date.toLocal();
+  final local = storeCalendarDate(date);
   return context.strings.p('shortDate', {
     'day': '${local.day}',
     'month': context.strings(_monthKeys[local.month - 1]),

@@ -17,6 +17,7 @@ import ProductForm, { type ProductFormStore, type ProductFormValues } from '../c
 import { useAdminProfile } from '../hooks/useAdminProfile'
 import { getProductForEdit, updateProduct, type ProductForEdit } from '../api/productsApi'
 import { ApiError } from '../api/client'
+import { kurdishPatch } from '../utils/kurdish'
 
 /**
  * كل ما يخصّ منتجاً (النموذج، أساس المقارنة، الحفظ) يُبنى من جديد لكل منتج.
@@ -163,14 +164,14 @@ function LoadedProductEditor({ id, loaded }: { id: string; loaded: ProductForEdi
     // نافذة تأكيد تبرّر المسح بخللٍ في الخادم زال منذ زمن. الآن لا يُرسَل
     // الحقل أصلاً، فتبقى الخيارات كما هي في القاعدة.
     const payload = {
-      // [CRITICAL] كل لغة في حقليها وحدهما — لا نسخ بين اللغتين. حقلٌ فارغ
-      // (نصٌّ ناقص في منتجٍ قديم لم يُكمَل) لا يُرسَل: الحقل الغائب لا يُمسّ
-      // على الخادم، فيبقى «ناقصاً» صراحةً بدل أن يُكتب فراغاً (والخادم يرفض
-      // الفراغ أصلاً). ما كان مكتوباً إلزاميٌّ في النموذج فيُرسَل دائماً.
+      // [CRITICAL] كل لغة في حقليها وحدهما — لا نسخ بين اللغتين. عربيٌّ فارغ
+      // (نصٌّ ناقص في منتجٍ قديم) لا يُرسَل: الغائب لا يُمسّ على الخادم. الكردية
+      // اختيارية (2026-10-26): ما كُتب يُرسَل، وما فُرِّغ وكان مكتوباً يُرسَل
+      // `null` فيُمسح، وما بقي فارغاً لا يُرسَل.
       ...(values.nameAr ? { nameAr: values.nameAr } : {}),
       ...(values.descriptionAr ? { descriptionAr: values.descriptionAr } : {}),
-      ...(values.nameCkb ? { nameCkb: values.nameCkb } : {}),
-      ...(values.descriptionCkb ? { descriptionCkb: values.descriptionCkb } : {}),
+      ...kurdishPatch('nameCkb', values.nameCkb, draft.nameCkb),
+      ...kurdishPatch('descriptionCkb', values.descriptionCkb, draft.descriptionCkb),
       // `null` = «السعر يُعلن لاحقاً» (084)؛ `pairPrice: null` يزيل العرض المحفوظ.
       price: values.price,
       pairPrice: values.pairPrice ?? null,

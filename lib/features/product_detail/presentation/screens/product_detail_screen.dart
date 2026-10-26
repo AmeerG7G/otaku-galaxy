@@ -207,7 +207,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                 ],
               ),
             ),
-          if (!product.inStock)
+          if (!product.inStock && product.priceAnnounced)
             PositionedDirectional(
               start: 0,
               end: 0,
@@ -347,8 +347,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Text(
-                    context.strings.p('priceIqd', {'amount': product.price.toStringAsFixed(0)}),
-                    textDirection: TextDirection.ltr,
+                    formatProductPrice(context, product),
+                    textDirection:
+                        product.priceAnnounced ? TextDirection.ltr : null,
                     style: theme.textTheme.headlineMedium?.copyWith(
                       fontFamily: AppFonts.heading,
                       fontFamilyFallback: AppFonts.headingFallback,
@@ -715,7 +716,15 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
               // نفاد المخزون لم يعد طريقاً مسدوداً: كان الزرّ يقول «نفدت
               // الكمية» ولا يفعل شيئاً، فيغادر الزبون بلا بديل. الآن يأخذ
               // مكانه إجراءٌ حقيقي — ينتظر ويُعلَم عند العودة.
-              if (!product.inStock)
+              // «السعر يُعلن لاحقاً» (084): زرٌّ معطَّل يقول السبب — لا إضافة
+              // (الخادم يرفضها أيضاً) ولا «أخبرني عند توفره».
+              if (!product.priceAnnounced)
+                AnimePrimaryButton(
+                  label: context.strings('priceNotAnnounced'),
+                  onPressed: null,
+                  height: AppDimens.buttonHeightXl,
+                )
+              else if (!product.inStock)
                 RestockNotifyButton(productId: product.id)
               else
                 AnimePrimaryButton(

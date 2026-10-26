@@ -59,11 +59,12 @@ Map<String, Rect> _textRects(Finder root) {
 }
 
 /// النصوص التي يقع عليها الجزء الظاهر من صندوق الرسم.
-List<String> _textsOnArt(WidgetTester tester, Finder root) {
+List<String> _textsOnArt(WidgetTester tester, Finder root, {Finder? artBox}) {
   final clip = tester.getRect(root);
   final art = tester
       .getRect(
-        find.descendant(of: root, matching: find.byType(CharacterArtwork)),
+        artBox ??
+            find.descendant(of: root, matching: find.byType(CharacterArtwork)),
       )
       .intersect(clip);
   return [
@@ -87,15 +88,18 @@ void main() {
           language: language,
           textScale: view.textScale,
         );
+        // صندوق صورة البنر (لا شخصية بديلة منذ 2026-10-26): النصّ خارج
+        // الصندوق كلّه، فخارج أيّ صورةٍ يرفعها المسؤول.
         final hero = find.byType(HomeHeroCard);
-        final art = tester.getRect(
-          find.descendant(of: hero, matching: find.byType(CharacterArtwork)),
-        );
-        expect(art.width, greaterThan(0), reason: 'الرسم لم يُفكّ');
+        final art = tester.getRect(find.byKey(HomeHeroCard.artBoxKey));
+        expect(art.width, greaterThan(0), reason: 'صندوق الرسم بلا عرض');
         final card = find
             .descendant(of: hero, matching: find.byType(Stack))
             .first;
-        expect(_textsOnArt(tester, card), isEmpty);
+        expect(
+          _textsOnArt(tester, card, artBox: find.byKey(HomeHeroCard.artBoxKey)),
+          isEmpty,
+        );
       });
 
       testWidgets('ترويسة تقييم الطلب — $view ${language.code}', (

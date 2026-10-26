@@ -19,6 +19,44 @@ export function pairOfferLabel(pairPrice: number | null | undefined): string | n
 /** Shown instead of a price while it is not announced (migration 084). */
 export const PRICE_COMING_SOON = 'قريباً — السعر يُعلن لاحقاً';
 
+/** The app's month names (`AppStrings` monthJanuary…monthDecember), so a date reads the same in both. */
+const MONTHS_AR = [
+  'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
+  'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر',
+];
+
+/** The store's UTC offset (Baghdad, +03:00, no DST since 2008). */
+const STORE_OFFSET_MS = 3 * 60 * 60 * 1000;
+
+/**
+ * «13 أكتوبر» — the calendar day in the store's timezone, like the app's
+ * `formatShortArabicDate`. The dashboard stores a chosen day as Baghdad
+ * midnight (21:00Z the previous day), so a UTC or browser-local reading would
+ * show the day before.
+ */
+export function formatShortStoreDate(value: string | Date): string {
+  const store = new Date((typeof value === 'string' ? new Date(value) : value).getTime() + STORE_OFFSET_MS);
+  return `${store.getUTCDate()} ${MONTHS_AR[store.getUTCMonth()]}`;
+}
+
+/**
+ * The expected-availability date a shopper sees, or `null` — the app's
+ * `Product.displayRestockAt`, one rule on both clients:
+ * - no announced price: the date while it is still ahead (not buyable now);
+ * - priced, out of stock, dated: «قريباً يتوفر» with its date;
+ * - in stock: never (stock is the source of truth, not the date).
+ */
+export function displayRestockAt(
+  product: { price: number | null; stock: number; restockAt: string | null },
+  now: Date = new Date(),
+): string | null {
+  if (!product.restockAt) return null;
+  if (product.price === null) return new Date(product.restockAt) > now ? product.restockAt : null;
+  return product.stock <= 0 ? product.restockAt : null;
+}
+
+export const COMING_SOON = 'قريباً يتوفر';
+
 const STATUS_LABELS: Record<string, string> = {
   PENDING_ADMIN_CONFIRMATION: 'بانتظار تأكيد الإدارة',
   CONFIRMED: 'تم تأكيد الطلب',

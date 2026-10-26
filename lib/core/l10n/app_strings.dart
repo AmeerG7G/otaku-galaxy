@@ -96,8 +96,6 @@ class AppStrings {
 
     // ═══ الدفعة ٢ — تركيبات الرئيسية ═══
     'seeAll': 'عرض الكل',
-    'heroNewCollection': 'تشكيلة جديدة',
-    'heroNewSeason': 'موسم جديد من\nعالم الأنمي',
     'shopNow': 'تسوّق الآن',
     'promoBadge': 'عرض',
     'promoActiveDiscounts': 'خصومات فعّالة',
@@ -126,6 +124,8 @@ class AppStrings {
     'outOfStock': 'نفد المخزون',
     // مخزون صفر **مع** موعد متوقَّع — انظر `Glossary.comingSoon`.
     'comingSoon': 'قريباً يتوفر',
+    // «قريباً — السعر يُعلن لاحقاً» (084): مكان السعر وزرّ الإضافة المعطَّل.
+    'priceNotAnnounced': 'السعر لم يُعلن بعد',
     'startupFailed': 'تعذّر تشغيل التطبيق — تحقق من اتصالك ثم أعد المحاولة.',
     'expectedRestockOn': 'متوقع التوفر: {date}',
     'available': 'متوفر',
@@ -645,8 +645,6 @@ class AppStrings {
     'brandName': 'گەلاکسی ئۆتاکو',
     'homeSearchHint': 'بەدوای بەرهەمە دڵخوازەکەتدا بگەڕێ…',
     'seeAll': 'هەموویان ببینە',
-    'heroNewCollection': 'کۆکراوەیەکی نوێ',
-    'heroNewSeason': 'وەرزێکی نوێ لە\nجیهانی ئەنیمە',
     'shopNow': 'ئێستا بکڕە',
     'promoBadge': 'داشکاندن',
     'promoActiveDiscounts': 'داشکاندنی چالاک',
@@ -788,6 +786,7 @@ class AppStrings {
     // ═══ الدفعة ٤ — المنتجات والمخزون والمفضلة ═══
     'outOfStock': 'کۆگا تەواو بووە',
     'comingSoon': 'بەم زووانە دێتەوە',
+    'priceNotAnnounced': 'نرخ هێشتا ڕانەگەیەنراوە',
     'startupFailed': 'نەتوانرا ئەپەکە دەستپێبکات — پەیوەندییەکەت بپشکنە و دووبارە هەوڵبدەوە.',
     'expectedRestockOn': 'چاوەڕوانی بەردەستبوون: {date}',
     'available': 'بەردەستە',

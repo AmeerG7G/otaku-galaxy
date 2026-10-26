@@ -59,7 +59,7 @@ export async function deleteCategory(id: string): Promise<{ message: string }> {
 
 export async function updateSubcategory(
   id: string,
-  payload: { name?: string; sortOrder?: number; isActive?: boolean },
+  payload: { name?: string; nameCkb?: string | null; sortOrder?: number; isActive?: boolean },
 ): Promise<{ message: string }> {
   const response = await client.patch<ApiEnvelope<unknown>>(
     `/admin/subcategories/${id}`,

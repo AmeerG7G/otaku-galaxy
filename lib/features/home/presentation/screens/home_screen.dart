@@ -177,13 +177,15 @@ class _HomeScreenState extends State<HomeScreen>
                     onNotification: _onScrollNotification,
                     child: CustomScrollView(
                       slivers: [
-                        // تركيبة البطل (تدرّج + شخصية تكسر الحافة)
-                        SliverToBoxAdapter(
-                          child: HomeHeroCard(
-                            banner: data.heroBanner,
-                            onShop: () => _openBanner(data.heroBanner),
+                        // البطل — لبنرٍ نشط فقط. لا بنر = لا بطاقة ولا فراغٌ
+                        // محجوز (قرار المالك 2026-10-26: لا بطل مضمَّن).
+                        if (data.heroBanner case final hero?)
+                          SliverToBoxAdapter(
+                            child: HomeHeroCard(
+                              banner: hero,
+                              onShop: () => _openBanner(hero),
+                            ),
                           ),
-                        ),
 
                         // بطاقات ترويجية — بطاقة الخصومات تظهر فقط عند
                         // وجود خصم حقيقي في الكتالوج، وبنسبته الفعلية.

@@ -548,7 +548,7 @@ void main() {
     },
   );
 
-  group('«الأقسام» — status-bar area used by this screen only', () {
+  group('«الأقسام» — header in the status-bar area, character below it (2026-10-26)', () {
     Future<void> pumpCategories(WidgetTester tester) async {
       _phone(tester);
       await tester.pumpWidget(
@@ -562,12 +562,13 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
     }
 
-    testWidgets('header and its character extend into the status-bar region', (tester) async {
+    testWidgets('header extends into the status-bar region; the character starts below it', (tester) async {
       await pumpCategories(tester);
       final header = tester.getRect(find.byType(OtakuScreenHeader));
       final art = tester.getRect(_art(VisualSlots.categoriesHeader));
       expect(header.top, 0);
-      expect(art.top, lessThan(_statusBar), reason: 'the art now uses the status-bar area');
+      // المالك 2026-10-26: رأس الشخصية لا يقع تحت الساعة والبطارية.
+      expect(art.top, closeTo(_statusBar, 0.01), reason: 'the character starts below the status bar');
       // لا SafeArea بين الشاشة والترويسة.
       expect(
         find.ancestor(of: find.byType(OtakuScreenHeader), matching: find.byType(SafeArea)),
@@ -584,6 +585,8 @@ void main() {
       // البطاقات تحت الترويسة كاملةً، والجسم لا يضيف هامش شريط الحالة مرّة ثانية.
       final firstCard = tester.getRect(find.byType(AnimeCategoryCard).first);
       expect(firstCard.top, greaterThanOrEqualTo(header.bottom));
+      // والشخصية لا تدخل في البطاقة الأولى.
+      expect(tester.getRect(_art(VisualSlots.categoriesHeader)).bottom, lessThanOrEqualTo(firstCard.top + 0.01));
       expect(firstCard.top - header.bottom, closeTo(18, 0.01));
       final list = find.descendant(of: find.byType(CategoriesScreen), matching: find.byType(ListView)).first;
       expect(MediaQuery.paddingOf(tester.element(list)).top, 0);

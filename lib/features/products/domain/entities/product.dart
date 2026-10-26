@@ -17,12 +17,18 @@ enum ProductAvailability {
   comingSoon,
 
   /// مخزون صفر بلا موعد — «غير متوفر».
-  unavailable;
+  unavailable,
+
+  /// «قريباً — السعر يُعلن لاحقاً» (084): يُعرض ولا يُشترى مهما كان المخزون.
+  /// لا حالة مخزون ولا «أخبرني عند توفره» — كما في المتجر على الويب.
+  priceComingSoon;
 
   bool get canAddToCart => this == ProductAvailability.available;
 
   /// هل يُعرض إجراء «أخبرني عند توفره»؟ في الحالتين غير المتوفرتين.
-  bool get showsRestockAction => this != ProductAvailability.available;
+  bool get showsRestockAction =>
+      this == ProductAvailability.comingSoon ||
+      this == ProductAvailability.unavailable;
 }
 
 class Product {
@@ -31,6 +37,7 @@ class Product {
     required this.nameAr,
     this.nameCkb,
     required this.price,
+    this.priceAnnounced = true,
     this.descriptionAr = '',
     this.descriptionCkb,
     required this.images,
@@ -74,6 +81,14 @@ class Product {
 
   /// وصف المنتج بالكردية؛ `null` = ناقص.
   final String? descriptionCkb;
+
+  /// [price] صالحٌ للعرض والشراء؟ `false` = «السعر يُعلن لاحقاً» (084).
+  ///
+  /// [CRITICAL] حين يكون `false` فـ[price] صفرٌ نائب لا سعر: لا يُعرض ولا
+  /// يُحسب به. الخادم يرفض إضافته إلى السلة (`PRODUCT_NOT_PRICED`)، والتطبيق
+  /// لا يعرض زرّ الإضافة أصلاً ([availability]). التطبيق يطلب هذه المنتجات
+  /// صراحةً (`X-OG-Unpriced: 1`)؛ النسخ الأقدم لا تطلبها فلا تصلها.
+  final bool priceAnnounced;
 
   final double price;
   final List<String> images;
@@ -154,6 +169,8 @@ class Product {
   /// شرطان متطابقان مكتوبان في عشر شاشات يتباعدان أول مرة يُعدَّل أحدها،
   /// فتقول البطاقة «قريباً» وتقول التفاصيل «غير متوفر» عن المنتج نفسه.
   ProductAvailability get availability {
+    // بلا سعرٍ معلن لا يُشترى ولو وُجد المخزون — يسبق كل شيء.
+    if (!priceAnnounced) return ProductAvailability.priceComingSoon;
     if (inStock) return ProductAvailability.available;
     return restockAt == null
         ? ProductAvailability.unavailable
@@ -166,8 +183,16 @@ class Product {
   /// «متوقع التوفر ١٥/١٠» على منتجٍ يمكن شراؤه الآن تناقضٌ صريح. المسؤول قد
   /// يستلم البضاعة قبل موعده ولا يمسح التاريخ، وهذه الحالة هي القاعدة لا
   /// الاستثناء.
-  DateTime? get displayRestockAt =>
-      availability == ProductAvailability.comingSoon ? restockAt : null;
+  ///
+  /// والمنتج الذي لم يُعلن سعره يُعرض موعده المتوقَّع ما دام قادماً: لا يُشترى
+  /// الآن، فالموعد معلومةٌ للزبون لا تناقض. الموعد الذي مضى لا يُعرض عليه.
+  DateTime? get displayRestockAt => switch (availability) {
+    ProductAvailability.comingSoon => restockAt,
+    ProductAvailability.priceComingSoon
+        when restockAt != null && restockAt!.isAfter(DateTime.now()) =>
+      restockAt,
+    _ => null,
+  };
 
   factory Product.fromJson(Map<String, dynamic> json) {
     // الحقول الصريحة أولاً؛ `name`/`description` (المحسومان بلغة الطلب) لا
@@ -188,7 +213,9 @@ class Product {
       id: json['id']?.toString() ?? '',
       nameAr: names.ar,
       nameCkb: names.ckb,
+      // `null` = لم يُعلن بعد (084). الصفر النائب لا يُعرض — انظر [priceAnnounced].
       price: (json['price'] as num?)?.toDouble() ?? 0,
+      priceAnnounced: !json.containsKey('price') || json['price'] != null,
       descriptionAr: descriptions.ar,
       descriptionCkb: descriptions.ckb,
       images: resolveMediaUrls(json['images'] as List?),
@@ -226,6 +253,7 @@ class Product {
       nameAr: nameAr,
       nameCkb: nameCkb,
       price: price,
+      priceAnnounced: priceAnnounced,
       descriptionAr: descriptionAr,
       descriptionCkb: descriptionCkb,
       images: images,

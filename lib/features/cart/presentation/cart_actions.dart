@@ -19,6 +19,9 @@ Future<bool> addToCartGuarded(
   int quantity = 1,
   String? selectedOption,
 }) async {
+  // «السعر يُعلن لاحقاً» (084) لا يُضاف أبداً — الخادم يرفضه أيضاً
+  // (`PRODUCT_NOT_PRICED`)؛ هذا الحارس يمنع أي شاشةٍ قادمة من محاولته.
+  if (!product.priceAnnounced) return false;
   final authenticated = await requireAuthentication(
     context,
     title: context.gNow(GenderedStrings.loginFirst),

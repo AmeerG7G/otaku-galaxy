@@ -1,7 +1,6 @@
 import {
   Alert,
   Button,
-  DatePicker,
   Card,
   Divider,
   Form,
@@ -13,7 +12,6 @@ import {
   Typography,
   type FormInstance,
 } from 'antd'
-import dayjs, { type Dayjs } from 'dayjs'
 import { useQuery } from '@tanstack/react-query'
 import { listAdminCategories } from '../api/categoriesApi'
 import { listFranchises } from '../api/communityApi'
@@ -22,6 +20,8 @@ import OptionsEditor from './OptionsEditor'
 import { optionsFromFields, optionsToFields, type OptionFields } from './optionFields'
 import type { ProductOptionInput } from '../types/products'
 import { formatCurrency } from '../utils/format'
+import { StoreDateInput } from './ui/StoreDateInput'
+import { DATE_FORMAT_HINT, isIsoInstant, parseDateText, storeDateFieldToIso } from '../utils/storeDate'
 
 export interface ProductFormValues {
   /**
@@ -177,13 +177,14 @@ export default function ProductForm({
   )
 
   // ═══ الإلزام ═══
-  // الإنشاء: الأربعة إلزامية. التعديل: ما كان مكتوباً يبقى إلزامياً (لا يُفرَّغ
-  // محتوى)، وما كان ناقصاً في منتجٍ قديم اختياريٌّ مع تنبيه — حفظُ سعره أو
-  // مخزونه لا يُحجَب حتى يُكتب له نصّ، ولا يُدفع المسؤول إلى نصٍّ مختلَق.
+  // العربية: إلزامية عند الإنشاء، وما كان مكتوباً لا يُفرَّغ بالتعديل (والناقص
+  // في منتجٍ قديم اختياريٌّ مع تنبيه). الكردية اختيارية دائماً (المالك،
+  // 2026-10-26): لا تحجب حفظاً ولا نشراً، والزبون الكردي يرى العربية بدلها —
+  // ولا يُدفع المسؤول إلى نصٍّ مختلَق.
   const wasFilled = (field: (typeof CONTENT_FIELDS)[number]) =>
     Boolean((initialValues?.[field] ?? '').trim())
   const isRequired = (field: (typeof CONTENT_FIELDS)[number]) =>
-    mode === 'create' || wasFilled(field)
+    field.endsWith('Ar') && (mode === 'create' || wasFilled(field))
   const kurdishIncomplete =
     mode === 'edit' && (!wasFilled('nameCkb') || !wasFilled('descriptionCkb'))
   const arabicDescriptionEmpty = mode === 'edit' && !wasFilled('descriptionAr')
@@ -204,7 +205,12 @@ export default function ProductForm({
         priceLater: mode === 'edit' && initialValues?.price === null,
         options: optionsToFields(initialValues?.options ?? []),
       }}
-      onFinish={(values) => onSubmit(trimContent(values))}
+      onFinish={(values) =>
+        onSubmit({
+          ...trimContent(values),
+          restockAt: storeDateFieldToIso(values.restockAt, initialValues?.restockAt),
+        })
+      }
       style={{ maxWidth: 760 }}
     >
       {!optionsAvailable && (
@@ -253,7 +259,11 @@ export default function ProductForm({
         variant="outlined"
         data-testid="content-ckb"
         style={{ marginTop: 16 }}
-        extra={<Typography.Text type="secondary">سوراني — يكتبه المسؤول، لا ترجمة آلية</Typography.Text>}
+        extra={
+          <Typography.Text type="secondary">
+            اختياري — سوراني يكتبه المسؤول، لا ترجمة آلية. الفارغ يُعرض بالعربية
+          </Typography.Text>
+        }
       >
         {kurdishIncomplete && (
           <Alert
@@ -261,7 +271,7 @@ export default function ProductForm({
             showIcon
             style={{ marginBottom: 16 }}
             message="الكردية ناقصة لهذا المنتج"
-            description="الزبون الكردي يراه بالعربية مع تنبيه. اكتب الاسم والوصف بالكردية ليظهر بلغته."
+            description="الترجمة اختيارية — الزبون الكردي يراه بالعربية حتى تُكتب. اكتب الاسم والوصف بالكردية متى شئت ليظهر بلغته."
           />
         )}
         <Form.Item
@@ -317,19 +327,24 @@ export default function ProductForm({
             name="restockAt"
             label="متوقع التوفر"
             tooltip="اختياري. يظهر للزبون «قريباً يتوفر» مع هذا التاريخ ما دام المخزون صفراً."
-            getValueProps={(value?: string | null) => ({
-              value: value ? dayjs(value) : null,
-            })}
-            // القيمة تُحفظ ISO-8601 كما يقبلها مسار التعديل؛ المسح يرسل
-            // `null` صراحةً لا حقلاً غائباً — الغائب يعني «لا تغيّر».
-            normalize={(value: Dayjs | null) => value?.toISOString() ?? null}
+            // يُكتب باليد `YYYY-MM-DD` (والتقويم بديل) — يومٌ في بغداد. الحقل يحمل
+            // اللحظة المحمَّلة أو النصّ المكتوب؛ التحويل عند الحفظ
+            // (`storeDateFieldToIso`): الفارغ `null` صريحة تمسح الموعد، واليوم
+            // المكتوب منتصف ليله في بغداد، واليوم المحمَّل نفسه لا يُمسّ وقته.
+            extra={`اختياري — ${DATE_FORMAT_HINT}`}
+            rules={[
+              {
+                validator: (_, value?: string | null) => {
+                  if (!value || isIsoInstant(value)) return Promise.resolve()
+                  const parsed = parseDateText(value)
+                  return parsed.kind === 'error'
+                    ? Promise.reject(new Error(parsed.message))
+                    : Promise.resolve()
+                },
+              },
+            ]}
           >
-            <DatePicker
-              style={{ width: 200 }}
-              placeholder="بلا موعد"
-              format="YYYY/MM/DD"
-              allowClear
-            />
+            <StoreDateInput placeholder="بلا موعد (YYYY-MM-DD)" />
           </Form.Item>
         </Space>
         {priceLater && (

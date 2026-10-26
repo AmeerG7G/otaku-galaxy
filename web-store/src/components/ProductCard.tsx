@@ -1,5 +1,5 @@
 import Link from '@/components/Link';
-import { formatIqd, pairOfferLabel, PRICE_COMING_SOON } from '@/lib/format';
+import { COMING_SOON, formatIqd, pairOfferLabel, PRICE_COMING_SOON } from '@/lib/format';
 import type { Product } from '@/lib/types';
 
 /** Mirrors the app's `AnimeProductCard`: image, name, price, previous price, stock state. */
@@ -27,7 +27,10 @@ export function ProductCard({ product, eager = false }: { product: Product; eage
           </span>
         )}
         {pairOffer ? <span className="pill pill-promo pill-offer">{pairOffer}</span> : null}
-        {product.price === null ? null : outOfStock ? (
+        {product.price === null ? null : outOfStock && product.restockAt ? (
+          // Out of stock with an announced date waits, it is not sold out — the app's comingSoon.
+          <span className="pill pill-low">{COMING_SOON}</span>
+        ) : outOfStock ? (
           <span className="pill pill-out">نفدت الكمية</span>
         ) : product.stock <= 3 ? (
           <span className="pill pill-low">كمية محدودة</span>

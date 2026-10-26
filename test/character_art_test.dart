@@ -40,7 +40,6 @@ const _slotNumbers = <String, int>{
   'register_pending_character': 5,
   'forgot_password_header_character': 6,
   'forgot_password_pending_character': 8,
-  'home_hero_character': 29,
   'home_promo_secondary_character': 29,
   'home_delivery_character': 11,
   'empty_cart_character': 12,
@@ -225,7 +224,7 @@ void main() {
         [VisualSlots.emptyCart, VisualSlots.searchHeader],
         [VisualSlots.categoryProductsHeader, VisualSlots.emptyCategoryProducts],
         [VisualSlots.communityHeader, VisualSlots.communityEmpty],
-        [VisualSlots.homeHero, VisualSlots.homePromoSecondary, VisualSlots.reviewSubmitted],
+        [VisualSlots.homePromoSecondary, VisualSlots.reviewSubmitted],
       ]) {
         expect(group.map(CharacterArt.forSlot).toSet(), hasLength(1), reason: '$group');
       }
@@ -292,8 +291,8 @@ void main() {
       expect(CharacterArt.forSlot(VisualSlots.categoriesHeader), '$_dir/39.png');
       // emptyCollection تبقى 38 (استُعيدت بقرار المالك: حالة «المجموعة فارغة» في تفاصيل المجموعة تحتفظ برسمها).
       expect(CharacterArt.emptyCollection, '$_dir/38.png');
-      // 9 و10 → 29: البطل وبطاقات الترويج وشاشة «تم إرسال التقييم» ملفٌّ واحد.
-      expect(CharacterArt.forSlot(VisualSlots.homeHero), '$_dir/29.png');
+      // 9 و10 → 29: بطاقات الترويج وشاشة «تم إرسال التقييم» ملفٌّ واحد (موضع
+      // البطل المضمَّن أُزيل 2026-10-26).
       expect(CharacterArt.forSlot(VisualSlots.homePromoSecondary), '$_dir/29.png');
       // 36 → 32: خلفية البداية هي صورة الشريحة الأولى نفسها.
       expect(CharacterArt.splashBackdrop, '$_dir/32.png');
@@ -447,7 +446,7 @@ void main() {
           child: Column(
             children: [
               CharacterArtwork(slot: VisualSlots.login, width: 40, height: 40),
-              CharacterArtwork(slot: VisualSlots.homeHero, width: 40, height: 40),
+              CharacterArtwork(slot: VisualSlots.homePromoSecondary, width: 40, height: 40),
               CharacterArtwork(slot: VisualSlots.reviewSubmitted, width: 40, height: 40),
             ],
           ),

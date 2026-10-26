@@ -34,15 +34,20 @@ import type { DeliveryZone } from '../types/community'
 import { formatCurrency } from '../utils/format'
 import EmptyState from '../components/EmptyState'
 import { PageHeader } from '../components/ui/PageHeader'
+import KurdishNameField from '../components/KurdishNameField'
+import { kurdishOrNull, kurdishPatch } from '../utils/kurdish'
 
 interface GovernorateFormValues {
   name: string
+  /** اختياري (2026-10-26) — الفارغ يُعرض للزبون الكردي بالعربية. */
+  nameCkb?: string | null
   deliveryFee: number
   isActive?: boolean
 }
 
 interface ZoneFormValues {
   name: string
+  nameCkb?: string | null
   deliveryFee: number
   sortOrder?: number
   isActive?: boolean
@@ -102,7 +107,11 @@ export default function DeliveryPage() {
       if (!governorateEditor?.governorate) {
         throw new Error('لا توجد محافظة للتعديل')
       }
-      return updateGovernorate(governorateEditor.governorate.id, values)
+      const { nameCkb, ...rest } = values
+      return updateGovernorate(governorateEditor.governorate.id, {
+        ...rest,
+        ...kurdishPatch('nameCkb', nameCkb, governorateEditor.governorate.nameCkb),
+      })
     },
     onSuccess: async (result) => {
       message.success(result.message || 'تم الحفظ')
@@ -145,6 +154,7 @@ export default function DeliveryPage() {
       if (zoneEditor.zone) {
         return updateZone(zoneEditor.zone.id, {
           name: values.name,
+          ...kurdishPatch('nameCkb', values.nameCkb, zoneEditor.zone.nameCkb),
           deliveryFee: values.deliveryFee,
           sortOrder: values.sortOrder,
           isActive: values.isActive,
@@ -153,6 +163,7 @@ export default function DeliveryPage() {
       return createZone({
         governorateId: zoneEditor.governorate.id,
         name: values.name,
+        nameCkb: kurdishOrNull(values.nameCkb),
         deliveryFee: values.deliveryFee,
         sortOrder: values.sortOrder,
       })
@@ -183,6 +194,7 @@ export default function DeliveryPage() {
     setGovernorateEditor({ governorate })
     governorateForm.setFieldsValue({
       name: governorate.name,
+      nameCkb: governorate.nameCkb ?? '',
       deliveryFee: governorate.deliveryFee,
       isActive: governorate.isActive,
     })
@@ -192,6 +204,7 @@ export default function DeliveryPage() {
     setZoneEditor({ governorate, zone })
     zoneForm.setFieldsValue({
       name: zone?.name ?? '',
+      nameCkb: zone?.nameCkb ?? '',
       deliveryFee: zone?.deliveryFee ?? governorate.deliveryFee,
       sortOrder: zone?.sortOrder ?? zonesByGovernorate.get(governorate.id)?.length ?? 0,
       isActive: zone?.isActive ?? true,
@@ -438,6 +451,7 @@ export default function DeliveryPage() {
           >
             <Input placeholder="النجف" maxLength={80} />
           </Form.Item>
+          <KurdishNameField label="اسم المحافظة" min={2} max={60} />
           <Form.Item
             name="deliveryFee"
             label="رسوم التوصيل الافتراضية"
@@ -477,6 +491,7 @@ export default function DeliveryPage() {
           >
             <Input placeholder="داخل قضاء النجف" maxLength={80} />
           </Form.Item>
+          <KurdishNameField label="اسم المنطقة" max={80} />
           <Form.Item
             name="deliveryFee"
             label="رسوم التوصيل"

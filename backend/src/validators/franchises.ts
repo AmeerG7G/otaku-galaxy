@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { optionalKurdish } from './admin.js';
 import { isValidVersionString } from '../services/appVersionService.js';
 import { canonicalPlayStoreUrl } from '../utils/playStoreUrl.js';
 
@@ -67,13 +68,15 @@ const zoneDeliveryFee = z.number().min(0, 'رسوم غير صالحة').max(10_0
 
 export const createZoneSchema = z.object({
   governorateId: z.string().uuid('معرّف محافظة غير صالح'),
-  name: z.string().trim().min(1, 'اسم المنطقة مطلوب').max(80),
+  name: z.string().trim().min(1, 'اسم المنطقة مطلوب').max(80, 'اسم المنطقة طويل جداً (٨٠ حرفاً كحد أقصى)'),
+  nameCkb: optionalKurdish('اسم المنطقة', { max: 80 }),
   deliveryFee: zoneDeliveryFee,
   sortOrder: sortOrder.optional(),
 });
 
 export const updateZoneSchema = z.object({
-  name: z.string().trim().min(1).max(80).optional(),
+  name: z.string().trim().min(1, 'اسم المنطقة مطلوب').max(80, 'اسم المنطقة طويل جداً (٨٠ حرفاً كحد أقصى)').optional(),
+  nameCkb: optionalKurdish('اسم المنطقة', { max: 80 }),
   deliveryFee: zoneDeliveryFee.optional(),
   sortOrder: sortOrder.optional(),
   isActive: z.boolean().optional(),
