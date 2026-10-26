@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:auto_route/auto_route.dart';
 import '../../../../core/l10n/app_strings.dart';
 import '../../../../core/l10n/locale_refetch.dart';
@@ -18,6 +20,15 @@ import '../../../visuals/presentation/character_artwork.dart';
 @RoutePage()
 class CategoriesScreen extends StatefulWidget {
   const CategoriesScreen({super.key});
+
+  /// أقصى عرضٍ لرسم الترويسة (39).
+  static const double artMaxWidth = 110;
+
+  /// بروز الرسم خارج حافة النهاية (اليسار في RTL) — حافته الشفافة.
+  static const double artEndOverhang = 10;
+
+  /// الفراغ بين الترويسة وبطاقة القسم الأولى — الرسم ينتهي عند البطاقة.
+  static const double listTop = 18;
 
   @override
   State<CategoriesScreen> createState() => _CategoriesScreenState();
@@ -61,51 +72,50 @@ class _CategoriesScreenState extends State<CategoriesScreen> with LocaleRefetch 
 
   // [PRODUCT] بلا `SafeArea` على مستوى الشاشة (2026-09-28، لهذه الشاشة
   // وحدها). كانت تدفع الشاشة كلّها تحت شريط الحالة، فيبقى شريطٌ فارغ بارتفاعه
-  // فوق الترويسة. الآن تمتدّ الترويسة ورسمها إلى منطقة شريط الحالة كما طلب
-  // المالك، والمحتوى التفاعلي محميّ من مكانين:
+  // فوق الترويسة. الترويسة (تدرّجها) تمتدّ إلى منطقة شريط الحالة، والمحتوى
+  // محميّ من مكانين:
   // - `OtakuScreenHeader` يحمل `SafeArea` داخلياً حول العنوان وسطره الوصفي،
   //   فلا نصَّ تحت أيقونات البطارية والشبكة.
   // - الجسم تحت الترويسة يُنزَع عنه الهامش العلوي (`removeTop`): الترويسة
   //   استهلكته، فلا تضيفه قائمةٌ أو حالةٌ فارغة مرّة ثانية.
-  // لا يمسّ هذا وضع واجهة النظام العام (`edgeToEdge` في `bootstrap.dart`) ولا
-  // أيّ شاشةٍ أخرى.
+  //
+  // [PRODUCT] (المالك، 2026-10-26 — يحلّ محلّ قرار 2026-10-10 «الرسم في منطقة
+  // شريط الحالة») رأس الشخصية 39 لا يقع تحت الساعة والبطارية: الرسم يبدأ أسفل
+  // شريط الحالة. إنزاله وحده كان يُدخل أسفله ٢٣ بكسل في بطاقة القسم الأولى (بأي
+  // ارتفاعٍ لشريط الحالة: الترويسة تطول بقدره)، فالرسم يُحصر بين أسفل شريط
+  // الحالة وأعلى البطاقة الأولى ويُصغَّر بنسبته إن لم يتّسع (عرضه ١١٠ كحدٍّ
+  // أقصى). `_CategoriesLayout` يقيس الترويسة أولاً ثم يعطي الرسم ما بقي —
+  // تمريرٌ واحد بلا قياسٍ بعد الإطار. الرسم آخر ما يُرسم (فوق القائمة حين
+  // تُمرَّر) و`IgnorePointer`.
   @override
   Widget build(BuildContext context) {
-    return Stack(
+    return CustomMultiChildLayout(
+      delegate: _CategoriesLayout(
+        statusBar: MediaQuery.paddingOf(context).top,
+        textDirection: Directionality.of(context),
+      ),
       children: [
-        Column(
-          children: [
-            OtakuScreenHeader.tab(
-              title: context.strings('navCategories'),
-              subtitle: context.strings('categoriesSubtitle'),
-            ),
-            Expanded(
-              child: MediaQuery.removePadding(
-                context: context,
-                removeTop: true,
-                child: _buildBody(),
-              ),
-            ),
-          ],
+        LayoutId(
+          id: _CategoriesSlot.header,
+          child: OtakuScreenHeader.tab(
+            title: context.strings('navCategories'),
+            subtitle: context.strings('categoriesSubtitle'),
+          ),
         ),
-        // رسم الترويسة فوق الشاشة كلّها (الترويسة والقائمة معاً) لا داخل
-        // صندوق الترويسة: ذاك يُقصّ بـ`Clip.hardEdge` بارتفاع صندوقه القصير
-        // (نصّ العنوان فقط) لا بارتفاع الرسم، فدفعُ الرسم لأسفل هناك كان
-        // سيقصّ جزءاً منه بصمت. هنا يبقى آخر طفلٍ في المكدّس (أعلى الجميع)
-        // ولا يُقصّ أبداً طالما بقي داخل حدود الشاشة.
-        //
-        // `top: 0` (قرار المالك: «الأقسام» وحدها): الرسم يمتدّ إلى منطقة شريط
-        // الحالة كما تفعل الترويسة نفسها. هو `IgnorePointer` فلا يعترض لمساً،
-        // والعنوان ووصفه تحت `SafeArea` الترويسة فلا نصَّ تحت البطارية والشبكة.
-        // `a83fdf9` كان قد أنزله إلى `paddingOf(context).top` فناقض هذا القرار.
-        PositionedDirectional(
-          top: 0,
-          end: -10,
-          child: IgnorePointer(
-            child: CharacterArtwork(
-              slot: VisualSlots.categoriesHeader,
-              width: 110,
-            ),
+        LayoutId(
+          id: _CategoriesSlot.body,
+          child: MediaQuery.removePadding(
+            context: context,
+            removeTop: true,
+            child: _buildBody(),
+          ),
+        ),
+        // رسم الترويسة فوق الشاشة كلّها لا داخل صندوق الترويسة: ذاك يُقصّ بـ
+        // `Clip.hardEdge` بارتفاع صندوقه (نصّ العنوان فقط).
+        LayoutId(
+          id: _CategoriesSlot.art,
+          child: const IgnorePointer(
+            child: CharacterArtwork(slot: VisualSlots.categoriesHeader),
           ),
         ),
       ],
@@ -140,7 +150,12 @@ class _CategoriesScreenState extends State<CategoriesScreen> with LocaleRefetch 
       child: ListView.separated(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: context.scrollPadding(
-          const EdgeInsets.fromLTRB(18, 18, 18, OtakuBottomNav.contentGap),
+          const EdgeInsets.fromLTRB(
+            18,
+            CategoriesScreen.listTop,
+            18,
+            OtakuBottomNav.contentGap,
+          ),
         ),
         itemCount: _categories.length,
         separatorBuilder: (_, _) => const SizedBox(height: 13),
@@ -160,4 +175,48 @@ class _CategoriesScreenState extends State<CategoriesScreen> with LocaleRefetch 
       ),
     );
   }
+}
+
+enum _CategoriesSlot { header, body, art }
+
+/// الترويسة ثم الجسم تحتها، ثم الرسم في المساحة بين أسفل شريط الحالة وأعلى
+/// البطاقة الأولى (أسفل الترويسة + [CategoriesScreen.listTop]).
+class _CategoriesLayout extends MultiChildLayoutDelegate {
+  _CategoriesLayout({required this.statusBar, required this.textDirection});
+
+  final double statusBar;
+  final TextDirection textDirection;
+
+  @override
+  void performLayout(Size size) {
+    final header = layoutChild(
+      _CategoriesSlot.header,
+      BoxConstraints(minWidth: size.width, maxWidth: size.width),
+    );
+    positionChild(_CategoriesSlot.header, Offset.zero);
+    layoutChild(
+      _CategoriesSlot.body,
+      BoxConstraints.tight(
+        Size(size.width, math.max(0, size.height - header.height)),
+      ),
+    );
+    positionChild(_CategoriesSlot.body, Offset(0, header.height));
+    final room = header.height + CategoriesScreen.listTop - statusBar;
+    final art = layoutChild(
+      _CategoriesSlot.art,
+      BoxConstraints(
+        maxWidth: CategoriesScreen.artMaxWidth,
+        maxHeight: math.max(0, room),
+      ),
+    );
+    final x = textDirection == TextDirection.rtl
+        ? -CategoriesScreen.artEndOverhang
+        : size.width - art.width + CategoriesScreen.artEndOverhang;
+    positionChild(_CategoriesSlot.art, Offset(x, statusBar));
+  }
+
+  @override
+  bool shouldRelayout(_CategoriesLayout oldDelegate) =>
+      oldDelegate.statusBar != statusBar ||
+      oldDelegate.textDirection != textDirection;
 }

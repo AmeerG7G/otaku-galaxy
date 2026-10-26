@@ -8,6 +8,7 @@ import '../../tokens/app_fonts.dart';
 import '../feedback/product_photo_slot.dart';
 import '../feedback/product_stock_pill.dart';
 import '../layout/otaku_surfaces.dart';
+import '../../../utils/formatters.dart';
 
 /// صفّ منتج أفقي — يُستخدم في نتائج البحث والقوائم المضغوطة.
 ///
@@ -72,15 +73,22 @@ class AnimeProductRow extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           trailing ??
-              Text(
-                context.strings.p('priceIqd', {'amount': product.price.toStringAsFixed(0)}),
-                textDirection: TextDirection.ltr,
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontFamily: AppFonts.heading,
-                  fontFamilyFallback: AppFonts.headingFallback,
-                  fontWeight: AppDimens.weightExtraBold,
-                  fontSize: 14,
-                  color: AppColors.secondary,
+              // عرضٌ محدود: «السعر لم يُعلن بعد» (084) أعرض من أي سعر، فيلتفّ
+              // سطرين بدل أن يدفع الاسم خارج الصفّ على ٣٢٠.
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 96),
+                child: Text(
+                  formatProductPrice(context, product),
+                  textDirection: product.priceAnnounced ? TextDirection.ltr : null,
+                  textAlign: TextAlign.end,
+                  maxLines: 2,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontFamily: AppFonts.heading,
+                    fontFamilyFallback: AppFonts.headingFallback,
+                    fontWeight: AppDimens.weightExtraBold,
+                    fontSize: product.priceAnnounced ? 14 : 12,
+                    color: AppColors.secondary,
+                  ),
                 ),
               ),
         ],

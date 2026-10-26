@@ -90,7 +90,8 @@ Future<void> _pumpHome(
           child: Scaffold(
             body: ListView(
               children: [
-                HomeHeroCard(onShop: () {}, banner: data.heroBanner),
+                if (data.heroBanner case final hero?)
+                  HomeHeroCard(onShop: () {}, banner: hero),
                 HomePromoRail(
                   onTap: () {},
                   maxDiscount: maxDiscount,
@@ -206,7 +207,7 @@ void main() {
     testWidgets('بلا بنرات ولا خصومات: لا شريط — لا بطاقة نائبة', (tester) async {
       await _pumpHome(tester, const HomeData());
       expect(find.byType(ListView), findsOneWidget, reason: 'قائمة الرئيسية وحدها');
-      expect(tester.getSize(find.byType(HomePromoRail)).height, 0);
+      expect(tester.getSize(find.byType(HomePromoRail, skipOffstage: false)).height, 0);
       _expectNoRemovedText();
     });
 

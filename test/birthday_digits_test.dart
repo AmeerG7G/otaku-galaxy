@@ -163,4 +163,39 @@ void main() {
     await tester.enterText(_field(ar('month')), '۰۷۱');
     expect(tester.widget<TextField>(_field(ar('month'))).controller!.text, '۰۷');
   });
+
+  // [CRITICAL] (2026-10-26) طول الشهر: ٣١/٤ و٣٠/٢ أيامٌ لا وجود لها — تُرفض في
+  // التطبيق قبل الإرسال (الخادم يرفضها أيضاً في `birthdayService`). ٢٩/٢ صالح.
+  for (final (day, month) in const [('٣١', '٤'), ('30', '2'), ('31', '11')]) {
+    testWidgets('يومٌ لا يوجد في شهره ($day/$month) يُرفض بلا إرسال', (tester) async {
+      final results = <bool>[];
+      final recorder = await _pumpOpen(tester, results: results);
+      final ar = AppStrings.of(AppLanguage.arabic);
+
+      await tester.enterText(_field(ar('day')), day);
+      await tester.enterText(_field(ar('month')), month);
+      await tester.tap(find.widgetWithText(AnimePrimaryButton, ar('save')));
+      await tester.pumpAndSettle();
+
+      expect(find.text(ar('invalidDay')), findsOneWidget);
+      expect(recorder.savedBody, isNull);
+      expect(results, isEmpty);
+    });
+  }
+
+  for (final (day, month) in const [(29, 2), (30, 4), (31, 12)]) {
+    testWidgets('يومٌ صالح في شهره ($day/$month) يُحفظ', (tester) async {
+      final results = <bool>[];
+      final recorder = await _pumpOpen(tester, results: results);
+      final ar = AppStrings.of(AppLanguage.arabic);
+
+      await tester.enterText(_field(ar('day')), '$day');
+      await tester.enterText(_field(ar('month')), '$month');
+      await tester.tap(find.widgetWithText(AnimePrimaryButton, ar('save')));
+      await tester.pumpAndSettle();
+
+      expect(recorder.savedBody, {'day': day, 'month': month});
+      expect(results, [true]);
+    });
+  }
 }

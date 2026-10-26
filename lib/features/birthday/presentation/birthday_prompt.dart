@@ -87,6 +87,9 @@ class _BirthdayFormState extends State<_BirthdayForm> {
   }
 
   /// القيمة الرقمية للحقل بعد تطبيع الأرقام الشرقية — أو `null`.
+  /// أطول يومٍ في كل شهرٍ لعيد ميلاد — فبراير ٢٩ (مولودو السنة الكبيسة).
+  static const _maxBirthdayDay = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
   static int? _parse(String? raw) => int.tryParse(normalizeDigits(raw ?? '').trim());
 
   void _save() {
@@ -159,7 +162,14 @@ class _BirthdayFormState extends State<_BirthdayForm> {
                         ],
                         validator: (v) {
                           final day = _parse(v);
-                          if (day == null || day < 1 || day > 31) {
+                          // [CRITICAL] (2026-10-26) طول الشهر لا ٣١ لكل شهر:
+                          // ٣١/٤ و٣٠/٢ أيامٌ لا وجود لها. ٢٩/٢ صالح (ميلادٌ في
+                          // سنةٍ كبيسة) — الخادم يحكم بالقاعدة نفسها.
+                          final month = _parse(_monthCtrl.text);
+                          final max = month != null && month >= 1 && month <= 12
+                              ? _maxBirthdayDay[month - 1]
+                              : 31;
+                          if (day == null || day < 1 || day > max) {
                             return context.strings('invalidDay');
                           }
                           return null;

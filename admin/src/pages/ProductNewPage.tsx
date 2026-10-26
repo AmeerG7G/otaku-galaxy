@@ -51,11 +51,12 @@ export default function ProductNewPage() {
 
   function handleSubmit(values: ProductFormValues) {
     createMutation.mutate({
-      // المحتوى باللغتين — الأربعة إلزامية ومقصوصة في النموذج.
+      // المحتوى باللغتين — العربية إلزامية؛ الكردية الفارغة `null` (لا ترجمة،
+      // الزبون الكردي يرى العربية). النموذج يقصّ الأربعة.
       nameAr: values.nameAr,
       descriptionAr: values.descriptionAr,
-      nameCkb: values.nameCkb,
-      descriptionCkb: values.descriptionCkb,
+      nameCkb: values.nameCkb || null,
+      descriptionCkb: values.descriptionCkb || null,
       // `null` = «السعر يُعلن لاحقاً» (084)؛ النموذج يُفرغ معه العرضين.
       price: values.price,
       pairPrice: values.pairPrice ?? null,

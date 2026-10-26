@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Alert, App, Button, Card, DatePicker, Flex, Space, Statistic, Tag, Typography } from 'antd'
+import { Alert, App, Button, Card, Flex, Space, Statistic, Tag, Typography } from 'antd'
 import { ReloadOutlined } from '@ant-design/icons'
-import dayjs, { type Dayjs } from 'dayjs'
 import { listRestockDemand, setRestockAt, type RestockDemandRow } from '../api/restockApi'
 import EmptyState from '../components/EmptyState'
 import { formatDateTime } from '../utils/format'
+import { StoreDateInput, StoreTimeInput } from '../components/ui/StoreDateInput'
+import { isoToStoreParts, parseStoreDateTime, TIME_FORMAT_HINT } from '../utils/storeDate'
 import { PageHeader } from '../components/ui/PageHeader'
 import { ProductLink } from '../components/ui/ProductLink'
 import { ResponsiveTable } from '../components/ui/ResponsiveTable'
@@ -30,7 +31,14 @@ import { WhatsAppButton } from '../components/ui/WhatsAppButton'
 export default function RestockPage() {
   const { message } = App.useApp()
   const queryClient = useQueryClient()
-  const [editing, setEditing] = useState<{ productId: string; draft: Dayjs | null } | null>(null)
+  // المسودّة نصّان يكتبهما المسؤول (يوم `YYYY-MM-DD` ووقت `HH:mm` في بغداد) —
+  // التحقق والتحويل عند «حفظ» (`parseStoreDateTime`)، والخطأ يُعرض تحتهما.
+  const [editing, setEditing] = useState<{
+    productId: string
+    date: string
+    time: string
+    error?: string
+  } | null>(null)
 
   const demand = useQuery({
     queryKey: ['restock-demand'],
@@ -80,7 +88,12 @@ export default function RestockPage() {
           </Typography.Text>
           <Button
             size="small"
-            onClick={() => setEditing({ productId: row.productId, draft: row.restockAt ? dayjs(row.restockAt) : null })}
+            onClick={() =>
+              setEditing({
+                productId: row.productId,
+                ...(row.restockAt ? isoToStoreParts(row.restockAt) : { date: '', time: '' }),
+              })
+            }
           >
             {row.restockAt ? 'تعديل' : 'تحديد'}
           </Button>
@@ -99,24 +112,37 @@ export default function RestockPage() {
     }
     return (
       <Flex gap={8} wrap align="center" vertical={block}>
-        <DatePicker
-          showTime={{ format: 'HH:mm' }}
-          format="YYYY-MM-DD HH:mm"
-          needConfirm={false}
-          value={editing.draft}
-          style={block ? { width: '100%' } : undefined}
-          // موعدٌ في الماضي وعدٌ فات أوانه: يظهر للزبون تاريخاً مضى
-          // فيظنّ المتجر مهملاً. المنع هنا وقائي؛ الخادم يبقى الحكم.
-          disabledDate={(current: Dayjs) => current && current < dayjs().startOf('day')}
-          onChange={(value) => setEditing({ productId: row.productId, draft: value })}
-        />
+        <Flex gap={8} wrap align="center">
+          <StoreDateInput
+            aria-label="تاريخ التوفر المتوقّع"
+            value={editing.date}
+            onChange={(date) => setEditing({ ...editing, date, error: undefined })}
+          />
+          <StoreTimeInput
+            aria-label="الوقت"
+            value={editing.time}
+            onChange={(time) => setEditing({ ...editing, time, error: undefined })}
+          />
+        </Flex>
+        <Typography.Text type={editing.error ? 'danger' : 'secondary'} style={{ fontSize: 12 }}>
+          {editing.error ?? `بتوقيت بغداد — الوقت اختياري (${TIME_FORMAT_HINT})`}
+        </Typography.Text>
         <Flex gap={8}>
           <Button
             size="small"
             type="primary"
-            disabled={!editing.draft}
+            disabled={!editing.date}
             loading={savingRow(row.productId)}
-            onClick={() => editing.draft && save.mutate({ productId: row.productId, at: editing.draft.toISOString() })}
+            onClick={() => {
+              // موعدٌ في الماضي وعدٌ فات أوانه: يظهر للزبون تاريخاً مضى
+              // فيظنّ المتجر مهملاً. المنع هنا وقائي؛ الخادم يبقى الحكم.
+              const parsed = parseStoreDateTime(editing.date, editing.time, { notBefore: new Date() })
+              if (parsed.kind === 'ok') {
+                save.mutate({ productId: row.productId, at: parsed.iso })
+              } else if (parsed.kind === 'error') {
+                setEditing({ ...editing, error: parsed.message })
+              }
+            }}
           >
             حفظ
           </Button>

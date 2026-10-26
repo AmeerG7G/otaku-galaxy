@@ -59,6 +59,8 @@ export interface DeliveryZone {
   id: string
   governorateId: string
   name: string
+  /** الاسم الكردي (اختياري، 046) — `null` = لا ترجمة، الزبون الكردي يرى العربي. */
+  nameCkb: string | null
   deliveryFee: number
   sortOrder: number
   isActive: boolean
@@ -67,12 +69,15 @@ export interface DeliveryZone {
 export interface ZoneCreatePayload {
   governorateId: string
   name: string
+  nameCkb?: string | null
   deliveryFee: number
   sortOrder?: number
 }
 
 export interface ZoneUpdatePayload {
   name?: string
+  /** `null` يمسح الترجمة الكردية؛ الغائب لا يُمسّ. */
+  nameCkb?: string | null
   deliveryFee?: number
   sortOrder?: number
   isActive?: boolean

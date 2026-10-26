@@ -5,6 +5,8 @@ import { startAnalyticsScheduler } from './jobs/analyticsJob.js';
 import { startPushOutboxScheduler } from './jobs/pushOutboxJob.js';
 import { trackingService } from './services/trackingService.js';
 import { startRatingReminderScheduler } from './jobs/ratingReminderJob.js';
+import { probeUploadsWritable } from './storage/index.js';
+import { MEDIA_PURPOSES } from './types/index.js';
 
 const app = createApp();
 
@@ -37,6 +39,8 @@ const stopRatingReminders = startRatingReminderScheduler();
 const stopPushOutbox = startPushOutboxScheduler();
 // التحليلات التاريخية — ملخّصات يومية/شهرية وإغلاق الأشهر المنقضية (STEP 67).
 const stopAnalytics = startAnalyticsScheduler();
+// مجلّدات الرفع قابلة للكتابة؟ تحذيرٌ في السجلّ وحده، لا يمنع الإقلاع.
+void probeUploadsWritable(MEDIA_PURPOSES).catch((error) => console.error('[uploads] probe failed', error));
 // حقبة التتبّع تتبع الإعداد عند كل إقلاع (D3: مطفأ افتراضياً) — من أي يومٍ بدأ القياس.
 void trackingService.syncEpoch().catch((error) => console.error('[tracking] epoch sync failed', error));
 

@@ -4,7 +4,6 @@ import {
   Alert,
   App,
   Button,
-  DatePicker,
   Descriptions,
   Form,
   InputNumber,
@@ -13,11 +12,12 @@ import {
   Typography,
 } from 'antd'
 import { SendOutlined } from '@ant-design/icons'
-import dayjs, { type Dayjs } from 'dayjs'
 import { rescheduleReminder, sendReminderNow } from '../../api/ordersApi'
 import { ApiError } from '../../api/client'
 import type { AdminOrder } from '../../types/orders'
 import { formatDateTime } from '../../utils/format'
+import { parseStoreDateTime, TIME_FORMAT_HINT } from '../../utils/storeDate'
+import { StoreDateInput, StoreTimeInput } from './StoreDateInput'
 
 /** مهلات جاهزة بالثقافة العربية — تستعمل في الوضع المضمّن. */
 const REMINDER_PRESET_HOURS = [1, 6, 12, 24, 48] as const
@@ -49,7 +49,11 @@ interface ReminderControlsProps {
 export function ReminderControls({ order, variant = 'inline', onDone }: ReminderControlsProps) {
   const { message } = App.useApp()
   const queryClient = useQueryClient()
-  const [customAt, setCustomAt] = useState<Dayjs | null>(null)
+  // لحظةٌ صريحة تُكتب باليد: يوم `YYYY-MM-DD` ووقت `HH:mm` بتوقيت بغداد.
+  const [custom, setCustom] = useState<{ date: string; time: string; error?: string }>({
+    date: '',
+    time: '',
+  })
 
   const sent = order.ratingReminderSentAt !== null
 
@@ -115,11 +119,12 @@ export function ReminderControls({ order, variant = 'inline', onDone }: Reminder
         </Typography.Paragraph>
         <Form
           layout="vertical"
-          onFinish={(values: { delayHours?: number; availableAt?: Dayjs }) => {
+          onFinish={(values: { delayHours?: number; availableDate?: string; availableTime?: string }) => {
             // اللحظة الصريحة تسبق المهلة إن مُلئ الحقلان — الخادم يقبل
-            // أحدهما فقط.
-            if (values.availableAt) {
-              reschedule.mutate({ remindAt: values.availableAt.toISOString() })
+            // أحدهما فقط. (التحقق في قواعد الحقلين أدناه.)
+            const at = parseStoreDateTime(values.availableDate, values.availableTime, { requireTime: true })
+            if (at.kind === 'ok') {
+              reschedule.mutate({ remindAt: at.iso })
               return
             }
             if (typeof values.delayHours === 'number') {
@@ -134,12 +139,30 @@ export function ReminderControls({ order, variant = 'inline', onDone }: Reminder
           >
             <InputNumber min={0} max={720} style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item name="availableAt" label="أو لحظة صريحة">
-            <DatePicker
-              showTime
-              style={{ width: '100%' }}
-              disabledDate={(current) => current && current < dayjs().startOf('day')}
-            />
+          <Form.Item label="أو لحظة صريحة" extra={`بتوقيت بغداد — ${TIME_FORMAT_HINT}`} style={{ marginBottom: 16 }}>
+            <Space wrap>
+              <Form.Item
+                name="availableDate"
+                noStyle
+                dependencies={['availableTime']}
+                rules={[
+                  ({ getFieldValue }) => ({
+                    validator: (_, date?: string) => {
+                      const at = parseStoreDateTime(date, getFieldValue('availableTime'), {
+                        requireTime: true,
+                        notBefore: new Date(),
+                      })
+                      return at.kind === 'error' ? Promise.reject(new Error(at.message)) : Promise.resolve()
+                    },
+                  }),
+                ]}
+              >
+                <StoreDateInput aria-label="تاريخ التذكير" />
+              </Form.Item>
+              <Form.Item name="availableTime" noStyle>
+                <StoreTimeInput aria-label="وقت التذكير" />
+              </Form.Item>
+            </Space>
           </Form.Item>
           <Space>
             <Button type="primary" htmlType="submit" loading={reschedule.isPending}>
@@ -192,21 +215,33 @@ export function ReminderControls({ order, variant = 'inline', onDone }: Reminder
 
       <Space wrap>
         <Typography.Text type="secondary">أو وقت محدّد:</Typography.Text>
-        <DatePicker
-          showTime
-          value={customAt}
+        <StoreDateInput
+          aria-label="تاريخ التذكير"
+          value={custom.date}
           disabled={busy}
-          onChange={(value) => setCustomAt(value)}
-          placeholder="اختر التاريخ والوقت"
+          onChange={(date) => setCustom({ ...custom, date, error: undefined })}
+        />
+        <StoreTimeInput
+          aria-label="وقت التذكير"
+          value={custom.time}
+          disabled={busy}
+          onChange={(time) => setCustom({ ...custom, time, error: undefined })}
         />
         <Button
-          disabled={busy || !customAt}
-          onClick={() =>
-            customAt && reschedule.mutate({ remindAt: customAt.toISOString() })
-          }
+          disabled={busy || !custom.date}
+          onClick={() => {
+            const at = parseStoreDateTime(custom.date, custom.time, { requireTime: true })
+            if (at.kind === 'ok') reschedule.mutate({ remindAt: at.iso })
+            else if (at.kind === 'error') setCustom({ ...custom, error: at.message })
+          }}
         >
           حفظ الموعد
         </Button>
+      </Space>
+      <Typography.Text type={custom.error ? 'danger' : 'secondary'} style={{ fontSize: 12 }}>
+        {custom.error ?? `بتوقيت بغداد — ${TIME_FORMAT_HINT}`}
+      </Typography.Text>
+      <Space wrap>
       </Space>
 
       <Popconfirm

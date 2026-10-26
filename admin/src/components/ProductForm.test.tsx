@@ -164,8 +164,9 @@ describe('ضبط خصم التوصيل في نموذج المنتج', () => {
  * [CRITICAL] محتوى المنتج بلغتين — أربعة حقول يكتبها المسؤول (هجرة ٠٦٦).
  *
  * لا حقل «اسم المنتج» عامٌّ واحد: الاسم والوصف بالعربية تحت «العربية»،
- * والاسم والوصف بالكردية تحت «الكردية». الإنشاء يُلزم الأربعة؛ التعديل لا
- * يسمح بتفريغ ما كُتب، ولا يُجبر على اختلاق ما نقص في منتجٍ قديم.
+ * والاسم والوصف بالكردية تحت «الكردية». الإنشاء يُلزم العربية؛ الكردية
+ * اختيارية (المالك، 2026-10-26) ويجوز مسحها بالتعديل. العربية المكتوبة لا تُفرَّغ،
+ * ولا يُجبَر المسؤول على اختلاق ما نقص في منتجٍ قديم.
  */
 function renderFormIn(mode: 'create' | 'edit', initialValues = {}) {
   const onSubmit = vi.fn()
@@ -196,12 +197,8 @@ function renderFormIn(mode: 'create' | 'edit', initialValues = {}) {
   return { onSubmit }
 }
 
-const REQUIRED_MESSAGES = [
-  'اسم المنتج بالعربية مطلوب',
-  'وصف المنتج بالعربية مطلوب',
-  'اسم المنتج بالكردية مطلوب',
-  'وصف المنتج بالكردية مطلوب',
-]
+const REQUIRED_MESSAGES = ['اسم المنتج بالعربية مطلوب', 'وصف المنتج بالعربية مطلوب']
+const KURDISH_REQUIRED = ['اسم المنتج بالكردية مطلوب', 'وصف المنتج بالكردية مطلوب']
 
 describe('[CRITICAL] محتوى المنتج بلغتين في النموذج', () => {
   beforeEach(() => {
@@ -226,20 +223,38 @@ describe('[CRITICAL] محتوى المنتج بلغتين في النموذج', 
     expect(screen.queryByLabelText('الوصف')).not.toBeInTheDocument()
   })
 
-  it('الإرسال الفارغ يُرفض برسالةٍ لكل حقلٍ من الأربعة ولا يصل الخادم', async () => {
+  it('الإرسال الفارغ يُرفض برسالةٍ لكل حقلٍ عربي — ولا رسالة «مطلوب» للكردية', async () => {
     const { onSubmit } = renderFormIn('create')
     await screen.findByTestId('content-ar')
     await userEvent.click(screen.getByRole('button', { name: 'إضافة المنتج' }))
     for (const text of REQUIRED_MESSAGES) {
       expect(await screen.findByText(text)).toBeInTheDocument()
     }
+    for (const text of KURDISH_REQUIRED) {
+      expect(screen.queryByText(text)).not.toBeInTheDocument()
+    }
     expect(onSubmit).not.toHaveBeenCalled()
   })
 
-  it('المسافات وحدها فارغة — تُرفض كالغياب', async () => {
+  it('[CRITICAL] الإنشاء بلا كردية يُرسَل — الكردية اختيارية (2026-10-26)', async () => {
     const { onSubmit } = renderFormIn('create')
     await screen.findByTestId('content-ar')
-    for (const label of ['اسم المنتج بالعربي', 'وصف المنتج بالعربي', 'ناوی بەرهەم بە کوردی', 'وەسفی بەرهەم بە کوردی']) {
+    await userEvent.type(screen.getByLabelText('اسم المنتج بالعربي'), 'حقيبة')
+    await userEvent.type(screen.getByLabelText('وصف المنتج بالعربي'), 'وصف')
+    await userEvent.click(screen.getByRole('button', { name: 'إضافة المنتج' }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
+    expect(onSubmit.mock.calls[0]![0]).toMatchObject({
+      nameAr: 'حقيبة',
+      descriptionAr: 'وصف',
+      nameCkb: '',
+      descriptionCkb: '',
+    })
+  })
+
+  it('المسافات وحدها فارغة — تُرفض كالغياب في العربية', async () => {
+    const { onSubmit } = renderFormIn('create')
+    await screen.findByTestId('content-ar')
+    for (const label of ['اسم المنتج بالعربي', 'وصف المنتج بالعربي']) {
       await userEvent.type(screen.getByLabelText(label), '   ')
     }
     await userEvent.click(screen.getByRole('button', { name: 'إضافة المنتج' }))
@@ -268,7 +283,21 @@ describe('[CRITICAL] محتوى المنتج بلغتين في النموذج', 
     })
   })
 
-  it('التعديل: ما كان مكتوباً لا يُفرَّغ — مسح الاسم الكردي يُرفض', async () => {
+  it('التعديل: العربية المكتوبة لا تُفرَّغ — مسح الاسم العربي يُرفض', async () => {
+    const { onSubmit } = renderFormIn('edit', {
+      nameAr: 'حقيبة',
+      descriptionAr: 'وصف',
+      nameCkb: 'جانتا',
+      descriptionCkb: 'وەسف',
+    })
+    const input = await screen.findByLabelText('اسم المنتج بالعربي')
+    await userEvent.clear(input)
+    await userEvent.click(screen.getByRole('button', { name: 'حفظ التعديلات' }))
+    expect(await screen.findByText('اسم المنتج بالعربية مطلوب')).toBeInTheDocument()
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('التعديل: مسح الاسم الكردي مقبول — يصل فارغاً (الصفحة ترسله `null`)', async () => {
     const { onSubmit } = renderFormIn('edit', {
       nameAr: 'حقيبة',
       descriptionAr: 'وصف',
@@ -279,8 +308,8 @@ describe('[CRITICAL] محتوى المنتج بلغتين في النموذج', 
     expect(input).toHaveValue('جانتا')
     await userEvent.clear(input)
     await userEvent.click(screen.getByRole('button', { name: 'حفظ التعديلات' }))
-    expect(await screen.findByText('اسم المنتج بالكردية مطلوب')).toBeInTheDocument()
-    expect(onSubmit).not.toHaveBeenCalled()
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
+    expect(onSubmit.mock.calls[0]![0]).toMatchObject({ nameAr: 'حقيبة', nameCkb: '', descriptionCkb: 'وەسف' })
   })
 
   it('[CRITICAL] منتجٌ قديم بلا كردية: النقص معلَن، والحفظ لا يُحجَب ولا يُختلق نصّ', async () => {
@@ -301,3 +330,52 @@ describe('[CRITICAL] محتوى المنتج بلغتين في النموذج', 
     })
   })
 })
+
+/** «متوقع التوفر» يُكتب باليد (2026-10-26) — يومٌ في بغداد، فارغه `null`. */
+describe('[CRITICAL] موعد التوفر — إدخال يدوي', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(listAdminCategories).mockResolvedValue({
+      items: [{ id: 'c1', name: 'قسم', subcategories: [] }],
+    } as never)
+    vi.mocked(listFranchises).mockResolvedValue({ items: [] } as never)
+  })
+
+  const filled = { nameAr: 'حقيبة', descriptionAr: 'وصف' }
+
+  it('أرقام عربية-هندية بلا فواصل ← منتصف ليل بغداد', async () => {
+    const { onSubmit } = renderFormIn('edit', filled)
+    const field = await screen.findByLabelText('متوقع التوفر')
+    await userEvent.click(field)
+    await userEvent.paste('٢٠٩٩١١٠٥')
+    expect(field).toHaveValue('2099-11-05')
+    await userEvent.click(screen.getByRole('button', { name: 'حفظ التعديلات' }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
+    expect(onSubmit.mock.calls[0]![0].restockAt).toBe('2099-11-04T21:00:00.000Z')
+  })
+
+  it('تاريخٌ مستحيل يُرفض برسالةٍ عربية ولا يُحفظ', async () => {
+    const { onSubmit } = renderFormIn('edit', filled)
+    await userEvent.click(await screen.findByLabelText('متوقع التوفر'))
+    await userEvent.paste('2099-02-29')
+    await userEvent.click(screen.getByRole('button', { name: 'حفظ التعديلات' }))
+    expect(await screen.findByText('اليوم غير صالح — الشهر 02 من 2099 فيه 28 يوماً')).toBeInTheDocument()
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('الموعد المحمَّل يُعرض بيومه في بغداد، ويُحفظ كما هو إن لم يُلمس، ومسحه `null`', async () => {
+    const loaded = '2099-11-04T21:00:00.000Z'
+    const { onSubmit } = renderFormIn('edit', { ...filled, restockAt: loaded })
+    const field = await screen.findByLabelText('متوقع التوفر')
+    expect(field).toHaveValue('2099-11-05')
+    await userEvent.click(screen.getByRole('button', { name: 'حفظ التعديلات' }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
+    expect(onSubmit.mock.calls[0]![0].restockAt).toBe(loaded)
+
+    await userEvent.clear(field)
+    await userEvent.click(screen.getByRole('button', { name: 'حفظ التعديلات' }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2))
+    expect(onSubmit.mock.calls[1]![0].restockAt).toBeNull()
+  })
+})
+

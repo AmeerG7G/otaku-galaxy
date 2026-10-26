@@ -46,6 +46,11 @@ class ProductStockPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // بلا سعرٍ معلن (084): لا حالة مخزون — كالمتجر على الويب. السبب يقوله
+    // مكان السعر نفسه («السعر لم يُعلن بعد»)، فلا يتكرّر هنا.
+    if (availability == ProductAvailability.priceComingSoon) {
+      return const SizedBox.shrink();
+    }
     final colors = context.themeColors;
 
     // المخزون الموجب يسبق كل شيء: منتجٌ في اليد لا يُوصف بالانتظار مهما

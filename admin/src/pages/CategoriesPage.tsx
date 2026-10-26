@@ -37,6 +37,8 @@ import {
 import { ApiError } from '../api/client'
 import type { AdminCategory, AdminSubcategory } from '../types/categories'
 import EmptyState from '../components/EmptyState'
+import KurdishNameField from '../components/KurdishNameField'
+import { kurdishOrNull, kurdishPatch } from '../utils/kurdish'
 
 type EditorMode = 'create' | 'edit' | 'subcategory' | null
 
@@ -60,17 +62,21 @@ interface SubcategoryEditor {
  */
 interface CategoryFormValues {
   name: string
+  /** اختياري (2026-10-26) — الفارغ يُعرض للزبون الكردي بالعربية. */
+  nameCkb?: string | null
   sortOrder?: number
 }
 
 interface SubcategoryFormValues {
   categoryId: string
   name: string
+  nameCkb?: string | null
   sortOrder?: number
 }
 
 interface SubcategoryEditorFormValues {
   name: string
+  nameCkb?: string | null
   sortOrder?: number
   isActive: boolean
 }
@@ -92,7 +98,12 @@ export default function CategoriesPage() {
   }
 
   const createMutation = useMutation({
-    mutationFn: createCategory,
+    mutationFn: (values: CategoryFormValues) =>
+      createCategory({
+        name: values.name,
+        nameCkb: kurdishOrNull(values.nameCkb),
+        sortOrder: values.sortOrder,
+      }),
     onSuccess: (result) => {
       message.success(result.message)
       setEditor(null)
@@ -104,9 +115,10 @@ export default function CategoriesPage() {
   })
 
   const updateMutation = useMutation({
-    mutationFn: (input: { id: string; values: CategoryFormValues }) =>
+    mutationFn: (input: { id: string; values: CategoryFormValues; savedCkb: string | null }) =>
       updateCategory(input.id, {
         name: input.values.name,
+        ...kurdishPatch('nameCkb', input.values.nameCkb, input.savedCkb),
         sortOrder: input.values.sortOrder,
       }),
     onSuccess: (result) => {
@@ -130,9 +142,10 @@ export default function CategoriesPage() {
   })
 
   const updateSubcategoryMutation = useMutation({
-    mutationFn: (input: { id: string; values: SubcategoryEditorFormValues }) =>
+    mutationFn: (input: { id: string; values: SubcategoryEditorFormValues; savedCkb: string | null }) =>
       updateSubcategory(input.id, {
         name: input.values.name,
+        ...kurdishPatch('nameCkb', input.values.nameCkb, input.savedCkb),
         sortOrder: input.values.sortOrder,
         isActive: input.values.isActive,
       }),
@@ -147,7 +160,13 @@ export default function CategoriesPage() {
   })
 
   const subcategoryMutation = useMutation({
-    mutationFn: createSubcategory,
+    mutationFn: (values: SubcategoryFormValues) =>
+      createSubcategory({
+        categoryId: values.categoryId,
+        name: values.name,
+        nameCkb: kurdishOrNull(values.nameCkb),
+        sortOrder: values.sortOrder,
+      }),
     onSuccess: (result) => {
       message.success(result.message)
       setEditor(null)
@@ -487,11 +506,16 @@ export default function CategoriesPage() {
           <CategoryEditorForm
             initialValues={{
               name: editor.category.name,
+              nameCkb: editor.category.nameCkb ?? '',
               sortOrder: editor.category.sortOrder,
             }}
             submitting={updateMutation.isPending}
             onSubmit={(values) =>
-              updateMutation.mutate({ id: editor.category!.id, values })
+              updateMutation.mutate({
+                id: editor.category!.id,
+                values,
+                savedCkb: editor.category!.nameCkb ?? null,
+              })
             }
             onCancel={() => setEditor(null)}
           />
@@ -526,6 +550,7 @@ export default function CategoriesPage() {
           <SubcategoryEditorForm
             initialValues={{
               name: subcategoryEditor.subcategory.name,
+              nameCkb: subcategoryEditor.subcategory.nameCkb ?? '',
               sortOrder: subcategoryEditor.subcategory.sortOrder,
               isActive: subcategoryEditor.subcategory.isActive,
             }}
@@ -534,6 +559,7 @@ export default function CategoriesPage() {
               updateSubcategoryMutation.mutate({
                 id: subcategoryEditor.subcategory.id,
                 values,
+                savedCkb: subcategoryEditor.subcategory.nameCkb ?? null,
               })
             }
             onCancel={() => setSubcategoryEditor(null)}
@@ -576,6 +602,7 @@ function CategoryEditorForm({
       >
         <Input />
       </Form.Item>
+      <KurdishNameField label="اسم القسم" min={2} max={60} />
       <Form.Item name="sortOrder" label="الترتيب">
         <InputNumber min={0} max={1000} style={{ width: '100%' }} precision={0} />
       </Form.Item>
@@ -626,6 +653,7 @@ function SubcategoryForm({
       >
         <Input />
       </Form.Item>
+      <KurdishNameField label="اسم القسم الفرعي" min={2} max={60} />
       <Form.Item name="sortOrder" label="الترتيب">
         <InputNumber min={0} max={1000} style={{ width: '100%' }} precision={0} />
       </Form.Item>
@@ -673,6 +701,7 @@ function SubcategoryEditorForm({
       >
         <Input />
       </Form.Item>
+      <KurdishNameField label="اسم القسم الفرعي" min={2} max={60} />
       <Form.Item name="sortOrder" label="الترتيب">
         <InputNumber min={0} max={1000} style={{ width: '100%' }} precision={0} />
       </Form.Item>

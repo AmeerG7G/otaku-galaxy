@@ -66,6 +66,7 @@ class _BannerArt extends StatelessWidget {
     required this.cornerRadius,
     this.imageUrl,
     this.start,
+    this.boxKey,
   });
 
   /// فتحة الشخصية المضمَّنة — تُعرض حين لا صورة أو فشل تحميلها. `null`:
@@ -82,6 +83,9 @@ class _BannerArt extends StatelessWidget {
   /// حدّ الصندوق من جهة البداية — حيث ينتهي نصّ البطاقة. `null`: إزاحة الزاوية
   /// كالجهات الثلاث الأخرى. الرسم الأعرض من الباقي يُصغَّر ولا يدخل تحت النصّ.
   final double? start;
+
+  /// مفتاح صندوق الرسم (الاختبارات تقيس حدوده مستقلّةً عن الصورة).
+  final Key? boxKey;
 
   /// أصغر إزاحةٍ متساوية عن حافّتين تُبقي زاوية الرسم داخل انحناء زاوية
   /// البطاقة: r·(1 − 1/√2). أقلّ منها وتقصّ الزاويةُ المدوَّرة طرفَ الصورة.
@@ -110,6 +114,7 @@ class _BannerArt extends StatelessWidget {
       // فوقها وتحتها في كل بنرٍ يستعمل هذا المكوّن الآن ولاحقاً، ويبقى الرسم
       // داخل الصندوق المُزاح من الزوايا فلا يُقصّ.
       child: Align(
+        key: boxKey,
         alignment: AlignmentDirectional.centerEnd,
         child: imageUrl != null
             ? Image.network(
@@ -126,16 +131,25 @@ class _BannerArt extends StatelessWidget {
   }
 }
 
-/// بطاقة البطل في الرئيسية — تدرّج وردي→بنفسجي→أزرق مع رسم شخصية في
-/// زاويتها. الرسم تزييني خلف المحتوى ولا يُستخدم كصورة منتج.
+/// بطاقة البطل في الرئيسية — تدرّج وردي→بنفسجي→أزرق مع صورة بنر المسؤول في
+/// زاويتها. الصورة تزيينية خلف المحتوى ولا تُستخدم كصورة منتج.
+///
+/// [PRODUCT] (المالك، 2026-10-26) لا بطل مضمَّن: البطاقة تُرسم لبنرٍ نشط فقط
+/// (`HomeData.heroBanner`)، والرئيسية تُخفيها كلّها حين لا بنر. كان البديل عنواناً
+/// ثابتاً وشخصية 29، فيعود «بنرٌ» حذفه المسؤول من اللوحة — نصٌّ ترويجي من
+/// التطبيق وحده كبطاقة الترويج المضمَّنة التي أُزيلت 2026-09-28. والنصّ الغائب
+/// بكلتا اللغتين لا يُستبدل بنصٍّ مخترع (بنرٌ صورةٌ فقط مشروع، الهجرة 067)، وصورة
+/// تفشل لا تُستبدل بشخصية.
 class HomeHeroCard extends StatelessWidget {
-  const HomeHeroCard({super.key, required this.onShop, this.banner});
+  const HomeHeroCard({super.key, required this.onShop, required this.banner});
 
   final VoidCallback onShop;
 
-  /// بنر البطل الذي يديره المسؤول. `null` يعني «لم يُضبط»، فيبقى التصميم
-  /// المضمَّن كما هو — لا لوحة فارغة ولا نص نائب.
-  final model.Banner? banner;
+  /// بنر البطل النشط الذي يديره المسؤول.
+  final model.Banner banner;
+
+  /// صندوق صورة البنر — تقيسه الاختبارات (حدود الصورة لا تتبع الصورة نفسها).
+  static const Key artBoxKey = Key('home-hero-art-box');
 
   /// أقصى عرضٍ لعمود النصّ.
   static const double textColumnMax = 190;
@@ -160,23 +174,23 @@ class HomeHeroCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // نصّ البنر بلغة الواجهة الآن — الكردية الناقصة تسقط إلى العربية والعكس.
-    final title = banner?.titleIn(context.language);
-    final subtitle = banner?.subtitleIn(context.language);
+    final title = banner.titleIn(context.language);
+    final subtitle = banner.subtitleIn(context.language);
     // [CRITICAL] (البوّابة ٥، 2026-10-10) نصّا البطل منطقتان تحجزان ما تحتاجه
     // أطول ترجمتيهما (`BoundedText.reserveFor`): ارتفاع البطاقة يتبع النصّ،
     // والشخصية موسَّطةٌ فيها — عنوانٌ كردي أطول بسطرٍ كان يطيلها ٣٩ ويُنزل
     // الشخصية ١٩٫٥ عند ×١٫٣. الأطول يُصغَّر أولاً حتى ٠٫٨، ولا يُحجز سطرٌ
     // زائد بكل لغة إلا لما لا يتّسع حتى عنده.
+    // الاحتياط ثنائي الاتجاه (`pickEitherLanguage`): النصّ موجودٌ بكل لغة أو
+    // غائبٌ بكلّها، فالقائمتان كاملتان أو فارغتان.
     final titles = [
-      for (final l in AppLanguage.values)
-        banner?.titleIn(l) ?? AppStrings.of(l)('heroNewSeason'),
+      for (final l in AppLanguage.values) ?banner.titleIn(l),
     ];
     final subtitles = [
-      for (final l in AppLanguage.values)
-        banner?.subtitleIn(l) ?? AppStrings.of(l)('heroNewCollection'),
+      for (final l in AppLanguage.values) ?banner.subtitleIn(l),
     ];
-    final kicker = BoundedText(
-      subtitle ?? context.strings('heroNewCollection'),
+    final kicker = subtitle == null ? null : BoundedText(
+      subtitle,
       maxLines: 2,
       reserveFor: subtitles,
       style: Theme.of(context).textTheme.labelSmall?.copyWith(
@@ -185,8 +199,8 @@ class HomeHeroCard extends StatelessWidget {
         color: Colors.white,
       ),
     );
-    final heading = BoundedText(
-      title ?? context.strings('heroNewSeason'),
+    final heading = title == null ? null : BoundedText(
+      title,
       maxLines: 6,
       reserveFor: titles,
       alignment: AlignmentDirectional.topStart,
@@ -215,12 +229,13 @@ class HomeHeroCard extends StatelessWidget {
           // على ضفيرتها حتى عند ٤١٢. العرض المحجوز لا يتغيّر باللغة، فلا يتحرّك
           // الرسم بتغيّرها.
           final textWidth = [
-            kicker.reservedWidth(
-                  context,
-                  math.max(0, column - _kickerPadding),
-                ) +
-                _kickerPadding,
-            heading.reservedWidth(context, column),
+            if (kicker != null)
+              kicker.reservedWidth(
+                    context,
+                    math.max(0, column - _kickerPadding),
+                  ) +
+                  _kickerPadding,
+            ?heading?.reservedWidth(context, column),
             _ctaWidth(context, ctaStyle, column),
           ].reduce(math.max);
           return Container(
@@ -251,11 +266,12 @@ class HomeHeroCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                // صورة البنر التي يرفعها المسؤول تحلّ محلّ الشخصية المضمَّنة،
-                // في الموضع والمقاس نفسيهما.
+                // صورة البنر كاملةً داخل صندوقها (`BoxFit.contain`، لا قصّ) —
+                // بلا شخصية بديلة: صورةٌ غائبة أو فاشلة تترك الصندوق فارغاً.
                 _BannerArt(
-                  slot: VisualSlots.homeHero,
-                  imageUrl: banner?.imageUrl,
+                  boxKey: artBoxKey,
+                  slot: null,
+                  imageUrl: banner.imageUrl,
                   height: 168,
                   cornerRadius: AppDimens.radiusXl,
                   start: textStart + textWidth,
@@ -273,22 +289,26 @@ class HomeHeroCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: _kickerPadding / 2,
-                            vertical: 5,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.26),
-                            borderRadius: BorderRadius.circular(
-                              AppDimens.radiusFull,
+                        if (kicker != null) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: _kickerPadding / 2,
+                              vertical: 5,
                             ),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.26),
+                              borderRadius: BorderRadius.circular(
+                                AppDimens.radiusFull,
+                              ),
+                            ),
+                            child: kicker,
                           ),
-                          child: kicker,
-                        ),
-                        const SizedBox(height: AppDimens.space4),
-                        heading,
-                        const SizedBox(height: AppDimens.space4),
+                          const SizedBox(height: AppDimens.space4),
+                        ],
+                        if (heading != null) ...[
+                          heading,
+                          const SizedBox(height: AppDimens.space4),
+                        ],
                         GestureDetector(
                           onTap: onShop,
                           child: Container(

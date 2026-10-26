@@ -287,12 +287,18 @@ void main() {
       await _pumpShell(tester, tab: const CategoriesScreen(), dark: false);
       final screenHeight = tester.view.physicalSize.height;
       // الأقسام بلا `SafeArea` على مستوى الشاشة منذ 2026-09-28 (تمتدّ إلى
-      // منطقة شريط الحالة بطلب المالك)، فالمقيس عمودُها الجذر: يصل إلى القاع
-      // خلف الشريط ولا يستهلك الحشوة السفلية.
-      final content = tester.getRect(
-        find.descendant(of: find.byType(CategoriesScreen), matching: find.byType(Column)).first,
-      );
-      expect(content.bottom, closeTo(screenHeight, 0.5));
+      // منطقة شريط الحالة بطلب المالك)، فالمقيس تخطيطُها الجذر وجسمُها: يصلان
+      // إلى القاع خلف الشريط ولا يستهلكان الحشوة السفلية. (منذ 2026-10-26 الجذر
+      // `CustomMultiChildLayout` لا `Column` — الرسم يُحصر بين شريط الحالة
+      // والبطاقة الأولى.)
+      final root = find
+          .descendant(of: find.byType(CategoriesScreen), matching: find.byType(CustomMultiChildLayout))
+          .first;
+      expect(tester.getRect(root).bottom, closeTo(screenHeight, 0.5));
+      final body = find
+          .descendant(of: root, matching: find.byType(LayoutId))
+          .at(1);
+      expect(tester.getRect(body).bottom, closeTo(screenHeight, 0.5));
       expect(
         find.ancestor(of: find.byType(OtakuScreenHeader), matching: find.byType(SafeArea)),
         findsNothing,

@@ -239,11 +239,11 @@ async function insertProductOptions(
 export const adminService = {
   // ===== المنتجات =====
   async createProduct(input: {
-    /** المحتوى بلغتين (066) — الأربعة إلزامية ومقصوصة في المدقّق. */
+    /** المحتوى بلغتين (066) — العربية إلزامية، والكردية اختيارية (2026-10-26). */
     nameAr: string;
     descriptionAr: string;
-    nameCkb: string;
-    descriptionCkb: string;
+    nameCkb?: string | null;
+    descriptionCkb?: string | null;
     /** `null` = «السعر يُعلن قريباً» (084). */
     price: number | null;
     /** سعر قطعتين (085)؛ الغائب/`null` = لا عرض. */
@@ -287,8 +287,8 @@ export const adminService = {
           // كان الترويج مطفأً بدل تمرير قيمة متناقضة.
           input.hasDeliveryPromo ? (input.deliveryPromoAmount ?? 0) : 0,
           input.restockAt ?? null,
-          input.nameCkb,
-          input.descriptionCkb,
+          input.nameCkb ?? null,
+          input.descriptionCkb ?? null,
           input.pairPrice ?? null,
         ],
       );
@@ -362,8 +362,9 @@ export const adminService = {
        */
       nameAr?: string;
       descriptionAr?: string;
-      nameCkb?: string;
-      descriptionCkb?: string;
+      /** `null` يمسح الترجمة الكردية (اختيارية منذ 2026-10-26). */
+      nameCkb?: string | null;
+      descriptionCkb?: string | null;
       price?: number | null;
       /** `null` يزيل عرض القطعتين (085)؛ الغائب لا يُمسّ. */
       pairPrice?: number | null;
@@ -481,7 +482,8 @@ export const adminService = {
       // (`restockService`)، والاسم الذي عدّله المسؤول للتوّ هو الصحيح.
       const names: ProductNames = {
         ar: input.nameAr ?? existing.nameAr,
-        ckb: input.nameCkb ?? existing.nameCkb,
+        // `null` = مُسحت الترجمة للتوّ — لا يُعاد الاسم الكردي القديم.
+        ckb: input.nameCkb !== undefined ? input.nameCkb : existing.nameCkb,
       };
 
       // عودة المخزون من صفر إلى ما فوق: إشعارات المشتركين وفراغ اشتراكاتهم
@@ -559,7 +561,7 @@ export const adminService = {
   },
 
   // ===== الأقسام =====
-  async createCategory(input: { name: string; imageUrl?: string | null; sortOrder?: number }) {
+  async createCategory(input: { name: string; nameCkb?: string | null; imageUrl?: string | null; sortOrder?: number }) {
     return categoryRepo.create(db, input);
   },
 
@@ -589,7 +591,7 @@ export const adminService = {
 
   async updateSubcategory(
     id: string,
-    input: { name?: string; sortOrder?: number; isActive?: boolean },
+    input: { name?: string; nameCkb?: string | null; sortOrder?: number; isActive?: boolean },
   ) {
     const updated = await subcategoryRepo.update(db, id, input);
     if (!updated) throw Errors.notFound('القسم الفرعي غير موجود');
@@ -610,7 +612,10 @@ export const adminService = {
     return { id };
   },
 
-  async updateCategory(id: string, input: { name?: string; imageUrl?: string | null; isActive?: boolean; sortOrder?: number }) {
+  async updateCategory(
+    id: string,
+    input: { name?: string; nameCkb?: string | null; imageUrl?: string | null; isActive?: boolean; sortOrder?: number },
+  ) {
     const updated = await categoryRepo.update(db, id, input);
     if (!updated) throw Errors.notFound('القسم غير موجود');
     return updated;
@@ -620,7 +625,7 @@ export const adminService = {
     return categoryRepo.list(db, true);
   },
 
-  async createSubcategory(input: { categoryId: string; name: string; sortOrder?: number }) {
+  async createSubcategory(input: { categoryId: string; name: string; nameCkb?: string | null; sortOrder?: number }) {
     const category = await categoryRepo.update(db, input.categoryId, {});
     if (!category) throw Errors.notFound('القسم غير موجود');
     return subcategoryRepo.create(db, input);
@@ -724,7 +729,7 @@ export const adminService = {
     return governorateRepo.listAll(db);
   },
 
-  async createGovernorate(input: { name: string; deliveryFee: number }) {
+  async createGovernorate(input: { name: string; nameCkb?: string | null; deliveryFee: number }) {
     return governorateRepo.create(db, input);
   },
 
@@ -751,7 +756,10 @@ export const adminService = {
     return { id };
   },
 
-  async updateGovernorate(id: string, input: { name?: string; deliveryFee?: number; isActive?: boolean }) {
+  async updateGovernorate(
+    id: string,
+    input: { name?: string; nameCkb?: string | null; deliveryFee?: number; isActive?: boolean },
+  ) {
     const updated = await governorateRepo.update(db, id, input);
     if (!updated) throw Errors.notFound('المحافظة غير موجودة');
     return updated;

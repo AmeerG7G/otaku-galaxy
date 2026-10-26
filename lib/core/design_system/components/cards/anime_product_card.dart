@@ -12,6 +12,7 @@ import '../feedback/product_photo_slot.dart';
 import '../feedback/delivery_promo_label.dart';
 import '../feedback/product_stock_pill.dart';
 import '../typography/bounded_text.dart';
+import '../../../utils/formatters.dart';
 
 /// بطاقة المنتج بتصميم Otaku Galaxy v2.
 ///
@@ -50,6 +51,8 @@ class AnimeProductCard extends StatelessWidget {
     // تناقضٌ يقرؤه الزبون في بطاقةٍ واحدة.
     final availability = product.availability;
     final comingSoon = availability == ProductAvailability.comingSoon;
+    // بلا سعرٍ معلن (084): لا شارة نفاد ولا شريط — الشارة تحت الاسم تقوله.
+    final priceLater = availability == ProductAvailability.priceComingSoon;
     final nameStyle = DefaultTextStyle.of(context).style.merge(
       Theme.of(context).textTheme.bodySmall?.copyWith(
         fontSize: 12.5,
@@ -85,7 +88,7 @@ class AnimeProductCard extends StatelessWidget {
                     // نفاد المخزون يُقال بشارة فوق الصورة لا بتغيير الصورة.
                     // المنتظَر بموعد لا شارة نفاد له — شارة الحالة تحته
                     // تقول «قريباً يتوفر» وحدها.
-                    if (!inStock && !comingSoon)
+                    if (!inStock && !comingSoon && !priceLater)
                       PositionedDirectional(
                         bottom: 9,
                         end: 9,
@@ -114,7 +117,7 @@ class AnimeProductCard extends StatelessWidget {
                         ),
                       ),
                     // شريط «نفد المخزون» أسفل الصورة — أو شريط الانتظار.
-                    if (!inStock)
+                    if (!inStock && !priceLater)
                       PositionedDirectional(
                         start: 0,
                         end: 0,
@@ -158,8 +161,8 @@ class AnimeProductCard extends StatelessWidget {
                       children: [
                         Flexible(
                           child: Text(
-                            context.strings.p('priceIqd', {'amount': product.price.toStringAsFixed(0)}),
-                            textDirection: TextDirection.ltr,
+                            formatProductPrice(context, product),
+                            textDirection: priceLater ? null : TextDirection.ltr,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: Theme.of(context).textTheme.labelLarge

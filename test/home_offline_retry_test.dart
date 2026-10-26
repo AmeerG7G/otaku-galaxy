@@ -23,7 +23,6 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otaku_galaxy/core/design_system/design_system.dart';
 import 'package:otaku_galaxy/core/errors/app_exception.dart';
-import 'package:otaku_galaxy/core/l10n/app_strings.dart';
 import 'package:otaku_galaxy/features/auth/presentation/cubit/auth_cubit.dart';
 import 'package:otaku_galaxy/features/connectivity/presentation/offline_gate.dart';
 import 'package:otaku_galaxy/features/favorites/presentation/cubit/favorites_cubit.dart';
@@ -122,7 +121,8 @@ model.Banner _hero(String id, String title) => model.Banner.fromJson({
 HomeData _home(String hero, {List<Product> discover = const []}) =>
     HomeData(heroBanner: _hero(hero, 'بطل $hero'), discover: discover);
 
-final Finder _defaultHeroCopy = find.text(AppStrings.arabic('heroNewSeason'));
+// نصّ البطل المضمَّن السابق — أُزيل من التطبيق (2026-10-26) ويجب ألّا يعود.
+final Finder _defaultHeroCopy = find.text('موسم جديد من\nعالم الأنمي');
 
 Finder get _retryButton => find.descendant(
   of: find.byType(AnimeErrorState),

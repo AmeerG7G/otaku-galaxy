@@ -98,11 +98,14 @@ export interface ProductOptionInput {
 }
 
 export interface ProductCreatePayload {
-  /** الأربعة إلزامية عند الإنشاء — الخادم يرفض الناقص والفارغ. */
+  /**
+   * العربية إلزامية عند الإنشاء. الكردية اختيارية (2026-10-26): `null` أو
+   * الغائب = «لا ترجمة»، والزبون الكردي يرى العربية.
+   */
   nameAr: string
   descriptionAr: string
-  nameCkb: string
-  descriptionCkb: string
+  nameCkb?: string | null
+  descriptionCkb?: string | null
   /** `null` = «السعر يُعلن لاحقاً» (084). */
   price: number | null
   /** سعر قطعتين (085) — بين سعر القطعة وضعفه؛ الخادم يفرضه (`INVALID_PAIR_PRICE`). */
@@ -129,13 +132,13 @@ export interface ProductCreatePayload {
 
 export interface ProductUpdatePayload {
   /**
-   * كل حقلٍ لغويٍّ مستقل: الغائب لا يُمسّ على الخادم. الحاضر نصٌّ غير فارغ —
-   * لا يُفرَّغ محتوى بالتعديل.
+   * كل حقلٍ لغويٍّ مستقل: الغائب لا يُمسّ على الخادم. العربية الحاضرة نصٌّ
+   * غير فارغ؛ الكردية `null` تمسح الترجمة (اختيارية منذ 2026-10-26).
    */
   nameAr?: string
   descriptionAr?: string
-  nameCkb?: string
-  descriptionCkb?: string
+  nameCkb?: string | null
+  descriptionCkb?: string | null
   /** `null` يعيد المنتج «يُعلن لاحقاً» (084). */
   price?: number | null
   /** `null` يزيل عرض القطعتين (085). */
@@ -222,8 +225,8 @@ export interface ProductFormDraft {
   nameAr: string
   descriptionAr: string
   /**
-   * `''` لنصٍّ ناقص في منتجٍ قديم — الحقل يظهر فارغاً ليكمله المسؤول، ولا
-   * يُرسَل ما دام فارغاً (فيبقى «ناقصاً» على الخادم).
+   * `''` = لا ترجمة كردية (اختيارية) — الحقل يظهر فارغاً. حين يُفرَّغ حقلٌ كان
+   * مكتوباً يُرسَل `null` فيُمسح على الخادم؛ وما بقي فارغاً لا يُرسَل.
    */
   nameCkb: string
   descriptionCkb: string
