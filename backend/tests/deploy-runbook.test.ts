@@ -169,11 +169,11 @@ describe('[R-17] كل كتلة أوامر تخصّ بيئةً واحدة وتت�
   it('كل أمر docker compose يسمّي مشروع بيئته، و`migrate` تُبنى قبل تشغيلها', () => {
     const block = COMPOSE.slice(COMPOSE.indexOf('\nservices:'), COMPOSE.indexOf('\nvolumes:'));
     const services = new Set([...block.matchAll(/^ {2}([a-z][\w-]*):\s*$/gm)].map((m) => m[1]!));
-    expect(services).toEqual(new Set(['api', 'migrate']));
+    expect(services).toEqual(new Set(['api', 'migrate', 'web']));
     const commands = bashLines(RUNBOOK).filter((line) => /docker compose (?!ls\b)/.test(line));
     expect(commands.length).toBeGreaterThan(0);
     for (const line of commands) {
-      expect(line, line).toMatch(/(^|\s)docker compose -p otaku-(staging|prod) /);
+      expect(line, line).toMatch(/(^|[\s(])docker compose -p otaku-(staging|prod) /);
       for (const m of line.matchAll(/(?:up -d|run --rm|build)((?: [a-z][\w-]*)+)/g)) {
         for (const svc of m[1]!.trim().split(/\s+/)) expect(services.has(svc), line).toBe(true);
       }
@@ -248,6 +248,78 @@ describe('[R-17] الملفات تعزل الاختبار المسبق عن ال
     // اسمٌ ثابت للحاوية أو للحجم يجعله واحداً لكل مشروع — أي للبيئتين.
     expect(COMPOSE).not.toMatch(/^\s*container_name:/m);
     expect(COMPOSE.slice(COMPOSE.indexOf('\nvolumes:'))).not.toMatch(/^\s+name:/m);
+  });
+
+  it('docker-compose.yml: الموقع ملفّ بيئته وحده، ومنفذه محلي، ولا يجرّ `api` ولا يبدأ إلا باسمه', () => {
+    const web = serviceBlock('web');
+    expect(web).toMatch(/\n {4}profiles: \["web"\]\n/);
+    expect(web).toMatch(/\n {4}image: otaku-galaxy-web:\$\{IMAGE_TAG:\?[^}]+\}\n/);
+    // ملف الـAPI يحمل وصلة القاعدة وسرّ JWT: لا يصل الموقع.
+    expect(web).not.toMatch(/ENV_FILE:\?/);
+    // البديل مسارٌ غير موجود، و`required: true` يرفض الإنشاء بدونه.
+    expect(web).toMatch(/\n {6}- path: \$\{WEB_ENV_FILE:-\.\/web-store\/\.env\.WEB_ENV_FILE-is-required\}\n {8}required: true\n/);
+    // بلا منفذٍ معطى: منفذٌ عشوائي محلي، لا منفذ بيئةٍ أخرى.
+    expect(web).toMatch(/\n {6}- "127\.0\.0\.1:\$\{WEB_HOST_PORT:-\}:3000"\n/);
+    expect(web).not.toMatch(/depends_on:/);
+    // الكتلة في الدليل تتحقّق من المنفذ المنشور قبل أن تعدّ النشر ناجحاً.
+    const blocks = subshells(RUNBOOK).filter((b) => b.some((line) => /up -d --no-deps web$/.test(line)));
+    expect(blocks).toHaveLength(1);
+    const b = blocks[0]!;
+    const up = b.findIndex((line) => /up -d --no-deps web$/.test(line));
+    const port = b.findIndex((line) => /^test "\$\(docker compose -p otaku-staging --profile web port web 3000\)" = 127\.0\.0\.1:3001$/.test(line));
+    expect(port, b.join(' ⏎ ')).toBe(up + 1);
+  });
+
+  it('صورة الموقع: لا ملف بيئة في سياق البناء، ولا تعمل كجذر', () => {
+    const ignore = read('web-store/.dockerignore').split('\n').map((line) => line.trim());
+    expect(ignore).toEqual(expect.arrayContaining(['.env', '.env.*', 'node_modules', '.next']));
+    const dockerfile = read('web-store/Dockerfile').replace(/^\s*#.*$/gm, '');
+    const runtime = dockerfile.slice(dockerfile.indexOf(' AS runtime'));
+    expect(runtime).toMatch(/^USER node$/m);
+    // لا `COPY . .` ولا نسخٌ لملف بيئة: ما يدخل الصورة مسمّى.
+    expect(dockerfile).not.toMatch(/^COPY \. /m);
+    expect(dockerfile).not.toMatch(/\.env/);
+  });
+
+  it('nginx الموقع على الاختبار المسبق: مغلق، لا يُفهرس، وعنوان الزبون لا يُزوَّر', () => {
+    const conf = read('deploy/nginx/staging-store.conf');
+    const code = conf.replace(/#.*$/gm, '');
+    const tls = code.slice(code.indexOf('listen 443'));
+    const at = (re: RegExp) => tls.search(re);
+    // nginx الخادم 1.24: `http2 on;` يُفشل `nginx -t`.
+    expect(code).not.toMatch(/http2 on;/);
+    expect(tls).toMatch(/listen 443 ssl http2;/);
+    // عنوان Cloudflare الحقيقي، ثم كتابةٌ فوق الترويستين — لا إلحاق.
+    expect(tls).toMatch(/include \/etc\/nginx\/snippets\/cloudflare-real-ip\.conf;/);
+    expect(tls).toMatch(/proxy_set_header X-Real-IP\s+\$remote_addr;/);
+    expect(tls).toMatch(/proxy_set_header X-Forwarded-For\s+\$remote_addr;/);
+    expect(code).not.toMatch(/\$proxy_add_x_forwarded_for/);
+    expect(tls).toMatch(/proxy_set_header Authorization\s+"";/);
+    expect(tls).toMatch(/proxy_set_header CF-Connecting-IP\s+"";/);
+    expect(tls).toMatch(/proxy_pass http:\/\/127\.0\.0\.1:3001;/);
+    // مغلق ولا يُفهرس، على مستوى الخادم كله (قبل أول location).
+    const firstLocation = at(/\n\s*location /);
+    for (const re of [
+      /\n\s*auth_basic\s+"/,
+      /\n\s*auth_basic_user_file \/etc\/nginx\/staging-store\.htpasswd;/,
+      /\n\s*add_header X-Robots-Tag "noindex, nofollow[^"]*" always;/,
+    ]) {
+      const i = at(re);
+      expect(i, String(re)).toBeGreaterThan(-1);
+      expect(i, String(re)).toBeLessThan(firstLocation);
+    }
+    // `add_header` داخل location يُسقط ترويسة الخادم من ذلك الموقع.
+    for (const block of tls.slice(firstLocation).split(/\n\s*location /)) expect(block).not.toMatch(/add_header/);
+    // الاستثناء الوحيد من كلمة المرور: robots.txt يمنع الكل.
+    expect([...tls.matchAll(/auth_basic off;/g)]).toHaveLength(1);
+    expect(tls).toMatch(/location = \/robots\.txt \{\s*auth_basic off;\s*default_type text\/plain;\s*return 200 "User-agent: \*\\nDisallow: \/\\n";\s*\}/);
+    // لا HSTS قبل التحقّق من HTTPS على النطاق.
+    expect(code).not.toMatch(/Strict-Transport-Security/);
+
+    const snippet = read('deploy/nginx/snippets/cloudflare-real-ip.conf').replace(/#.*$/gm, '');
+    expect(snippet).toMatch(/^real_ip_header CF-Connecting-IP;$/m);
+    expect(snippet).not.toMatch(/real_ip_recursive on|set_real_ip_from (0\.0\.0\.0\/0|::\/0)/);
+    expect([...snippet.matchAll(/^set_real_ip_from \S+;$/gm)].length).toBeGreaterThan(10);
   });
 
   it('كل تطبيق PM2 في مجلّد بيئته، ولا مجلّدان ولا منفذان مشتركان', () => {
