@@ -1,6 +1,8 @@
 export interface AdminSubcategory {
   id: string
   name: string
+  /** الاسم الكردي (اختياري، 046) — `null` = لا ترجمة، الزبون الكردي يرى العربي. */
+  nameCkb: string | null
   sortOrder: number
   isActive: boolean
 }
@@ -8,6 +10,8 @@ export interface AdminSubcategory {
 export interface AdminCategory {
   id: string
   name: string
+  /** الاسم الكردي (اختياري، 046) — `null` = لا ترجمة، الزبون الكردي يرى العربي. */
+  nameCkb: string | null
   imageUrl: string | null
   sortOrder: number
   isActive: boolean
@@ -20,12 +24,15 @@ export interface AdminCategoryListResponse {
 
 export interface CategoryCreatePayload {
   name: string
+  nameCkb?: string | null
   imageUrl?: string | null
   sortOrder?: number
 }
 
 export interface CategoryUpdatePayload {
   name?: string
+  /** `null` يمسح الترجمة الكردية؛ الغائب لا يُمسّ. */
+  nameCkb?: string | null
   imageUrl?: string | null
   sortOrder?: number
   isActive?: boolean
@@ -34,6 +41,7 @@ export interface CategoryUpdatePayload {
 export interface SubcategoryCreatePayload {
   categoryId: string
   name: string
+  nameCkb?: string | null
   sortOrder?: number
 }
 

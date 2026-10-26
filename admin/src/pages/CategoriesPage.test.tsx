@@ -19,7 +19,7 @@ vi.mock('../api/categoriesApi', () => ({
   deleteSubcategory: vi.fn(),
 }))
 
-import { listAdminCategories, updateCategory } from '../api/categoriesApi'
+import { createCategory, listAdminCategories, updateCategory } from '../api/categoriesApi'
 import CategoriesPage from './CategoriesPage'
 import type { AdminCategory } from '../types/categories'
 
@@ -31,12 +31,14 @@ function category(overrides: Partial<AdminCategory> = {}): AdminCategory {
   return {
     id: 'c1',
     name: 'الحقائب',
+    nameCkb: null,
     imageUrl: '/uploads/category/old.png',
     sortOrder: 1,
     isActive: true,
     subcategories: Array.from({ length: 8 }, (_, i) => ({
       id: `s${i}`,
       name: `فرعي ${i}`,
+      nameCkb: null,
       sortOrder: i,
       isActive: true,
     })),
@@ -97,5 +99,69 @@ describe('الأقسام الرئيسية — بلا صورة، اسمٌ وعد�
     const payload = vi.mocked(updateCategory).mock.calls[0]![1]
     expect(payload).not.toHaveProperty('imageUrl')
     expect(payload.name).toBe('الحقائب')
+  })
+})
+
+/**
+ * [PRODUCT] (المالك، 2026-10-26) الاسم الكردي اختياري: يُكتب أو يُترك أو يُمسح،
+ * والعربي لا يُمسّ. الفارغ يُعرض للزبون الكردي بالعربية (الخادم يسقط إليها).
+ */
+describe('الاسم الكردي للقسم — اختياري', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(updateCategory).mockResolvedValue({ message: 'تم' } as never)
+    vi.mocked(createCategory).mockResolvedValue({ message: 'تم' } as never)
+  })
+
+  async function openEdit(saved: string | null) {
+    vi.mocked(listAdminCategories).mockResolvedValue({ items: [category({ nameCkb: saved })] })
+    renderPage()
+    await screen.findByText('الحقائب')
+    const user = userEvent.setup()
+    await user.click(screen.getByText('تعديل'))
+    const dialog = (await screen.findByText('تعديل القسم: الحقائب')).closest('.ant-modal') as HTMLElement
+    return { user, dialog, input: within(dialog).getByLabelText('اسم القسم بالكردية (اختياري)') }
+  }
+
+  it('بلا ترجمة محفوظة وحقلٌ فارغ: الحفظ لا يرسل nameCkb (لا تغيير)', async () => {
+    const { user, dialog, input } = await openEdit(null)
+    expect(input).toHaveValue('')
+    await user.click(within(dialog).getByText('حفظ'))
+    await waitFor(() => expect(updateCategory).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(updateCategory).mock.calls[0]![1]).not.toHaveProperty('nameCkb')
+  })
+
+  it('إضافة الترجمة لاحقاً تُرسَل — والعربي كما هو', async () => {
+    const { user, dialog, input } = await openEdit(null)
+    await user.click(input)
+    await user.paste('جانتاکان')
+    await user.click(within(dialog).getByText('حفظ'))
+    await waitFor(() => expect(updateCategory).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(updateCategory).mock.calls[0]![1]).toMatchObject({ name: 'الحقائب', nameCkb: 'جانتاکان' })
+  })
+
+  it('[CRITICAL] مسح الترجمة المحفوظة يرسل null — والعربي كما هو', async () => {
+    const { user, dialog, input } = await openEdit('جانتاکان')
+    expect(input).toHaveValue('جانتاکان')
+    await user.clear(input)
+    await user.click(within(dialog).getByText('حفظ'))
+    await waitFor(() => expect(updateCategory).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(updateCategory).mock.calls[0]![1]).toMatchObject({ name: 'الحقائب', nameCkb: null })
+  })
+
+  it('[CRITICAL] إنشاء قسم بلا كردية لا يُحجَب — يُرسَل nameCkb: null', async () => {
+    vi.mocked(listAdminCategories).mockResolvedValue({ items: [category()] })
+    renderPage()
+    await screen.findByText('الحقائب')
+    const user = userEvent.setup()
+    await user.click(screen.getAllByRole('button', { name: /إضافة قسم$/ })[0]!)
+    const dialog = (await screen.findByText('إضافة قسم', { selector: '.ant-modal-title' })).closest(
+      '.ant-modal',
+    ) as HTMLElement
+    await user.click(within(dialog).getByLabelText('اسم القسم'))
+    await user.paste('الدفاتر')
+    await user.click(within(dialog).getByText('حفظ'))
+    await waitFor(() => expect(createCategory).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(createCategory).mock.calls[0]![0]).toMatchObject({ name: 'الدفاتر', nameCkb: null })
   })
 })

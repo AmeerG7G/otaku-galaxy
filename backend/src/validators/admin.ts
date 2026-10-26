@@ -130,6 +130,30 @@ function contentDescription(language: 'العربية' | 'الكردية') {
 }
 
 /**
+ * ترجمةٌ كردية **اختيارية** لحقلٍ عربيّ (أعمدة `*_ckb` من 046، كلّها تقبل NULL).
+ *
+ * [PRODUCT] (المالك، 2026-10-26) الكردية لا تمنع إنشاءً ولا تعديلاً: العربية
+ * تبقى الإلزامية، والكردية الناقصة يعرض مكانها النصّ العربي (`pickLocalized`).
+ * - غائب = لا تغيير (التعديل لا يمسّ ترجمةً محفوظة).
+ * - `null` أو نصٌّ فارغ بعد القصّ = «لا ترجمة» ← NULL (القيود لا تقبل نصّاً فارغاً).
+ * - غير ذلك: حدودُ الحقل العربي نفسها، ورسائلُ تسمّي الحقل ولغته.
+ * لا ترجمة تُخترع ولا تُنسخ من العربية.
+ */
+export function optionalKurdish(label: string, { min = 1, max }: { min?: number; max: number }) {
+  return z
+    .string({ error: `${label} بالكردية يجب أن يكون نصاً` })
+    .trim()
+    .max(max, `${label} بالكردية طويل جداً (${max} حرفاً كحد أقصى)`)
+    .refine(
+      (value) => value.length === 0 || value.length >= min,
+      `${label} بالكردية قصير جداً (${min === 2 ? 'حرفان' : `${min} أحرف`} كحد أدنى)`,
+    )
+    .nullable()
+    .optional()
+    .transform((value) => (value === undefined ? undefined : value || null));
+}
+
+/**
  * [CRITICAL] `name`/`description` لم يعودا مفتاحَي كتابة: الاسم صار أربعة
  * حقولٍ صريحة. `zod` يُسقط المفتاح المجهول بصمت، فنسخةُ لوحةٍ قديمة مخبّأة في
  * متصفّح كانت سترسل `name` معدَّلاً فيُحذف، ويقول الخادم «تم الحفظ» والاسم لم
@@ -217,8 +241,9 @@ const productOptions = z
 export const adminProductCreateSchema = z.object({
   nameAr: contentName('العربية'),
   descriptionAr: contentDescription('العربية'),
-  nameCkb: contentName('الكردية'),
-  descriptionCkb: contentDescription('الكردية'),
+  // الكردية اختيارية (2026-10-26) — غيابها لا يمنع النشر، والعربية تُعرض بدلها.
+  nameCkb: optionalKurdish('اسم المنتج', { min: 2, max: 120 }),
+  descriptionCkb: optionalKurdish('وصف المنتج', { max: 3000 }),
   name: retiredKey('nameAr/nameCkb'),
   description: retiredKey('descriptionAr/descriptionCkb'),
   /**
@@ -256,12 +281,12 @@ export const adminProductCreateSchema = z.object({
  */
 export const adminProductUpdateSchema = z.object({
   // كل لغةٍ مستقلة: الحقل الغائب لا يُمسّ، فتعديل العربية لا يلمس الكردية
-  // ولا العكس. الحاضر يجب أن يكون نصاً غير فارغ — لا يُفرَّغ محتوى بتعديل،
-  // و`null` مرفوضة: «ناقص» حالُ منتجٍ قديم لم يُكمَل، لا خيارٌ يُحفظ.
+  // ولا العكس. العربية الحاضرة نصٌّ غير فارغ (لا تُفرَّغ). الكردية اختيارية
+  // (2026-10-26): `null`/فارغ يمسح الترجمة فتُعرض العربية مكانها.
   nameAr: contentName('العربية').optional(),
   descriptionAr: contentDescription('العربية').optional(),
-  nameCkb: contentName('الكردية').optional(),
-  descriptionCkb: contentDescription('الكردية').optional(),
+  nameCkb: optionalKurdish('اسم المنتج', { min: 2, max: 120 }),
+  descriptionCkb: optionalKurdish('وصف المنتج', { max: 3000 }),
   name: retiredKey('nameAr/nameCkb'),
   description: retiredKey('descriptionAr/descriptionCkb'),
   /** `null` يعيد المنتج «قريباً» بلا سعر (084)؛ الغائب لا يُمسّ. */
@@ -325,17 +350,36 @@ export const adminRestockScheduleSchema = z.strictObject({
     .nullable(),
 });
 
+/** اسمٌ عربيّ لقسمٍ أو محافظة — ٢..٦٠، برسالةٍ عربية تسمّي الحقل. */
+function arabicName(label: string, max = 60) {
+  return z
+    .string({ error: `${label} مطلوب` })
+    .trim()
+    .min(2, `${label} قصير جداً (حرفان كحد أدنى)`)
+    .max(max, `${label} طويل جداً (${max} حرفاً كحد أقصى)`);
+}
+
+const adminSortOrder = z
+  .number({ error: 'الترتيب يجب أن يكون رقماً' })
+  .int('الترتيب يجب أن يكون عدداً صحيحاً')
+  .min(0, 'الترتيب لا يكون سالباً')
+  .max(1000, 'الترتيب ١٠٠٠ كحد أقصى');
+
+const adminIsActive = z.boolean({ error: 'حالة التفعيل غير صالحة' });
+
 export const adminCategorySchema = z.object({
-  name: z.string().trim().min(2).max(60),
+  name: arabicName('اسم القسم'),
+  nameCkb: optionalKurdish('اسم القسم', { min: 2, max: 60 }),
   imageUrl: imageUrl.nullable().optional(),
-  sortOrder: z.number().int().min(0).max(1000).optional(),
-  isActive: z.boolean().optional(),
+  sortOrder: adminSortOrder.optional(),
+  isActive: adminIsActive.optional(),
 });
 
 export const adminSubcategorySchema = z.object({
   categoryId: z.string().uuid('معرّف قسم غير صالح'),
-  name: z.string().trim().min(2).max(60),
-  sortOrder: z.number().int().min(0).max(1000).optional(),
+  name: arabicName('اسم القسم الفرعي'),
+  nameCkb: optionalKurdish('اسم القسم الفرعي', { min: 2, max: 60 }),
+  sortOrder: adminSortOrder.optional(),
 });
 
 /**
@@ -403,16 +447,21 @@ export const adminBannerUpdateSchema = z.object({
 });
 
 export const adminGovernorateSchema = z.object({
-  name: z.string().trim().min(2).max(60),
-  deliveryFee: z.number().min(0).max(10_000_000),
-  isActive: z.boolean().optional(),
+  name: arabicName('اسم المحافظة'),
+  nameCkb: optionalKurdish('اسم المحافظة', { min: 2, max: 60 }),
+  deliveryFee: z
+    .number({ error: 'رسوم التوصيل يجب أن تكون رقماً' })
+    .min(0, 'رسوم التوصيل لا تكون سالبة')
+    .max(10_000_000, 'رسوم التوصيل أكبر من المسموح'),
+  isActive: adminIsActive.optional(),
 });
 
 /** تعديل قسم فرعي — القسم الأب لا يتغيّر بعد الإنشاء. */
 export const adminSubcategoryUpdateSchema = z.object({
-  name: z.string().trim().min(2).max(60).optional(),
-  sortOrder: z.number().int().min(0).max(1000).optional(),
-  isActive: z.boolean().optional(),
+  name: arabicName('اسم القسم الفرعي').optional(),
+  nameCkb: optionalKurdish('اسم القسم الفرعي', { min: 2, max: 60 }),
+  sortOrder: adminSortOrder.optional(),
+  isActive: adminIsActive.optional(),
 });
 
 export const adminSubcategoryIdSchema = idSchema;

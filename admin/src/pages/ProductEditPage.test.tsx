@@ -274,6 +274,23 @@ describe('ProductEditPage — المحتوى بلغتين', () => {
     })
   })
 
+  it('[CRITICAL] مسح الكردية يرسل `null` (يمسحها على الخادم) — والعربية كما حُمِّلت', async () => {
+    vi.mocked(getProductForEdit).mockResolvedValue({ draft: { ...draft, isActive: true }, optionsLoaded: true })
+    const user = userEvent.setup()
+    renderPage()
+    await user.clear(await screen.findByLabelText('ناوی بەرهەم بە کوردی'))
+    await user.clear(screen.getByLabelText('وەسفی بەرهەم بە کوردی'))
+    await user.click(screen.getByRole('button', { name: 'حفظ التعديلات' }))
+
+    await waitFor(() => expect(updateProduct).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(updateProduct).mock.calls[0]![1]).toMatchObject({
+      nameAr: 'منتج معطّل',
+      descriptionAr: 'وصف عربي',
+      nameCkb: null,
+      descriptionCkb: null,
+    })
+  })
+
   it('[CRITICAL] تعديل العربية وحدها لا يمسّ الكردية', async () => {
     vi.mocked(getProductForEdit).mockResolvedValue({ draft: { ...draft, isActive: true }, optionsLoaded: true })
     const user = userEvent.setup()

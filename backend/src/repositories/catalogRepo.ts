@@ -486,12 +486,12 @@ export const categoryRepo = {
 
   async create(
     db: pg.Pool | pg.PoolClient,
-    input: { name: string; imageUrl?: string | null; sortOrder?: number },
+    input: { name: string; nameCkb?: string | null; imageUrl?: string | null; sortOrder?: number },
   ): Promise<CategoryRow> {
     const { rows } = await db.query<CategoryRow>(
-      `INSERT INTO categories (name, image_url, sort_order)
-       VALUES ($1, $2, $3) RETURNING *`,
-      [input.name, input.imageUrl ?? null, input.sortOrder ?? 0],
+      `INSERT INTO categories (name, name_ckb, image_url, sort_order)
+       VALUES ($1, $2, $3, $4) RETURNING *`,
+      [input.name, input.nameCkb ?? null, input.imageUrl ?? null, input.sortOrder ?? 0],
     );
     return rows[0]!;
   },
@@ -499,13 +499,18 @@ export const categoryRepo = {
   async update(
     db: pg.Pool | pg.PoolClient,
     id: string,
-    input: { name?: string; imageUrl?: string | null; sortOrder?: number; isActive?: boolean },
+    input: { name?: string; nameCkb?: string | null; imageUrl?: string | null; sortOrder?: number; isActive?: boolean },
   ): Promise<CategoryRow | null> {
     const sets: string[] = [];
     const values: unknown[] = [id];
     if (input.name !== undefined) {
       values.push(input.name);
       sets.push(`name = $${values.length}`);
+    }
+    // الكردي مستقلّ عن العربي: الغائب لا يُمسّ، و`null` يمسحه (2026-10-26).
+    if (input.nameCkb !== undefined) {
+      values.push(input.nameCkb);
+      sets.push(`name_ckb = $${values.length}`);
     }
     if (input.imageUrl !== undefined) {
       values.push(input.imageUrl);
@@ -557,12 +562,12 @@ export const categoryRepo = {
 export const subcategoryRepo = {
   async create(
     db: pg.Pool | pg.PoolClient,
-    input: { categoryId: string; name: string; sortOrder?: number },
+    input: { categoryId: string; name: string; nameCkb?: string | null; sortOrder?: number },
   ) {
-    const { rows } = await db.query<{ id: string; name: string }>(
-      `INSERT INTO subcategories (category_id, name, sort_order)
-       VALUES ($1, $2, $3) RETURNING id, name`,
-      [input.categoryId, input.name, input.sortOrder ?? 0],
+    const { rows } = await db.query<{ id: string; name: string; nameCkb: string | null }>(
+      `INSERT INTO subcategories (category_id, name, name_ckb, sort_order)
+       VALUES ($1, $2, $3, $4) RETURNING id, name, name_ckb AS "nameCkb"`,
+      [input.categoryId, input.name, input.nameCkb ?? null, input.sortOrder ?? 0],
     );
     return rows[0]!;
   },
@@ -572,6 +577,7 @@ export const subcategoryRepo = {
       id: string;
       category_id: string;
       name: string;
+      name_ckb: string | null;
       sort_order: number;
       is_active: boolean;
     }>('SELECT * FROM subcategories WHERE id = $1', [id]);
@@ -581,6 +587,7 @@ export const subcategoryRepo = {
       id: row.id,
       categoryId: row.category_id,
       name: row.name,
+      nameCkb: row.name_ckb,
       sortOrder: row.sort_order,
       isActive: row.is_active,
     };
@@ -589,13 +596,17 @@ export const subcategoryRepo = {
   async update(
     db: pg.Pool | pg.PoolClient,
     id: string,
-    input: { name?: string; sortOrder?: number; isActive?: boolean },
+    input: { name?: string; nameCkb?: string | null; sortOrder?: number; isActive?: boolean },
   ) {
     const sets: string[] = [];
     const values: unknown[] = [id];
     if (input.name !== undefined) {
       values.push(input.name);
       sets.push(`name = $${values.length}`);
+    }
+    if (input.nameCkb !== undefined) {
+      values.push(input.nameCkb);
+      sets.push(`name_ckb = $${values.length}`);
     }
     if (input.sortOrder !== undefined) {
       values.push(input.sortOrder);
