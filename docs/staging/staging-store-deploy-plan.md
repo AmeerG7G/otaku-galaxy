@@ -38,7 +38,7 @@ password, http→https, ACME path not redirected, forged `X-Real-IP`/`X-Forwarde
 from a non-Cloudflare address replaced by the real one, `Authorization` not forwarded, wrong password
 401); `backend/tests/deploy-runbook.test.ts` pins the `web` service, the image (no env file, non-root)
 and this nginx site (password, noindex, robots.txt, overwritten IP headers, `Authorization` and
-`CF-Connecting-IP` not forwarded, no `http2 on`, no HSTS) — 16 tests, 15 mutants caught.
+`CF-Connecting-IP` not forwarded, no `http2 on`, no HSTS) — 16 tests, 14 mutants caught.
 
 ## 2. Prerequisites (owner)
 
