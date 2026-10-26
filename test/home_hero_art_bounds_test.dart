@@ -11,6 +11,10 @@
 // (2026-10-26) لا بطل مضمَّن ولا شخصية بديلة: البطاقة لبنرٍ نشط، والمقيس هو
 // صورة المسؤول نفسها — تُقدَّم بايتاتها (الصورة 29 بأبعادها الحقيقية) عبر
 // `serveNetworkImages`، فتبقى الحدود مقيسةً على صورةٍ مفكوكة لا على صندوق.
+//
+// (2026-10-26، المالك) الصورة تُرسم أنزل بـ`HomeHeroCard.imageDrop` (١٥٪ من
+// ارتفاعها) ولا بأس أن تتجاوز حافّة البطاقة. الإزاحة رسمٌ فقط: حدود التخطيط أدناه
+// (`_art`) تُقاس على صندوق الصورة قبل الإزاحة، والإزاحة نفسها في مجموعتها.
 
 import 'dart:math' as math;
 
@@ -116,7 +120,16 @@ Rect _card(WidgetTester tester) => tester.getRect(
       .first,
 );
 
+/// صندوق صورة البنر في التخطيط — قبل إزاحة الرسم نحو الأسفل.
 Rect _art(WidgetTester tester) => tester.getRect(
+  find.descendant(
+    of: find.byType(HomeHeroCard),
+    matching: find.byType(FractionalTranslation),
+  ),
+);
+
+/// الصورة كما تُرسم — بعد الإزاحة.
+Rect _painted(WidgetTester tester) => tester.getRect(
   find.descendant(
     of: find.byType(HomeHeroCard),
     matching: find.byType(RawImage),
@@ -273,6 +286,52 @@ void main() {
     expect(HomeHeroCard.textColumnFor(284), 190);
     expect(HomeHeroCard.textColumnFor(798), 190);
     expect(HomeHeroCard.textColumnFor(204), 160);
+  });
+
+  group('(2026-10-26) الصورة تُرسم أنزل بـ١٥٪ من ارتفاعها — والبطاقة كما هي', () {
+    test('النسبة ١٥٪', () => expect(HomeHeroCard.imageDrop, 0.15));
+
+    for (final language in AppLanguage.values) {
+      for (final entry in _phones.entries) {
+        testWidgets('${language.name} — ${entry.key}', (tester) async {
+          await _pump(
+            tester,
+            size: entry.value,
+            banner: _bilingualHero,
+            language: language,
+          );
+          final card = _card(tester);
+          final box = _art(tester);
+          final painted = _painted(tester);
+
+          // نازلةٌ ١٥٪ من ارتفاعها، بلا تغيّرٍ أفقي ولا في الحجم.
+          expect(painted.top - box.top, closeTo(0.15 * box.height, 0.5));
+          expect(painted.left, closeTo(box.left, 0.5));
+          expect(painted.size, box.size);
+          // رأسها داخل البطاقة، والنصّ ما يزال بجوارها لا فوقها.
+          expect(painted.top, greaterThan(card.top));
+          expect(painted.right, lessThanOrEqualTo(_textLeft(tester) + 0.5));
+          expect(painted.left, greaterThanOrEqualTo(0));
+          expect(painted.right, lessThanOrEqualTo(entry.value.width));
+          expect(tester.takeException(), isNull);
+        });
+      }
+    }
+
+    testWidgets('الإزاحة رسمٌ فقط: ارتفاع البطاقة لا يتغيّر بها', (tester) async {
+      await _pump(tester, size: const Size(393, 852), banner: _devHero);
+      final withImage = _card(tester).height;
+      await _pump(
+        tester,
+        size: const Size(393, 852),
+        banner: const model.Banner(
+          id: 'hero',
+          titleAr: 'اكتشف، اجمع، واستمتع!',
+          placement: 'hero',
+        ),
+      );
+      expect(_card(tester).height, withImage);
+    });
   });
 
   group('الحدود تحمي حتى حين لا يتّسع المكان', () {

@@ -67,6 +67,7 @@ class _BannerArt extends StatelessWidget {
     this.imageUrl,
     this.start,
     this.boxKey,
+    this.drop = 0,
   });
 
   /// فتحة الشخصية المضمَّنة — تُعرض حين لا صورة أو فشل تحميلها. `null`:
@@ -86,6 +87,11 @@ class _BannerArt extends StatelessWidget {
 
   /// مفتاح صندوق الرسم (الاختبارات تقيس حدوده مستقلّةً عن الصورة).
   final Key? boxKey;
+
+  /// إزاحة صورة المسؤول نحو الأسفل، نسبةً من ارتفاعها المرسوم. رسمٌ فقط
+  /// (`FractionalTranslation`): الصندوق والبطاقة لا يتغيّران، وما يتجاوز حافّة
+  /// البطاقة يقصّه `clipBehavior`. لا تمسّ الشخصية الاحتياطية.
+  final double drop;
 
   /// أصغر إزاحةٍ متساوية عن حافّتين تُبقي زاوية الرسم داخل انحناء زاوية
   /// البطاقة: r·(1 − 1/√2). أقلّ منها وتقصّ الزاويةُ المدوَّرة طرفَ الصورة.
@@ -117,13 +123,16 @@ class _BannerArt extends StatelessWidget {
         key: boxKey,
         alignment: AlignmentDirectional.centerEnd,
         child: imageUrl != null
-            ? Image.network(
-                imageUrl!,
-                height: height,
-                fit: BoxFit.contain,
-                alignment: AlignmentDirectional.centerEnd,
-                // فشل تحميل صورة البنر يعود للشخصية المضمَّنة بدل ترك فجوة.
-                errorBuilder: (_, _, _) => fallback,
+            ? FractionalTranslation(
+                translation: Offset(0, drop),
+                child: Image.network(
+                  imageUrl!,
+                  height: height,
+                  fit: BoxFit.contain,
+                  alignment: AlignmentDirectional.centerEnd,
+                  // فشل تحميل صورة البنر يعود للشخصية المضمَّنة بدل ترك فجوة.
+                  errorBuilder: (_, _, _) => fallback,
+                ),
               )
             : fallback,
       ),
@@ -150,6 +159,14 @@ class HomeHeroCard extends StatelessWidget {
 
   /// صندوق صورة البنر — تقيسه الاختبارات (حدود الصورة لا تتبع الصورة نفسها).
   static const Key artBoxKey = Key('home-hero-art-box');
+
+  /// إزاحة صورة البنر نحو الأسفل من موضعها الموسَّط — ١٥٪ من ارتفاعها.
+  ///
+  /// [PRODUCT] (المالك، 2026-10-26) «أنزل صورة البنر نحو ١٥٪، ولا بأس أن تتجاوز
+  /// حوافّ البطاقة الداخلية». الصندوق والتوسيط (STEP 64 §17) وأبعاد البطاقة كما
+  /// هي؛ الإزاحة رسمٌ فقط، فيُقصّ ما ينزل تحت حافّة البطاقة ولا يتغيّر تخطيط
+  /// الصفحة. الصورة باقيةٌ بجوار عمود النصّ أفقياً، فلا تقع تحت النصّ.
+  static const double imageDrop = 0.15;
 
   /// أقصى عرضٍ لعمود النصّ.
   static const double textColumnMax = 190;
@@ -275,6 +292,7 @@ class HomeHeroCard extends StatelessWidget {
                   height: 168,
                   cornerRadius: AppDimens.radiusXl,
                   start: textStart + textWidth,
+                  drop: imageDrop,
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(
