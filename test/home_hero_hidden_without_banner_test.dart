@@ -5,7 +5,6 @@
 // بل بطلاً مضمَّناً في التطبيق يُرسم حين لا بنر. أُزيل؛ والبنر النشط يُعرض كما هو.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:otaku_galaxy/core/design_system/design_system.dart';
 import 'package:otaku_galaxy/features/home/presentation/widgets/home_compositions.dart';
 import 'package:otaku_galaxy/features/main_navigation/presentation/screens/main_navigation_screen.dart';
 import 'package:otaku_galaxy/features/products/domain/entities/home_data.dart';
