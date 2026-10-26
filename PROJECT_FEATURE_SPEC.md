@@ -12138,3 +12138,19 @@ after a read-only Staging audit. They supersede the earlier STEPs named below.
 In-app notifications work without Firebase. Push is code-complete but unconfigured on Staging:
 server `FCM_*` empty, Staging APK built without `FIREBASE_*` dart-defines, dashboard built without
 `VITE_FIREBASE_*`. Real delivery has never been proven. Remaining owner steps: deploy/README §11.
+
+## 73.4 Follow-ups after the Staging deploy (2026-10-26)
+
+- **Upload `STORAGE_FAILED` — cause confirmed and fixed on Staging (server-side, no code):** the API
+  runs as uid/gid 1000 (`node`); the `staging_uploads` directories down to `<purpose>/2026` were
+  `1001:1001 775` (host account `otakugalaxy`, which copied the files in), so `mkdir
+  <purpose>/2026/10` failed with `EACCES` for every purpose. Fix: group of those 15 directories set to
+  1000 (owner and mode unchanged, not recursive); the boot probe then reported every purpose
+  writable, and a dashboard upload preview succeeded. Month directories before 2026/10 keep
+  `1001:1001`, so deleting/replacing an older file through the API may still fail.
+- **Hero banner image lower (owner):** «move the banner image down about 15%; overlapping the
+  card's inner edges is acceptable». `HomeHeroCard.imageDrop = 0.15` — the admin image is painted
+  15% of its rendered height below its centred position (`FractionalTranslation`, paint only). The
+  art box, its vertical centring (STEP 64 §17), the text-clear rule (2026-10-12) and the card size
+  are unchanged; whatever passes the card's bottom edge is clipped by the card. Promo cards and
+  character fallbacks are unchanged.
