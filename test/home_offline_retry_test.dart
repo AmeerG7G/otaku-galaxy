@@ -23,7 +23,6 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otaku_galaxy/core/design_system/design_system.dart';
 import 'package:otaku_galaxy/core/errors/app_exception.dart';
-import 'package:otaku_galaxy/core/l10n/app_strings.dart';
 import 'package:otaku_galaxy/features/auth/presentation/cubit/auth_cubit.dart';
 import 'package:otaku_galaxy/features/connectivity/presentation/offline_gate.dart';
 import 'package:otaku_galaxy/features/favorites/presentation/cubit/favorites_cubit.dart';
