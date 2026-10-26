@@ -36,7 +36,9 @@ unaffected, web refuses without its env file); `nginx -t` on nginx 1.24 with the
 nginx behaviour against a stub upstream (401 + noindex without password, `robots.txt` 200 without
 password, http→https, ACME path not redirected, forged `X-Real-IP`/`X-Forwarded-For`/`CF-Connecting-IP`
 from a non-Cloudflare address replaced by the real one, `Authorization` not forwarded, wrong password
-401); `backend/tests/deploy-runbook.test.ts` incl. the new `web` invariants (4 mutants caught).
+401); `backend/tests/deploy-runbook.test.ts` pins the `web` service, the image (no env file, non-root)
+and this nginx site (password, noindex, robots.txt, overwritten IP headers, `Authorization` and
+`CF-Connecting-IP` not forwarded, no `http2 on`, no HSTS) — 16 tests, 15 mutants caught.
 
 ## 2. Prerequisites (owner)
 
@@ -67,7 +69,7 @@ from a non-Cloudflare address replaced by the real one, `Authorization` not forw
 )
 ```
 
-Expected: compose ≥ 2.24 (long `env_file` syntax), `staging` clean, at most one `BFF_SHARED_SECRET=`
+Expected: compose ≥ 2.24 (long `env_file` syntax; older refuses the whole file), `staging` clean, at most one `BFF_SHARED_SECRET=`
 line and it is empty, no store env file, API healthy on `staging-87ffeae`, no store certificate,
 password file or snippet, 3001 free, no DNS yet.
 
@@ -77,7 +79,8 @@ password file or snippet, 3001 free, no DNS yet.
 ( set -e
   cd /srv/otaku-galaxy/staging
   test "$(git rev-parse --abbrev-ref HEAD)" = staging
-  git fetch origin && git merge --ff-only origin/staging
+  git fetch origin
+  git merge --ff-only origin/staging
   test "$(git rev-parse HEAD)" = X        # replace X with the full merged commit
   test -z "$(git status --porcelain)"
 )
@@ -154,8 +157,55 @@ excluded from both Docker build contexts.
 )
 ```
 
-Isolation proof before any public exposure: create a test product in the staging dashboard and see
-it at `http://127.0.0.1:3001/` (e.g. through an SSH tunnel `ssh -L 3001:127.0.0.1:3001 …`).
+### S5b — store against the real staging API, on loopback (read-only)
+
+```bash
+( set -u
+  S=http://127.0.0.1:3001
+  echo "== container env: names only, and the two that must match"
+  sudo docker exec staging-web-1 sh -c 'env | cut -d= -f1 | sort | tr "\n" " "'; echo
+  sudo docker exec staging-web-1 sh -c 'test "$API_INTERNAL_URL" = http://api:4000/api && echo "API_INTERNAL_URL expected" || echo "API_INTERNAL_URL UNEXPECTED"'
+  sudo docker exec staging-web-1 sh -c 'test "$SITE_ORIGIN" = https://staging-store.otakugalaxystore.com && echo "SITE_ORIGIN expected" || echo "SITE_ORIGIN UNEXPECTED"'
+  echo "== api resolves to the staging API container"
+  sudo docker exec staging-web-1 getent hosts api
+  sudo docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' staging-api-1; echo
+  echo "== no production API on this host"
+  ss -ltn | grep -E ':4000 ' || echo 'nothing listens on 4000'
+  echo "== catalog, product page, image"
+  curl -sS -o /tmp/og-store-home.html -w 'home %{http_code}\n' $S/
+  P=$(grep -oE 'href="/p/[^"]+"' /tmp/og-store-home.html | head -1 | cut -d'"' -f2)
+  [ -n "$P" ] && curl -sS -o /dev/null -w "product $P %{http_code}\n" "$S$P" || echo 'no product link on home'
+  I=$(grep -oE 'https://staging-api\.otakugalaxystore\.com/uploads/[^"?]+' /tmp/og-store-home.html | head -1)
+  [ -n "$I" ] && curl -sS -o /dev/null -w "image %{http_code} %{content_type}\n" "$I" || echo 'no staging image URL on home'
+  grep -c 'otakugalaxystore.com/uploads' /tmp/og-store-home.html
+  rm -f /tmp/og-store-home.html
+  echo "== CSRF: mutations from another origin, or with no origin, are refused"
+  curl -sS -o /dev/null -w 'foreign Origin -> %{http_code}\n' -X POST -H 'Origin: https://evil.example' -H 'Content-Type: application/json' -d '{}' $S/bff/cart
+  curl -sS -o /dev/null -w 'no Origin      -> %{http_code}\n' -X POST -H 'Content-Type: application/json' -d '{}' $S/bff/cart
+  echo "== store logs since start"
+  sudo docker logs staging-web-1 2>&1 | tail -n 20 | cut -c1-200
+)
+```
+
+Expected: no `DATABASE_URL`/`JWT_*` names in the store container; both values expected; `api`
+resolves to an address of `staging-api-1`; nothing on 4000; home and product 200; the image URL is on
+`staging-api.otakugalaxystore.com` and returns 200 `image/*`; both POSTs 403.
+
+Isolation proof: create a clearly named test product in the staging dashboard and see it on the
+store (`curl -s $S/ | grep -c '<name>'`, or a browser through `ssh -L 3001:127.0.0.1:3001 …`).
+
+**Not testable on loopback, by design — moved to S9 (behind the tester password):** login, session,
+cart and the test order. Every mutating `/bff/*` route requires `Origin` to equal `SITE_ORIGIN`
+(`https://staging-store.otakugalaxystore.com`), and the session cookie is `Secure`; a browser on
+`http://127.0.0.1:3001` sends a different `Origin` and is refused (the 403 above). Faking the
+`Origin` header would test the API, not the deployment.
+
+Known residual risk (no change proposed now): the store shares the project network with the API, so
+TCP to the host PostgreSQL on `172.17.0.1:5432` is allowed by the existing ufw rule for
+`172.18.0.0/16`. The database still requires the staging role's password, which the store container
+does not have (env names above). Moving the store to its own network would need the API on two
+networks, and the API's default gateway (its route to PostgreSQL through that ufw rule) would then
+depend on Docker's network ordering — a change to verify separately, not in this deployment.
 
 ### S6 — DNS (owner, Cloudflare dashboard)
 
@@ -185,8 +235,11 @@ NGINX
     sudo systemctl reload nginx
     sudo certbot certonly --webroot -w /var/www/certbot -d $DOMAIN --deploy-hook 'systemctl reload nginx' || true
   fi
-  sudo rm /etc/nginx/sites-enabled/acme-$DOMAIN.conf && sudo nginx -t && sudo systemctl reload nginx
-  sudo test -s /etc/letsencrypt/live/$DOMAIN/fullchain.pem && echo CERT_OK
+  sudo rm /etc/nginx/sites-enabled/acme-$DOMAIN.conf
+  sudo nginx -t
+  sudo systemctl reload nginx
+  sudo test -s /etc/letsencrypt/live/$DOMAIN/fullchain.pem
+  echo CERT_OK
 )
 ```
 
@@ -203,11 +256,15 @@ NGINX
   H=$(openssl passwd -apr1)
   case "$H" in '$apr1$'*) ;; *) echo "STOP: no password hash"; false;; esac
   printf '%s:%s\n' tester "$H" | sudo tee /etc/nginx/staging-store.htpasswd >/dev/null
-  sudo chown root:www-data /etc/nginx/staging-store.htpasswd && sudo chmod 640 /etc/nginx/staging-store.htpasswd
+  sudo chown root:www-data /etc/nginx/staging-store.htpasswd
+  sudo chmod 640 /etc/nginx/staging-store.htpasswd
   sudo test ! -e /etc/nginx/snippets/cloudflare-real-ip.conf
   sudo install -D -m 644 deploy/nginx/snippets/cloudflare-real-ip.conf /etc/nginx/snippets/cloudflare-real-ip.conf
   AV=/etc/nginx/sites-available/$CONF EN=/etc/nginx/sites-enabled/$CONF
-  sudo test ! -e "$AV" && sudo test ! -e "$EN"
+  # One test per line: under `set -e` a failed command that is not the last of an
+  # `a && b` list does not stop the block.
+  sudo test ! -e "$AV"
+  sudo test ! -e "$EN"
   sudo cp deploy/nginx/$CONF "$AV"
   sudo ln -s "$AV" "$EN"
   if sudo nginx -t; then
@@ -231,11 +288,25 @@ curl -sS -D - $U/robots.txt | grep -iE '^HTTP|x-robots|Disallow'                
 curl -sS -o /dev/null -w '%{http_code}\n' http://staging-store.otakugalaxystore.com/  # 301
 ```
 
-Then in a browser with the tester password: the catalog shows **staging** data (the S5 test
-product); a **test customer** account can log in, add to cart and place one order; the order appears
-in `staging-admin` and is rejected there. A cross-origin `POST /bff/cart` (other `Origin`) gets 403.
-`sudo docker logs staging-api-1 2>&1 | grep client-ip` shows no signature rejections.
-`getent hosts otakugalaxystore.com` is unchanged.
+Then in a browser with the tester password:
+
+1. The catalog shows **staging** data (the S5b test product); product images load.
+2. A **test customer** account (created and approved in `staging-admin` for this purpose, named so it
+   is obviously a test) logs in; reloading keeps the session; logout ends it.
+3. Add to cart, open checkout, place **one** cash-on-delivery order. It appears in `staging-admin`;
+   reject it there with the reason «اختبار». No real customer account is used.
+4. A cross-origin `POST /bff/cart` (other `Origin`) still gets 403 through nginx.
+
+Real client IP — your own public IP must appear, not a Cloudflare address:
+
+```bash
+sudo tail -n 3 /var/log/nginx/staging-store.access.log | awk '{print $1}'
+sudo docker logs --since 30m staging-api-1 2>&1 | grep -F '[client-ip]' || echo 'no client-ip warnings'
+```
+
+The API logs plain text (no structured levels), so read the last lines of both containers as well:
+`sudo docker logs --since 30m staging-web-1 2>&1 | tail -n 40` and the same for `staging-api-1`.
+Finally `getent hosts otakugalaxystore.com` is unchanged (no record today).
 
 ## 4. Rollback (each its own decision)
 
@@ -245,6 +316,8 @@ in `staging-admin` and is rejected there. A cross-origin `POST /bff/cart` (other
   WEB_ENV_FILE=./web-store/.env.staging WEB_HOST_PORT=3001 docker compose -p staging --profile web
   stop web` from the checkout (container and image kept).
 - The API secret can stay: with no store sending signed headers it changes nothing.
+- Password file and snippet (`/etc/nginx/staging-store.htpasswd`, `/etc/nginx/snippets/cloudflare-real-ip.conf`)
+  are only read by the store site; removing them is a separate cleanup decision.
 - DNS record: remove in Cloudflare.
 
 ## 5. Out of scope
