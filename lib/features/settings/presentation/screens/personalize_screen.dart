@@ -1,4 +1,5 @@
 import 'package:auto_route/auto_route.dart';
+import '../../../../core/l10n/app_strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -10,6 +11,8 @@ import '../cubit/locale_cubit.dart';
 import '../cubit/theme_cubit.dart';
 import '../cubit/theme_state.dart';
 import '../widgets/personalize_cards.dart';
+import '../../../visuals/domain/visual_slot.dart';
+import '../../../visuals/presentation/character_artwork.dart';
 
 /// شاشة التخصيص بتصميم Otaku Galaxy v2.
 ///
@@ -20,6 +23,9 @@ import '../widgets/personalize_cards.dart';
 class PersonalizeScreen extends StatelessWidget {
   const PersonalizeScreen({super.key});
 
+  /// الفاصل تحت العنوان والشخصية — قاعُ الرسم عليه تماماً (تحرسه الاختبارات).
+  static const Key dividerKey = Key('personalize_divider');
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -27,8 +33,8 @@ class PersonalizeScreen extends StatelessWidget {
     return Scaffold(
       body: Stack(
         children: [
-          // المصدر يضع الهالة على اليمين الفيزيائي (right) والرسم على اليسار
-          // (left)، أي `start` و`end` على الترتيب في واجهة عربية.
+          // المصدر يضع الهالة على اليمين الفيزيائي (right)، أي `start` في
+          // واجهة عربية.
           PositionedDirectional(
             top: -90,
             start: -70,
@@ -49,62 +55,124 @@ class PersonalizeScreen extends StatelessWidget {
               ),
             ),
           ),
-          PositionedDirectional(
-            top: 44,
-            end: -30,
-            child: IgnorePointer(
-              child: Opacity(
-                opacity: 0.22,
-                child: Image.asset('assets/art/opt/a-i4.png', width: 126),
-              ),
-            ),
-          ),
-
+          // [PRODUCT] (STEP 64 §21، طلب المالك) الشخصية فوق الخطّ والخطّ تحتها
+          // مباشرة: صفٌّ واحد — الشعار والعنوان جهة البداية، والشخصية جهة
+          // النهاية قاعُها على الفاصل — ثم الوصف فالاختيارات. كانت الشخصية
+          // تحت الفاصل في مجرى القائمة (2026-09-28)، فتضيف ارتفاعها كاملاً
+          // فوق المحتوى. كلّها داخل `SafeArea`، فلا شيء تحت شريط الحالة.
           SafeArea(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // ── الترويسة ──
+                // ── الترويسة: [الشعار/العنوان | الشخصية] فوق فاصلٍ بعرضها ──
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(22, 26, 22, 8),
+                  padding: const EdgeInsets.fromLTRB(22, 16, 22, 0),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const OtakuStoreLogoSimple(size: 42),
-                      const SizedBox(height: 14),
-                      Text(
-                        'خلّينا نضبط تجربتك',
-                        style: theme.textTheme.headlineSmall?.copyWith(
-                          fontFamily: 'Tajawal',
-                          fontSize: 25,
-                          letterSpacing: -0.5,
-                          fontWeight: AppDimens.weightBlack,
+                      // [CRITICAL] هندسةٌ لا تتبع اللغة (2026-10-05): العنوان منطقةٌ
+                      // ثابتة من سطرين (`BoundedText`) بالمقاس نفسه في كل لغة،
+                      // فالعمود [شعار ← ١٢ ← سطرا العنوان] بطولٍ واحد دائماً
+                      // والشعار في الموضع نفسه. كان المقاس كردياً أصغر (٢١)
+                      // والعمود يكبر بسطرٍ ثانٍ فيصعد الشعار ~١٨ بكسل؛ ومع
+                      // `fade` كان العنوان الكردي يُقصّ على ٣٢٠×١٫٣.
+                      //
+                      // [PRODUCT] قرار المالك: العربية أيضاً تحجز سطرين (شعارها
+                      // أعلى بسطرٍ مما كان)، والحدّ الأدنى ٠٫٨ من مقاس التصميم
+                      // (قرار عناوين الترويسة 2026-10-05: عند ×١٫٣ نحو ٠٫٦٢ من
+                      // المكبَّر) — فيتّسع الكردي لسطريه حتى على ٣٢٠×١٫٣. كان سطره
+                      // الثالث هناك كسراً داخل «ئەزموونەکەت». سطرٌ ثالث يبقى
+                      // احتياطاً لنصٍّ لا يتّسع حتى عند الحدّ، فـ١٤٥ حدٌّ أدنى:
+                      // ٤٢ شعار + ١٢ + سطران (٢٥ × ١٫١ × ١٫٣ = ٧١٫٥) + ١٢ = ١٣٧٫٥.
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: 145),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.only(bottom: 12),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const OtakuStoreLogoSimple(size: 42),
+                                    const SizedBox(height: 12),
+                                    BoundedText(
+                                      context.strings('personalizeTitle'),
+                                      key: const Key('personalize_title'),
+                                      lines: 2,
+                                      maxLines: 3,
+                                      // عنوان ترويسة: الحدّ من مقاس التصميم
+                                      // ([PRODUCT] 2026-10-05) — عند ٣٢٠×١٫٣ يتّسع
+                                      // الكردي لسطريه بلا سطرٍ ثالث ولا كسرٍ داخل
+                                      // «ئەزموونەکەت».
+                                      floorAtDesignSize: true,
+                                      alignment:
+                                          AlignmentDirectional.topStart,
+                                      style: theme.textTheme.headlineSmall
+                                          ?.copyWith(
+                                            fontFamily: AppFonts.heading,
+                                            fontFamilyFallback:
+                                                AppFonts.headingFallback,
+                                            fontSize: 25,
+                                            height: 1.1,
+                                            letterSpacing: -0.5,
+                                            fontWeight: AppDimens.weightBlack,
+                                          ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            // جهة النهاية (اليسار الفيزيائي) مقابل الهالة أعلى
+                            // اليمين. صندوقٌ ثابت: ١٢٦×١٢٩ شكلُ الصورة 34، وصورةٌ
+                            // بديلة بشكلٍ آخر تُحتوى داخله قاعُها على الفاصل
+                            // (`bottomCenter`).
+                            const IgnorePointer(
+                              child: CharacterArtwork(
+                                slot: VisualSlots.personalize,
+                                width: 126,
+                                height: 129,
+                                alignment: Alignment.bottomCenter,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(height: 7),
-                      FractionallySizedBox(
-                        widthFactor: 0.84,
-                        child: Text(
-                          'اختر لغتك والمظهر اللي يناسبك. تقدر تغيّرهم بأي وقت '
-                          'من الإعدادات.',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            fontSize: 13.5,
-                            height: 1.75,
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
+                      Container(
+                        key: dividerKey,
+                        height: 1.5,
+                        color: AppColors.secondary,
                       ),
                     ],
                   ),
                 ),
 
-                // ── الاختيارات ──
+                // ── الوصف ثم الاختيارات ──
                 Expanded(
                   child: ListView(
-                    padding: const EdgeInsets.fromLTRB(22, 16, 22, 8),
+                    padding: const EdgeInsets.fromLTRB(22, 14, 22, 8),
                     children: [
-                      const OtakuGroupLabel(
-                        label: 'اللغة',
+                      // [CRITICAL] (2026-10-10، ذيل البوّابة ٣) فقرة التعريف
+                      // تحجز أسطر أطول ترجماتها (قرار الفقرات): الكردية أطول
+                      // بسطر على ٣٢٠×١٫٣ فكانت بطاقات اللغة والمظهر تنزل ٣١.
+                      BoundedText(
+                        context.strings('personalizeBody'),
+                        maxLines: 12,
+                        minScale: 1,
+                        reserveFor: AppStrings.across('personalizeBody'),
+                        alignment: AlignmentDirectional.topStart,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontSize: 13.5,
+                          height: 1.75,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      OtakuGroupLabel(
+                        label: context.strings('language'),
                         padding: EdgeInsets.only(bottom: 11),
                       ),
                       BlocBuilder<LocaleCubit, AppLanguage>(
@@ -117,8 +185,8 @@ class PersonalizeScreen extends StatelessWidget {
                                 child: LanguageCard(
                                   name: language.label,
                                   subtitle: language == AppLanguage.arabic
-                                      ? 'اللغة الافتراضية'
-                                      : 'زمانی کوردی',
+                                      ? context.strings('defaultLanguage')
+                                      : language.nativeName,
                                   selected: current == language,
                                   onTap: () => context
                                       .read<LocaleCubit>()
@@ -129,8 +197,8 @@ class PersonalizeScreen extends StatelessWidget {
                           ],
                         ),
                       ),
-                      const OtakuGroupLabel(
-                        label: 'المظهر',
+                      OtakuGroupLabel(
+                        label: context.strings('appearance'),
                         padding: EdgeInsets.fromLTRB(0, 24, 0, 11),
                       ),
                       BlocBuilder<ThemeCubit, ThemeState>(
@@ -142,7 +210,7 @@ class PersonalizeScreen extends StatelessWidget {
                               Expanded(
                                 child: ThemePreviewCard(
                                   dark: false,
-                                  label: 'فاتح',
+                                  label: context.strings('themeLight'),
                                   selected: !state.isDark,
                                   onTap: () => themeCubit.setDark(false),
                                 ),
@@ -151,7 +219,7 @@ class PersonalizeScreen extends StatelessWidget {
                               Expanded(
                                 child: ThemePreviewCard(
                                   dark: true,
-                                  label: 'داكن',
+                                  label: context.strings('themeDark'),
                                   selected: state.isDark,
                                   onTap: () => themeCubit.setDark(true),
                                 ),
@@ -168,7 +236,7 @@ class PersonalizeScreen extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(22, 12, 22, 26),
                   child: AnimePrimaryButton(
-                    label: 'متابعة',
+                    label: context.strings('continueLabel'),
                     height: AppDimens.buttonHeightXl,
                     borderRadius: AppDimens.radiusMd,
                     gradient: AppColors.ctaGradient,

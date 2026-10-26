@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import '../../../../core/l10n/app_strings.dart';
 
 import '../../../../core/design_system/design_system.dart';
+import '../../../visuals/domain/visual_slot.dart';
+import '../../../visuals/presentation/character_artwork.dart';
 
 /// صفحة نجاح الطلب بتصميم Otaku Galaxy v2.
 ///
@@ -64,17 +67,24 @@ class _OrderSuccessViewState extends State<OrderSuccessView>
                           offset: Offset(0, -10 * _float.value),
                           child: child,
                         ),
-                        child: Image.asset(
-                          'assets/art/opt/a-i6.png',
-                          width: 196,
+                        child: const CharacterArtwork(
+                          slot: VisualSlots.orderSuccess,
+                          width: 137,
                         ),
                       ),
                       const SizedBox(height: 8),
-                      Text(
-                        'تم إرسال طلبك',
+                      // [CRITICAL] (البوّابة ٨، 2026-10-10) العنوان سطرٌ يُصغَّر
+                      // أولاً، والتوضيح فقرة، والخطوات أسطرٌ — كلٌّ يحجز أطول
+                      // ترجماته، فلا تنزل الخطوات والأزرار بالكردية.
+                      BoundedText(
+                        context.strings('orderSent'),
+                        maxLines: 3,
+                        reserveFor: AppStrings.across('orderSent'),
+                        alignment: Alignment.topCenter,
                         textAlign: TextAlign.center,
                         style: theme.textTheme.headlineSmall?.copyWith(
-                          fontFamily: 'Tajawal',
+                          fontFamily: AppFonts.heading,
+                          fontFamilyFallback: AppFonts.headingFallback,
                           fontWeight: AppDimens.weightBlack,
                           fontSize: 24,
                           letterSpacing: -0.4,
@@ -107,12 +117,23 @@ class _OrderSuccessViewState extends State<OrderSuccessView>
                               ),
                             ),
                             const SizedBox(width: 9),
-                            Text(
-                              'بانتظار الموافقة',
-                              style: theme.textTheme.labelMedium?.copyWith(
-                                fontSize: 12.5,
-                                fontWeight: AppDimens.weightBold,
-                                color: AppColors.accent,
+                            // [CRITICAL] (البوّابة ١٥، 2026-10-17) تسميةٌ كتسمية
+                            // `OtakuStatusPill`: تُصغَّر داخل الكبسولة وتحجز
+                            // سطراً ثانياً بكل لغة إن لم تتّسع ترجمةٌ حتى ٠٫٨.
+                            // كانت `Text` بلا حدّ فتتجاوز الكردية يميناً ٢٥ على
+                            // ٣٢٠ عند ×٢٫٠.
+                            Flexible(
+                              child: BoundedText(
+                                context.strings('pendingApproval'),
+                                maxLines: 2,
+                                reserveFor: AppStrings.across(
+                                  'pendingApproval',
+                                ),
+                                style: theme.textTheme.labelMedium?.copyWith(
+                                  fontSize: 12.5,
+                                  fontWeight: AppDimens.weightBold,
+                                  color: AppColors.accent,
+                                ),
                               ),
                             ),
                           ],
@@ -121,9 +142,12 @@ class _OrderSuccessViewState extends State<OrderSuccessView>
                       const SizedBox(height: 16),
                       ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 290),
-                        child: Text(
-                          'راح نتواصل معك عبر واتساب لتأكيد التفاصيل، وبعد '
-                          'الموافقة يصير الطلب قيد التجهيز.',
+                        child: BoundedText(
+                          context.strings('orderSuccessNote'),
+                          maxLines: 12,
+                          minScale: 1,
+                          reserveFor: AppStrings.across('orderSuccessNote'),
+                          alignment: Alignment.topCenter,
                           textAlign: TextAlign.center,
                           style: theme.textTheme.bodyMedium?.copyWith(
                             fontSize: 13.5,
@@ -139,21 +163,22 @@ class _OrderSuccessViewState extends State<OrderSuccessView>
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'الخطوات الجاية',
+                              context.strings('nextSteps'),
                               style: theme.textTheme.titleSmall?.copyWith(
-                                fontFamily: 'Tajawal',
+                                fontFamily: AppFonts.heading,
+                                fontFamilyFallback: AppFonts.headingFallback,
                                 fontSize: 14.5,
                                 fontWeight: AppDimens.weightExtraBold,
                               ),
                             ),
                             const SizedBox(height: 14),
-                            for (final (index, label) in const [
-                              'مراجعة الطلب من الإدارة',
-                              'تأكيد عبر واتساب',
-                              'التجهيز والتوصيل',
+                            for (final (index, key) in const [
+                              'stepAdminReview',
+                              'stepWhatsappConfirm',
+                              'stepPrepareDeliver',
                             ].indexed) ...[
                               if (index > 0) const SizedBox(height: 13),
-                              _StepRow(number: index + 1, label: label),
+                              _StepRow(number: index + 1, labelKey: key),
                             ],
                           ],
                         ),
@@ -167,7 +192,7 @@ class _OrderSuccessViewState extends State<OrderSuccessView>
                 child: Column(
                   children: [
                     AnimePrimaryButton(
-                      label: 'طلباتي',
+                      label: context.strings('myOrders'),
                       onPressed: widget.onOpenOrders,
                       height: AppDimens.buttonHeightXl,
                       borderRadius: AppDimens.radiusMd,
@@ -175,7 +200,7 @@ class _OrderSuccessViewState extends State<OrderSuccessView>
                     ),
                     const SizedBox(height: 10),
                     AnimeTextButton(
-                      label: 'متابعة التسوق',
+                      label: context.strings('continueShopping'),
                       onPressed: widget.onKeepShopping,
                     ),
                   ],
@@ -190,10 +215,10 @@ class _OrderSuccessViewState extends State<OrderSuccessView>
 }
 
 class _StepRow extends StatelessWidget {
-  const _StepRow({required this.number, required this.label});
+  const _StepRow({required this.number, required this.labelKey});
 
   final int number;
-  final String label;
+  final String labelKey;
 
   @override
   Widget build(BuildContext context) {
@@ -211,7 +236,9 @@ class _StepRow extends StatelessWidget {
           ),
           child: Text(
             // المرجع يستخدم الأرقام العربية-الهندية: ١ ٢ ٣.
-            const ['١', '٢', '٣'][number - 1],
+            context.strings(
+              ['stepNumeral1', 'stepNumeral2', 'stepNumeral3'][number - 1],
+            ),
             style: theme.textTheme.labelSmall?.copyWith(
               fontSize: 12,
               fontWeight: AppDimens.weightExtraBold,
@@ -221,8 +248,11 @@ class _StepRow extends StatelessWidget {
         ),
         const SizedBox(width: 12),
         Expanded(
-          child: Text(
-            label,
+          child: BoundedText(
+            context.strings(labelKey),
+            maxLines: 3,
+            reserveFor: AppStrings.across(labelKey),
+            alignment: AlignmentDirectional.topStart,
             style: theme.textTheme.bodyMedium?.copyWith(
               fontSize: 13,
               height: 1.5,

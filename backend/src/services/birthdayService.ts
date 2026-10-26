@@ -1,10 +1,12 @@
+import { config } from '../config/index.js';
 import { db } from '../database/pool.js';
 import { birthdayRepo } from '../repositories/birthdayRepo.js';
 import { Errors } from '../utils/errors.js';
 
 export const birthdayService = {
+  /** «اليوم» بتقويم المتجر — كما تقيسه قوائم الإدارة. */
   async status(userId: string) {
-    return birthdayRepo.status(db, userId);
+    return birthdayRepo.status(db, userId, config.storeTimezone);
   },
 
   /**
@@ -13,7 +15,7 @@ export const birthdayService = {
    * - لا يُسمح بالتعديل بعد الحفظ.
    */
   async setBirthday(userId: string, day: number, month: number) {
-    const status = await birthdayRepo.status(db, userId);
+    const status = await birthdayRepo.status(db, userId, config.storeTimezone);
     if (!status.unlocked) {
       throw Errors.badRequest(
         'خيار عيد الميلاد يُفتح بعد استلام أول طلب',
@@ -30,7 +32,7 @@ export const birthdayService = {
 
     const saved = await birthdayRepo.setBirthday(db, userId, day, month);
     if (!saved) throw Errors.conflict('تاريخ الميلاد محفوظ مسبقاً', 'BIRTHDAY_ALREADY_SET');
-    return birthdayRepo.status(db, userId);
+    return birthdayRepo.status(db, userId, config.storeTimezone);
   },
 };
 

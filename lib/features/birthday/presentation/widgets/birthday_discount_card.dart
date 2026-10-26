@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../core/l10n/app_strings.dart';
 
 import '../../../../core/design_system/design_system.dart';
 import '../../../../core/di/injection_container.dart';
@@ -51,15 +52,16 @@ class BirthdayDiscountCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '🎂 عيد ميلاد سعيد!',
+                  context.strings('happyBirthday'),
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     fontWeight: AppDimens.weightBold,
                   ),
                 ),
                 SizedBox(height: AppDimens.space1),
                 Text(
-                  'لديك خصم ${birthday.discountPercent}٪ على طلبك اليوم — '
-                  'صالح حتى ١١:٥٩ مساءً.',
+                  context.strings.p('birthdayDiscountToday', {
+                    'percent': '${birthday.discountPercent}',
+                  }),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                     height: AppDimens.lineHeightRelaxed,

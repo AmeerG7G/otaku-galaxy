@@ -1,0 +1,14 @@
+{
+  "name": "لوحة تحكم مجرة الأوتاكو",
+  "short_name": "لوحة المجرّة",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0B0718",
+  "theme_color": "#7C5CFF",
+  "icons": [
+    { "src": "/otaku-square-mark.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

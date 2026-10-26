@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import '../../../l10n/app_strings.dart';
 
 import '../../../../features/products/domain/entities/product.dart';
 import '../../tokens/app_colors.dart';
 import '../../tokens/app_dimens.dart';
+import '../../tokens/app_fonts.dart';
 import '../feedback/product_photo_slot.dart';
 import '../feedback/product_stock_pill.dart';
 import '../layout/otaku_surfaces.dart';
@@ -45,7 +47,6 @@ class AnimeProductRow extends StatelessWidget {
               imageUrl: product.images.isNotEmpty ? product.images.first : null,
               showLabel: false,
               iconSize: 22,
-              desaturated: !product.inStock,
             ),
           ),
           const SizedBox(width: 13),
@@ -55,7 +56,7 @@ class AnimeProductRow extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  product.name,
+                  localizedProductName(product, context.language),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodyMedium?.copyWith(
@@ -65,17 +66,18 @@ class AnimeProductRow extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 6),
-                ProductStockPill(stock: product.stock),
+                ProductStockPill.forProduct(product),
               ],
             ),
           ),
           const SizedBox(width: 10),
           trailing ??
               Text(
-                '${product.price.toStringAsFixed(0)} د.ع',
+                context.strings.p('priceIqd', {'amount': product.price.toStringAsFixed(0)}),
                 textDirection: TextDirection.ltr,
                 style: theme.textTheme.titleSmall?.copyWith(
-                  fontFamily: 'Tajawal',
+                  fontFamily: AppFonts.heading,
+                  fontFamilyFallback: AppFonts.headingFallback,
                   fontWeight: AppDimens.weightExtraBold,
                   fontSize: 14,
                   color: AppColors.secondary,

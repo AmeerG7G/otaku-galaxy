@@ -1,5 +1,6 @@
 import type pg from 'pg';
 import type { Paginated, ReviewDto, ReviewRow, ReviewStatus } from '../types/index.js';
+import { kurdishOrNull } from '../utils/locale.js';
 
 /** يحوّل صف قاعدة البيانات إلى الشكل الذي يتوقعه تطبيق فلاتر. */
 export function shapeReview(row: ReviewRow): ReviewDto {
@@ -8,10 +9,16 @@ export function shapeReview(row: ReviewRow): ReviewDto {
     // المنتج قد يكون محذوفاً؛ التقييم يبقى تاريخياً بسلسلة فارغة.
     productId: row.product_id ?? '',
     productName: row.product_name,
+    // لقطتا الاسم باللغتين من لقطة سطر الطلب (066). تقييمٌ أقدم بلا كردية.
+    productNameAr: row.product_name,
+    productNameCkb: kurdishOrNull(row.product_name_ckb),
     orderId: row.order_id,
     rating: row.rating,
     comment: row.comment,
-    photoUrl: row.photo_url,
+    photoUrls: row.photo_urls ?? [],
+    // مشتقّ للعرض: الشاشات التي تعرض صورة واحدة تقرأ هذا بدل أن تعرف كلٌّ
+    // منها أن الأولى هي المقصودة.
+    photoUrl: row.photo_urls?.[0] ?? null,
     status: row.status,
     rejectionReason: row.rejection_reason,
     customerName: row.customer_name,
@@ -37,17 +44,22 @@ export const reviewRepo = {
     return rows.map(shapeReview);
   },
 
-  /** تقييم منتج ضمن طلب محدّد — تقييم واحد لكل منتج بكل طلب. */
-  async findForOrderProduct(
+  /**
+   * تقييم الزبون لهذا المنتج — أياً كان الطلب الذي جاء منه.
+   *
+   * [CRITICAL] لا يقيَّد بالطلب عمداً. كان البحث `(user, order, product)`
+   * فيتوافق مع قيدٍ قديم يسمح بتقييم ثانٍ لنفس المنتج من طلبٍ ثانٍ — أي أن
+   * شراء المنتج مرتين كان يمنح مكافأة التقييم مرتين. القاعدة الآن: تقييم
+   * واحد لكل منتج من كل زبون، ويبقى تقييمه ذاك مهما تكرّر الشراء.
+   */
+  async findForUserProduct(
     db: pg.Pool | pg.PoolClient,
     userId: string,
-    orderId: string,
     productId: string,
   ) {
     const { rows } = await db.query<ReviewRow>(
-      `SELECT * FROM reviews
-       WHERE user_id = $1 AND order_id = $2 AND product_id = $3`,
-      [userId, orderId, productId],
+      `SELECT * FROM reviews WHERE user_id = $1 AND product_id = $2`,
+      [userId, productId],
     );
     return rows[0] ? shapeReview(rows[0]) : null;
   },
@@ -80,7 +92,7 @@ export const reviewRepo = {
          LEFT JOIN products p ON p.id = r.product_id
          LEFT JOIN categories c ON c.id = p.category_id
         WHERE r.status = 'approved'
-          AND r.photo_url IS NOT NULL AND btrim(r.photo_url) <> ''
+          AND cardinality(r.photo_urls) > 0
           AND ($2::uuid IS NULL OR p.category_id = $2::uuid)
         ORDER BY r.created_at DESC
         LIMIT $1`,
@@ -96,16 +108,19 @@ export const reviewRepo = {
       orderId: string;
       productId: string;
       productName: string;
+      /** لقطة الاسم الكردي من سطر الطلب — `null` إن لم تكن للطلب كردية. */
+      productNameCkb: string | null;
       rating: number;
       comment: string;
-      photoUrl: string | null;
+      photoUrls: string[];
       customerName: string;
     },
   ) {
     const { rows } = await db.query<ReviewRow>(
       `INSERT INTO reviews
-         (user_id, order_id, product_id, product_name, rating, comment, photo_url, customer_name)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         (user_id, order_id, product_id, product_name, rating, comment, photo_urls,
+          customer_name, product_name_ckb)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING *`,
       [
         input.userId,
@@ -114,31 +129,38 @@ export const reviewRepo = {
         input.productName,
         input.rating,
         input.comment,
-        input.photoUrl,
+        input.photoUrls,
         input.customerName,
+        input.productNameCkb,
       ],
     );
     return shapeReview(rows[0]!);
   },
 
-  /** تعديل تقييم مرفوض وإعادته لقائمة الانتظار. */
+  /**
+   * تعديل تقييم مرفوض وإعادته لقائمة الانتظار.
+   *
+   * الشرط `status = 'rejected'` في الجملة لا في الخدمة وحدها: صفرُ صفوف يعني
+   * أن التقييم لم يعد مرفوضاً (اعتُمد في اللحظة نفسها) أو حُذف — فلا يُعاد
+   * تقييمٌ معتمَد إلى الانتظار وله نقاطُ اعتماد في الدفتر.
+   */
   async resubmit(
     db: pg.Pool | pg.PoolClient,
     id: string,
-    input: { rating: number; comment: string; photoUrl: string | null },
+    input: { rating: number; comment: string; photoUrls: string[] },
   ) {
     const { rows } = await db.query<ReviewRow>(
       `UPDATE reviews
           SET rating = $2,
               comment = $3,
-              photo_url = $4,
+              photo_urls = $4,
               status = 'pending',
               rejection_reason = NULL,
               reviewed_by = NULL,
               reviewed_at = NULL
-        WHERE id = $1
+        WHERE id = $1 AND status = 'rejected'
         RETURNING *`,
-      [id, input.rating, input.comment, input.photoUrl],
+      [id, input.rating, input.comment, input.photoUrls],
     );
     return rows[0] ? shapeReview(rows[0]) : null;
   },
@@ -168,7 +190,9 @@ export const reviewRepo = {
   async listForAdmin(
     db: pg.Pool | pg.PoolClient,
     filter: { status?: ReviewStatus; page: number; limit: number },
-  ): Promise<Paginated<ReviewDto & { userId: string; hasPhoto: boolean }>> {
+  ): Promise<
+    Paginated<ReviewDto & { userId: string; hasPhoto: boolean; photoCount: number }>
+  > {
     const where: string[] = [];
     const values: unknown[] = [];
     if (filter.status) {
@@ -196,7 +220,8 @@ export const reviewRepo = {
       items: rows.map((row) => ({
         ...shapeReview(row),
         userId: row.user_id,
-        hasPhoto: Boolean(row.photo_url && row.photo_url.trim()),
+        hasPhoto: (row.photo_urls?.length ?? 0) > 0,
+        photoCount: row.photo_urls?.length ?? 0,
       })),
       page: filter.page,
       limit: filter.limit,

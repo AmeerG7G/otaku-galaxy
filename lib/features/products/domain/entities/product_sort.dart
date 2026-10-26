@@ -3,13 +3,15 @@
 /// [apiValue] يطابق القائمة المغلقة التي يقبلها الخادم؛ أي قيمة أخرى
 /// يرفضها التحقق هناك بـ400، فلا يوجد ترتيب «واجهي» بلا أثر حقيقي.
 enum ProductSort {
-  newest('newest', 'الأحدث'),
-  priceAsc('price_asc', 'السعر: من الأقل'),
-  priceDesc('price_desc', 'السعر: من الأعلى'),
-  rating('rating', 'الأعلى تقييماً');
+  newest('newest', 'sortNewest'),
+  priceAsc('price_asc', 'sortPriceAsc'),
+  priceDesc('price_desc', 'sortPriceDesc'),
+  rating('rating', 'sortRating');
 
-  const ProductSort(this.apiValue, this.label);
+  const ProductSort(this.apiValue, this.labelKey);
 
   final String apiValue;
-  final String label;
+  /// مفتاح `AppStrings` لا نصّ معروض — التعداد ثابتٌ لا يملك سياقاً،
+  /// فيُصرَّف عند العرض في مُنتقي الترتيب.
+  final String labelKey;
 }

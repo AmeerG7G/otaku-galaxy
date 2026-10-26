@@ -1,11 +1,18 @@
+import 'dart:async';
+
 import 'package:auto_route/auto_route.dart';
+import '../../../../core/l10n/app_strings.dart';
+import '../../../../core/l10n/locale_refetch.dart';
+import '../../../../core/utils/formatters.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../../../core/auth/require_auth.dart';
 import '../../../../core/design_system/design_system.dart';
-import '../../../../core/router/app_router.dart';
-import '../../../auth/presentation/cubit/auth_cubit.dart';
+import '../../../../core/di/injection_container.dart' show sl;
+import '../../../../core/l10n/gender.dart';
+import '../../../../core/tracking/tracking_signals.dart';
 import '../../../cart/presentation/cart_actions.dart';
 import '../../../collections/presentation/widgets/add_to_collection_sheet.dart';
 import '../../../favorites/presentation/cubit/favorites_cubit.dart';
@@ -13,12 +20,30 @@ import '../../../favorites/presentation/favorite_toggle.dart';
 import '../../../products/domain/entities/product.dart';
 import '../../../products/domain/usecases/fetch_product_details_usecase.dart';
 import '../../../reviews/presentation/widgets/product_reviews_section.dart';
+import '../../../visuals/domain/visual_slot.dart';
+import '../../../visuals/presentation/character_artwork.dart';
+import '../../../restock/presentation/restock_notify_button.dart';
+import '../../../settings/data/store_settings_repository.dart';
+import '../utils/product_share.dart';
 
 /// تفاصيل المنتج بتصميم Otaku Galaxy v2.
 ///
 /// فتحة صورة ثابتة بارتفاع ٣٣٠ تعلوها أزرار عائمة مربّعة (بلا `SliverAppBar`
 /// ينهار)، ثم كتلة تحريرية بالقسم والاسم والسعر، ثم الوصف والخيارات
 /// والكمية، ثم شريط إجراء سفلي ثابت يخرج من خلفه رسم شخصية.
+/// ما يتدلّى من صندوق رسم التفاصيل (الصورة 16) خلف حافة الشاشة اليسرى —
+/// من هامش الصورة الشفّاف وحده (انظر `_buildDetails`).
+const double _productArtOverhang = 23;
+
+/// «قليلاً إلى اليسار» (STEP 64 §18، طلب المالك): كان أوّل بكسلٍ مرئي على
+/// بُعد ~٤ من الحافة؛ الإزاحة تستهلك هذه المسافة كلّها فتلامس الشخصيةُ الحافة
+/// دون أن تُقصّ (قيد «لا يعبر الحافة» باقٍ). الموضع لا الصورة: 16.png لا تُمسّ،
+/// والشخصيات الأخرى لا تتحرّك.
+const double _productArtShiftLeft = 4;
+
+/// أقصى انتظارٍ لرابط المتجر عند المشاركة إن لم يكن مخبّأً.
+const Duration _shareUrlRefreshTimeout = Duration(seconds: 3);
+
 @RoutePage()
 class ProductDetailScreen extends StatefulWidget {
   const ProductDetailScreen({super.key, required this.productId});
@@ -29,7 +54,8 @@ class ProductDetailScreen extends StatefulWidget {
   State<ProductDetailScreen> createState() => _ProductDetailScreenState();
 }
 
-class _ProductDetailScreenState extends State<ProductDetailScreen> {
+class _ProductDetailScreenState extends State<ProductDetailScreen>
+    with LocaleRefetch {
   Product? _product;
   bool _loading = true;
   int _quantity = 1;
@@ -38,13 +64,25 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
+    _load(openedNow: true);
   }
 
-  Future<void> _load() async {
+  /// المحتوى الخادمي يُصرَّف لحظة الجلب — يُعاد جلبه بلغة الواجهة الجديدة.
+  /// [D3] إعادة الجلب ليست فتحاً جديداً للصفحة، فلا إشارة فتح معها.
+  @override
+  void onLanguageChanged() => _load();
+
+  /// إشارات القياس إن سُجّلت — شاشةٌ تُختبر بلا حاوية كاملة تبقى صامتة.
+  TrackingSignals? get _tracking =>
+      sl.isRegistered<TrackingSignals>() ? sl<TrackingSignals>() : null;
+
+  Future<void> _load({bool openedNow = false}) async {
     try {
       final fetchDetails = context.read<FetchProductDetailsUsecase>();
-      final product = await fetchDetails(widget.productId);
+      final product = await fetchDetails(
+        widget.productId,
+        track: openedNow ? _tracking?.headerFor(TrackKind.view) : null,
+      );
       if (!mounted) return;
       setState(() => _product = product);
     } catch (_) {
@@ -68,19 +106,26 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     if (product == null) return Scaffold(body: _buildErrorState());
 
     return Scaffold(
-      body: Column(
-        children: [
-          Expanded(
-            child: ListView(
-              padding: EdgeInsets.zero,
-              children: [
-                _buildHero(product, isFavorite),
-                _buildDetails(product),
-              ],
+      // عمودٌ موسَّط بعرض القراءة على اللوح — صورةٌ بطول ٣٣٠ وعرضِ ١٣٦٦
+      // تصير شريطاً، ووصفُ المنتج سطوراً أطول من مدى القراءة. شريط الشراء
+      // يدخل الإطار معها فيبقى تحت المحتوى الذي يخصّه لا مفروداً بعيداً
+      // عنه. لا أثر لهذا على الهاتف.
+      body: ResponsiveContentFrame(
+        maxWidth: kReadingMaxWidth,
+        child: Column(
+          children: [
+            Expanded(
+              child: ListView(
+                padding: EdgeInsets.zero,
+                children: [
+                  _buildHero(product, isFavorite),
+                  _buildDetails(product),
+                ],
+              ),
             ),
-          ),
-          _buildBottomBar(product),
-        ],
+            _buildBottomBar(product),
+          ],
+        ),
       ),
     );
   }
@@ -102,7 +147,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             ),
             child: ProductPhotoSlot(
               imageUrl: product.images.isNotEmpty ? product.images.first : null,
-              desaturated: !product.inStock,
               iconSize: 70,
             ),
           ),
@@ -173,7 +217,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 alignment: Alignment.center,
                 color: const Color(0xFF180F30).withValues(alpha: 0.74),
                 child: Text(
-                  'نفدت الكمية',
+                  // نفس القاعدة: المنتظَر بموعد لا يُقال عنه «نفد».
+                  context.strings(
+                    product.availability == ProductAvailability.comingSoon
+                        ? 'comingSoon'
+                        : 'outOfStock',
+                  ),
                   style: theme.textTheme.labelMedium?.copyWith(
                     fontSize: 11,
                     fontWeight: AppDimens.weightExtraBold,
@@ -197,17 +246,30 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 20, 18, 14),
+      // تقصّ عند حافة الشاشة — لا يُقصّ عندها إلا هامش الصورة الشفّاف.
       clipBehavior: Clip.hardEdge,
       decoration: const BoxDecoration(),
       child: Stack(
+        // الرسم يتجاوز حدّ الحشوة بهامشه الشفّاف؛ القصّ للحاوية وحدها.
+        clipBehavior: Clip.none,
         children: [
           PositionedDirectional(
             top: 60,
-            end: -46,
+            // أقرب إلى الحافة اليسرى (2026-09-28). `-18` (حشوة الحاوية) كان
+            // يُلصق **صندوق** الصورة بالحافة، لكن الصورة 16 تحمل على يسارها
+            // هامشاً شفّافاً (≈٢٧ بكسل بعرض ١٣٢)، فتبدأ الشخصية نفسها بعيداً
+            // عن الحافة — و`Stack` كان يقصّ عند الحشوة (١٨). الآن يتدلّى
+            // الصندوق خلف الحافة بـ[_productArtOverhang] من هامشه الشفّاف
+            // وحده، فتقف الشخصية على بعد بكسلات من الحافة دون أن يُقصّ منها
+            // شيء. يحرسه `test/character_art_placement_test.dart` بقياس
+            // بكسلات الصورة الفعلية: صورةٌ بديلة بهامشٍ أضيق تُفشله قبل أن
+            // تُقصّ عند الزبون.
+            end: -18 - _productArtOverhang - _productArtShiftLeft,
             child: IgnorePointer(
-              child: Opacity(
-                opacity: 0.13,
-                child: Image.asset('assets/art/opt/a-i4.png', width: 132),
+              // بلا شفافية — الشخصية كما صورتها (قرار 2026-09-15).
+              child: const CharacterArtwork(
+                slot: VisualSlots.productDetail,
+                width: 132,
               ),
             ),
           ),
@@ -235,9 +297,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                           ),
                         const SizedBox(height: 8),
                         Text(
-                          product.name,
+                          localizedProductName(product, context.language),
                           style: theme.textTheme.headlineSmall?.copyWith(
-                            fontFamily: 'Tajawal',
+                            fontFamily: AppFonts.heading,
+                            fontFamilyFallback: AppFonts.headingFallback,
                             fontWeight: AppDimens.weightBlack,
                             fontSize: 22,
                             height: 1.35,
@@ -284,10 +347,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Text(
-                    '${product.price.toStringAsFixed(0)} د.ع',
+                    context.strings.p('priceIqd', {'amount': product.price.toStringAsFixed(0)}),
                     textDirection: TextDirection.ltr,
                     style: theme.textTheme.headlineMedium?.copyWith(
-                      fontFamily: 'Tajawal',
+                      fontFamily: AppFonts.heading,
+                      fontFamilyFallback: AppFonts.headingFallback,
                       fontWeight: AppDimens.weightBlack,
                       fontSize: 25,
                       height: 1.2,
@@ -302,7 +366,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                       style: theme.textTheme.bodyMedium?.copyWith(
                         fontSize: 14,
                         decoration: TextDecoration.lineThrough,
-                        color: theme.colorScheme.outline,
+                        color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
                     const SizedBox(width: 9),
@@ -318,7 +382,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                         ),
                       ),
                       child: Text(
-                        '−${product.discountPercent}٪',
+                        context.strings.p('discountPercentBadge', {'percent': '${product.discountPercent}'}),
                         style: theme.textTheme.labelSmall?.copyWith(
                           fontSize: 10.5,
                           fontWeight: AppDimens.weightExtraBold,
@@ -330,22 +394,113 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 ],
               ),
 
-              const SizedBox(height: 14),
-              ProductStockPill(stock: product.stock),
+              // [STEP 70] عرض القطعتين (085): المبلغ نفسه الذي تحسبه العربة على
+              // الخادم لقطعتين من هذا المنتج — عرضٌ فقط، والحساب على الخادم.
+              if (product.pairPrice != null) ...[
+                const SizedBox(height: 10),
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: Container(
+                    key: const Key('product_pair_offer'),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 11,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.secondary.withValues(alpha: 0.10),
+                      border: Border.all(
+                        color: AppColors.secondary.withValues(alpha: 0.45),
+                      ),
+                      borderRadius: BorderRadius.circular(AppDimens.radiusFull),
+                    ),
+                    child: Text(
+                      context.strings.p('pairOffer', {
+                        'price': context.strings.p('priceIqd', {
+                          'amount': product.pairPrice!.toStringAsFixed(0),
+                        }),
+                      }),
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        fontSize: 12.5,
+                        fontWeight: AppDimens.weightExtraBold,
+                        color: AppColors.secondary,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
 
-              // ترويج التوصيل — يضبطه المسؤول على المنتج.
-              if (product.hasDeliveryPromo) ...[
+              const SizedBox(height: 14),
+              ProductStockPill.forProduct(product),
+
+              // الموعد المتوقَّع — يُعرض مع حالة «قريباً يتوفر» وحدها.
+              //
+              // [CRITICAL] المصدر `displayRestockAt` لا `restockAt`: المنتج
+              // الذي وصلت بضاعته قبل موعده يبقى في القاعدة حاملاً تاريخاً،
+              // وعرضُه على منتجٍ يمكن شراؤه الآن يناقض زرّ «أضف إلى السلة»
+              // فوقه مباشرة.
+              if (product.displayRestockAt != null) ...[
                 const SizedBox(height: 9),
                 Row(
                   children: [
+                    Icon(
+                      Icons.event_available_outlined,
+                      size: 14,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        context.strings.p('expectedRestockOn', {
+                          'date': formatShortArabicDate(
+                            context,
+                            product.displayRestockAt!,
+                          ),
+                        }),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontSize: 12,
+                          fontWeight: AppDimens.weightBold,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+
+              // ترويج التوصيل — يضبطه المسؤول على المنتج، ومبلغ الخصم تحته
+              // في المنطقة نفسها. السطران يلتفّان ولا يُقصّان على الشاشات
+              // الضيّقة.
+              if (product.hasDeliveryPromo) ...[
+                const SizedBox(height: 9),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     const Text('🚚', style: TextStyle(fontSize: 13)),
                     const SizedBox(width: 6),
-                    Text(
-                      'هذا المنتج ضمن عرض التوصيل المميّز',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        fontSize: 12,
-                        fontWeight: AppDimens.weightBold,
-                        color: AppColors.success,
+                    Expanded(
+                      child: Builder(
+                        builder: (context) {
+                          final style = theme.textTheme.bodySmall?.copyWith(
+                            fontSize: 12,
+                            fontWeight: AppDimens.weightBold,
+                            color: context.themeColors.successText,
+                          );
+                          final amount =
+                              deliveryPromoDiscountLabel(context, product);
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                context.strings('deliveryPromoProduct'),
+                                style: style,
+                              ),
+                              if (amount != null) ...[
+                                const SizedBox(height: 3),
+                                Text(amount, style: style),
+                              ],
+                            ],
+                          );
+                        },
                       ),
                     ),
                   ],
@@ -355,23 +510,38 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               _divider(),
 
               // الوصف.
-              Text('الوصف', style: _sectionStyle(theme)),
+              Text(context.strings('description'), style: _sectionStyle(theme)),
               const SizedBox(height: 9),
-              Text(
-                product.description.trim().isEmpty
-                    ? 'لا يوجد وصف لهذا المنتج بعد.'
-                    : product.description,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  fontSize: 14,
-                  height: 1.9,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+              Builder(
+                builder: (context) {
+                  final description = localizedProductDescription(
+                    product,
+                    context.language,
+                  );
+                  return Text(
+                    description.trim().isEmpty
+                        ? context.strings('noDescriptionYet')
+                        : description,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontSize: 14,
+                      height: 1.9,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  );
+                },
               ),
+              // [CRITICAL] كرديةٌ ناقصة (منتج قديم) تُعلَن لا تُخفى: العربي
+              // يُعرض لأنه المتاح، لا لأنه «الكردية».
+              if (product.names.isFallbackIn(context.language) ||
+                  product.descriptions.isFallbackIn(context.language)) ...[
+                const SizedBox(height: 10),
+                const _KurdishMissingNote(),
+              ],
 
               // الخيارات.
               if (product.options != null && product.options!.isNotEmpty) ...[
                 const SizedBox(height: 22),
-                Text('الخيارات المتاحة', style: _sectionStyle(theme)),
+                Text(context.strings('availableOptions'), style: _sectionStyle(theme)),
                 const SizedBox(height: 11),
                 for (final option in product.options!) ...[
                   _OptionGroup(
@@ -388,11 +558,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               const SizedBox(height: 10),
               Row(
                 children: [
-                  Expanded(child: Text('الكمية', style: _sectionStyle(theme))),
+                  Expanded(child: Text(context.strings('quantity'), style: _sectionStyle(theme))),
                   // الكمية لا تظهر للزبون إلا عند انخفاض المخزون.
                   if (product.lowStock) ...[
                     Text(
-                      'متاح ${product.stock}',
+                      context.strings.p('availableStockCount', {'count': '${product.stock}'}),
                       style: theme.textTheme.bodySmall?.copyWith(
                         fontSize: 11.5,
                         color: theme.colorScheme.onSurfaceVariant,
@@ -445,16 +615,25 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(
-                            'الدفع عند الاستلام',
+                          // [CRITICAL] (البوّابة ٧، 2026-10-10) سطر الدفع
+                          // وتوضيحه يحجزان ما تحتاجه أطول ترجماتهما: التوضيح
+                          // الكردي أطول بسطر فكانت اللوحة تطول ١٨.
+                          BoundedText(
+                            context.strings('cashOnDelivery'),
+                            maxLines: 2,
+                            reserveFor: AppStrings.across('cashOnDelivery'),
                             style: theme.textTheme.bodyMedium?.copyWith(
                               fontSize: 13,
                               fontWeight: AppDimens.weightBold,
                             ),
                           ),
                           const SizedBox(height: 2),
-                          Text(
-                            'تدفع بعد ما يوصلك الطلب — بلا أي دفع مسبق.',
+                          BoundedText(
+                            context.strings('cashOnDeliveryNote'),
+                            maxLines: 8,
+                            minScale: 1,
+                            reserveFor: AppStrings.across('cashOnDeliveryNote'),
+                            alignment: AlignmentDirectional.topStart,
                             style: theme.textTheme.bodySmall?.copyWith(
                               fontSize: 11.5,
                               height: 1.6,
@@ -475,7 +654,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               const SizedBox(height: 14),
               if (missingOption)
                 Text(
-                  'اختر كل الخيارات المطلوبة قبل الإضافة إلى السلة.',
+                  context.g(GenderedStrings.chooseAllOptions),
                   style: theme.textTheme.bodySmall?.copyWith(
                     fontSize: 11.5,
                     color: theme.colorScheme.onSurfaceVariant,
@@ -490,7 +669,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   TextStyle? _sectionStyle(ThemeData theme) =>
       theme.textTheme.titleMedium?.copyWith(
-        fontFamily: 'Tajawal',
+        fontFamily: AppFonts.heading,
+        fontFamilyFallback: AppFonts.headingFallback,
         fontWeight: AppDimens.weightExtraBold,
         fontSize: 15.5,
       );
@@ -524,22 +704,29 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             children: [
               PositionedDirectional(
                 bottom: 42,
-                end: 6,
+                end: 16,
                 child: IgnorePointer(
-                  child: Image.asset('assets/art/opt/a-i3.png', width: 82),
+                  child: const CharacterArtwork(
+                    slot: VisualSlots.productDetailReviews,
+                    width: 82,
+                  ),
                 ),
               ),
-              AnimePrimaryButton(
-                label: !product.inStock
-                    ? 'نفدت الكمية'
-                    : missingOption
-                    ? 'اختر الخيارات أولاً'
-                    : 'إضافة إلى السلة',
-                onPressed: product.inStock && !missingOption
-                    ? () => _addToCart(context, product)
-                    : null,
-                height: AppDimens.buttonHeightXl,
-              ),
+              // نفاد المخزون لم يعد طريقاً مسدوداً: كان الزرّ يقول «نفدت
+              // الكمية» ولا يفعل شيئاً، فيغادر الزبون بلا بديل. الآن يأخذ
+              // مكانه إجراءٌ حقيقي — ينتظر ويُعلَم عند العودة.
+              if (!product.inStock)
+                RestockNotifyButton(productId: product.id)
+              else
+                AnimePrimaryButton(
+                  label: missingOption
+                      ? context.strings('chooseOptionsFirst')
+                      : context.g(GenderedStrings.addToCart),
+                  onPressed: missingOption
+                      ? null
+                      : () => _addToCart(context, product),
+                  height: AppDimens.buttonHeightXl,
+                ),
             ],
           ),
         ),
@@ -550,7 +737,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   /// هيكل تحميل الصفحة — فتحة صورة متلألئة ثم أسطر نصية.
   Widget _buildLoadingState() {
     return ListView(
-      padding: EdgeInsets.zero,
+      padding: context.scrollPadding(EdgeInsets.zero),
       children: const [
         OtakuSkeleton.box(height: 330, radius: 0),
         Padding(
@@ -595,12 +782,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       child: Column(
         children: [
           OtakuScreenHeader.compact(
-            title: 'المنتج',
+            title: context.strings('product'),
             onBack: () => context.router.maybePop(),
           ),
           Expanded(
             child: AnimeErrorState(
-              message: 'تعذّر تحميل هذا المنتج. تأكد من اتصالك وحاول مرة أخرى.',
+              message: context.strings('productLoadFailed'),
               onAction: () {
                 setState(() => _loading = true);
                 _load();
@@ -614,14 +801,28 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   /// مشاركة المنتج عبر طبقة المشاركة الأصلية لنظام التشغيل (واتساب،
   /// تيليغرام، نسخ، المزيد...) — بلا شبكة مشاركة داخلية خاصة بالتطبيق.
-  void _shareProduct(Product product) {
-    SharePlus.instance.share(
+  ///
+  /// النصّ من [productShareText]: الاسم ورابط المتجر، بلا سعر. الرابط مخبّأ
+  /// منذ شاشة البداية؛ إن فشل ذلك الجلب تُعاد محاولةٌ واحدة قصيرة هنا، ثم
+  /// يُشارَك الاسم وحده بدل أن يتأخّر الزرّ.
+  Future<void> _shareProduct(Product product) async {
+    final strings = context.strings;
+    final name = localizedProductName(product, context.language);
+    final settings = sl<StoreSettingsRepository>();
+    var storeUrl = settings.links.shareUrl;
+    if (storeUrl.isEmpty) {
+      storeUrl = (await settings.refresh().timeout(
+        _shareUrlRefreshTimeout,
+        onTimeout: () => settings.links,
+      )).shareUrl;
+    }
+    final result = await SharePlus.instance.share(
       ShareParams(
-        text:
-            '${product.name}\n${product.price.toStringAsFixed(0)} د.ع '
-            '— مجرة الأوتاكو',
+        text: productShareText(strings, name: name, storeUrl: storeUrl),
       ),
     );
+    // [D3] نتيجة الورقة كما يعيدها النظام — لا تُنتظر ولا تُظهر شيئاً.
+    unawaited(_tracking?.share(product.id, result.status));
   }
 
   /// إضافة إلى السلة: تبقي المستخدم في شاشة تفاصيل المنتج، وتُظهر تأكيداً
@@ -633,11 +834,43 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       quantity: _quantity,
       selectedOption: _selectedOptions.isEmpty
           ? null
-          : _selectedOptions.values.join('، '),
+          : _selectedOptions.values.join(context.strings('listSeparator')),
     );
     if (!added || !context.mounted) return;
 
     showAddedToCartSnack(context);
+  }
+}
+
+/// إعلان أن المنتج معروضٌ بالعربية لأن كرديته ناقصة (منتج أقدم من إلزام
+/// الحقول الأربعة، هجرة ٠٦٦). يظهر في الواجهة الكردية وحدها.
+class _KurdishMissingNote extends StatelessWidget {
+  const _KurdishMissingNote();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(
+          Icons.translate_rounded,
+          size: 15,
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            context.strings('productKurdishMissingNote'),
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontSize: 12,
+              height: 1.6,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -729,17 +962,12 @@ class _AddToCollectionTile extends StatelessWidget {
   final String productId;
 
   Future<void> _open(BuildContext context) async {
-    if (!context.read<AuthCubit>().isLoggedIn) {
-      final wantsLogin = await showLoginGate(
-        context,
-        title: 'سجّل دخولك أولاً',
-        body: 'المجموعات تحتاج تسجيل الدخول لحسابك في مجرة الأوتاكو.',
-      );
-      if (wantsLogin && context.mounted) {
-        context.router.push(const LoginRoute());
-      }
-      return;
-    }
+    final authenticated = await requireAuthentication(
+      context,
+      title: context.gNow(GenderedStrings.loginFirst),
+      body: context.strings('loginRequiredForCollections'),
+    );
+    if (!authenticated) return;
     if (context.mounted) {
       await showAddToCollectionSheet(context, productId: productId);
     }
@@ -780,14 +1008,14 @@ class _AddToCollectionTile extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                'أضف إلى مجموعتك',
+                context.strings('addToYourCollection'),
                 style: theme.textTheme.bodyMedium?.copyWith(
                   fontSize: 13.5,
                   fontWeight: AppDimens.weightBold,
                 ),
               ),
             ),
-            Icon(Icons.add_rounded, size: 19, color: theme.colorScheme.outline),
+            Icon(Icons.add_rounded, size: 19, color: theme.colorScheme.onSurfaceVariant),
           ],
         ),
       ),

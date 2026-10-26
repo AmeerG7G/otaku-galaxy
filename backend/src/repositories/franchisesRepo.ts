@@ -4,6 +4,8 @@ import type { FranchiseRow } from '../types/index.js';
 export interface FranchiseDto {
   id: string;
   name: string;
+  /** أسماء بديلة يطابقها البحث (عربي/إنجليزي/نقحرة). */
+  altNames: string[];
   imageUrl: string | null;
   sortOrder: number;
   isActive: boolean;
@@ -16,6 +18,7 @@ function shapeFranchise(row: FranchiseWithCount): FranchiseDto {
   return {
     id: row.id,
     name: row.name,
+    altNames: row.alt_names ?? [],
     imageUrl: row.image_url,
     sortOrder: row.sort_order,
     isActive: row.is_active,
@@ -23,11 +26,14 @@ function shapeFranchise(row: FranchiseWithCount): FranchiseDto {
   };
 }
 
-/** العدّ يقتصر على المنتجات النشطة — وهو ما يراه العميل فعلياً. */
+/**
+ * العدّ يقتصر على المنتجات النشطة المسعَّرة — وهو ما يراه التطبيق المثبَّت فعلياً
+ * (منتجٌ «السعر يُعلن قريباً» لا يصله، 084).
+ */
 const SELECT_WITH_COUNT = `
   SELECT f.*,
          (SELECT COUNT(*)::text FROM product_franchises pf
-           JOIN products p ON p.id = pf.product_id AND p.is_active = TRUE
+           JOIN products p ON p.id = pf.product_id AND p.is_active = TRUE AND p.price IS NOT NULL
           WHERE pf.franchise_id = f.id) AS product_count
   FROM franchises f`;
 
@@ -58,13 +64,18 @@ export const franchiseRepo = {
 
   async create(
     db: pg.Pool | pg.PoolClient,
-    input: { name: string; imageUrl?: string | null; sortOrder?: number },
+    input: {
+      name: string;
+      altNames?: string[];
+      imageUrl?: string | null;
+      sortOrder?: number;
+    },
   ) {
     const { rows } = await db.query<FranchiseRow>(
-      `INSERT INTO franchises (name, image_url, sort_order)
-       VALUES ($1, $2, COALESCE($3, 0))
+      `INSERT INTO franchises (name, alt_names, image_url, sort_order)
+       VALUES ($1, $2, $3, COALESCE($4, 0))
        RETURNING *`,
-      [input.name, input.imageUrl ?? null, input.sortOrder ?? null],
+      [input.name, input.altNames ?? [], input.imageUrl ?? null, input.sortOrder ?? null],
     );
     return { ...shapeFranchise({ ...rows[0]!, product_count: '0' }) };
   },
@@ -72,7 +83,13 @@ export const franchiseRepo = {
   async update(
     db: pg.Pool | pg.PoolClient,
     id: string,
-    input: { name?: string; imageUrl?: string | null; sortOrder?: number; isActive?: boolean },
+    input: {
+      name?: string;
+      altNames?: string[];
+      imageUrl?: string | null;
+      sortOrder?: number;
+      isActive?: boolean;
+    },
   ) {
     const sets: string[] = [];
     const values: unknown[] = [id];
@@ -81,6 +98,7 @@ export const franchiseRepo = {
       sets.push(`${column} = $${values.length}`);
     };
     if (input.name !== undefined) push('name', input.name);
+    if (input.altNames !== undefined) push('alt_names', input.altNames);
     if (input.imageUrl !== undefined) push('image_url', input.imageUrl);
     if (input.sortOrder !== undefined) push('sort_order', input.sortOrder);
     if (input.isActive !== undefined) push('is_active', input.isActive);

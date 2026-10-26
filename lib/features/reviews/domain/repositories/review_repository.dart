@@ -7,7 +7,10 @@ abstract class ReviewRepository {
   Future<List<Review>> fetchMyReviews();
 
   /// التقييم الحالي لمنتج ضمن طلب معيّن، إن وُجد (تقييم واحد لكل منتج بكل طلب).
-  Future<Review?> findReview({required String orderId, required String productId});
+  Future<Review?> findReview({
+    required String orderId,
+    required String productId,
+  });
 
   /// التقييمات المنشورة (المعتمدة) لمنتج معيّن — تُعرض في تفاصيل المنتج.
   Future<List<Review>> fetchApprovedReviewsForProduct(String productId);
@@ -26,7 +29,7 @@ abstract class ReviewRepository {
     required String productName,
     required int rating,
     required String comment,
-    String? photoUrl,
+    List<String> photoUrls = const [],
   });
 
   /// تعديل وإعادة إرسال تقييم مرفوض — يعود لحالة الانتظار.
@@ -34,6 +37,6 @@ abstract class ReviewRepository {
     String reviewId, {
     required int rating,
     required String comment,
-    String? photoUrl,
+    List<String> photoUrls = const [],
   });
 }

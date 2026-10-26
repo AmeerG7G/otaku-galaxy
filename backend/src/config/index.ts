@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { isIP } from 'node:net';
 import dotenv from 'dotenv';
 
 /**
@@ -14,17 +15,52 @@ import dotenv from 'dotenv';
 /** البيئات المعتمدة — نفس أسماء فروع Git ونكهات أندرويد. */
 export type AppEnv = 'dev' | 'staging' | 'prod';
 
-function normaliseAppEnv(raw: string | undefined): AppEnv {
-  switch ((raw ?? '').trim().toLowerCase()) {
-    case 'prod':
-    case 'production':
-      return 'prod';
-    case 'staging':
-    case 'stage':
-      return 'staging';
-    default:
-      return 'dev';
+/**
+ * تحديد البيئة — **يفشل مغلقاً**.
+ *
+ * [CRITICAL] كان أي مدخل غير معروف (أو غيابه كلياً) يسقط إلى `dev` بصمت.
+ * وكل حارس في هذا الملف مربوط بـ`appEnv`: مفتاح التوقيع الافتراضي، ومزوّد
+ * الرسائل `console`، ورمز التحقق الثابت — كلها تُمنع في `staging`/`prod`
+ * وتُسمح في `dev`. فنشرةٌ نسيت ضبط المتغيّر كانت تُعتبر تطويراً: تُقلع
+ * بمفتاح توقيع منشور في المستودع، وتطبع رموز التحقق في السجلّ، ولا يعترض
+ * شيء لأن كل الحرّاس رأوا بيئة تطوير. مطبعةٌ في اسم البيئة (`prodution`)
+ * كانت تفعل الشيء نفسه.
+ *
+ * الآن: القيمة غير المعروفة تُرمى، و`NODE_ENV=production` بلا `APP_ENV`
+ * يُرمى أيضاً لأن الخادم لا يملك ما يميّز به الإنتاج من الاختبار المسبق —
+ * والتخمين بينهما ليس من حقّه. `dev` تبقى الافتراضَ **فقط** حين لا يكون
+ * `NODE_ENV=production`، فتبقى تجربة المطوّر كما هي بلا إعداد.
+ */
+function resolveAppEnv(rawEnv: string | undefined, node: string): AppEnv {
+  const raw = rawEnv?.trim().toLowerCase();
+
+  if (raw) {
+    switch (raw) {
+      case 'prod':
+      case 'production':
+        return 'prod';
+      case 'staging':
+      case 'stage':
+        return 'staging';
+      case 'dev':
+      case 'development':
+        return 'dev';
+      default:
+        throw new Error(
+          `APP_ENV=${rawEnv} غير معروف. القيم المقبولة: dev, staging, prod.`,
+        );
+    }
   }
+
+  if (node === 'production') {
+    throw new Error(
+      'APP_ENV مطلوب صراحةً حين NODE_ENV=production. ' +
+        'اضبطه على staging أو prod — لا يجوز الافتراض، ' +
+        'فبيئة التطوير تعني مفتاح توقيع معروفاً ورموز تحقق في السجلّ.',
+    );
+  }
+
+  return 'dev';
 }
 
 const nodeEnv = process.env.NODE_ENV ?? 'development';
@@ -36,14 +72,12 @@ const nodeEnv = process.env.NODE_ENV ?? 'development';
 export const isTest = nodeEnv === 'test' || import.meta.url.includes('vitest');
 
 /**
- * البيئة المطلوبة صراحةً، وإلا فمشتقّة من NODE_ENV.
+ * البيئة المعتمدة — انظر `resolveAppEnv`: صريحة أو تفشل.
  *
- * `APP_ENV` هو المصدر المفضّل لأنه يحمل الأسماء الثلاثة المعتمدة، بينما
- * `NODE_ENV` تبقى لما تتوقّعه المكتبات (`production` مقابل غيرها).
+ * `APP_ENV` هو المصدر الوحيد للاسم، بينما `NODE_ENV` تبقى لما تتوقّعه
+ * المكتبات (`production` مقابل غيرها) ولا تُشتقّ منها البيئة ضمناً.
  */
-export const appEnv: AppEnv = normaliseAppEnv(
-  process.env.APP_ENV ?? (nodeEnv === 'production' ? 'prod' : undefined),
-);
+export const appEnv: AppEnv = resolveAppEnv(process.env.APP_ENV, nodeEnv);
 
 /**
  * تحميل ملف البيئة الخاص قبل `.env` العام.
@@ -159,16 +193,52 @@ const databaseUrl = requireInProduction(
 
 // ===== رموز التحقق (OTP) =====
 /**
- * الرمز الثابت 123456 لا يُفعَّل إلا بطلب صريح، ولا يُفعَّل في الإنتاج أبداً
- * مهما كان المتغيّر. السلوك السابق كان يشتغل لمجرّد غياب الإعداد — أي أن
- * نشرةً بلا NODE_ENV كانت تقبل 123456 لكل حساب.
+ * إعدادات النشر التي بديلها **خاطئ** لا مجرّد ناقص.
+ *
+ * تختلف عن `CORS_ORIGINS`: بديلها (قائمة فارغة) يمنع كل أصل، وهو الفشل في
+ * الاتجاه الآمن فلا يُطلب صراحةً. أما هذان فبديلهما يعمل ويعطي سلوكاً
+ * خاطئاً بصمت، ولذلك يجب أن يُذكرا.
  */
-const devOtpRequested = process.env.DEV_OTP_ENABLED === 'true';
-const devOtpEnabled = devOtpRequested && !requiresRealSecrets;
+const trustProxySetting = requireInProduction(
+  'TRUST_PROXY',
+  process.env.TRUST_PROXY,
+  'false',
+);
 
-if (devOtpRequested && requiresRealSecrets) {
+const publicBaseUrl = requireInProduction(
+  'PUBLIC_BASE_URL',
+  process.env.PUBLIC_BASE_URL,
+  `http://localhost:${Number(process.env.PORT ?? 4000)}`,
+  (v) => (/^https?:\/\/.+/.test(v) ? null : 'يجب أن يبدأ بـ http:// أو https://'),
+);
+
+/**
+ * عنوان الاستماع (`HOST`).
+ *
+ * [CRITICAL] nginx يصل إلى الخادم على `127.0.0.1` (upstream في `deploy/nginx`)،
+ * فلا سبب ليستمع على كل الواجهات في البيئتين الحقيقيتين: منفذٌ مفتوح على
+ * العنوان العام يتجاوز TLS وحدود nginx، ويجعل ترويسات العنوان قابلةً للتزوير.
+ * الافتراض هناك الواجهة المحلية؛ صورة Docker تضبط `0.0.0.0` صراحةً لأن
+ * الحاوية معزولة ومنفذها يُنشر على الواجهة المحلية للمضيف (`docker-compose.yml`).
+ * التطوير يبقى على كل الواجهات: الهاتف على الشبكة المحلية يصل إليه.
+ */
+const host = process.env.HOST?.trim() || (isProduction || isStaging ? '127.0.0.1' : undefined);
+if (host !== undefined && host !== 'localhost' && isIP(host) === 0) {
+  fatalConfigErrors.push(`HOST: «${host}» ليس عنوان IP صالحاً (مثل 127.0.0.1 أو 0.0.0.0).`);
+}
+
+/**
+ * سرّ الواجهة الوسيطة للموقع (`BFF_SHARED_SECRET`) — اختياري.
+ *
+ * الموقع يستدعي الخادم من خادمه هو، فيرى الخادم عنوانه لا عنوان الزبون،
+ * ويصير كل زبائن الموقع دلواً واحداً في حدود المعدّل. بهذا السرّ يوقّع الموقع
+ * عنوان الزبون (`middleware/client-ip.ts`)؛ غيابه = لا ترويسة تُقبل، والعنوان
+ * من `req.ip` كما كان.
+ */
+const bffSharedSecret = process.env.BFF_SHARED_SECRET?.trim() || null;
+if (bffSharedSecret !== null && bffSharedSecret.length < MIN_JWT_SECRET_LENGTH) {
   fatalConfigErrors.push(
-    `DEV_OTP_ENABLED=true في ${appEnv} — رمز تحقق ثابت خارج التطوير غير مقبول.`,
+    `BFF_SHARED_SECRET: قصير جداً (${bffSharedSecret.length} حرفاً، الحد الأدنى ${MIN_JWT_SECRET_LENGTH}) — ولّده بـ openssl rand -hex 32`,
   );
 }
 
@@ -188,14 +258,24 @@ export const config = {
   isProduction,
 
   port: Number(process.env.PORT ?? 4000),
+  /** عنوان الاستماع — `undefined` = كل الواجهات (التطوير). انظر التحقق أعلاه. */
+  host,
+  /** سرّ توقيع عنوان الزبون من خادم الموقع — `null` = لا ترويسة تُقبل. */
+  bffSharedSecret,
 
   /**
    * عدد الوسطاء الموثوقين أمام الخادم.
    *
    * بدونه يرى express عنوان الوسيط لكل الطلبات، فيصير حدّ المعدّل دلواً
    * واحداً للعالم كله — وهو ما يُسقط التسجيل ودخول المستخدمين جميعاً.
+   *
+   * [CRITICAL] كان `staging` يرث `'false'` لأن الافتراض كان مربوطاً
+   * بالإنتاج وحده. خادم اختبارٍ خلف nginx بهذه القيمة يجعل كل الطلبات تبدو
+   * قادمة من عنوان الوسيط، فيقفل التسجيل والدخول على الجميع بعد أول عشرة
+   * طلبات — عطلٌ يبدو «مشكلة في الرمز» وهو إعداد. صار مطلوباً صراحةً في
+   * البيئتين الحقيقيتين (انظر التحقق أعلاه).
    */
-  trustProxy: process.env.TRUST_PROXY ?? (isProduction ? '1' : 'false'),
+  trustProxy: trustProxySetting,
 
   databaseUrl,
   testDatabaseUrl: process.env.TEST_DATABASE_URL ?? DEV_TEST_DATABASE_URL,
@@ -205,35 +285,42 @@ export const config = {
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '7d',
   bcryptRounds: Number(process.env.BCRYPT_ROUNDS ?? 10),
 
-  verification: {
-    /** رمز التطوير الثابت — مفعَّل فقط بطلب صريح وخارج الإنتاج. */
-    devOtpEnabled,
-    devOtpCode: process.env.DEV_OTP_CODE ?? process.env.DEVELOPMENT_OTP_CODE ?? '123456',
-    lifetimeMinutes: Number(process.env.VERIFICATION_CODE_LIFETIME_MINUTES ?? 10),
-    maxAttempts: Number(process.env.VERIFICATION_MAX_ATTEMPTS ?? 5),
-    /** أقصى عدد إرسالات لنفس الرقم داخل نافذة إعادة الإرسال. */
-    maxSendsPerWindow: Number(process.env.VERIFICATION_MAX_SENDS_PER_WINDOW ?? 5),
-    resendWindowMinutes: Number(process.env.VERIFICATION_RESEND_WINDOW_MINUTES ?? 15),
-    /** أقل فاصل زمني بين إرسالين لنفس الرقم (ثوانٍ). */
-    resendCooldownSeconds: Number(process.env.VERIFICATION_RESEND_COOLDOWN_SECONDS ?? 60),
+
+  // ═══ ما لم يعد هنا ═══ `verification` (رمز SMS) و`sms` (المزوّد) و
+  // `DEV_OTP_ENABLED`: أُزيل رمز SMS كلّه. التسجيل ونسيان كلمة المرور صارا
+  // طلبين تحسمهما الإدارة يدوياً — لا مزوّد رسائل يُهيَّأ ولا يُفحص عند
+  // الإقلاع. الملفات القديمة محفوظة في `legacy/otp/` خارج البناء.
+
+
+  /**
+   * مزوّد الإشعارات الفورية — نفس نمط `sms` أعلاه ونفس ضماناته.
+   *
+   * `console`/`noop` مرفوضان في staging/prod: إشعارٌ «يُرسل» بنجاح ظاهري
+   * ولا يصل هاتفاً هو عطلٌ صامت لا يكتشفه إلا الزبون الذي لم يصله شيء.
+   */
+  push: {
+    provider: (process.env.PUSH_PROVIDER ?? (requiresRealSecrets ? 'fcm' : 'console')).toLowerCase(),
+    projectId: process.env.FCM_PROJECT_ID ?? '',
+    clientEmail: process.env.FCM_CLIENT_EMAIL ?? '',
+    // مفتاح حساب الخدمة — يُمرَّر بأسطر `\n` مهرّبة في متغيّر البيئة.
+    privateKey: (process.env.FCM_PRIVATE_KEY ?? '').replace(/\\n/g, '\n'),
+    timeoutMs: Number(process.env.PUSH_TIMEOUT_MS ?? 10_000),
+    /** دورة صندوق الدفع الصادر (`jobs/pushOutboxJob.ts`) وحجم دفعتها. */
+    outboxIntervalMs: Number(process.env.PUSH_OUTBOX_INTERVAL_MS ?? 5_000),
+    outboxBatchSize: Number(process.env.PUSH_OUTBOX_BATCH ?? 50),
   },
 
   /**
-   * مزوّد الرسائل — حدّ التماس مع الخارج.
+   * التحليلات التاريخية (STEP 67).
    *
-   * `console`: يطبع الرمز محلياً (تطوير فقط).
-   * `http`:    مزوّد HTTP عام يُضبَط بالكامل من البيئة.
-   * `noop`:    لا يرسل شيئاً (اختبارات).
-   * لا اسم مزوّد مخبوز في الكود — تبديله إعدادٌ لا إعادة كتابة.
+   * `trackingEnabled` — التتبّع التجميعي (D3) **مطفأ افتراضياً في كل بيئة**:
+   * لا يشتغل إلا بـ`ANALYTICS_TRACKING_ENABLED=true` حرفياً. أي قيمة أخرى، أو
+   * غيابه، تعني مطفأ. التطبيق يقرأ الحالة من `/catalog/settings` فلا يرسل شيئاً
+   * وهو مطفأ، والخادم يتجاهل الإشارات أيضاً.
    */
-  sms: {
-    provider: (process.env.SMS_PROVIDER ?? (requiresRealSecrets ? 'http' : 'console')).toLowerCase(),
-    apiKey: process.env.SMS_API_KEY ?? '',
-    apiSecret: process.env.SMS_API_SECRET ?? '',
-    sender: process.env.SMS_SENDER ?? '',
-    /** نقطة النهاية لدى المزوّد (مطلوبة لمزوّد http). */
-    baseUrl: process.env.SMS_BASE_URL ?? '',
-    timeoutMs: Number(process.env.SMS_TIMEOUT_MS ?? 10_000),
+  analytics: {
+    jobIntervalMs: Number(process.env.ANALYTICS_JOB_INTERVAL_MS ?? 3_600_000),
+    trackingEnabled: process.env.ANALYTICS_TRACKING_ENABLED === 'true',
   },
 
   corsOrigins: (process.env.CORS_ORIGINS ?? '')
@@ -241,8 +328,15 @@ export const config = {
     .map((s) => s.trim())
     .filter(Boolean),
 
-  /** أصل الخادم العام — تُبنى منه روابط الصور المطلقة التي يقرأها التطبيق. */
-  publicBaseUrl: (process.env.PUBLIC_BASE_URL ?? `http://localhost:${Number(process.env.PORT ?? 4000)}`).replace(/\/$/, ''),
+  /**
+   * أصل الخادم العام — تُبنى منه روابط الصور المطلقة التي يقرأها التطبيق.
+   *
+   * [CRITICAL] البديل `http://localhost` صامتٌ وخاطئ خارج جهاز المطوّر:
+   * الهاتف الذي يقرأ رابطاً يبدأ بـ`localhost` يطلبه من نفسه، فتظهر كل
+   * الصور مكسورة بلا رسالة خطأ واحدة في الخادم. مطلوب صراحةً في
+   * `staging`/`prod`.
+   */
+  publicBaseUrl: publicBaseUrl.replace(/\/$/, ''),
 
   uploads: {
     /** مجلد التخزين على القرص (نسبي لجذر تشغيل الخادم). */
@@ -251,14 +345,40 @@ export const config = {
     publicPath: process.env.UPLOADS_PUBLIC_PATH ?? '/uploads',
     /** أقصى حجم للصورة الواحدة. */
     maxBytes: Number(process.env.UPLOADS_MAX_BYTES ?? 5 * 1024 * 1024),
+
+    /**
+     * حصّة البايتات لكل زبون في نافذة متدحرجة (٢٤ ساعة).
+     *
+     * السقف الحالي للملف الواحد ٥ ميغابايت بلا حدٍّ لعددها، فحسابٌ واحد
+     * يستطيع ملء القرص. الحصّة تُقاس بالبايتات لا بالعدد لأن المشكلة
+     * مساحةٌ لا عدد طلبات.
+     *
+     * ٥٠ ميغابايت = عشرة ملفات بالحجم الأقصى يومياً. التقييم الواحد يقبل
+     * خمس صور، فهذا ضِعف أكبر استعمال مشروع. **الإدارة معفاة**: عملها
+     * رفعٌ بالجملة للكتالوج، وتقييدها يكسر سير عمل حقيقياً.
+     */
+    dailyBytesPerCustomer: Number(
+      process.env.UPLOADS_DAILY_BYTES_PER_CUSTOMER ?? 50 * 1024 * 1024,
+    ),
   },
 
   orders: {
     /**
-     * المهلة بين استلام الطلب وفتح التقييم (ساعات).
-     * قابلة للضبط بيئياً حتى تختبرها المنظومة بلا انتظار يوم كامل.
+     * المهلة بين خروج الطلب للتوصيل وإرسال تذكير التقييم (ساعات).
+     *
+     * [CRITICAL] هذه **لا تفتح التقييم ولا تؤخّره**. التقييم يُفتح بتأكيد
+     * الاستلام فوراً؛ ما تجدوله هذه القيمة هو إشعار «شلونها المنتجات؟»
+     * لمن استلم ولم يقيّم بعد.
+     *
+     * كانت تُسمّى `ratingDelayHours` ويطغى عليها إعداد لوحة التحكم
+     * `order_rating_delay_hours`. أُزيل ذلك الإعداد (هجرة ٠٤٣) لأن مهلةً
+     * تفصل بين ضغطة «استلمت طلبي» وفتح التقييم تسأل الزبونَ عن رأيه بعد أن
+     * ينساه. ما بقي متغيّرُ بيئة تشغيلي للإشعار، لا إعداداً تجارياً في
+     * المتصفح.
      */
-    ratingDelayHours: Number(process.env.ORDER_RATING_DELAY_HOURS ?? 24),
+    reviewReminderDelayHours: Number(
+      process.env.ORDER_REVIEW_REMINDER_DELAY_HOURS ?? 16,
+    ),
     /** كل كم مللي ثانية تفحص الجدولةُ التذكيراتِ المستحقة. */
     ratingReminderIntervalMs: Number(
       process.env.RATING_REMINDER_INTERVAL_MS ?? 5 * 60 * 1000,
@@ -266,6 +386,17 @@ export const config = {
     /** سقف التذكيرات في الدورة الواحدة — يمنع دفعة ضخمة بعد توقف طويل. */
     ratingReminderBatchSize: Number(process.env.RATING_REMINDER_BATCH ?? 200),
   },
+
+  /**
+   * المنطقة الزمنية التي يعيش فيها المتجر.
+   *
+   * [CRITICAL] «عيد ميلاد اليوم» سؤالٌ عن تقويم الزبون لا عن ساعة الخادم.
+   * خادمٌ يعمل بـUTC يرى يوماً جديداً الساعة الثالثة فجراً ببغداد، فتُرسل
+   * تهنئةُ الغد قبل أن ينتهي اليوم عند صاحبها بثلاث ساعات — ويوم الميلاد
+   * الحقيقي يمرّ وقد صُنّف «أمس». لذلك يُحسب «اليوم» بهذه المنطقة صراحةً
+   * في كل استعلام تاريخ ميلاد، لا بـ`CURRENT_DATE` الخام.
+   */
+  storeTimezone: process.env.STORE_TIMEZONE ?? 'Asia/Baghdad',
 
   /**
    * حدود المعدّل.
@@ -284,8 +415,25 @@ export const config = {
     /** محاولات تسجيل الدخول لكل (رقم + IP) — هذا هو الحاجز ضد تخمين كلمة المرور. */
     loginMaxPerPhone: Number(process.env.RATE_LIMIT_LOGIN_MAX_PER_PHONE ?? 10),
     /** محاولات التحقق من الرمز لكل (رقم + IP). */
-    otpVerifyMaxPerPhone: Number(process.env.RATE_LIMIT_OTP_VERIFY_MAX ?? 10),
-    /** طلبات إرسال رمز لكل IP (الحدّ بالرقم يُطبَّق في otpService). */
-    otpSendMaxPerIp: Number(process.env.RATE_LIMIT_OTP_SEND_MAX ?? 20),
+    /** طلبات إنشاء حساب/إعادة تعيين لكل (رقم + عنوان) في النافذة. */
+    accountRequestMaxPerPhone: Number(process.env.RATE_LIMIT_ACCOUNT_REQUEST_MAX ?? 10),
+
+    /**
+     * الرفع — سقفان مختلفان لأن سير العمل مختلف.
+     *
+     * الزبون يرفع صور تقييم (خمس كحدّ أقصى للتقييم) وصورة حساب. عشرون في
+     * ربع ساعة تكفي عدّة تقييمات متتالية.
+     *
+     * الإدارة ترفع صور المنتجات والبنرات والفتحات البصرية بالجملة — جلسةُ
+     * تحرير كتالوج واحدة قد تتجاوز المئة. سقفٌ ضيّق هنا يكسر عملاً مشروعاً،
+     * والغرضُ حدُّ الإساءة لا خنقُ الاستعمال.
+     */
+    uploadMaxPerCustomer: Number(process.env.RATE_LIMIT_UPLOAD_MAX ?? 20),
+    uploadMaxPerAdmin: Number(process.env.RATE_LIMIT_UPLOAD_MAX_ADMIN ?? 200),
+    /**
+     * البثّ لكل مسؤول في الساعة — حدُّ إرسالٍ جماعيٍّ متكرّر بالخطأ لا خنقٌ للعمل.
+     * مفتاح عدم التكرار يمنع تكرار الطلب نفسه؛ هذا يمنع حملاتٍ متتالية مختلفة.
+     */
+    broadcastMaxPerHour: Number(process.env.RATE_LIMIT_BROADCAST_MAX ?? 10),
   },
 } as const;

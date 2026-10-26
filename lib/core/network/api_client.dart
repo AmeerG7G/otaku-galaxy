@@ -16,6 +16,8 @@ class ApiClient {
     AppConfig? config,
     this.tokenProvider,
     this.onUnauthorized,
+    this.appVersionProvider,
+    this.languageProvider,
     Dio? dio,
   }) : _dio =
            dio ??
@@ -45,6 +47,22 @@ class ApiClient {
           if (token != null && token.isNotEmpty) {
             options.headers['Authorization'] = 'Bearer $token';
           }
+          // نسخة التطبيق المثبَّتة — يقرؤها الخادم ليرفض العمليات المحميّة
+          // القادمة من نسخة دون الحدّ الأدنى المدعوم. الحاجز في Flutter
+          // يُتجاوَز بتعديل التطبيق؛ هذا الرأس هو ما يجعل الفرض خادميّاً.
+          // فارغةً تُحذف تماماً: الخادم يمرّر الرأس الغائب عمداً.
+          final appVersion = appVersionProvider?.call();
+          if (appVersion != null && appVersion.isNotEmpty) {
+            options.headers['X-App-Version'] = appVersion;
+          }
+          // لغة الواجهة — بها يحسم الخادم أسماء الأقسام والمنتجات والخيارات
+          // ورسائل الخطأ للزائر (الرئيسية والأقسام والتفاصيل تُقرأ بلا
+          // مصادقة). للمسجَّل يسبقها عمود `preferred_language` الذي يزامنه
+          // `AuthCubit`. بلا هذه الترويسة كان الخادم يرى كل طلب عربياً.
+          final language = languageProvider?.call();
+          if (language != null && language.isNotEmpty) {
+            options.headers['Accept-Language'] = language;
+          }
           _log(
             '▶ [$platformLabel] base=${_dio.options.baseUrl} '
             '${options.method} ${options.uri}',
@@ -64,8 +82,9 @@ class ApiClient {
             'response=${response?.data}',
           );
           if (_endsSession(response?.statusCode, response?.data)) {
-            onUnauthorized?.call();
+            _endSession(error.requestOptions, response?.statusCode, response?.data);
           }
+          _signalIfUpdateRequired(response?.statusCode, response?.data);
           handler.next(error);
         },
       ),
@@ -73,19 +92,53 @@ class ApiClient {
   }
 
 
+  /// رموز 401 التي تعني فعلاً أن التوكن مرفوض — وهي وحدها ما يُنهي الجلسة.
+  ///
+  /// `UNAUTHORIZED` هو رمز وسيط المصادقة (توكن غائب/منتهٍ/حساب محذوف)،
+  /// و`SESSION_REVOKED` هو إبطال النسخة بعد تغيير كلمة المرور أو الإيقاف.
+  static const _sessionEndingCodes = {'UNAUTHORIZED', 'SESSION_REVOKED'};
+
   /// هل تعني هذه الاستجابة أن الجلسة انتهت فعلاً؟
   ///
-  /// 401 = رفض التوكن (منتهٍ، أو أُبطل بعد تغيير كلمة المرور).
+  /// 401 = رفض التوكن (منتهٍ، أو أُبطل بعد تغيير كلمة المرور) — **بشرط** أن
+  /// يكون رمز الخطأ رمزَ توكن (أو غائباً: ردٌّ ليس من الـAPI أصلاً). كان كل
+  /// 401 يُنهي الجلسة، فأي 401 «تجاري» من خدمةٍ ما (كلمة حالية خاطئة عند
+  /// تغيير كلمة المرور) يُخرج صاحبَ جلسةٍ صالحة. الخادم صار يردّ 400 على
+  /// ذلك، وهذا الشرط يحمي من أي رمزٍ مشابه يظهر لاحقاً.
   /// 403 مع `ACCOUNT_SUSPENDED` = الحساب أُوقف بعد إصدار التوكن؛ بدون هذه
   /// الحالة يبقى المستخدم «مسجّلاً» شكلاً بينما يُرفض كل طلب، فيرى أخطاءً
   /// متكررة بلا تفسير. أما 403 الأخرى (نقص صلاحية، رقم غير مفعَّل) فليست
   /// نهايةَ جلسة ولا يجوز أن تُخرجه.
   bool _endsSession(int? status, dynamic data) {
-    if (status == 401) return true;
+    final code = data is Map<String, dynamic> ? _codeFrom(data) : null;
+    if (status == 401) {
+      return code == null || _sessionEndingCodes.contains(code);
+    }
     if (status != 403) return false;
-    if (data is! Map<String, dynamic>) return false;
-    final error = data['error'];
-    return error is Map && error['code'] == 'ACCOUNT_SUSPENDED';
+    return code == 'ACCOUNT_SUSPENDED';
+  }
+
+  /// يُنهي الجلسة ويسجّل — في التطوير — أيَّ طلبٍ تسبّب في ذلك، حتى يُقرأ
+  /// «خرجتُ فجأة» من السجل لا من التخمين.
+  void _endSession(RequestOptions? request, int? status, dynamic data) {
+    _log(
+      '⛔ [$platformLabel] session ended by '
+      '${request?.method} ${request?.uri} status=$status '
+      'code=${data is Map<String, dynamic> ? _codeFrom(data) : null}',
+    );
+    onUnauthorized?.call();
+  }
+
+  /// الخادم رفض الطلب لأن النسخة المثبَّتة دون الحدّ الأدنى المدعوم.
+  ///
+  /// [CRITICAL] كان هذا الردّ (426 `APP_UPDATE_REQUIRED`) يصل رسالةَ خطأٍ عادية
+  /// لكل طلب، ولا يعرف حاجز التحديث به إلا عند الاستئناف التالي — فمن رُفع
+  /// الحدّ وتطبيقه مفتوح يرى أخطاءً متتالية بلا تفسير. الآن يُبلَّغ
+  /// [onUpdateRequired] فيعيد الحاجز فحصه من الخادم فوراً؛ الحكم يبقى له.
+  void _signalIfUpdateRequired(int? status, dynamic data) {
+    if (status != 426) return;
+    final code = data is Map<String, dynamic> ? _codeFrom(data) : null;
+    if (code == 'APP_UPDATE_REQUIRED') onUpdateRequired?.call();
   }
 
   /// وصف منصة التشغيل الحالية للتشخيص (ويب / أندرويد / آيفون / سطح مكتب).
@@ -123,6 +176,17 @@ class ApiClient {
   /// استدعاء عند انتهاء الجلسة (401).
   void Function()? onUnauthorized;
 
+  /// استدعاء حين يرفض الخادم طلباً لأن النسخة دون الحدّ (426) — يربطه
+  /// `AppVersionRepository` بحاجز التحديث.
+  void Function()? onUpdateRequired;
+
+  /// النسخة المثبَّتة المعلَنة للخادم (تُقرأ عند كل طلب، متزامنةً).
+  String? Function()? appVersionProvider;
+
+  /// رمز لغة الواجهة (`ar` / `ckb`) لترويسة `Accept-Language` — يُقرأ عند
+  /// كل طلب لأن اللغة تتبدّل بعد بناء العميل.
+  String? Function()? languageProvider;
+
   /// ربط الجلسة بعد بناء العميل (لتجنب الاعتماد الدائري في DI).
   void attachAuth({
     String? Function()? tokenProvider,
@@ -133,12 +197,35 @@ class ApiClient {
   }
 
   /// GET — يعيد حقل `data` من المغلف الموحّد.
-  Future<dynamic> get(String path, {Map<String, dynamic>? query}) =>
-      _request(() => _dio.get<dynamic>(path, queryParameters: query));
+  ///
+  /// `headers` ترويساتٌ إضافية لهذا الطلب وحده — إشارة القياس (`X-OG-Track`)
+  /// مثلاً، ولا شيء من ترويسات الجلسة.
+  Future<dynamic> get(
+    String path, {
+    Map<String, dynamic>? query,
+    Map<String, String>? headers,
+  }) => _request(
+    () => _dio.get<dynamic>(
+      path,
+      queryParameters: query,
+      options: headers == null ? null : Options(headers: headers),
+    ),
+  );
 
-  /// POST — يعيد حقل `data` من المغلف الموحّد.
-  Future<dynamic> post(String path, {Object? body}) =>
-      _request(() => _dio.post<dynamic>(path, data: body));
+  /// POST — يعيد حقل `data` من المغلف الموحّد. [headers] لطلبٍ بعينه
+  /// (`Idempotency-Key` لإنشاء الطلب) فوق ترويسات العميل الثابتة.
+  Future<dynamic> post(
+    String path, {
+    Object? body,
+    Map<String, String>? headers,
+  }) =>
+      _request(
+        () => _dio.post<dynamic>(
+          path,
+          data: body,
+          options: headers == null ? null : Options(headers: headers),
+        ),
+      );
 
   /// PUT — يعيد حقل `data` من المغلف الموحّد.
   Future<dynamic> put(String path, {Object? body}) =>
@@ -148,26 +235,84 @@ class ApiClient {
   Future<dynamic> patch(String path, {Object? body}) =>
       _request(() => _dio.patch<dynamic>(path, data: body));
 
-  /// DELETE — يعيد حقل `data` من المغلف الموحّد.
-  /// يرفع ملفاً واحداً كـ multipart ويعيد جسم الاستجابة.
+  /// مهلة إرسال الرفع واستقباله — لا مهلة طلبات JSON.
+  ///
+  /// [CRITICAL] `sendTimeout` في Dio على المنصّات الأصلية يحدّ **الجسم كلّه**
+  /// (`addStream(...).timeout`)، و١٥ ثانية كانت تقطع رفعاً سليماً لصورة
+  /// ٦٠٠ كيلوبايت على خطٍّ دون ٣٢٠ كيلوبت/ث — لا يظهر على `localhost` أبداً.
+  /// الصور مصغَّرة قبل الرفع (≤ ١٦٠٠ بكسل)، فدقيقةٌ تكفي خطّاً ضعيفاً جداً.
+  static const uploadTimeout = Duration(seconds: 60);
+
+  /// يرفع صورةً واحدة كـ multipart ويعيد **مرجعها المخزَّن** (`/uploads/...`).
   ///
   /// الغرض (`purpose`) يحدّد وجهة التخزين على الخادم؛ العميل مسموح له
   /// برفع صور التقييمات والصورة الشخصية فقط.
-  Future<dynamic> uploadFile(
+  ///
+  /// [CRITICAL] من **البايتات** لا من مسار ملف: `MultipartFile.fromFile`
+  /// يحتاج `dart:io` فيرمي `UnsupportedError` على الويب دائماً. والنوع
+  /// المعلَن من **توقيع البايتات** لا من امتداد الاسم: `image_picker` على
+  /// أندرويد يعيد ترميز الصورة ويُبقي امتداد الأصل (`scaled_….heic`)، فكان
+  /// Dio يعلن `image/heic` لبايتاتٍ هي JPEG. الاسم المرسَل محايد (`image.jpg`)
+  /// — اسم ملف الزبون لا يغادر جهازه.
+  ///
+  /// ردٌّ ناجح بلا مرجع صالح يرمي [AppException] (`errUnexpectedResponse`)
+  /// ولا يعيد قيمة فارغة: الصورة الشخصية كانت تُمسح حين يمرّ `null` إلى الحفظ.
+  Future<String> uploadImage(
     String path, {
-    required String filePath,
+    required Uint8List bytes,
     required String purpose,
-    String field = 'file',
-  }) {
-    return _request(() async {
+  }) async {
+    final type = _sniffImage(bytes);
+    final data = await _request(() {
       final form = FormData.fromMap({
-        field: await MultipartFile.fromFile(filePath),
+        'file': MultipartFile.fromBytes(
+          bytes,
+          filename: 'image${type?.extension ?? ''}',
+          contentType: type == null ? null : DioMediaType.parse(type.mime),
+        ),
         'purpose': purpose,
       });
-      return _dio.post<dynamic>(path, data: form);
+      return _dio.post<dynamic>(
+        path,
+        data: form,
+        options: Options(
+          sendTimeout: uploadTimeout,
+          receiveTimeout: uploadTimeout,
+        ),
+      );
     });
+    final url = data is Map<String, dynamic> ? data['url'] : null;
+    if (url is String &&
+        (url.startsWith('/uploads/') ||
+            url.startsWith('https://') ||
+            url.startsWith('http://'))) {
+      return url;
+    }
+    throw const AppException(
+      'unexpected_response',
+      messageKey: 'errUnexpectedResponse',
+    );
   }
 
+  /// النوع الحقيقي من التوقيع الثنائي — مرآة `sniffImageMime` في الخادم.
+  /// غير المعروف يُرسَل بلا نوعٍ مُدَّعى، والحكم للخادم.
+  static ({String mime, String extension})? _sniffImage(Uint8List b) {
+    if (b.length >= 3 && b[0] == 0xff && b[1] == 0xd8 && b[2] == 0xff) {
+      return (mime: 'image/jpeg', extension: '.jpg');
+    }
+    const png = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+    if (b.length >= 8 && List.generate(8, (i) => b[i] == png[i]).every((ok) => ok)) {
+      return (mime: 'image/png', extension: '.png');
+    }
+    if (b.length >= 12 &&
+        String.fromCharCodes(b.sublist(0, 4)) == 'RIFF' &&
+        String.fromCharCodes(b.sublist(8, 12)) == 'WEBP') {
+      return (mime: 'image/webp', extension: '.webp');
+    }
+    return null;
+  }
+
+  /// DELETE — يعيد حقل `data` من المغلف الموحّد.
   Future<dynamic> delete(String path) =>
       _request(() => _dio.delete<dynamic>(path));
 
@@ -210,31 +355,33 @@ class ApiClient {
   Future<dynamic> _request(Future<Response<dynamic>> Function() send) async {
     try {
       final response = await send();
-      return _unwrap(response.statusCode ?? 0, response.data);
+      return _unwrap(response.statusCode ?? 0, response.data, response.requestOptions);
     } on DioException catch (e) {
-      if (_endsSession(e.response?.statusCode, e.response?.data)) {
-        onUnauthorized?.call();
-      }
+      // المعترِض أنهى الجلسة أصلاً لهذا الخطأ؛ `forceLogout` يتجاهل التكرار.
       throw _toAppException(e);
     }
   }
 
   /// فكّ المغلف الموحّد: نجاح = `data`، فشل = [AppException] برسالة الخادم.
-  dynamic _unwrap(int statusCode, dynamic data) {
+  dynamic _unwrap(int statusCode, dynamic data, [RequestOptions? request]) {
     if (_endsSession(statusCode, data)) {
-      onUnauthorized?.call();
+      _endSession(request, statusCode, data);
     }
+    _signalIfUpdateRequired(statusCode, data);
     if (data is! Map<String, dynamic>) {
       throw AppException(
-        'استجابة غير متوقعة من الخادم',
+        'unexpected_response',
+        messageKey: 'errUnexpectedResponse',
         statusCode: statusCode,
       );
     }
     if (data['success'] == true) {
       return data['data'];
     }
+    final serverMessage = _serverMessage(data);
     throw AppException(
-      _messageFrom(data, statusCode),
+      serverMessage ?? 'http_$statusCode',
+      messageKey: serverMessage == null ? _fallbackKeyFor(statusCode) : null,
       statusCode: statusCode,
       code: _codeFrom(data),
     );
@@ -250,26 +397,23 @@ class ApiClient {
     return null;
   }
 
-  String _messageFrom(Map<String, dynamic> data, int statusCode) {
+  /// رسالة الخادم إن وُجدت — وهي مصرَّفةٌ بلغة صاحبها أصلاً.
+  String? _serverMessage(Map<String, dynamic> data) {
     final message = data['message'];
     if (message is String && message.trim().isNotEmpty) return message;
-    switch (statusCode) {
-      case 400:
-        return 'طلب غير صالح';
-      case 401:
-        return 'انتهت الجلسة — سجّل الدخول مجدداً';
-      case 403:
-        return 'لا تملك صلاحية تنفيذ هذا الإجراء';
-      case 404:
-        return 'غير موجود';
-      case 409:
-        return 'تعارض مع البيانات الحالية';
-      case 429:
-        return 'طلبات كثيرة جداً — حاول لاحقاً';
-      default:
-        return 'تعذر الاتصال بالخادم';
-    }
+    return null;
   }
+
+  /// مفتاح النصّ الاحتياطي حين لا يرسل الخادم رسالة.
+  String _fallbackKeyFor(int statusCode) => switch (statusCode) {
+        400 => 'errBadRequest',
+        401 => 'errSessionExpired',
+        403 => 'errForbidden',
+        404 => 'errNotFound',
+        409 => 'errConflict',
+        429 => 'errTooManyRequests',
+        _ => 'errServerUnreachable',
+      };
 
   AppException _toAppException(DioException error) {
     final response = error.response;
@@ -277,14 +421,17 @@ class ApiClient {
       final data = response.data;
       final status = response.statusCode ?? 500;
       if (data is Map<String, dynamic>) {
+        final serverMessage = _serverMessage(data);
         return AppException(
-          _messageFrom(data, status),
+          serverMessage ?? 'http_$status',
+          messageKey: serverMessage == null ? _fallbackKeyFor(status) : null,
           statusCode: status,
           code: _codeFrom(data),
         );
       }
       return AppException(
-        'خطأ من الخادم (${response.statusCode})',
+        'http_$status',
+        messageKey: 'errServerStatus',
         statusCode: status,
       );
     }
@@ -293,15 +440,19 @@ class ApiClient {
       case DioExceptionType.sendTimeout:
       case DioExceptionType.receiveTimeout:
         return AppException(
-          'انتهت مهلة الاتصال — حاول مرة أخرى (${error.message ?? 'timeout'})',
+          error.message ?? 'timeout',
+          messageKey: 'errTimeout',
         );
       case DioExceptionType.connectionError:
         return AppException(
-          'تعذر الاتصال بالخادم — تحقق من الإنترنت '
-          '(${error.message ?? 'connection error'})',
+          error.message ?? 'connection error',
+          messageKey: 'errConnection',
         );
       default:
-        return AppException(error.message ?? 'حدث خطأ غير متوقع');
+        return AppException(
+          error.message ?? 'unexpected',
+          messageKey: error.message == null ? 'unexpectedError' : null,
+        );
     }
   }
 }

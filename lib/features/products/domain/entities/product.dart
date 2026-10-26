@@ -1,11 +1,38 @@
+import '../../../../core/l10n/bilingual_text.dart';
 import '../../../../core/network/media_url.dart';
+import '../../../settings/presentation/cubit/locale_cubit.dart';
+
+/// حالة توفّر المنتج كما يراها الزبون.
+///
+/// [CRITICAL] المخزون هو مصدر الحقيقة، لا التاريخ. `restockAt` **موعد
+/// متوقَّع** لا وعدٌ ولا مؤقّت: إن وصلت بضاعة قبله صار المنتج متوفراً فوراً
+/// وسقط الموعد من العرض، وإن مضى الموعد ولم تصل بضاعة بقي المنتج غير متوفر.
+/// لذلك يُقرأ `stock` أولاً دائماً، ولا يُستشار التاريخ إلا حين يكون
+/// المخزون صفراً.
+enum ProductAvailability {
+  /// مخزون موجب — يُضاف إلى السلة.
+  available,
+
+  /// مخزون صفر **مع** موعد متوقَّع — «قريباً يتوفر».
+  comingSoon,
+
+  /// مخزون صفر بلا موعد — «غير متوفر».
+  unavailable;
+
+  bool get canAddToCart => this == ProductAvailability.available;
+
+  /// هل يُعرض إجراء «أخبرني عند توفره»؟ في الحالتين غير المتوفرتين.
+  bool get showsRestockAction => this != ProductAvailability.available;
+}
 
 class Product {
   const Product({
     required this.id,
-    required this.name,
+    required this.nameAr,
+    this.nameCkb,
     required this.price,
-    required this.description,
+    this.descriptionAr = '',
+    this.descriptionCkb,
     required this.images,
     this.categoryId,
     this.categoryName,
@@ -23,12 +50,32 @@ class Product {
     this.hasDeliveryPromo = false,
     this.deliveryPromoAmount = 0,
     this.franchiseIds = const [],
+    this.restockAt,
+    this.pairPrice,
   });
 
   final String id;
-  final String name;
+
+  // ═══ المحتوى بلغتين (هجرة ٠٦٦) ═══
+  //
+  // [CRITICAL] لا `name` ولا `description` واحداً: الخادم يرسل الأربعة
+  // صريحة، والتطبيق يختار بلغة واجهته **الآن** ([localizedProductName]) —
+  // فالمنتج المحفوظ في السلة أو المفضلة أو قائمةٍ مفتوحة يتبدّل مع تبديل
+  // اللغة بلا جلبٍ ثانٍ، ويُعرف نقص كرديته بدل أن يُعرض العربي على أنه كردي.
+
+  /// اسم المنتج بالعربية — حاضرٌ دائماً.
+  final String nameAr;
+
+  /// اسم المنتج بالكردية؛ `null` = ناقص (منتج قديم). لا فراغ أبداً.
+  final String? nameCkb;
+
+  /// وصف المنتج بالعربية — قد يكون فارغاً لمنتجٍ قديم أو لسطر سلة/طلب.
+  final String descriptionAr;
+
+  /// وصف المنتج بالكردية؛ `null` = ناقص.
+  final String? descriptionCkb;
+
   final double price;
-  final String description;
   final List<String> images;
   final String? categoryId;
   final String? categoryName;
@@ -64,8 +111,29 @@ class Product {
   /// قيمة خصم التوصيل عن كل قطعة — القيمة المعتمدة، والخادم هو من يطبّقها.
   final double deliveryPromoAmount;
 
+  /// سعر قطعتين من المنتج نفسه (085)؛ `null` = لا عرض. الخادم وحده يحسب به —
+  /// التطبيق يعرض `lineTotal` كما وصل، ويُرسل هذه القيمة في `expectedPrices`
+  /// ليُرفض الطلب إن تغيّر العرض بعد المراجعة.
+  final double? pairPrice;
+
   /// الأنمي/الامتيازات المرتبطة بالمنتج.
   final List<String> franchiseIds;
+
+  /// الموعد المتوقَّع لعودة التوفر — يضبطه المسؤول، و`null` يعني «بلا موعد».
+  ///
+  /// إرشاديٌّ محض: لا يُغيّر المخزون ولا يفتح الشراء ولا يُشغّل إشعاراً.
+  /// الإشعار يقع حين يصير المخزون موجباً فعلاً (`restockService`).
+  final DateTime? restockAt;
+
+  /// الاسم بلغتيه — ما تختار منه [localizedProductName].
+  BilingualText get names => BilingualText(ar: nameAr, ckb: nameCkb);
+
+  /// الوصف بلغتيه — ما تختار منه [localizedProductDescription].
+  BilingualText get descriptions =>
+      BilingualText(ar: descriptionAr, ckb: descriptionCkb);
+
+  /// هل ينقص المنتجَ اسمٌ أو وصفٌ كردي؟ — نفس حكم الخادم (`kurdishMissing`).
+  bool get kurdishMissing => nameCkb == null || descriptionCkb == null;
 
   /// هل يملك المنتج خصماً حقيقياً مدعوماً ببيانات الخادم؟
   bool get hasDiscount =>
@@ -80,12 +148,49 @@ class Product {
   /// الكمية المخفية عن الزبون؛ لا تظهر إلا عند انخفاض المخزون إلى 3 قطع أو أقل.
   bool get lowStock => inStock && stock <= 3;
 
+  /// [CRITICAL] الحساب **الوحيد** لحالة التوفر في التطبيق.
+  ///
+  /// كل شاشة تقرأ هذا ولا تعيد اشتقاقه من `stock` و`restockAt` بنفسها:
+  /// شرطان متطابقان مكتوبان في عشر شاشات يتباعدان أول مرة يُعدَّل أحدها،
+  /// فتقول البطاقة «قريباً» وتقول التفاصيل «غير متوفر» عن المنتج نفسه.
+  ProductAvailability get availability {
+    if (inStock) return ProductAvailability.available;
+    return restockAt == null
+        ? ProductAvailability.unavailable
+        : ProductAvailability.comingSoon;
+  }
+
+  /// الموعد المعروض للزبون — `null` ما دام المنتج متوفراً.
+  ///
+  /// [CRITICAL] المتوفر لا يحمل موعداً حتى لو بقيت القيمة في القاعدة: عرضُ
+  /// «متوقع التوفر ١٥/١٠» على منتجٍ يمكن شراؤه الآن تناقضٌ صريح. المسؤول قد
+  /// يستلم البضاعة قبل موعده ولا يمسح التاريخ، وهذه الحالة هي القاعدة لا
+  /// الاستثناء.
+  DateTime? get displayRestockAt =>
+      availability == ProductAvailability.comingSoon ? restockAt : null;
+
   factory Product.fromJson(Map<String, dynamic> json) {
+    // الحقول الصريحة أولاً؛ `name`/`description` (المحسومان بلغة الطلب) لا
+    // يُقرآن إلا من ردٍّ أقدم لا يحمل غيرهما — انظر [BilingualText.fromJson].
+    final names = BilingualText.fromJson(
+      json,
+      arKey: 'nameAr',
+      ckbKey: 'nameCkb',
+      legacyKey: 'name',
+    );
+    final descriptions = BilingualText.fromJson(
+      json,
+      arKey: 'descriptionAr',
+      ckbKey: 'descriptionCkb',
+      legacyKey: 'description',
+    );
     return Product(
       id: json['id']?.toString() ?? '',
-      name: json['name'] as String? ?? '',
+      nameAr: names.ar,
+      nameCkb: names.ckb,
       price: (json['price'] as num?)?.toDouble() ?? 0,
-      description: json['description'] as String? ?? '',
+      descriptionAr: descriptions.ar,
+      descriptionCkb: descriptions.ckb,
       images: resolveMediaUrls(json['images'] as List?),
       categoryId: json['categoryId']?.toString(),
       categoryName: json['categoryName'] as String?,
@@ -108,15 +213,21 @@ class Product {
       franchiseIds:
           (json['franchiseIds'] as List?)?.map((e) => e.toString()).toList() ??
           const [],
+      // الخادم يرسله ISO-8601 أو `null`. نصٌّ معطوب يُقرأ `null` لا يرمي:
+      // موعدٌ إرشادي لا يستحق إسقاط صفحة المنتج.
+      restockAt: DateTime.tryParse(json['restockAt']?.toString() ?? '')?.toLocal(),
+      pairPrice: (json['pairPrice'] as num?)?.toDouble(),
     );
   }
 
   Product copyWith({bool? inFavorites}) {
     return Product(
       id: id,
-      name: name,
+      nameAr: nameAr,
+      nameCkb: nameCkb,
       price: price,
-      description: description,
+      descriptionAr: descriptionAr,
+      descriptionCkb: descriptionCkb,
       images: images,
       categoryId: categoryId,
       categoryName: categoryName,
@@ -133,10 +244,24 @@ class Product {
       discountPercent: discountPercent,
       hasDeliveryPromo: hasDeliveryPromo,
       deliveryPromoAmount: deliveryPromoAmount,
+      restockAt: restockAt,
       franchiseIds: franchiseIds,
+      pairPrice: pairPrice,
     );
   }
 }
+
+/// [CRITICAL] اسم المنتج بلغة الواجهة — **الآلية الوحيدة** لتسمية منتج.
+///
+/// كل شاشة (البطاقة، التفاصيل، البحث، السلة، المفضلة، الطلبات، التقييم)
+/// تمرّ من هنا بلغة `context.language` — لغة التطبيق المختارة لا لغة الجهاز.
+/// الكردية الناقصة تسقط إلى العربية، ويُعرف ذلك بـ[BilingualText.isFallbackIn].
+String localizedProductName(Product product, AppLanguage language) =>
+    product.names.of(language);
+
+/// وصف المنتج بلغة الواجهة — نظير [localizedProductName].
+String localizedProductDescription(Product product, AppLanguage language) =>
+    product.descriptions.of(language);
 
 class ProductOption {
   const ProductOption({required this.name, required this.values});

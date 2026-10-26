@@ -2,6 +2,7 @@ import type { RequestHandler } from 'express';
 import { birthdayService } from '../services/birthdayService.js';
 import { collectionsService } from '../services/collectionsService.js';
 import { notificationsService } from '../services/notificationsService.js';
+import { loyaltyRewardsService } from '../services/loyaltyRewardsService.js';
 import { pointsService } from '../services/pointsService.js';
 import { reviewsService } from '../services/reviewsService.js';
 import { ok, created } from '../utils/response.js';
@@ -15,6 +16,7 @@ import {
   notificationIdParamSchema,
   productIdParamSchema,
   resubmitReviewSchema,
+  rewardLevelParamSchema,
   reviewIdParamSchema,
   setBirthdaySchema,
   submitReviewSchema,
@@ -42,7 +44,7 @@ export const communityController = {
       productId: body.productId,
       rating: body.rating,
       comment: body.comment,
-      photoUrl: body.photoUrl ?? null,
+      photoUrls: body.photoUrls,
     });
     return created(res, review, 'تم إرسال تقييمك للمراجعة');
   }) as RequestHandler,
@@ -53,7 +55,7 @@ export const communityController = {
     const review = await reviewsService.resubmit(req.auth!.id, id, {
       rating: body.rating,
       comment: body.comment,
-      photoUrl: body.photoUrl ?? null,
+      photoUrls: body.photoUrls,
     });
     return ok(res, review, 'تم إرسال التقييم مجدداً للمراجعة');
   }) as RequestHandler,
@@ -74,6 +76,23 @@ export const communityController = {
 
   pointsSummary: (async (req, res) => {
     return ok(res, await pointsService.summary(req.auth!.id));
+  }) as RequestHandler,
+
+  /**
+   * المطالبة بمزيّة مستوى.
+   *
+   * [CRITICAL] المستوى يأتي من المسار، ولا شيء آخر يأتي من العميل: لا رصيد
+   * ولا نسبة ولا قيمة. الخادم يقرأ الدفتر ويقرّر. والمطالبة المكرّرة تُعيد
+   * نفس المزيّة بلا خطأ — الضغطة المزدوجة حالة طبيعية لا اعتداء.
+   */
+  claimReward: (async (req, res) => {
+    const { levelKey } = parse(rewardLevelParamSchema, req.params);
+    const result = await loyaltyRewardsService.claim(req.auth!.id, levelKey);
+    return ok(
+      res,
+      result.reward,
+      result.created ? 'سُجّلت مزيّتك' : 'هذه المزيّة مسجّلة لك بالفعل',
+    );
   }) as RequestHandler,
 
   // ── المجموعات ──

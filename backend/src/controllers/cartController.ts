@@ -1,3 +1,4 @@
+import { trackingService } from '../services/trackingService.js';
 import type { RequestHandler } from 'express';
 import { cartService } from '../services/cartService.js';
 import { ok } from '../utils/response.js';
@@ -9,14 +10,17 @@ import {
 } from '../validators/cart.js';
 
 export const cartController = {
+  /** قراءة العربة **هي** مزامنتها (CA-14): الأسطر الحالية وما عُدِّل فيها. */
   get: (async (req, res) => {
-    const items = await cartService.getCart(req.auth!.id);
-    return ok(res, { items });
+    const { items, adjustments } = await cartService.sync(req.auth!.id);
+    return ok(res, { items, adjustments });
   }) as RequestHandler,
 
   add: (async (req, res) => {
     const input = parse(addCartItemSchema, req.body);
     const data = await cartService.addItem(req.auth!.id, input);
+    // [D3] الإضافة التي يقوم بها الزبون — المزامنة `GET /cart` لا تمرّ من هنا.
+    trackingService.cartAdd(input.productId, req.auth!.id);
     return ok(res, data, 'أُضيف إلى العربة');
   }) as RequestHandler,
 

@@ -5,6 +5,8 @@ export interface ZoneDto {
   id: string;
   governorateId: string;
   name: string;
+  /** الاسم الكردي — تحسمه طبقة الخدمة قبل خروجه للزبون؛ اللوحة تراه كما هو. */
+  nameCkb: string | null;
   deliveryFee: number;
   sortOrder: number;
   isActive: boolean;
@@ -15,6 +17,7 @@ function shapeZone(row: GovernorateZoneRow): ZoneDto {
     id: row.id,
     governorateId: row.governorate_id,
     name: row.name,
+    nameCkb: row.name_ckb,
     deliveryFee: Number(row.delivery_fee),
     sortOrder: row.sort_order,
     isActive: row.is_active,

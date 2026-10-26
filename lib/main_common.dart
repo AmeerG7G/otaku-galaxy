@@ -11,7 +11,7 @@ import 'core/config/app_config.dart';
 /// نفسه (`OtakuGalaxyApp`) والتهيئة (`bootstrap`) وحقن الاعتماديات مشتركة
 /// كما هي، فلا نسخة ثانية من التطبيق لكل بيئة.
 Future<void> runOtakuGalaxy(AppConfig config) {
-  return bootstrap(() async => OtakuGalaxyApp(config: config)).then((_) {
+  return bootstrap(() async => OtakuGalaxyApp(config: config), config: config).then((_) {
     if (kDebugMode) {
       debugPrint('App started [${config.envName}] → ${config.effectiveApiBaseUrl}');
     }

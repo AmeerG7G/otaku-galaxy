@@ -1,13 +1,13 @@
-import { resolveMediaUrl } from '../utils/media'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Alert,
   App,
   Button,
   Card,
+  Checkbox,
   Flex,
-  Image,
   Space,
   Table,
   Tag,
@@ -23,33 +23,81 @@ import { deleteProduct, listProducts } from '../api/productsApi'
 import { listAdminCategories } from '../api/categoriesApi'
 import { ApiError } from '../api/client'
 import type { Product } from '../types/products'
-import { formatCurrency } from '../utils/format'
 import EmptyState from '../components/EmptyState'
+import { ProductLink } from '../components/ui/ProductLink'
+import { SearchField } from '../components/ui/SearchField'
+import { PageHeader } from '../components/ui/PageHeader'
+import { useTableState } from '../hooks/useTableState'
+import ProductPriceText from '../components/ProductPriceText'
 
 const PAGE_LIMIT = 12
 
-const NO_IMAGE_PLACEHOLDER =
-  'data:image/svg+xml;utf8,' +
-  encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="#f5f5f5"/><text x="32" y="36" font-size="12" text-anchor="middle" fill="#aaa">لا صورة</text></svg>',
-  )
-
-function readPage(value: string | null): number {
-  const parsed = Number(value)
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : 1
-}
+/** مهلة سكون الكتابة قبل إرسال البحث — نفس إيقاع صفحة العملاء. */
+const SEARCH_DEBOUNCE_MS = 350
 
 export default function ProductsPage() {
   const navigate = useNavigate()
-  const [searchParams, setSearchParams] = useSearchParams()
   const { message, modal } = App.useApp()
   const queryClient = useQueryClient()
+  const { page, setPage, value, setSearchParams } = useTableState()
 
-  const page = readPage(searchParams.get('page'))
+  // الترشيح يأتي من الرابط، فيبقى المسار «قسم ← قسم فرعي ← منتجاته» قابلاً
+  // للمشاركة والرجوع إليه بزرّ المتصفح.
+  const categoryId = value('categoryId')
+  const subcategoryId = value('subcategoryId')
+  // «أكمل الكردية»: المنتجات التي ينقصها اسمٌ أو وصفٌ كردي — ترشيحٌ على الخادم.
+  const missingKurdish = value('missingKurdish') === 'true'
+
+  // البحث بالاسم: يُكتب محلياً، ويُدفع إلى الرابط (`q`) بعد سكون الكتابة،
+  // ويعود بالقائمة إلى صفحتها الأولى — البقاء على الصفحة الخامسة بعد تضييق
+  // النتائج يعرض جدولاً فارغاً بلا سبب ظاهر. البحث نفسه على الخادم.
+  //
+  // [CRITICAL] الرابط مصدرُ الحقيقة للبحث المُثبَت. `q` قد يتغيّر من خارج
+  // الحقل — رجوع/تقدّم المتصفّح، رابط قسم، «عرض كل المنتجات» — وكان الحقل
+  // يحتفظ بقيمته ثم تدفعها مهلةُ السكون إلى الرابط من جديد، فيعود بحثٌ قديم
+  // يطمس ما اختاره المسؤول للتوّ. `lastPushed` يميّز صدى دفعتنا (يُتجاهَل،
+  // فلا تُقاطَع الكتابة) عن تغيّرٍ خارجي (يُنسخ إلى الحقل).
+  const search = value('q') ?? ''
+  const [searchInput, setSearchInput] = useState(search)
+  const lastPushed = useRef(search)
+
+  useEffect(() => {
+    if (search === lastPushed.current) return
+    lastPushed.current = search
+    setSearchInput(search)
+  }, [search])
+
+  useEffect(() => {
+    const next = searchInput.trim()
+    if (next === search) return
+    const timer = setTimeout(() => {
+      lastPushed.current = next
+      // الصيغة الوظيفية تقرأ أحدث معاملات الرابط لحظةَ الدفع لا لحظةَ
+      // الجدولة — فلا تُلتقط نسخةٌ قديمة ولا حاجة لإدراجها في الاعتماديات.
+      setSearchParams((current) => {
+        const nextParams = new URLSearchParams(current)
+        if (next === '') nextParams.delete('q')
+        else nextParams.set('q', next)
+        nextParams.set('page', '1')
+        return nextParams
+      })
+    }, SEARCH_DEBOUNCE_MS)
+    // تغيّرُ `search` من الخارج أثناء السكون يُلغي المؤقّت هنا، ويُعيد
+    // الأثرُ الأول ضبطَ الحقل — فلا تصل الدفعة العالقة إلى الرابط أبداً.
+    return () => clearTimeout(timer)
+  }, [searchInput, search, setSearchParams])
 
   const productsQuery = useQuery({
-    queryKey: ['products', { page }],
-    queryFn: () => listProducts({ page, limit: PAGE_LIMIT }),
+    queryKey: ['products', { page, categoryId, subcategoryId, q: search, missingKurdish }],
+    queryFn: () =>
+      listProducts({
+        page,
+        limit: PAGE_LIMIT,
+        ...(search ? { q: search } : {}),
+        ...(categoryId ? { categoryId } : {}),
+        ...(subcategoryId ? { subcategoryId } : {}),
+        ...(missingKurdish ? { missingKurdish: 'true' as const } : {}),
+      }),
   })
 
   const categoriesQuery = useQuery({
@@ -66,6 +114,18 @@ export default function ProductsPage() {
     ),
   )
 
+  /** وصف الترشيح الجاري — يظهر في العنوان بدل جدول يبدو ناقصاً بلا سبب. */
+  const activeScope = subcategoryId
+    ? subcategoryNames.get(subcategoryId)
+    : categoryId
+      ? categoryNames.get(categoryId)
+      : undefined
+
+  const scopeSearch = new URLSearchParams({
+    ...(categoryId ? { categoryId } : {}),
+    ...(subcategoryId ? { subcategoryId } : {}),
+  }).toString()
+
   const deactivateMutation = useMutation({
     mutationFn: (product: Product) => deleteProduct(product.id),
     onSuccess: (messageText) => {
@@ -80,7 +140,7 @@ export default function ProductsPage() {
   function confirmDeactivate(product: Product) {
     modal.confirm({
       title: 'هل أنت متأكد من تعطيل المنتج؟',
-      content: `«${product.name}» — لن يظهر المنتج للزبائن، ولن يتم حذفه من قاعدة البيانات.`,
+      content: `«${product.nameAr}» — لن يظهر المنتج للزبائن، ولن يتم حذفه من قاعدة البيانات.`,
       okText: 'تعطيل المنتج',
       okButtonProps: { danger: true },
       cancelText: 'إلغاء',
@@ -90,34 +150,22 @@ export default function ProductsPage() {
 
   const columns = [
     {
-      title: 'الصورة',
-      key: 'image',
-      width: 80,
-      render: (_: unknown, product: Product) =>
-        product.images[0] ? (
-          <Image
-            src={resolveMediaUrl(product.images[0])}
-            width={56}
-            height={56}
-            style={{ objectFit: 'cover', borderRadius: 4 }}
-            preview={false}
-            fallback={NO_IMAGE_PLACEHOLDER}
-          />
-        ) : (
-          <Image
-            src={NO_IMAGE_PLACEHOLDER}
-            width={56}
-            height={56}
-            style={{ borderRadius: 4 }}
-            preview={false}
-          />
-        ),
-    },
-    {
       title: 'المنتج',
-      dataIndex: 'name',
       key: 'name',
-      render: (value: string) => <Typography.Text strong>{value}</Typography.Text>,
+      // الصورة والاسم رابطٌ إلى صفحة المنتج (STEP 64 §3). الاسمان صريحان:
+      // العربي أولاً ثم الكردي — أو إعلان نقصه. لا يُقرأ `name`.
+      render: (_: unknown, product: Product) => (
+        <Space direction="vertical" size={4}>
+          <ProductLink
+            productId={product.id}
+            image={product.images[0] ?? null}
+            imageSize={52}
+            name={<span lang="ar">{product.nameAr}</span>}
+            secondary={product.nameCkb ? <span lang="ckb">{product.nameCkb}</span> : undefined}
+          />
+          {product.kurdishMissing && <Tag color="orange">الكردية ناقصة</Tag>}
+        </Space>
+      ),
     },
     {
       title: 'القسم',
@@ -135,7 +183,9 @@ export default function ProductsPage() {
       title: 'السعر',
       dataIndex: 'price',
       key: 'price',
-      render: (value: number) => formatCurrency(value),
+      render: (value: number | null, product: Product) => (
+        <ProductPriceText price={value} pairPrice={product.pairPrice} />
+      ),
     },
     {
       title: 'المخزون',
@@ -214,34 +264,73 @@ export default function ProductsPage() {
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Flex align="center" justify="space-between" wrap gap={12}>
-        <div>
-          <Typography.Title level={3} style={{ margin: 0 }}>
-            المنتجات
-          </Typography.Title>
-          <Typography.Text type="secondary">
-            إدارة منتجات المتجر: إضافة، تعديل، تعطيل، والعروض والمختارات.
-          </Typography.Text>
-        </div>
-        <Space>
-          <Button
-            icon={<ReloadOutlined />}
-            loading={productsQuery.isFetching}
-            onClick={() => productsQuery.refetch()}
-          >
-            تحديث
-          </Button>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => navigate('/products/new')}
-          >
-            إضافة منتج
-          </Button>
-        </Space>
-      </Flex>
+      <PageHeader
+        title="المنتجات"
+        description={
+          activeScope
+            ? `منتجات «${activeScope}»`
+            : 'إدارة منتجات المتجر: إضافة، تعديل، تعطيل، والعروض والمختارات.'
+        }
+        extra={
+          <Space wrap>
+            {activeScope && (
+              <Button onClick={() => setSearchParams({})}>عرض كل المنتجات</Button>
+            )}
+            <Button
+              icon={<ReloadOutlined />}
+              loading={productsQuery.isFetching}
+              onClick={() => productsQuery.refetch()}
+            >
+              تحديث
+            </Button>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              // الترشيح الحالي يُمرَّر إلى نموذج الإضافة، فيبدأ المنتج الجديد
+              // في القسم الذي كان المسؤول يتصفّحه بدل أن يعيد اختياره.
+              onClick={() =>
+                navigate({
+                  pathname: '/products/new',
+                  search: scopeSearch,
+                })
+              }
+            >
+              إضافة منتج
+            </Button>
+          </Space>
+        }
+      />
 
       <Card>
+        {/*
+          [STEP 64 §4] كان `Space wrap` يلفّ كل عنصر في صندوقه فلا يتشاركان
+          خطّ الوسط، والحقل بعرض 360 ثابت. الآن صفّ أدوات واحد: حقل البحث
+          الموحّد يتمدّد (سطرٌ كامل على الهاتف)، والمربّع بارتفاع عناصر التحكّم
+          نفسه ومحاذىً إلى وسطها.
+        */}
+        <Flex wrap gap={12} align="center" style={{ marginBottom: 16 }}>
+          <SearchField
+            placeholder="ابحث باسم المنتج (عربي أو كردي)"
+            aria-label="بحث المنتجات بالاسم"
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
+          />
+          <Checkbox
+            style={{ minHeight: 'var(--ant-control-height, 38px)', display: 'inline-flex', alignItems: 'center' }}
+            checked={missingKurdish}
+            onChange={(event) =>
+              setSearchParams((current) => {
+                const nextParams = new URLSearchParams(current)
+                if (event.target.checked) nextParams.set('missingKurdish', 'true')
+                else nextParams.delete('missingKurdish')
+                nextParams.set('page', '1')
+                return nextParams
+              })
+            }
+          >
+            الكردية ناقصة فقط
+          </Checkbox>
+        </Flex>
         {productsQuery.isError ? (
           <Alert
             type="error"
@@ -263,11 +352,15 @@ export default function ProductsPage() {
             scroll={{ x: 1300 }}
             locale={{
               emptyText: (
-                <EmptyState
-                  description="لا توجد منتجات حالياً"
-                  actionLabel="إضافة أول منتج"
-                  onAction={() => navigate('/products/new')}
-                />
+                search ? (
+                  <EmptyState description={`لا منتج يطابق «${search}»`} />
+                ) : (
+                  <EmptyState
+                    description="لا توجد منتجات حالياً"
+                    actionLabel="إضافة أول منتج"
+                    onAction={() => navigate('/products/new')}
+                  />
+                )
               ),
             }}
             pagination={{
@@ -276,8 +369,7 @@ export default function ProductsPage() {
               total: productsQuery.data?.total ?? 0,
               showSizeChanger: false,
               showTotal: (total) => `إجمالي المنتجات: ${total}`,
-              onChange: (nextPage) =>
-                setSearchParams(nextPage === 1 ? {} : { page: String(nextPage) }),
+              onChange: (nextPage) => setPage(nextPage),
             }}
           />
         )}

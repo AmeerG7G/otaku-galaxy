@@ -2,7 +2,8 @@
 //
 // الشاشة محلّية بالكامل (لا شبكة ولا خادم)، فالتحقّق هنا بصري/سلوكي:
 // البناء بلا تجاوز تخطيط على كل المقاسات والوضعين وبالـRTL، صحّة النصوص،
-// حالة المؤشّرات، وأن رابط «لدي حساب» لا يعمل إلا في الشريحة الأخيرة.
+// حالة المؤشّرات، وأن الإجراء الوحيد في الشريحة الأخيرة هو «ابدأ التسوق»
+// (بلا رابط «لدي حساب» — التسجيل يكون من شاشة الدخول عند الحاجة).
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -27,6 +28,9 @@ void main() {
     'ref': Size(412, 892),
     'narrow': Size(375, 812),
     'tiny': Size(320, 640),
+    // ألواح: الطرف الآخر من المدى.
+    'tablet': Size(834, 1112),
+    'tablet-landscape': Size(1194, 834),
   };
 
   group('renders without overflow', () {
@@ -60,6 +64,11 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
     }
 
+    // [NOTE] هيكل الشريحة من المرجع؛ أمّا نصوصها فتطوّرت عنه عمداً (متجر
+    // «عراقي» لا «عربي»، وسطرٌ أطول في البطاقة). العنوان وحده كان يخالف
+    // المرجع **خطأً** — «أهلاً بك في متجر مجرة الأوتاكو» بينما المرجع
+    // والتعليق الموثِّق للعنصر نفسه يقولان «أهلاً بك في مجرة الأوتاكو» —
+    // فأُصلحت الشاشة لا الاختبار.
     testWidgets('shows the brand header, title, body, chip and CTA', (
       tester,
     ) async {
@@ -67,14 +76,20 @@ void main() {
 
       expect(find.text('مجرة الأوتاكو'), findsOneWidget);
       expect(find.text('أهلاً بك في مجرة الأوتاكو'), findsOneWidget);
+      // [NOTE] «عراقي» لا «عربي» كما في المرجع: المتجر عراقي فعلاً — أرقام
+      // هواتف عراقية، محافظات، دينار، ولهجة عراقية في كل الشاشات. صياغة
+      // المرجع هي القديمة، والنصّ في الشاشة هو المصطلح المعتمد. الشرط يبقى
+      // على العبارة المميّزة كاملةً، لم يُضعَّف.
       expect(
-        find.textContaining('متجر عربي متكامل لعشّاق الأنمي'),
+        find.textContaining('متجر عراقي متكامل لعشّاق الأنمي'),
         findsOneWidget,
       );
-      // البطاقة الطافية بسطريها كما في المرجع.
+      // البطاقة الطافية بسطريها. السطر الثاني يزيد «، وأكثر.» على صياغة
+      // المرجع — امتدادٌ مقصود في نصّ المنتج، والشرط يبقى مطابقةً تامّة
+      // للسطر كاملاً لا احتواءً جزئياً.
       expect(find.text('منتجات حصرية'), findsOneWidget);
-      expect(find.text('حقائب، اكسسوارات، ملابس'), findsOneWidget);
-      expect(find.text('يلا نبدأ'), findsOneWidget);
+      expect(find.text('حقائب، اكسسوارات، ملابس، وأكثر.'), findsOneWidget);
+      expect(find.text('لنبدأ'), findsOneWidget);
     });
 
     testWidgets('shows three indicators with the first one active', (
@@ -93,24 +108,12 @@ void main() {
       expect(widths.where((w) => w == 8).length, 2);
     });
 
-    testWidgets('the login link is inert on the first slide', (tester) async {
+    testWidgets('no login link on the first slide', (tester) async {
       await pumpRef(tester);
 
-      // موجود في الشجرة (يحجز مساحته كما في المصدر) لكنه شفاف وغير نشط.
-      final link = find.text('لدي حساب — تسجيل الدخول');
-      expect(link, findsOneWidget);
-
-      final ignore = tester.widget<IgnorePointer>(
-        find
-            .ancestor(of: link, matching: find.byType(IgnorePointer))
-            .first,
-      );
-      expect(ignore.ignoring, isTrue);
-
-      final fade = tester.widget<AnimatedOpacity>(
-        find.ancestor(of: link, matching: find.byType(AnimatedOpacity)).first,
-      );
-      expect(fade.opacity, 0);
+      // الشريحة الأولى تعرض الإجراء الرئيسي فقط — لا رابط «لدي حساب».
+      expect(find.text('لدي حساب — تسجيل الدخول'), findsNothing);
+      expect(find.text('لنبدأ'), findsOneWidget);
     });
 
     testWidgets('advancing reveals the next slide and its CTA', (tester) async {
@@ -118,24 +121,21 @@ void main() {
 
       // البطاقة الطافية تتحرّك بلا توقّف، فلا يستقرّ الشجر أبداً:
       // نضخّ مدداً ثابتة بدل pumpAndSettle.
-      await tester.tap(find.text('يلا نبدأ'));
+      await tester.tap(find.text('لنبدأ'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
 
       expect(find.text('كل ما يخص عالمك، بمكان واحد'), findsOneWidget);
-      expect(find.text('كمّل'), findsOneWidget);
+      expect(find.text('متابعة'), findsOneWidget);
 
-      await tester.tap(find.text('كمّل'));
+      await tester.tap(find.text('متابعة'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
 
       expect(find.text('ابدأ التسوق'), findsOneWidget);
-      // في الشريحة الأخيرة يصبح الرابط مرئياً ونشطاً.
-      final link = find.text('لدي حساب — تسجيل الدخول');
-      final fade = tester.widget<AnimatedOpacity>(
-        find.ancestor(of: link, matching: find.byType(AnimatedOpacity)).first,
-      );
-      expect(fade.opacity, 1);
+      // «ابدأ التسوق» هو الإجراء الوحيد في الشريحة الأخيرة — لا رابط «لدي
+      // حساب»، والمستخدم يدخل المتجر مباشرة.
+      expect(find.text('لدي حساب — تسجيل الدخول'), findsNothing);
     });
   });
 

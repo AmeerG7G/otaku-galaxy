@@ -1,4 +1,5 @@
 import 'package:auto_route/auto_route.dart';
+import '../../../../core/l10n/app_strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -6,6 +7,8 @@ import '../../../../core/design_system/design_system.dart';
 import '../../../../core/router/app_router.dart';
 import '../../domain/entities/collection.dart';
 import '../cubit/collections_cubit.dart';
+import '../../../settings/presentation/cubit/locale_cubit.dart';
+import '../../../visuals/domain/visual_slot.dart';
 
 /// تبويب «مجموعاتي» بتصميم Otaku Galaxy v2.
 ///
@@ -21,6 +24,9 @@ class CollectionsTab extends StatefulWidget {
 class _CollectionsTabState extends State<CollectionsTab> {
   final _nameController = TextEditingController();
 
+  /// حقل الاسم — زرّ الحالة الفارغة ينقل التركيز إليه.
+  final _nameFocus = FocusNode();
+
   @override
   void initState() {
     super.initState();
@@ -30,6 +36,7 @@ class _CollectionsTabState extends State<CollectionsTab> {
   @override
   void dispose() {
     _nameController.dispose();
+    _nameFocus.dispose();
     super.dispose();
   }
 
@@ -42,35 +49,16 @@ class _CollectionsTabState extends State<CollectionsTab> {
   }
 
   Future<void> _renameCollection(Collection collection) async {
-    final controller = TextEditingController(text: collection.name);
-    final name = await showOtakuSheet<String>(
+    // الورقة المشتركة تملك متحكّمها وتحرّره بعد زوالها من الشجرة — لا
+    // متحكّم محلّياً ولا `finally` (انظر `OtakuTextPromptSheet`).
+    final name = await showOtakuTextPrompt(
       context: context,
-      builder: (sheetContext) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
-        ),
-        child: OtakuSheet(
-          title: 'إعادة تسمية المجموعة',
-          titleSize: 19,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AnimeTextField(
-                controller: controller,
-                label: 'اسم المجموعة',
-                hint: 'مثلاً: أريد شراءها لاحقاً',
-                prefixIcon: Icons.collections_bookmark_outlined,
-              ),
-              const SizedBox(height: 20),
-              AnimePrimaryButton(
-                label: 'حفظ',
-                onPressed: () =>
-                    Navigator.of(sheetContext).pop(controller.text),
-              ),
-            ],
-          ),
-        ),
-      ),
+      title: context.strings('renameCollection'),
+      saveLabel: context.strings('save'),
+      label: context.strings('collectionName'),
+      hint: context.strings('collectionNameHint'),
+      initialValue: collection.name,
+      prefixIcon: Icons.collections_bookmark_outlined,
     );
     if (name == null || name.trim().isEmpty || !mounted) return;
     await context.read<CollectionsCubit>().rename(collection.id, name.trim());
@@ -79,12 +67,19 @@ class _CollectionsTabState extends State<CollectionsTab> {
   Future<void> _deleteCollection(Collection collection) async {
     final confirmed = await showOtakuConfirm(
       context: context,
-      title: 'حذف المجموعة',
+      title: context.strings('deleteCollection'),
       message:
-          'راح نحذف «${collection.name}». المنتجات نفسها راح تبقى بمفضلتك.',
-      confirmLabel: 'حذف',
-      cancelLabel: 'إلغاء',
+          context.strings.p('deleteCollectionConfirm', {'name': collection.name}),
+      confirmLabel: context.strings('delete'),
+      cancelLabel: context.strings('cancel'),
       destructive: true,
+      titleTranslations: AppStrings.across('deleteCollection'),
+      messageTranslations: [
+        for (final l in AppLanguage.values)
+          AppStrings.of(
+            l,
+          ).p('deleteCollectionConfirm', {'name': collection.name}),
+      ],
     );
     if (confirmed != true || !mounted) return;
     await context.read<CollectionsCubit>().delete(collection.id);
@@ -95,9 +90,9 @@ class _CollectionsTabState extends State<CollectionsTab> {
     final action = await showOtakuPicker<String>(
       context: context,
       title: collection.name,
-      options: const [
-        OtakuPickerOption(value: 'rename', label: 'إعادة تسمية'),
-        OtakuPickerOption(value: 'delete', label: 'حذف المجموعة'),
+      options: [
+        OtakuPickerOption(value: 'rename', label: context.strings('rename')),
+        OtakuPickerOption(value: 'delete', label: context.strings('deleteCollection')),
       ],
     );
     if (action == 'rename') await _renameCollection(collection);
@@ -120,20 +115,20 @@ class _CollectionsTabState extends State<CollectionsTab> {
           );
         }
 
+        // ١٠٤ كانت تجاوزَ شريط التبويبات العائم — ولا شريط هنا: المجموعات
+        // داخل «المفضلة» المدفوعة. حشوة الشاشات المدفوعة كشبكة المفضلة
+        // بجوارها، فوق ما يغطّي أسفل الجسم.
         return ListView(
-          padding: const EdgeInsets.fromLTRB(18, 16, 18, 104),
+          padding: context.scrollPadding(
+            const EdgeInsets.fromLTRB(18, 16, 18, 26),
+          ),
           children: [
             if (state.items.isEmpty)
-              const OtakuEditorialPanel(
-                title: 'أنشئ مجموعتك الأولى',
-                body:
-                    'جمّع منتجاتك بمجموعات مثل «أشياء أريدها» أو «للدراسة» '
-                    'حتى تلكيها بسرعة.',
-                artwork: 'assets/art/opt/a-luffy-kid.png',
-                margin: EdgeInsets.zero,
-                minHeight: 200,
-                artHeight: 150,
-                contentWidthFactor: 0.66,
+              AnimeEmptyState(
+                title: context.strings('firstCollectionTitle'),
+                subtitle: context.strings('firstCollectionBody'),
+                artworkSlot: VisualSlots.collectionsTab,
+                centered: true,
               )
             else
               for (final collection in state.items) ...[
@@ -166,9 +161,10 @@ class _CollectionsTabState extends State<CollectionsTab> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'مجموعة جديدة',
+                    context.strings('newCollection'),
                     style: theme.textTheme.titleMedium?.copyWith(
-                      fontFamily: 'Tajawal',
+                      fontFamily: AppFonts.heading,
+                      fontFamilyFallback: AppFonts.headingFallback,
                       fontWeight: AppDimens.weightExtraBold,
                       fontSize: 15,
                     ),
@@ -176,24 +172,16 @@ class _CollectionsTabState extends State<CollectionsTab> {
                   const SizedBox(height: 12),
                   AnimeTextField(
                     controller: _nameController,
-                    hint: 'اسم المجموعة',
+                    focusNode: _nameFocus,
+                    hint: context.strings('collectionName'),
                     onSubmitted: (_) => _createCollection(),
                   ),
                   const SizedBox(height: 12),
                   AnimePrimaryButton(
-                    label: 'إنشاء',
+                    label: context.strings('create'),
                     onPressed: _createCollection,
                   ),
                 ],
-              ),
-            ),
-            const SizedBox(height: 13),
-            Text(
-              'مجموعاتك خاصة بك ولا يراها أحد غيرك.',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontSize: 11.5,
-                color: theme.colorScheme.outline,
               ),
             ),
           ],
@@ -241,7 +229,7 @@ class _CollectionRow extends StatelessWidget {
                     child: Icon(
                       Icons.collections_bookmark_outlined,
                       size: 18,
-                      color: theme.colorScheme.outline,
+                      color: theme.colorScheme.onSurfaceVariant,
                     ),
                   )
                 : Stack(
@@ -289,7 +277,7 @@ class _CollectionRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  '${collection.productIds.length} منتج',
+                  context.strings.p('productsCount', {'count': '${collection.productIds.length}'}),
                   style: theme.textTheme.bodySmall?.copyWith(
                     fontSize: 11.5,
                     color: theme.colorScheme.onSurfaceVariant,
@@ -306,7 +294,7 @@ class _CollectionRow extends StatelessWidget {
               child: Icon(
                 Icons.more_horiz_rounded,
                 size: 20,
-                color: theme.colorScheme.outline,
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
           ),

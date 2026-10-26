@@ -1,22 +1,28 @@
 import 'package:auto_route/auto_route.dart';
+import '../../../../core/l10n/gender.dart';
+import '../../../../core/l10n/app_strings.dart';
+import '../../../../core/l10n/locale_refetch.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../../core/auth/require_auth.dart';
 import '../../../../core/design_system/design_system.dart';
+import '../../../../core/errors/app_exception.dart';
 import '../../../../core/router/app_router.dart';
+import '../../../../core/utils/request_sequence.dart';
 import '../../../auth/presentation/cubit/auth_cubit.dart';
+import '../../../connectivity/presentation/reconnect_refetch.dart';
 import '../../../main_navigation/presentation/screens/main_navigation_screen.dart';
 import '../../../notifications/presentation/cubit/notifications_cubit.dart';
-import '../../../products/domain/entities/category.dart';
 import '../../../products/domain/entities/home_data.dart';
 import '../../../products/domain/entities/product.dart';
 import '../../../products/domain/usecases/fetch_home_usecase.dart';
 import '../../../products/domain/usecases/fetch_products_usecase.dart';
-import '../widgets/banner_carousel.dart';
 import '../widgets/home_compositions.dart';
 import '../widgets/product_card.dart';
 import '../widgets/product_section.dart';
 import '../../../auth/presentation/cubit/auth_state.dart';
+import '../../../products/domain/entities/banner.dart' as model;
 
 @RoutePage()
 class HomeScreen extends StatefulWidget {
@@ -26,7 +32,8 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen>
+    with LocaleRefetch, ReconnectRefetch {
   late Future<HomeData> _future;
 
   // اكتشف المنتجات: تغذية مستمرة بمنتجات عشوائية عند التمرير.
@@ -35,19 +42,59 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _loadingMore = false;
   bool _hasMore = true;
 
+  /// طلبات «تحميل المزيد» — كلّ إعادة جلبٍ للرئيسية تتجاوز الجاري منها.
+  final _exploreRequests = RequestSequence();
+
   @override
   void initState() {
     super.initState();
     _future = context.read<FetchHomeUsecase>()();
   }
 
+  /// الرئيسية كلها محتوى خادمي مصرَّف (أقسام، بانرات، أسماء منتجات) —
+  /// تُعاد بلغة الواجهة الجديدة بنفس مسار السحب للتحديث.
+  @override
+  void onLanguageChanged() => _reload();
+
+  /// عاد الاتصال بعد انقطاع: ما على الشاشة صُنع قبله أو أثناءه (طلبٌ فشل،
+  /// صورٌ بقي مكانها البديل) — جيلٌ جديد يستبدله كلّه.
+  @override
+  void onReconnected() => _reload();
+
+  /// يبدأ جيلاً جديداً من الرئيسية: طلبٌ جديد، وتغذية «اكتشف» من الصفر.
+  ///
+  /// [CRITICAL] المسار الوحيد لإعادة الجلب — السحب للتحديث، تبديل اللغة،
+  /// «إعادة المحاولة»، عودة الاتصال. كانت صفحات «اكتشف» المحمَّلة وعدّادها
+  /// تعيش خارج الطلب الذي يملكها: لا تُصفَّر، فتُعرض نماذج منتجاتٍ من الجلب
+  /// السابق (بصورها وأسعارها وأسمائها القديمة) بجانب الجديد — أو وحدها بعد
+  /// فشل — و«تحميل المزيد» الجاري يُلحِق صفحةً من الجيل السابق بعد وصول
+  /// الجديد. `_exploreRequests.next()` يُسقط ذلك الردّ حين يصل.
+  ///
+  /// و`setState` بجسمٍ لا بسهم: السهم كان يعيد الـ`Future` المُسنَد، فيرمي
+  /// `setState` تأكيداً في التطوير قبل أن يُعلِّم الشاشة للبناء — فلا تُعاد
+  /// الرئيسية بعد تبديل اللغة.
+  Future<HomeData> _reload() {
+    _exploreRequests.next();
+    final future = context.read<FetchHomeUsecase>()();
+    setState(() {
+      _future = future;
+      _explore.clear();
+      _explorePage = 0;
+      _hasMore = true;
+      _loadingMore = false;
+    });
+    return future;
+  }
+
   Future<void> _loadMoreExplore() async {
     if (_loadingMore || !_hasMore) return;
+    // رقم هذا الطلب قبل أي `await`؛ إعادة جلبٍ أثناءه تجعله متجاوَزاً.
+    final token = _exploreRequests.next();
     setState(() => _loadingMore = true);
     try {
       final fetchProducts = context.read<FetchProductsUsecase>();
       final page = await fetchProducts(page: _explorePage + 1, limit: 6);
-      if (!mounted) return;
+      if (!mounted || !_exploreRequests.isCurrent(token)) return;
       setState(() {
         _explore.addAll(page.items);
         _explorePage++;
@@ -55,7 +102,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _loadingMore = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_exploreRequests.isCurrent(token)) return;
       setState(() => _loadingMore = false);
     }
   }
@@ -87,6 +134,16 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return SafeArea(
+      // [CRITICAL] `bottom: false` — كالتبويبات الأربعة الأخرى.
+      //
+      // الغلاف الرئيسي يستعمل `extendBody: true`، فيُبلغ Scaffold جسمَه أن
+      // الحشوة السفلية تساوي ارتفاع شريط التنقّل. و`SafeArea` الافتراضية
+      // (bottom: true) تستهلك تلك الحشوة، فيتوقّف محتوى الرئيسية **فوق**
+      // الشريط ويظهر تحته شريطٌ فارغ بلون الخلفية يحيط بالشريط العائم —
+      // وهو «السطح الفاتح المحيط». الأقسام والمجتمع والسلة والحساب كلها
+      // تمرّر `bottom: false` منذ البداية، فيمرّ محتواها خلف الشريط؛
+      // الرئيسية وحدها كانت شاذّة.
+      bottom: false,
       child: Column(
         children: [
           _buildBrandHeaderWithSearch(),
@@ -96,16 +153,25 @@ class _HomeScreenState extends State<HomeScreen> {
             child: FutureBuilder<HomeData>(
               future: _future,
               builder: (context, snapshot) {
+                // [CRITICAL] الانتظار أولاً: `FutureBuilder` يُبقي بيانات
+                // الطلب السابق **وخطأه** ما دام الجديد معلّقاً
+                // (`AsyncSnapshot.inState`)، فأيّ ترتيبٍ آخر يعرض أثناء
+                // إعادة المحاولة الخطأَ القديم أو البيانات القديمة.
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return _buildLoadingState();
                 }
-                final data = snapshot.data ?? const HomeData();
+                if (snapshot.hasError) {
+                  return _buildErrorState(snapshot.error!);
+                }
+                final data = snapshot.requireData;
                 return RefreshIndicator(
                   onRefresh: () async {
-                    setState(() {
-                      _future = context.read<FetchHomeUsecase>()();
-                    });
-                    await _future;
+                    try {
+                      await _reload();
+                    } catch (_) {
+                      // الفشل تعرضه حالة الخطأ أعلاه؛ المؤشّر يكتفي بانتهاء
+                      // الطلب.
+                    }
                   },
                   child: NotificationListener<ScrollNotification>(
                     onNotification: _onScrollNotification,
@@ -114,8 +180,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         // تركيبة البطل (تدرّج + شخصية تكسر الحافة)
                         SliverToBoxAdapter(
                           child: HomeHeroCard(
-                            onShop: () =>
-                                mainNavIndex.value = MainTab.categories,
+                            banner: data.heroBanner,
+                            onShop: () => _openBanner(data.heroBanner),
                           ),
                         ),
 
@@ -124,43 +190,29 @@ class _HomeScreenState extends State<HomeScreen> {
                         SliverToBoxAdapter(
                           child: HomePromoRail(
                             maxDiscount: _maxDiscountOf(data),
+                            banners: data.promoBanners,
+                            onOpenBanner: _openBanner,
                             onTap: () =>
                                 mainNavIndex.value = MainTab.categories,
                           ),
                         ),
 
-                        // بانر المتجر (من الخادم)
-                        if (data.banners.isNotEmpty)
-                          SliverToBoxAdapter(
-                            child: Padding(
-                              padding: const EdgeInsets.only(top: 18),
-                              child: BannerCarousel(banners: data.banners),
-                            ),
-                          ),
-
                         // العروض
                         if (data.offers.isNotEmpty)
                           SliverToBoxAdapter(
                             child: ProductSection(
-                              title: 'العروض',
+                              title: context.strings('offers'),
                               products: data.offers,
                               onSeeAll: () =>
                                   mainNavIndex.value = MainTab.categories,
                             ),
                           ),
 
-                        // الأقسام
-                        SliverToBoxAdapter(
-                          child: _CategoriesSection(
-                            categories: data.categories,
-                          ),
-                        ),
-
                         // منتجات مختارة
                         if (data.selectedProducts.isNotEmpty)
                           SliverToBoxAdapter(
                             child: ProductSection(
-                              title: 'منتجات مختارة',
+                              title: context.strings('selectedProducts'),
                               products: data.selectedProducts,
                             ),
                           ),
@@ -175,7 +227,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         SliverPadding(
                           padding: const EdgeInsets.symmetric(horizontal: 18),
                           sliver: SliverGrid(
-                            gridDelegate: kProductGridDelegate,
+                            gridDelegate: productGridDelegate(context),
                             delegate: SliverChildBuilderDelegate(
                               (context, index) {
                                 final explore = _visibleExplore(data.discover);
@@ -209,9 +261,16 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           ),
 
-                        // مساحة أسفل للتنقل
+                        // مساحة أسفل للتنقّل: ما يغطّيه الشريط العائم فعلاً
+                        // ثم مسافة المرجع. كانت ٤٠ ثابتة — أقلّ من الشريط
+                        // نفسه، فيبقى آخر صفّ منتجات ومؤشّر «تحميل المزيد»
+                        // تحته على كل جهاز.
                         SliverToBoxAdapter(
-                          child: SizedBox(height: AppDimens.space10),
+                          child: SizedBox(
+                            height:
+                                OtakuBottomNav.contentGap +
+                                context.bottomOverlap,
+                          ),
                         ),
                       ],
                     ),
@@ -227,76 +286,74 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// ترويسة الرئيسية — الشعار وسطر ترحيب وجرس الإشعارات، ثم بطاقة بحث
   /// قابلة للنقر بدائرة متدرّجة، كما في مصدر تصميم v2.
+  ///
+  /// [CRITICAL] لا سطح محيطاً بالترويسة — لا حاوية ملوّنة ولا هالة ولا قصّ.
+  ///
+  /// كان هنا `Stack` يحمل هالةً بنفسجية دائرية (٢٥٠×٢٥٠، `primary` بشفافية
+  /// ٢٠٪) موضوعةً خارج الحدود (`top:-96, end:-70`)، والحاوية الأم تقصّ
+  /// بـ`Clip.hardEdge`. والقصّ هو ما صنع المشكلة: هالةٌ ناعمة الأطراف
+  /// تُقصّ بحدٍّ حادّ عند حافة الترويسة، فتظهر **مستطيلاً شفافاً مائلاً
+  /// للبنفسجي** يحيط بالشعار والاسم والجرس وحقل البحث معاً. `BoxDecoration()`
+  /// الفارغة كانت تُوهم بأن لا سطح هناك، والسطح كان الهالةَ المقصوصة لا
+  /// الحاوية.
+  ///
+  /// أُزيلت الهالة والقصّ معاً. ما بقي: الحشوة نفسها (١٨/١٨/١٨/٠) والعناصر
+  /// نفسها بترتيبها ومسافاتها — الشعار، الاسم، الجرس، وبطاقة البحث — مرسومةً
+  /// مباشرةً على خلفية الشاشة.
   Widget _buildBrandHeaderWithSearch() {
     final theme = Theme.of(context);
 
-    return Container(
+    return Padding(
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
-      clipBehavior: Clip.hardEdge,
-      decoration: const BoxDecoration(),
-      child: Stack(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // هالة بنفسجية ناعمة خلف الترويسة.
-          PositionedDirectional(
-            top: -96,
-            end: -70,
-            child: IgnorePointer(
-              child: Container(
-                width: 250,
-                height: 250,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: RadialGradient(
-                    colors: [
-                      AppColors.primary.withValues(alpha: 0.20),
-                      AppColors.primary.withValues(alpha: 0),
-                    ],
-                    stops: const [0, 0.66],
-                  ),
+          Row(
+            children: [
+              const OtakuStoreLogoSimple(size: 46),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  // [CRITICAL] (البوّابة ٥، 2026-10-10) سطرا الترحيب والاسم
+                  // منطقتا سطرٍ تحجزان ما تحتاجه أطول ترجمتيهما: «گەلاکسی
+                  // ئۆتاکو» كان يلتفّ سطرين على ٣٢٠×١٫٣ فيطول الصفّ ٣٥ ويُنزل
+                  // الشعار والجرس. الاسم نصّ ترويسة: الحدّ من مقاس التصميم.
+                  children: [
+                    BoundedText(
+                      context.strings('welcomeTo'),
+                      maxLines: 2,
+                      reserveFor: AppStrings.across('welcomeTo'),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontSize: 12,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    BoundedText(
+                      context.strings('brandName'),
+                      maxLines: 2,
+                      floorAtDesignSize: true,
+                      reserveFor: AppStrings.across('brandName'),
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontFamily: AppFonts.heading,
+                        fontFamilyFallback: AppFonts.headingFallback,
+                        fontSize: 18,
+                        letterSpacing: -0.2,
+                        fontWeight: AppDimens.weightExtraBold,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  const OtakuStoreLogoSimple(size: 46),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'أهلاً بك في',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            fontSize: 12,
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                        Text(
-                          'مجرة الأوتاكو',
-                          style: theme.textTheme.titleLarge?.copyWith(
-                            fontFamily: 'Tajawal',
-                            fontSize: 18,
-                            letterSpacing: -0.2,
-                            fontWeight: AppDimens.weightExtraBold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  // الإشعارات تعيش في شريط الرئيسية العلوي بجانب هوية المتجر،
-                  // وليست عنصراً داخل الحساب.
-                  const _NotificationsBell(),
-                ],
-              ),
-              const SizedBox(height: 15),
-              _buildSearchCta(),
+              // الإشعارات تعيش في شريط الرئيسية العلوي بجانب هوية المتجر،
+              // وليست عنصراً داخل الحساب. سطحها الخاص (٤٢×٤٢) يبقى — هو
+              // زرٌّ مستقل لا جزءٌ من سطحٍ محيط.
+              const _NotificationsBell(),
             ],
           ),
+          const SizedBox(height: 15),
+          _buildSearchCta(),
         ],
       ),
     );
@@ -328,17 +385,26 @@ class _HomeScreenState extends State<HomeScreen> {
                 shape: BoxShape.circle,
               ),
               child: const Icon(
-                Icons.search_rounded,
+                AppIcons.search,
                 size: 17,
                 color: Colors.white,
               ),
             ),
             const SizedBox(width: 10),
-            Text(
-              'دوّر على أي منتج تحبه…',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontSize: 13.5,
-                color: theme.colorScheme.outline,
+            // [CRITICAL] (البوّابة ٥، 2026-10-10) تسمية زرّ البحث في منطقةٍ
+            // محدودة: كانت `Text` بلا حدّ فتتجاوز يميناً على ٣٢٠×١٫٣ بالكردية.
+            // تسمية زرّ: الحدّ ٠٫٨ من مقاس التصميم؛ ويُحجز سطرٌ ثانٍ بكل لغة
+            // لما لا يتّسع حتى عنده.
+            Expanded(
+              child: BoundedText(
+                context.strings('homeSearchHint'),
+                maxLines: 2,
+                floorAtDesignSize: true,
+                reserveFor: AppStrings.across('homeSearchHint'),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontSize: 13.5,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
           ],
@@ -347,12 +413,55 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildExploreHeader() => const SectionHeader(title: 'اكتشف المنتجات');
+  Widget _buildExploreHeader() => SectionHeader(title: context.strings('discover'));
+
+  /// يفتح وجهة البنر التي ضبطها المسؤول.
+  ///
+  /// [CRITICAL] الوجهة بيانات لا كود. البنر بلا وجهة (أو بوجهة بلا معرّف)
+  /// يقود إلى الأقسام كسلوك آمن بدل أن يبتلع الضغطة صامتاً — الزبون ضغط،
+  /// فيجب أن يحدث شيء.
+  void _openBanner(model.Banner? banner) {
+    if (banner == null || !banner.isTappable) {
+      mainNavIndex.value = MainTab.categories;
+      return;
+    }
+    final value = banner.destinationValue!.trim();
+    switch (banner.destination) {
+      case model.BannerDestination.product:
+        context.router.push(ProductDetailRoute(productId: value));
+      case model.BannerDestination.category:
+      case model.BannerDestination.subcategory:
+      case model.BannerDestination.anime:
+        // الأقسام والأنمي يُفتحان من تبويب الأقسام: لا مسار مباشر لهما في
+        // الرواتر الحالي، وابتكار واحد هنا يخرج عن نطاق هذا التغيير.
+        mainNavIndex.value = MainTab.categories;
+      case model.BannerDestination.none:
+        mainNavIndex.value = MainTab.categories;
+    }
+  }
+
+  /// فشل جلب الرئيسية — حالة خطأ ظاهرة بزرّ «إعادة المحاولة».
+  ///
+  /// [CRITICAL] كان الفشل يُعرض نجاحاً فارغاً (`snapshot.data ?? HomeData()`):
+  /// البطل المضمَّن برسم شخصيته ونصّه الافتراضي مكان بنر المسؤول، بلا عروض
+  /// ولا مختارات — شاشةٌ تبدو بيانات وليست كذلك، ولا زرّ يعيد المحاولة. كل
+  /// شاشة محتوى أخرى تفصل الفشل عن «لا بيانات»؛ الرئيسية كانت الشاذّة.
+  Widget _buildErrorState(Object error) {
+    final message = error is AppException
+        ? error.localizedMessage(context).trim()
+        : '';
+    return AnimeErrorState(
+      message: message.isNotEmpty ? message : context.strings('unexpectedError'),
+      onAction: _reload,
+    );
+  }
 
   /// حالة تحميل الرئيسية — هياكل متلألئة بنفس إيقاع الأقسام الحقيقية.
   Widget _buildLoadingState() {
     return ListView(
-      padding: const EdgeInsets.only(bottom: 104),
+      padding: context.scrollPadding(
+        const EdgeInsets.only(bottom: OtakuBottomNav.contentGap),
+      ),
       children: const [
         Padding(
           padding: EdgeInsets.fromLTRB(18, 18, 18, 0),
@@ -365,73 +474,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
-
-class _CategoriesSection extends StatelessWidget {
-  const _CategoriesSection({required this.categories});
-
-  final List<Category> categories;
-
-  @override
-  Widget build(BuildContext context) {
-    // القسم كله داخل حاوية واحدة مع رسم تزييني خلف الترويسة والشريط،
-    // كما في كتلة «تسوّق حسب القسم» في مصدر التصميم.
-    return ClipRect(
-      child: Stack(
-        children: [
-          PositionedDirectional(
-            top: 14,
-            end: -34,
-            child: IgnorePointer(
-              child: Opacity(
-                opacity: 0.20,
-                child: Image.asset(
-                  'assets/art/opt/a-i6.png',
-                  width: 112,
-                  fit: BoxFit.contain,
-                ),
-              ),
-            ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SectionHeader(
-                title: 'تسوّق حسب القسم',
-                onSeeAll: () => mainNavIndex.value = MainTab.categories,
-              ),
-              SizedBox(
-                height: 100,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.fromLTRB(18, 0, 18, 4),
-                  itemCount: categories.length,
-                  separatorBuilder: (_, _) => const SizedBox(width: 11),
-                  itemBuilder: (context, index) {
-                    final category = categories[index];
-                    return AnimeCategoryCard.rail(
-                      category: category,
-                      index: index,
-                      onTap: () => context.router.push(
-                        CategoryProductsRoute(
-                          categoryId: category.id,
-                          categoryName: category.name,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// جرس الإشعارات في شريط الرئيسية العلوي — يعرض عدد غير المقروء ويفتح
-/// مركز الإشعارات. للزائر يعرض دعوة تسجيل الدخول (الإشعارات خاصية حساب).
 class _NotificationsBell extends StatefulWidget {
   const _NotificationsBell();
 
@@ -449,15 +491,11 @@ class _NotificationsBellState extends State<_NotificationsBell> {
   }
 
   Future<void> _open() async {
-    if (!context.read<AuthCubit>().isLoggedIn) {
-      final wantsLogin = await showLoginGate(
-        context,
-        title: 'سجّل دخولك أولاً',
-        body: 'الإشعارات تحتاج تسجيل الدخول لحسابك في مجرة الأوتاكو.',
-      );
-      if (wantsLogin && mounted) {
-        context.router.push(const LoginRoute());
-      }
+    if (!await requireAuthentication(
+      context,
+      title: context.gNow(GenderedStrings.loginFirst),
+      body: context.strings('loginRequiredForNotifications'),
+    )) {
       return;
     }
     if (mounted) context.router.push(const NotificationsRoute());
@@ -467,39 +505,49 @@ class _NotificationsBellState extends State<_NotificationsBell> {
   Widget build(BuildContext context) {
     return BlocBuilder<NotificationsCubit, NotificationsState>(
       builder: (context, state) {
+        // الجرس مرئي للزائر أيضاً: لمسه يفتح البوابة الموحّدة «سجّل دخولك
+        // أولاً» (تُنفَّذ في `_open`)، والشارة لا تُعرض إلّا لحساب مسجّل.
         final isLoggedIn = context.select<AuthCubit, bool>(
           (cubit) => cubit.state is AuthAuthenticated,
         );
-        // الزائر بلا إشعارات أصلاً — إظهار جرس لا يفعل سوى طلب الدخول
-        // يجعل التصفّح يبدو محاصَراً، فنُخفيه بدل ذلك.
-        if (!isLoggedIn) return const SizedBox.shrink();
-        final unread = state.unreadCount;
+        final unread = isLoggedIn ? state.unreadCount : 0;
         return Stack(
           clipBehavior: Clip.none,
           children: [
+            // جرس الإشعارات بمقاس المرجع تماماً: ٤٢×٤٢ بحواف ١٥ وسطح
+            // أبيض بحدّ وظلّ ناعم (home header: width/height 42, radius 15).
             Container(
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.surface,
-                borderRadius: BorderRadius.circular(AppDimens.radiusMd),
+                borderRadius: BorderRadius.circular(15),
                 border: Border.all(
                   color: Theme.of(context).colorScheme.outlineVariant,
                 ),
+                boxShadow: context.themeColors.shadowXSoft,
               ),
               child: IconButton(
                 onPressed: _open,
-                icon: const Icon(Icons.notifications_none_rounded),
-                tooltip: 'الإشعارات',
+                icon: const Icon(
+                  Icons.notifications_none_rounded,
+                  size: 22,
+                ),
+                tooltip: context.strings('notifications'),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints.tightFor(
+                  width: 42,
+                  height: 42,
+                ),
               ),
             ),
             if (unread > 0)
               PositionedDirectional(
-                top: -2,
-                end: -2,
+                top: -4,
+                end: -4,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 5),
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
                   constraints: const BoxConstraints(
-                    minWidth: 18,
-                    minHeight: 18,
+                    minWidth: 17,
+                    minHeight: 17,
                   ),
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
@@ -514,7 +562,7 @@ class _NotificationsBellState extends State<_NotificationsBell> {
                     unread > 9 ? '9+' : '$unread',
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
                       color: Colors.white,
-                      fontSize: 9,
+                      fontSize: 10,
                       height: 1,
                       fontWeight: AppDimens.weightBold,
                     ),

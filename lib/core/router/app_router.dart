@@ -1,11 +1,11 @@
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 
+import '../../features/auth/domain/entities/account_request.dart';
+import '../../features/auth/presentation/screens/account_pending_screen.dart';
 import '../../features/auth/presentation/screens/forgot_password_screen.dart';
 import '../../features/auth/presentation/screens/login_screen.dart';
-import '../../features/auth/presentation/screens/otp_verification_screen.dart';
 import '../../features/auth/presentation/screens/register_screen.dart';
-import '../../features/auth/presentation/screens/reset_password_screen.dart';
 import '../../features/account/presentation/screens/account_screen.dart';
 import '../../features/cart/presentation/screens/cart_screen.dart';
 import '../../features/categories/presentation/screens/categories_screen.dart';
@@ -39,6 +39,15 @@ part 'app_router.gr.dart';
 /// مسارات التطبيق مع اتجاه RTL.
 @AutoRouterConfig()
 class AppRouter extends RootStackRouter {
+  /// إعداد `MaterialApp.router` — يُبنى مرة واحدة لكل موجّه.
+  ///
+  /// [CRITICAL] `config()` يُنشئ `DefaultRouteParser` جديداً في كل نداء بينما
+  /// يخبّئ المفوِّض والمزوِّد. استدعاؤه داخل `build` (كما كان في `app.dart`)
+  /// جعل كل تبديل لغة أو مظهر يُخطر `_RouterScope` ومعتمِديه بلا داع، ويلغي
+  /// أي معاملة توجيه جارية. مصدر واحد للإعداد يُبقي الموجّه ساكناً بين
+  /// عمليات إعادة البناء.
+  late final RouterConfig<UrlState> routerConfig = config();
+
   @override
   List<AutoRoute> get routes => [
     // [NOTE]: شاشة البداية هي المقرر الوحيد لمسار بدء التشغيل،
@@ -55,12 +64,13 @@ class AppRouter extends RootStackRouter {
     AutoRoute(page: LoginRoute.page, path: '/login'),
     AutoRoute(page: RegisterRoute.page, path: '/register'),
     AutoRoute(page: ForgotPasswordRoute.page, path: '/forgot-password'),
-    // [NOTE]: مسار التحقق من الرمز يسبق تسجيل الدخول (بعد إنشاء الحساب)،
-    // لذا لا يُحمى بفاحص المصادقة وإلا أُعيد المستخدم إلى شاشة الدخول.
-    AutoRoute(page: OtpVerificationRoute.page, path: '/otp'),
-    // إعادة تعيين كلمة المرور — الخطوة الثالثة في مسار الاستعادة، تصلها
-    // الشاشة برقم الهاتف ورمز التحقق غير المستهلَك.
-    AutoRoute(page: ResetPasswordRoute.page, path: '/reset-password'),
+    // «طلبك قيد المراجعة» — بعد التسجيل وبعد نسيان كلمة المرور. يسبق أي
+    // جلسة فلا يُحمى بفاحص المصادقة.
+    //
+    // ═══ ما لم يعد هنا ═══ `/otp` و`/reset-password`: كانا مسارَي رمز SMS.
+    // شاشتاهما محفوظتان في `legacy/otp/flutter/` خارج البناء — لا مسار
+    // مسجَّل يصل إليهما، ولا كلاس مولَّد لهما في `app_router.gr.dart`.
+    AutoRoute(page: AccountPendingRoute.page, path: '/account-pending'),
     // الغلاف الرئيسي المضمّن بتبويبات — يدخله الزائر والمسجّل معاً.
     // [NOTE]: التصفح كزائر مسموح بالكامل (الرئيسية/الأقسام)؛ تبويبا
     // المفضلة والحساب يعرضان دعوة لتسجيل الدخول للزائر داخل الشاشة نفسها

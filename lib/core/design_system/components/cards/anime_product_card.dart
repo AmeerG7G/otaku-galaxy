@@ -1,10 +1,17 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import '../../../l10n/app_strings.dart';
+import '../../../../features/products/domain/entities/product.dart';
 
 import '../../tokens/app_colors.dart';
 import '../../tokens/app_dimens.dart';
+import '../../tokens/app_fonts.dart';
 import '../../tokens/app_theme_colors.dart';
 import '../feedback/product_photo_slot.dart';
+import '../feedback/delivery_promo_label.dart';
 import '../feedback/product_stock_pill.dart';
+import '../typography/bounded_text.dart';
 
 /// بطاقة المنتج بتصميم Otaku Galaxy v2.
 ///
@@ -21,7 +28,10 @@ class AnimeProductCard extends StatelessWidget {
     this.compact = false,
   });
 
-  final dynamic product;
+  /// [CRITICAL] `Product` لا `dynamic`: كان `product.name as String` يمرّ
+  /// المُحلِّل فلا يكشف حقلاً أُزيل إلا وقت التشغيل. الاسم بلغة الواجهة من
+  /// [localizedProductName] وحدها.
+  final Product product;
   final VoidCallback? onTap;
   final VoidCallback? onFavoriteToggle;
   final bool isFavorite;
@@ -34,7 +44,20 @@ class AnimeProductCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.themeColors;
-    final inStock = product.inStock as bool;
+    final inStock = product.inStock;
+    // [CRITICAL] الحالة لا الثنائية: «قريباً يتوفر» و«نفد المخزون» كلاهما
+    // غير متوفر، لكن قولَ «نفد» فوق صورةِ منتجٍ تعلن شارتُه «قريباً يتوفر»
+    // تناقضٌ يقرؤه الزبون في بطاقةٍ واحدة.
+    final availability = product.availability;
+    final comingSoon = availability == ProductAvailability.comingSoon;
+    final nameStyle = DefaultTextStyle.of(context).style.merge(
+      Theme.of(context).textTheme.bodySmall?.copyWith(
+        fontSize: 12.5,
+        height: 1.4,
+        fontWeight: AppDimens.weightSemiBold,
+        color: Theme.of(context).colorScheme.onSurface,
+      ),
+    );
 
     final card = Container(
       decoration: BoxDecoration(
@@ -58,19 +81,26 @@ class AnimeProductCard extends StatelessWidget {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    ProductPhotoSlot(
-                      imageUrl: _firstImage,
-                      desaturated: !inStock,
-                    ),
+                    ProductPhotoSlot(imageUrl: _firstImage),
+                    // نفاد المخزون يُقال بشارة فوق الصورة لا بتغيير الصورة.
+                    // المنتظَر بموعد لا شارة نفاد له — شارة الحالة تحته
+                    // تقول «قريباً يتوفر» وحدها.
+                    if (!inStock && !comingSoon)
+                      PositionedDirectional(
+                        bottom: 9,
+                        end: 9,
+                        child: _OutOfStockChip(),
+                      ),
                     // شارة العرض/المختار — أعلى جهة البداية.
-                    if (_badgeLabel != null)
+                    if (_badgeLabel(context) != null)
                       PositionedDirectional(
                         top: 9,
                         start: 9,
                         child: _Badge(
-                          label: _badgeLabel!,
-                          highlighted: (product.isOffer as bool) ||
-                              (product.discountPercent as int? ?? 0) > 0,
+                          label: _badgeLabel(context)!,
+                          highlighted:
+                              product.isOffer ||
+                              (product.discountPercent ?? 0) > 0,
                         ),
                       ),
                     // زر المفضلة — دائري أعلى جهة النهاية.
@@ -83,13 +113,15 @@ class AnimeProductCard extends StatelessWidget {
                           onTap: onFavoriteToggle!,
                         ),
                       ),
-                    // شريط «نفد المخزون» أسفل الصورة.
+                    // شريط «نفد المخزون» أسفل الصورة — أو شريط الانتظار.
                     if (!inStock)
-                      const PositionedDirectional(
+                      PositionedDirectional(
                         start: 0,
                         end: 0,
                         bottom: 0,
-                        child: _SoldOutStrip(),
+                        child: comingSoon
+                            ? const _ComingSoonStrip()
+                            : const _SoldOutStrip(),
                       ),
                   ],
                 ),
@@ -101,18 +133,24 @@ class AnimeProductCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // [CRITICAL] (البوّابة ١٣، 2026-10-12) الاسم يحجز سطرين
+                    // بمقياس الخطّ لا بمقاس ١٫٠: كان ٣٦ ثابتاً فيُقصّ سطره
+                    // الثاني عند ×١٫٣ (يحتاج ٤٦) بكل لغة. عند ١٫٠ كما كان (٣٦).
                     SizedBox(
-                      height: 36,
+                      height: math.max(
+                        36,
+                        2 *
+                            BoundedText.lineHeight(
+                              nameStyle,
+                              MediaQuery.textScalerOf(context),
+                              Directionality.of(context),
+                            ),
+                      ),
                       child: Text(
-                        product.name as String,
+                        localizedProductName(product, context.language),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          fontSize: 12.5,
-                          height: 1.4,
-                          fontWeight: AppDimens.weightSemiBold,
-                          color: Theme.of(context).colorScheme.onSurface,
-                        ),
+                        style: nameStyle,
                       ),
                     ),
                     const SizedBox(height: AppDimens.space2),
@@ -120,13 +158,14 @@ class AnimeProductCard extends StatelessWidget {
                       children: [
                         Flexible(
                           child: Text(
-                            '${(product.price as double).toStringAsFixed(0)} د.ع',
+                            context.strings.p('priceIqd', {'amount': product.price.toStringAsFixed(0)}),
                             textDirection: TextDirection.ltr,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: Theme.of(context).textTheme.labelLarge
                                 ?.copyWith(
-                                  fontFamily: 'Tajawal',
+                                  fontFamily: AppFonts.heading,
+                                  fontFamilyFallback: AppFonts.headingFallback,
                                   fontSize: 14,
                                   fontWeight: AppDimens.weightExtraBold,
                                   color: AppColors.secondary,
@@ -134,12 +173,13 @@ class AnimeProductCard extends StatelessWidget {
                           ),
                         ),
                         // السعر السابق يظهر فقط حين يرسله الخادم فعلاً.
-                        if (product.hasDiscount as bool) ...[
+                        if (product.hasDiscount) ...[
                           const SizedBox(width: 7),
                           Flexible(
                             child: Text(
-                              (product.previousPrice as double)
-                                  .toStringAsFixed(0),
+                              product.previousPrice!.toStringAsFixed(
+                                0,
+                              ),
                               textDirection: TextDirection.ltr,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -147,7 +187,9 @@ class AnimeProductCard extends StatelessWidget {
                                   ?.copyWith(
                                     fontSize: 11,
                                     decoration: TextDecoration.lineThrough,
-                                    color: Theme.of(context).colorScheme.outline,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
                                   ),
                             ),
                           ),
@@ -155,35 +197,40 @@ class AnimeProductCard extends StatelessWidget {
                       ],
                     ),
                     if (!compact) ...[
-                    const SizedBox(height: AppDimens.space2),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ProductStockPill(stock: product.stock as int),
-                        ),
-                        if (product.rating != null) ...[
-                          Icon(
-                            Icons.star_rounded,
-                            size: 12,
-                            color: AppColors.accent,
+                      const SizedBox(height: AppDimens.space2),
+                      Row(
+                        children: [
+                          Expanded(
+                            // `product` هنا `dynamic` (البطاقة تخدم أكثر من
+                            // نوع)، والمصنع يقرأ الحالة من المنتج نفسه فلا
+                            // يُعاد اشتقاقها هنا.
+                            child: ProductStockPill.forProduct(product),
                           ),
-                          const SizedBox(width: 2),
-                          Text(
-                            (product.rating as double).toStringAsFixed(1),
-                            textDirection: TextDirection.ltr,
-                            style: Theme.of(context).textTheme.labelSmall
-                                ?.copyWith(
-                                  fontSize: 10.5,
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.onSurfaceVariant,
-                                ),
-                          ),
+                          if (product.rating != null) ...[
+                            Icon(
+                              Icons.star_rounded,
+                              size: 12,
+                              color: AppColors.accent,
+                            ),
+                            const SizedBox(width: 2),
+                            Text(
+                              product.rating!.toStringAsFixed(1),
+                              textDirection: TextDirection.ltr,
+                              style: Theme.of(context).textTheme.labelSmall
+                                  ?.copyWith(
+                                    fontSize: 10.5,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
+                                  ),
+                            ),
+                          ],
                         ],
-                      ],
-                    ),
+                      ),
                     ],
-                    if (!compact && _deliveryPromoLabel != null) ...[
+                    if (!compact &&
+                        deliveryPromoDiscountLabel(context, product) !=
+                            null) ...[
                       const SizedBox(height: 6),
                       Row(
                         children: [
@@ -191,14 +238,14 @@ class AnimeProductCard extends StatelessWidget {
                           const SizedBox(width: 4),
                           Flexible(
                             child: Text(
-                              _deliveryPromoLabel!,
+                              deliveryPromoDiscountLabel(context, product)!,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: Theme.of(context).textTheme.labelSmall
                                   ?.copyWith(
                                     fontSize: 9.5,
                                     fontWeight: AppDimens.weightBold,
-                                    color: AppColors.success,
+                                    color: context.themeColors.successText,
                                   ),
                             ),
                           ),
@@ -219,31 +266,22 @@ class AnimeProductCard extends StatelessWidget {
 
   String? get _firstImage {
     final images = product.images;
-    if (images is List && images.isNotEmpty) {
-      final first = images.first as String;
+    if (images.isNotEmpty) {
+      final first = images.first;
       return first.isEmpty ? null : first;
     }
     return null;
   }
 
-  /// سطر ترويج التوصيل بقيمته الحقيقية من الخادم.
-  ///
-  /// لا يُعرض ما لم يوجد مبلغ فعلي — الشارة يجب أن تُترجم دائماً إلى خصم
-  /// حقيقي يطبّقه الخادم عند إنشاء الطلب.
-  String? get _deliveryPromoLabel {
-    if (product.hasDeliveryPromo as bool != true) return null;
-    final amount = (product.deliveryPromoAmount as num?)?.toDouble() ?? 0;
-    if (amount <= 0) return null;
-    return 'خصم ${amount.toStringAsFixed(0)} د.ع من التوصيل لكل قطعة';
-  }
-
   /// شارة البطاقة: نسبة الخصم الحقيقية أولاً (لا تظهر إلا بوجود سعر سابق
   /// أعلى من الحالي)، ثم «عرض»، ثم «مختار». لا نخترع قيمة عند غياب البيانات.
-  String? get _badgeLabel {
-    final percent = product.discountPercent as int?;
-    if (percent != null && percent > 0) return '−$percent٪';
-    if (product.isOffer as bool) return 'عرض';
-    if (product.isSelected as bool) return 'مختار';
+  String? _badgeLabel(BuildContext context) {
+    final percent = product.discountPercent;
+    if (percent != null && percent > 0) {
+      return context.strings.p('discountPercentBadge', {'percent': '$percent'});
+    }
+    if (product.isOffer) return context.strings('promoBadge');
+    if (product.isSelected) return context.strings('selectedBadge');
     return null;
   }
 }
@@ -320,6 +358,31 @@ class _FavoriteButton extends StatelessWidget {
   }
 }
 
+/// شريط انتظار التوفر — بديل شريط النفاد للمنتج الذي له موعد معلن.
+///
+/// نفس الشكل والموضع؛ يختلف النصّ واللون فقط، فلا تتناقض البطاقة مع شارة
+/// الحالة أسفلها.
+class _ComingSoonStrip extends StatelessWidget {
+  const _ComingSoonStrip();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      color: const Color(0xBD1C63A3),
+      child: Text(
+        context.strings('comingSoon'),
+        textAlign: TextAlign.center,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          fontSize: 10,
+          fontWeight: AppDimens.weightExtraBold,
+          color: Colors.white,
+        ),
+      ),
+    );
+  }
+}
+
 class _SoldOutStrip extends StatelessWidget {
   const _SoldOutStrip();
 
@@ -329,11 +392,41 @@ class _SoldOutStrip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 6),
       color: const Color(0xBD180F30),
       child: Text(
-        'نفد المخزون',
+        context.strings('outOfStock'),
         textAlign: TextAlign.center,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
           fontSize: 10,
           fontWeight: AppDimens.weightExtraBold,
+          color: Colors.white,
+        ),
+      ),
+    );
+  }
+}
+
+/// شارة «نفدت» فوق صورة المنتج.
+///
+/// بديل تلوين الصورة بالرمادي: الحالة تُقرأ بلمحة، والصورة تبقى كما رفعها
+/// صاحب المتجر بلا أي تعديل.
+class _OutOfStockChip extends StatelessWidget {
+  const _OutOfStockChip();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.themeColors;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: colors.error,
+        borderRadius: BorderRadius.circular(AppDimens.radiusFull),
+        boxShadow: colors.shadowXSoft,
+      ),
+      child: Text(
+        context.strings('soldOutShort'),
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          fontSize: 9.5,
+          height: 1.3,
+          fontWeight: AppDimens.weightBold,
           color: Colors.white,
         ),
       ),

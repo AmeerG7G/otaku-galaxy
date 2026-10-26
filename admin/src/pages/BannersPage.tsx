@@ -1,4 +1,4 @@
-import { resolveMediaUrl } from '../utils/media'
+import { isValidImageRef } from '../utils/media'
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -6,20 +6,19 @@ import {
   App,
   Button,
   Card,
-  Flex,
   Form,
-  Image,
   Input,
   InputNumber,
   Modal,
+  Segmented,
   Select,
   Space,
+  Switch,
   Table,
   Tag,
   Typography,
 } from 'antd'
 import {
-  DeleteOutlined,
   EditOutlined,
   PlusOutlined,
   ReloadOutlined,
@@ -35,36 +34,100 @@ import { listProducts } from '../api/productsApi'
 import { ApiError } from '../api/client'
 import type {
   AdminBanner,
+  BannerContent,
   BannerDestinationType,
+  BannerPlacement,
 } from '../types/banners'
+import { PLACEMENT_HINTS, PLACEMENT_LABELS } from '../types/banners'
 import type { AdminCategory } from '../types/categories'
 import type { Product } from '../types/products'
 import EmptyState from '../components/EmptyState'
-import ImageUploadField, { isValidImageRef } from '../components/ImageUploadField'
-
-const NO_IMAGE_PLACEHOLDER =
-  'data:image/svg+xml;utf8,' +
-  encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="#f5f5f5"/><text x="32" y="36" font-size="12" text-anchor="middle" fill="#aaa">لا صورة</text></svg>',
-  )
+import ImageUploadField from '../components/ImageUploadField'
+import { MediaThumb } from '../components/ui/MediaThumb'
+import { PageHeader } from '../components/ui/PageHeader'
+import { ProductLink } from '../components/ui/ProductLink'
+import { ConfirmDangerButton } from '../components/ui/ConfirmDangerButton'
+import { SectionHeader } from '../components/ui/SectionHeader'
 
 const DESTINATION_LABELS: Record<BannerDestinationType, string> = {
   product: 'منتج',
   category: 'قسم',
   subcategory: 'قسم فرعي',
+  anime: 'أنمي',
   none: 'بدون وجهة',
 }
 
 interface BannerFormValues {
   imageUrl: string
-  title?: string
+  placement: BannerPlacement
+  /**
+   * نصّ البنر بلغتيه (هجرة ٠٦٧) — أربعة حقول مستقلة يكتبها المسؤول بيده، لا
+   * ترجمة آلية ولا نسخ بين اللغتين. كلٌّ اختياري كما كان النصّ قبل الفصل.
+   */
+  titleAr?: string
+  subtitleAr?: string
+  titleCkb?: string
+  subtitleCkb?: string
   destinationType: BannerDestinationType
   destinationValue?: string
   sortOrder?: number
 }
 
+const CONTENT_FIELDS = ['titleAr', 'subtitleAr', 'titleCkb', 'subtitleCkb'] as const
+
+/** نصٌّ مقصوص أو `null` — الفراغ «لا نصّ بهذه اللغة»، كما يحفظه الخادم. */
+function cleanText(value: string | null | undefined): string | null {
+  const trimmed = (value ?? '').trim()
+  return trimmed === '' ? null : trimmed
+}
+
+function contentOf(values: Partial<Record<keyof BannerContent, string | null>>): BannerContent {
+  return {
+    titleAr: cleanText(values.titleAr),
+    subtitleAr: cleanText(values.subtitleAr),
+    titleCkb: cleanText(values.titleCkb),
+    subtitleCkb: cleanText(values.subtitleCkb),
+  }
+}
+
+/**
+ * [CRITICAL] التعديل يرسل من النصوص الأربعة ما تغيّر وحده. الحقل الغائب لا
+ * يُمسّ على الخادم، فحفظ العربية لا يعيد كتابة الكردية ولا العكس — ولو عدّلها
+ * مسؤولٌ آخر بين فتح النموذج وحفظه.
+ */
+function changedContent(
+  values: BannerFormValues,
+  initial: BannerContent,
+): Partial<BannerContent> {
+  const next = contentOf(values)
+  const before = contentOf(initial)
+  const changed: Partial<BannerContent> = {}
+  for (const field of CONTENT_FIELDS) {
+    if (next[field] !== before[field]) changed[field] = next[field]
+  }
+  return changed
+}
+
+/** حدود كل حقل نصّ — حدود النموذج قبل الفصل، لكل لغة. */
+function textRules(kind: 'title' | 'subtitle', language: string) {
+  return kind === 'title'
+    ? [{ max: 100, message: `العنوان ب${language} يجب ألا يتجاوز 100 حرف` }]
+    : [{ max: 160, message: `السطر الثاني ب${language} يجب ألا يتجاوز 160 حرفاً` }]
+}
+
+/** لغةٌ ناقصة: للحقل نصٌّ باللغة الأخرى ولا نصّ له بهذه. */
+function missingLanguage(banner: AdminBanner): string | null {
+  if ((banner.titleAr && !banner.titleCkb) || (banner.subtitleAr && !banner.subtitleCkb)) {
+    return 'الكردية ناقصة'
+  }
+  if ((banner.titleCkb && !banner.titleAr) || (banner.subtitleCkb && !banner.subtitleAr)) {
+    return 'العربية ناقصة'
+  }
+  return null
+}
+
 export default function BannersPage() {
-  const { message, modal } = App.useApp()
+  const { message } = App.useApp()
   const queryClient = useQueryClient()
   const [editor, setEditor] = useState<{ banner?: AdminBanner } | null>(null)
 
@@ -82,13 +145,23 @@ export default function BannersPage() {
     queryKey: ['banner-products'],
     queryFn: () => listProducts({ page: 1, limit: 50 }),
   })
+  // أسماء المنتجات لعمود «الوجهة» — من القائمة المحمّلة للنموذج أصلاً.
+  const productNames = new Map((productsQuery.data?.items ?? []).map((p) => [p.id, p.name]))
 
   const invalidateBanners = () => {
     queryClient.invalidateQueries({ queryKey: ['banners'] })
   }
 
   const createMutation = useMutation({
-    mutationFn: createBanner,
+    mutationFn: (values: BannerFormValues) =>
+      createBanner({
+        imageUrl: values.imageUrl,
+        ...contentOf(values),
+        placement: values.placement,
+        destinationType: values.destinationType,
+        destinationValue: values.destinationValue ?? null,
+        sortOrder: values.sortOrder,
+      }),
     onSuccess: (result) => {
       message.success(result.message)
       setEditor(null)
@@ -100,14 +173,28 @@ export default function BannersPage() {
   })
 
   const updateMutation = useMutation({
-    mutationFn: (input: { id: string; values: BannerFormValues }) =>
-      updateBanner(input.id, {
-        imageUrl: input.values.imageUrl,
-        title: input.values.title?.trim() || null,
-        destinationType: input.values.destinationType,
-        destinationValue: input.values.destinationValue ?? null,
-        sortOrder: input.values.sortOrder,
-      }),
+    // تعديل جزئي: الحقول الغائبة تعني «لا تغيير» كما في PATCH. مفتاح
+    // التفعيل يرسل `isActive` وحده بلا أن يعيد كتابة بقية البنر.
+    mutationFn: (input: {
+      id: string
+      values: BannerFormValues | { isActive: boolean }
+      /** النصوص كما فُتح بها النموذج — منها يُعرف ما تغيّر. */
+      initial?: BannerContent
+    }) =>
+      'isActive' in input.values && !('imageUrl' in input.values)
+        ? updateBanner(input.id, { isActive: input.values.isActive })
+        : updateBanner(input.id, {
+            imageUrl: (input.values as BannerFormValues).imageUrl,
+            ...changedContent(
+              input.values as BannerFormValues,
+              input.initial ?? contentOf({}),
+            ),
+            placement: (input.values as BannerFormValues).placement,
+            destinationType: (input.values as BannerFormValues).destinationType,
+            destinationValue:
+              (input.values as BannerFormValues).destinationValue ?? null,
+            sortOrder: (input.values as BannerFormValues).sortOrder,
+          }),
     onSuccess: (result) => {
       message.success(result.message)
       setEditor(null)
@@ -129,46 +216,65 @@ export default function BannersPage() {
     },
   })
 
-  function confirmDelete(banner: AdminBanner) {
-    modal.confirm({
-      title: 'حذف البنر؟',
-      content: 'سيُحذف البنر نهائياً من قاعدة البيانات ولا يمكن التراجع.',
-      okText: 'حذف',
-      okButtonProps: { danger: true },
-      cancelText: 'إلغاء',
-      onOk: () => deleteMutation.mutateAsync(banner.id),
-    })
-  }
-
   const columns = [
     {
       title: 'الصورة',
       key: 'image',
       width: 110,
       render: (_: unknown, banner: AdminBanner) => (
-        <Image
-          src={resolveMediaUrl(banner.imageUrl)}
+        <MediaThumb
+          reference={banner.imageUrl}
           width={88}
           height={48}
-          style={{ objectFit: 'cover', borderRadius: 4 }}
-          preview={false}
-          fallback={NO_IMAGE_PLACEHOLDER}
+          radius={6}
         />
       ),
     },
     {
       title: 'العنوان',
-      dataIndex: 'title',
       key: 'title',
-      render: (value: string | null) => value ?? '—',
+      render: (_: unknown, banner: AdminBanner) => {
+        const missing = missingLanguage(banner)
+        return (
+          <Space direction="vertical" size={2}>
+            <span lang="ar">{banner.titleAr ?? '—'}</span>
+            {banner.titleCkb && (
+              <Typography.Text type="secondary" lang="ckb">
+                {banner.titleCkb}
+              </Typography.Text>
+            )}
+            {missing && <Tag color="orange">{missing}</Tag>}
+          </Space>
+        )
+      },
+    },
+    {
+      // الموضع أول ما يحتاج المسؤول معرفته: بنر في «الشريط الترويجي» لا
+      // يظهر في اللوحة الكبيرة مهما كان ترتيبه.
+      title: 'الموضع',
+      key: 'placement',
+      width: 140,
+      render: (_: unknown, banner: AdminBanner) => (
+        <Tag color={banner.placement === 'hero' ? 'purple' : 'blue'}>
+          {PLACEMENT_LABELS[banner.placement]}
+        </Tag>
+      ),
     },
     {
       title: 'الوجهة',
       key: 'destination',
       render: (_: unknown, banner: AdminBanner) =>
-        banner.destinationType === 'none'
-          ? DESTINATION_LABELS.none
-          : `${DESTINATION_LABELS[banner.destinationType]} (${banner.destinationValue ?? '—'})`,
+        banner.destinationType === 'none' ? (
+          DESTINATION_LABELS.none
+        ) : banner.destinationType === 'product' && banner.destinationValue ? (
+          // وجهةٌ منتج ⇒ رابطٌ إلى صفحته (STEP 64 §3)، باسمه إن عُرف.
+          <ProductLink
+            productId={banner.destinationValue}
+            name={productNames.get(banner.destinationValue) ?? `${DESTINATION_LABELS.product} (${banner.destinationValue})`}
+          />
+        ) : (
+          `${DESTINATION_LABELS[banner.destinationType]} (${banner.destinationValue ?? '—'})`
+        ),
     },
     {
       title: 'الترتيب',
@@ -177,11 +283,25 @@ export default function BannersPage() {
       width: 90,
     },
     {
-      title: 'الحالة',
+      title: 'مفعّل',
       dataIndex: 'isActive',
       key: 'isActive',
-      render: (value: boolean) =>
-        value ? <Tag color="green">نشط</Tag> : <Tag color="default">غير نشط</Tag>,
+      width: 100,
+      // الخادم يقبل `isActive` في PATCH منذ البداية؛ كانت الشاشة تقول إنه
+      // لا يقبله وتطلب الحذف وإعادة الإنشاء لتغيير الحالة.
+      render: (value: boolean, banner: AdminBanner) => (
+        <Switch
+          size="small"
+          checked={value}
+          loading={updateMutation.isPending && updateMutation.variables?.id === banner.id}
+          onChange={(checked) =>
+            updateMutation.mutate({
+              id: banner.id,
+              values: { isActive: checked },
+            })
+          }
+        />
+      ),
     },
     {
       title: 'الإجراءات',
@@ -189,21 +309,20 @@ export default function BannersPage() {
       width: 170,
       render: (_: unknown, banner: AdminBanner) => (
         <Space size={4}>
-          <Button
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => setEditor({ banner })}
-          >
+          <Button icon={<EditOutlined />} onClick={() => setEditor({ banner })}>
             تعديل
           </Button>
-          <Button
-            size="small"
-            danger
-            icon={<DeleteOutlined />}
-            onClick={() => confirmDelete(banner)}
+          <ConfirmDangerButton
+            title="حذف البنر؟"
+            description="سيُحذف البنر نهائياً من قاعدة البيانات ولا يمكن التراجع."
+            confirmText="حذف"
+            confirmLoading={
+              deleteMutation.isPending && deleteMutation.variables === banner.id
+            }
+            onConfirm={() => deleteMutation.mutate(banner.id)}
           >
             حذف
-          </Button>
+          </ConfirmDangerButton>
         </Space>
       ),
     },
@@ -211,39 +330,28 @@ export default function BannersPage() {
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Flex align="center" justify="space-between" wrap gap={12}>
-        <div>
-          <Typography.Title level={3} style={{ margin: 0 }}>
-            البنرات
-          </Typography.Title>
-          <Typography.Text type="secondary">
-            البنرات الإعلانية المعروضة في الصفحة الرئيسية. البنر الجديد يُنشأ نشطاً.
-          </Typography.Text>
-        </div>
-        <Space>
-          <Button
-            icon={<ReloadOutlined />}
-            loading={bannersQuery.isFetching}
-            onClick={() => bannersQuery.refetch()}
-          >
-            تحديث
-          </Button>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => setEditor({})}
-          >
-            إضافة بنر
-          </Button>
-        </Space>
-      </Flex>
-
-      <Alert
-        type="info"
-        showIcon
-        message="لا يوفر خادم الإدارة تفعيل/تعطيل بنر قائم."
-        description="البنر النشط فقط يظهر في المتجر؛ لتغيير الحالة احذف البنر وأنشئه من جديد بعد الحذف."
+      <PageHeader
+        title="البنرات"
+        extra={
+          <Space>
+            <Button
+              icon={<ReloadOutlined />}
+              loading={bannersQuery.isFetching}
+              onClick={() => bannersQuery.refetch()}
+            >
+              تحديث
+            </Button>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => setEditor({})}
+            >
+              إضافة بنر
+            </Button>
+          </Space>
+        }
       />
+
 
       <Card>
         {bannersQuery.isError ? (
@@ -308,14 +416,23 @@ export default function BannersPage() {
           <BannerForm
             initialValues={{
               imageUrl: editor.banner.imageUrl,
-              title: editor.banner.title ?? undefined,
+              // كل لغةٍ في حقليها كما حفظها الخادم — لا احتياط يملأ لغةً من أخرى.
+              titleAr: editor.banner.titleAr ?? undefined,
+              subtitleAr: editor.banner.subtitleAr ?? undefined,
+              titleCkb: editor.banner.titleCkb ?? undefined,
+              subtitleCkb: editor.banner.subtitleCkb ?? undefined,
+              placement: editor.banner.placement,
               destinationType: editor.banner.destinationType,
               destinationValue: editor.banner.destinationValue ?? undefined,
               sortOrder: editor.banner.sortOrder,
             }}
             submitting={updateMutation.isPending}
             onSubmit={(values) =>
-              updateMutation.mutate({ id: editor.banner!.id, values })
+              updateMutation.mutate({
+                id: editor.banner!.id,
+                values,
+                initial: contentOf(editor.banner!),
+              })
             }
             onCancel={() => setEditor(null)}
             categories={categoriesQuery.data?.items ?? []}
@@ -351,6 +468,8 @@ function BannerForm({
 }: BannerFormProps) {
   const [form] = Form.useForm<BannerFormValues>()
   const destinationType = Form.useWatch('destinationType', form) ?? 'none'
+  const placement: BannerPlacement =
+    Form.useWatch('placement', form) ?? 'promo'
 
   const subcategories = categories.flatMap((category) =>
     category.subcategories.map((subcategory) => ({
@@ -398,12 +517,55 @@ function BannerForm({
         <ImageUploadField purpose="banner" />
       </Form.Item>
       <Form.Item
-        name="title"
-        label="العنوان"
-        rules={[{ max: 100, message: 'العنوان يجب ألا يتجاوز 100 حرف' }]}
+        name="placement"
+        label="موضع العرض"
+        rules={[{ required: true, message: 'اختر الموضع' }]}
+        extra={PLACEMENT_HINTS[placement]}
       >
-        <Input placeholder="اختياري" />
+        <Segmented
+          block
+          options={(Object.keys(PLACEMENT_LABELS) as BannerPlacement[]).map(
+            (key) => ({ value: key, label: PLACEMENT_LABELS[key] }),
+          )}
+        />
       </Form.Item>
+      <SectionHeader title="محتوى البنر" />
+      <Card
+        size="small"
+        title="العربية"
+        data-testid="banner-content-ar"
+        style={{ marginBottom: 12 }}
+      >
+        <Form.Item name="titleAr" label="العنوان بالعربية" rules={textRules('title', 'العربية')}>
+          <Input lang="ar" dir="rtl" placeholder="موسم جديد من عالم الأنمي" />
+        </Form.Item>
+        <Form.Item
+          name="subtitleAr"
+          label="السطر الثاني بالعربية"
+          rules={textRules('subtitle', 'العربية')}
+          style={{ marginBottom: 0 }}
+        >
+          <Input lang="ar" dir="rtl" placeholder="تشكيلة جديدة" />
+        </Form.Item>
+      </Card>
+      <Card
+        size="small"
+        title="الكردية"
+        data-testid="banner-content-ckb"
+        style={{ marginBottom: 24 }}
+      >
+        <Form.Item name="titleCkb" label="العنوان بالكردية" rules={textRules('title', 'الكردية')}>
+          <Input lang="ckb" dir="rtl" />
+        </Form.Item>
+        <Form.Item
+          name="subtitleCkb"
+          label="السطر الثاني بالكردية"
+          rules={textRules('subtitle', 'الكردية')}
+          style={{ marginBottom: 0 }}
+        >
+          <Input lang="ckb" dir="rtl" />
+        </Form.Item>
+      </Card>
       <Form.Item
         name="destinationType"
         label="نوع الوجهة"

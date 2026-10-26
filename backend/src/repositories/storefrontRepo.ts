@@ -1,5 +1,6 @@
 import type pg from 'pg';
 import type { BannerRow, GovernorateRow } from '../types/index.js';
+import { textOrNull } from '../utils/locale.js';
 
 /**
  * التمثيل المعتمد للبنر — **مصدر الحقيقة الوحيد** لشكل استجابة البنر.
@@ -16,7 +17,24 @@ export function toBannerDto(row: BannerRow) {
   return {
     id: row.id,
     imageUrl: row.image_url,
+    /**
+     * الزوج القديم — لعميلٍ لا يعرف الحقول الصريحة أدناه. هنا هو العمودان
+     * العربيان كما هما (لوحة التحكم عربية)؛ وفي الكتالوج يحسمه
+     * `localizeBanner` بلغة الطلب.
+     */
     title: row.title,
+    subtitle: row.subtitle ?? '',
+    /**
+     * [CRITICAL] نصّ البنر بلغتيه صريحاً (067) — `null` = لا نصّ بهذه اللغة.
+     * لوحة التحكم تملأ منها حقول كل لغة، والتطبيق يختار منها بلغة واجهته
+     * **الآن**، فتبديل اللغة يبدّل النصّ بلا جلبٍ ثانٍ.
+     */
+    titleAr: textOrNull(row.title),
+    subtitleAr: textOrNull(row.subtitle),
+    titleCkb: textOrNull(row.title_ckb),
+    subtitleCkb: textOrNull(row.subtitle_ckb),
+    /** أين يظهر في الرئيسية: `hero` اللوحة الكبيرة، `promo` الشريط تحتها. */
+    placement: row.placement ?? 'promo',
     destinationType: row.destination_type,
     destinationValue: row.destination_value,
     sortOrder: row.sort_order,
@@ -27,9 +45,12 @@ export function toBannerDto(row: BannerRow) {
 export type BannerDto = ReturnType<typeof toBannerDto>;
 
 export const bannerRepo = {
-  async listActive(db: pg.Pool | pg.PoolClient) {
+  async listActive(db: pg.Pool | pg.PoolClient, placement?: 'hero' | 'promo') {
     const { rows } = await db.query<BannerRow>(
-      `SELECT * FROM banners WHERE is_active = TRUE ORDER BY sort_order, created_at DESC`,
+      `SELECT * FROM banners
+        WHERE is_active = TRUE ${placement ? 'AND placement = $1' : ''}
+        ORDER BY sort_order, created_at DESC`,
+      placement ? [placement] : [],
     );
     return rows.map(toBannerDto);
   },
@@ -45,16 +66,34 @@ export const bannerRepo = {
     db: pg.Pool | pg.PoolClient,
     input: {
       imageUrl: string;
-      title?: string | null;
+      /** نصّ البنر بلغتيه — كلٌّ اختياري، والغياب/`null` = لا نصّ بتلك اللغة. */
+      titleAr?: string | null;
+      subtitleAr?: string | null;
+      titleCkb?: string | null;
+      subtitleCkb?: string | null;
+      placement?: BannerRow['placement'];
       destinationType: BannerRow['destination_type'];
       destinationValue?: string | null;
       sortOrder?: number;
     },
   ) {
     const { rows } = await db.query<BannerRow>(
-      `INSERT INTO banners (image_url, title, destination_type, destination_value, sort_order)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [input.imageUrl, input.title ?? null, input.destinationType, input.destinationValue ?? null, input.sortOrder ?? 0],
+      `INSERT INTO banners
+         (image_url, title, subtitle, title_ckb, subtitle_ckb,
+          placement, destination_type, destination_value, sort_order)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+      [
+        input.imageUrl,
+        input.titleAr ?? null,
+        // العمود العربي `NOT NULL DEFAULT ''` منذ 030: الفراغ فيه = «لا سطر».
+        input.subtitleAr ?? '',
+        input.titleCkb ?? null,
+        input.subtitleCkb ?? null,
+        input.placement ?? 'promo',
+        input.destinationType,
+        input.destinationValue ?? null,
+        input.sortOrder ?? 0,
+      ],
     );
     return toBannerDto(rows[0]!);
   },
@@ -64,7 +103,11 @@ export const bannerRepo = {
     id: string,
     input: {
       imageUrl?: string;
-      title?: string | null;
+      titleAr?: string | null;
+      subtitleAr?: string | null;
+      titleCkb?: string | null;
+      subtitleCkb?: string | null;
+      placement?: BannerRow['placement'];
       destinationType?: BannerRow['destination_type'];
       destinationValue?: string | null;
       sortOrder?: number;
@@ -77,9 +120,27 @@ export const bannerRepo = {
       values.push(input.imageUrl);
       sets.push(`image_url = $${values.length}`);
     }
-    if (input.title !== undefined) {
-      values.push(input.title);
+    // [CRITICAL] كل لغةٍ في عمودها وحده: الحقل الغائب لا يُمسّ، فحفظُ العربية
+    // لا يلمس الكردية ولا العكس. `null` صريحة تمسح نصّ تلك اللغة وحدها.
+    if (input.titleAr !== undefined) {
+      values.push(input.titleAr);
       sets.push(`title = $${values.length}`);
+    }
+    if (input.subtitleAr !== undefined) {
+      values.push(input.subtitleAr ?? '');
+      sets.push(`subtitle = $${values.length}`);
+    }
+    if (input.titleCkb !== undefined) {
+      values.push(input.titleCkb);
+      sets.push(`title_ckb = $${values.length}`);
+    }
+    if (input.subtitleCkb !== undefined) {
+      values.push(input.subtitleCkb);
+      sets.push(`subtitle_ckb = $${values.length}`);
+    }
+    if (input.placement !== undefined) {
+      values.push(input.placement);
+      sets.push(`placement = $${values.length}`);
     }
     if (input.destinationType !== undefined) {
       values.push(input.destinationType);
@@ -118,6 +179,22 @@ export const governorateRepo = {
   async listActive(db: pg.Pool | pg.PoolClient) {
     const { rows } = await db.query<GovernorateRow>(
       `SELECT * FROM governorates WHERE is_active = TRUE ORDER BY sort_order, name`,
+    );
+    // `nameCkb` يخرج من هنا وتحسمه الخدمة (`localizeNamed`) — كان مفقوداً
+    // فلم تجد الخدمة ما تختاره وبقيت المحافظات عربيةً في الواجهة الكردية.
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      nameCkb: row.name_ckb,
+      deliveryFee: Number(row.delivery_fee),
+      isActive: row.is_active,
+    }));
+  },
+
+  /** كل المحافظات للأدمن — النشطة والمعطَّلة، الإدارة تحتاج رؤيتهما معاً. */
+  async listAll(db: pg.Pool | pg.PoolClient) {
+    const { rows } = await db.query<GovernorateRow>(
+      `SELECT * FROM governorates ORDER BY is_active DESC, sort_order, name`,
     );
     return rows.map((row) => ({
       id: row.id,

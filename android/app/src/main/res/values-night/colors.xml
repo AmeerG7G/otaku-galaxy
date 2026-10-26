@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  أول إقلاع بعد التثبيت: لا تفضيل محفوظ بعد، فيتبع لونُ النافذة مظهرَ
+  الجهاز. بعد أول اختيار صريح يتولّى `MainActivity` القرار من القيمة
+  المحفوظة، فلا يبقى هذا الملف إلا احتياطاً لتلك اللحظة الأولى.
+-->
+<resources>
+    <color name="brand_launch_background">#141024</color>
+    <color name="brand_launch_background_dark">#141024</color>
+</resources>

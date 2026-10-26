@@ -47,13 +47,20 @@ export function updateFranchise(id: string, payload: FranchiseUpdatePayload) {
   return patch<Franchise>(`/admin/franchises/${id}`, payload)
 }
 
-export function deleteFranchise(id: string) {
-  return remove<null>(`/admin/franchises/${id}`)
+/** كم منتجاً (نشطاً أو موقوفاً) مرتبطاً بالأنمي — ما يقوله تأكيد الحذف. */
+export function franchiseUsage(id: string) {
+  return get<{ id: string; productCount: number }>(`/admin/franchises/${id}/usage`)
 }
 
-export function productFranchises(productId: string) {
-  return get<{ franchiseIds: string[] }>(`/admin/products/${productId}/franchises`)
+/**
+ * حذف الأنمي ولو ارتبط بمنتجات (STEP 64 §6.2): يُفكّ الارتباط وتبقى المنتجات
+ * وصورها. الردّ عدد المنتجات التي فُكّ ارتباطها.
+ */
+export function deleteFranchise(id: string) {
+  return remove<{ id: string; unlinkedProducts: number }>(`/admin/franchises/${id}`)
 }
+
+
 
 // ── مناطق التوصيل ──
 

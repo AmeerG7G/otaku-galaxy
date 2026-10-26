@@ -1,15 +1,23 @@
 import 'package:auto_route/auto_route.dart';
+import '../../../../core/l10n/app_strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/design_system/design_system.dart';
+import '../../../../core/l10n/gender.dart';
 import '../../../../core/errors/app_exception.dart';
 import '../../../../core/router/app_router.dart';
+import '../../../../core/utils/iraqi_phone.dart';
+import '../../domain/entities/account_request.dart';
 import '../cubit/auth_cubit.dart';
 import '../widgets/auth_field.dart';
 import '../widgets/auth_scaffold.dart';
 import '../../../settings/data/personalize_storage.dart';
-import '../../../../core/di/injection_container.dart';
+import '../../../../core/di/injection_container.dart' show sl;
+import '../../../visuals/domain/visual_slot.dart';
+
+/// مقياس رسم الدخول (الصورة 1) — طلب المالك: أكبر بـ٢٠٪ (STEP 64).
+const double _loginArtScale = 1.2;
 
 @RoutePage()
 class LoginScreen extends StatefulWidget {
@@ -68,8 +76,9 @@ class _LoginScreenState extends State<LoginScreen>
 
     setState(() => _loading = true);
     try {
+      // بصيغة E.164 المطبَّعة (تشمل تحويل الأرقام الشرقية) — ما يخزّنه الخادم.
       await context.read<AuthCubit>().login(
-        _phoneController.text.trim(),
+        normalizeIraqiPhone(_phoneController.text) ?? _phoneController.text.trim(),
         _passwordController.text,
       );
       if (!mounted) return;
@@ -80,15 +89,16 @@ class _LoginScreenState extends State<LoginScreen>
       );
     } on AppException catch (e) {
       if (!mounted) return;
-      // حساب صحيح لكن رقمه غير مُفعَّل: الخادم أرسل رمزاً جديداً بالفعل،
-      // فنأخذ المستخدم إلى شاشة الرمز بدل أن نعرض رفضاً يبدو بلا مخرج.
-      if (e.code == 'PHONE_NOT_VERIFIED') {
-        _showErrorSnackBar(e.message);
+      // كلمة مرور صحيحة لحساب لم توافق عليه الإدارة بعد: لا رمز يُرسل ولا
+      // شاشة رمز — نعرض شاشة «قيد المراجعة» نفسها التي رآها عند التسجيل،
+      // فيعرف أن الطلب قائم وأن الإدارة ستتواصل معه عبر واتساب.
+      if (e.code == 'ACCOUNT_PENDING_APPROVAL') {
         context.router.push(
-          OtpVerificationRoute(phone: _phoneController.text.trim()),
+          AccountPendingRoute(kind: AccountRequestKind.registration),
         );
         return;
       }
+      // مرفوض: الرسالة من الخادم تكفي — لا مسار آلي بعدها؛ التواصل مع الإدارة.
       _showErrorSnackBar(_messageOf(e));
     } catch (e) {
       if (!mounted) return;
@@ -100,8 +110,11 @@ class _LoginScreenState extends State<LoginScreen>
 
   /// يعرض رسالة الخطأ الواضحة من الخادم عند توفّرها، مع رسالة عامة غير ذلك.
   String _messageOf(Object e) {
-    if (e is AppException && e.message.trim().isNotEmpty) return e.message;
-    return 'حدث خطأ غير متوقع، يرجى المحاولة مرة أخرى';
+    if (e is AppException) {
+      final text = e.localizedMessage(context);
+      if (text.trim().isNotEmpty) return text;
+    }
+    return context.strings('unexpectedError');
   }
 
   void _showErrorSnackBar(String message) {
@@ -125,111 +138,120 @@ class _LoginScreenState extends State<LoginScreen>
       child: SlideTransition(
         position: _slideAnimation,
         child: AuthScaffold(
-          title: 'تسجيل الدخول',
-          subtitle: 'أدخل رقم هاتفك وكلمة المرور للمتابعة إلى حسابك.',
-          artwork: 'assets/art/opt/a-i4.png',
-          artworkHeight: 196,
-          artworkWidth: 138,
-          artworkBottom: -14,
+          title: context.strings('login'),
+          subtitle: context.g(GenderedStrings.enterPhoneAndPassword),
+          subtitleTranslations: context.gAcross(
+            GenderedStrings.enterPhoneAndPassword,
+          ),
+          artworkSlot: VisualSlots.login,
+          // [STEP 64 §20] أكبر بـ٢٠٪: الصندوق ١٣٨×١٩٦ ← ١٦٥٫٦×٢٣٥٫٢ (المقياس لا
+          // الصورة — 1.png لا تُمسّ). الصورة مربّعة تُرسم `contain` موسَّطة
+          // فتطفو (٢٣٥٫٢ − ١٦٥٫٦) ÷ ٢ = ٣٤٫٨ فوق قاع الصندوق؛ `artworkBottom`
+          // يُنزلها بالقدر نفسه فيبقى صدرها على حافة الرأس كما كان (2026-09-28).
+          artworkHeight: 196 * _loginArtScale,
+          artworkWidth: 138 * _loginArtScale,
+          artworkBottom: -29 * _loginArtScale,
           form: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                          // حقل رقم الهاتف — تسمية فوق الحقل بلا أيقونات.
-                          AuthField(
-                            controller: _phoneController,
-                            label: 'رقم الهاتف',
-                            hint: '0770 123 4567',
-                            textDirection: TextDirection.ltr,
-                            keyboardType: TextInputType.phone,
-                            textInputAction: TextInputAction.next,
-                            validator: (value) {
-                              if (value == null || value.trim().isEmpty) {
-                                return 'يرجى إدخال رقم الهاتف';
-                              }
-                              if (value.trim().length < 10) {
-                                return 'رقم الهاتف غير صحيح';
-                              }
-                              return null;
-                            },
-                          ),
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // حقل رقم الهاتف — تسمية فوق الحقل بلا أيقونات.
+                AnimeTextField(
+                  controller: _phoneController,
+                  label: context.strings('phoneNumber'),
+                  hint: context.strings('phoneHintExample'),
+                  prefixIcon: Icons.phone_outlined,
+                  keyboardType: TextInputType.phone,
+                  // الرقم كاملاً كما يكتبه الزبون (`07701234567`) — لا بادئة `07` ثابتة ولا مُدرَجة؛
+                  // المُنسّق يُبقي الأرقام وحدها، والحكم لقاعدة الموبايل العراقي ثم للخادم.
+                  inputFormatters: const [IraqiPhoneInputFormatter()],
+                  textDirection: TextDirection.ltr,
+                  textInputAction: TextInputAction.next,
+                  maxLength: kIraqiLocalPhoneLength,
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return context.strings('phoneRequiredShort');
+                    }
+                    if (!isValidIraqiLocalPhone(value)) {
+                      return context.strings('phoneInvalid');
+                    }
+                    return null;
+                  },
+                ),
 
-                          const SizedBox(height: 15),
+                const SizedBox(height: 15),
 
-                          // حقل كلمة المرور
-                          AuthField(
-                            controller: _passwordController,
-                            label: 'كلمة المرور',
-                            hint: '••••••••',
-                            obscureText: _obscure,
-                            textInputAction: TextInputAction.done,
-                            onSubmitted: (_) => _login(),
-                            trailing: IconButton(
-                              icon: Icon(
-                                _obscure
-                                    ? Icons.visibility_outlined
-                                    : Icons.visibility_off_outlined,
-                                size: AppDimens.iconMd,
-                                color: Theme.of(context).colorScheme.outline,
-                              ),
-                              onPressed: () =>
-                                  setState(() => _obscure = !_obscure),
-                            ),
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'يرجى إدخال كلمة المرور';
-                              }
-                              if (value.length < 6) {
-                                return 'كلمة المرور قصيرة جداً';
-                              }
-                              return null;
-                            },
-                          ),
+                // حقل كلمة المرور
+                AuthField(
+                  controller: _passwordController,
+                  label: context.strings('password'),
+                  hint: '••••••••',
+                  obscureText: _obscure,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => _login(),
+                  trailing: IconButton(
+                    icon: Icon(
+                      _obscure
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined,
+                      size: AppDimens.iconMd,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                    onPressed: () => setState(() => _obscure = !_obscure),
+                  ),
+                  validator: (value) {
+                    // الدخول لا يفرض طولاً (الخادم: `min(1)`): كلمةٌ وضعتها
+                    // الإدارة أو حسابٌ قديم قد تكون أقصر مما يفرضه التسجيل،
+                    // وحجبُها هنا يمنع صاحبها من الدخول أصلاً.
+                    if (value == null || value.isEmpty) {
+                      return context.strings('passwordRequired');
+                    }
+                    return null;
+                  },
+                ),
 
-                          SizedBox(height: AppDimens.space3),
+                SizedBox(height: AppDimens.space3),
 
-                          // نسيت كلمة المرور
-                          Align(
-                            alignment: AlignmentDirectional.centerStart,
-                            child: AnimeTextButton(
-                              label: 'نسيت كلمة المرور؟',
-                              onPressed: () => context.router.push(
-                                const ForgotPasswordRoute(),
-                              ),
-                            ),
-                          ),
-
-                          SizedBox(height: AppDimens.space5),
-
-                          // زر تسجيل الدخول
-                          AnimePrimaryButton(
-                            label: 'تسجيل الدخول',
-                            onPressed: _login,
-                            loading: _loading,
-                            height: AppDimens.buttonHeightXl,
-                            borderRadius: AppDimens.radiusMd,
-                            gradient: AppColors.ctaGradient,
-                          ),
-                    ],
+                // نسيت كلمة المرور
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: AnimeTextButton(
+                    label: context.strings('forgotPassword'),
+                    onPressed: () =>
+                        context.router.push(const ForgotPasswordRoute()),
                   ),
                 ),
+
+                SizedBox(height: AppDimens.space5),
+
+                // زر تسجيل الدخول
+                AnimePrimaryButton(
+                  label: context.strings('login'),
+                  onPressed: _login,
+                  loading: _loading,
+                  height: AppDimens.buttonHeightXl,
+                  borderRadius: AppDimens.radiusMd,
+                  gradient: AppColors.ctaGradient,
+                ),
+              ],
+            ),
+          ),
           footer: Column(
             children: [
               SizedBox(height: AppDimens.space2),
               AnimeTextButton(
-                label: 'ما عندك حساب؟ إنشاء حساب جديد',
+                label: context.strings('noAccountRegister'),
                 onPressed: () => context.router.push(const RegisterRoute()),
               ),
               // متابعة كزائر (بلا حساب) — تصفّح المتجر مباشرة.
               AnimeTextButton(
-                label: 'تصفح كزائر',
-                onPressed: () =>
-                    context.router.replace(
-        sl<PersonalizeStorage>().isDone
-            ? const MainNavigationRoute()
-            : const PersonalizeRoute(),
-      ),
+                label: context.strings('browseAsGuest'),
+                onPressed: () => context.router.replace(
+                  sl<PersonalizeStorage>().isDone
+                      ? const MainNavigationRoute()
+                      : const PersonalizeRoute(),
+                ),
                 icon: Icons.arrow_back_ios,
                 iconPosition: IconPosition.end,
               ),

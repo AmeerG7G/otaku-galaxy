@@ -12,10 +12,10 @@ async function main() {
       nodeEnv: config.nodeEnv,
       appEnv: config.appEnv,
       isProduction: config.isProduction,
-      devOtpEnabled: config.verification.devOtpEnabled,
       jwtSecretLength: config.jwtSecret.length,
       databaseUrl: config.databaseUrl,
-      smsProvider: config.sms.provider,
+      host: config.host ?? null,
+      bffSharedSecretSet: config.bffSharedSecret !== null,
     }),
   );
 }

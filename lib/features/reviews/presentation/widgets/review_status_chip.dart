@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../core/l10n/app_strings.dart';
 
 import '../../../../core/design_system/design_system.dart';
 import '../../domain/entities/review.dart';
@@ -13,9 +14,9 @@ class ReviewStatusChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.themeColors;
     final (String label, Color color) = switch (status) {
-      ReviewStatus.pending => ('⏳ تقييمك قيد المراجعة', colors.warning),
-      ReviewStatus.approved => ('✓ تم نشر تقييمك', colors.success),
-      ReviewStatus.rejected => ('❌ لم يتم قبول تقييمك', colors.error),
+      ReviewStatus.pending => (context.strings('reviewPendingChip'), colors.warning),
+      ReviewStatus.approved => (context.strings('reviewApprovedChip'), colors.success),
+      ReviewStatus.rejected => (context.strings('reviewRejectedTitle'), colors.error),
     };
 
     return Container(

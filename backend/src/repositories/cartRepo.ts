@@ -1,15 +1,33 @@
 import type pg from 'pg';
+import type { CartAdjustment, CartSyncLine } from '../domain/cartSync.js';
+import { pairPricedLineTotals } from '../domain/orderPricing.js';
 import type { CartItemRow } from '../types/index.js';
+import { kurdishOrNull } from '../utils/locale.js';
 
 export interface CartLine {
   id: string;
   productId: string;
+  /** اسم المنتج بالعربية — الحقل القديم، باقٍ بمعناه لعملاءٍ أقدم. */
   productName: string;
+  /** الاسم باللغتين صراحةً (066) — التطبيق يختار بلغة واجهته، `null` = ناقص. */
+  productNameAr: string;
+  productNameCkb: string | null;
   productImage: string | null;
   optionValue: string | null;
   quantity: number;
-  unitPrice: number;
-  lineTotal: number;
+  /**
+   * `null` فقط في أسطر الإرسال والمعاينة لمنتجٍ أُزيل سعره (084)؛ العربة التي
+   * يراها الزبون (`listItems`) لا تعيد سطراً بلا سعر — التطبيق يقرأ الغائب صفراً.
+   */
+  unitPrice: number | null;
+  /** سعر قطعتين من المنتج نفسه (085)؛ `null` = لا عرض. */
+  pairPrice: number | null;
+  /**
+   * مبلغ السطر بعد عرض القطعتين، محسوباً عبر أسطر المنتج كلها في العربة
+   * (`pairPricedLineTotals`) — قد يقلّ عن `unitPrice × quantity`. العميل يعرضه
+   * كما هو ولا يحسبه.
+   */
+  lineTotal: number | null;
   stock: number;
   /**
    * ترويج التوصيل على المنتج — تحتاجه السلة والدفع لعرض «خصم التوصيل»
@@ -27,28 +45,38 @@ async function ensureCart(db: pg.Pool | pg.PoolClient, userId: string): Promise<
   return rows[0]!.id;
 }
 
-const LINE_SELECT = `
+/** كل أسطر العربة — المعطَّل منها أيضاً. للإرسال وحده (انظر `listItemsForCheckout`). */
+const LINE_FROM = `
   SELECT ci.id, ci.product_id AS "productId", ci.option_value AS "optionValue",
          ci.quantity, ci.created_at AS "createdAt",
-         p.name AS "productName", p.stock, p.price AS "unitPrice",
+         p.name AS "productName", p.name_ckb AS "productNameCkb",
+         p.stock, p.price AS "unitPrice", p.pair_price AS "pairPrice",
          p.has_delivery_promo AS "hasDeliveryPromo",
          p.delivery_promo_amount AS "deliveryPromoAmount",
          (SELECT pi.url FROM product_images pi
           WHERE pi.product_id = p.id ORDER BY pi.sort_order LIMIT 1) AS "productImage"
   FROM cart_items ci
   JOIN products p ON p.id = ci.product_id
-  WHERE ci.cart_id = $1 AND p.is_active = TRUE`;
+  WHERE ci.cart_id = $1`;
+
+// العربة المعروضة: لا معطَّل ولا بلا سعر (084). الإرسال يرى الكل فيرفض بالسبب.
+const LINE_SELECT = `${LINE_FROM} AND p.is_active = TRUE AND p.price IS NOT NULL`;
 
 function mapLine(row: Record<string, unknown>): CartLine {
   return {
     id: row.id as string,
     productId: row.productId as string,
     productName: row.productName as string,
+    productNameAr: row.productName as string,
+    productNameCkb: kurdishOrNull(row.productNameCkb as string | null),
     productImage: (row.productImage as string | null) ?? null,
     optionValue: (row.optionValue as string | null) ?? null,
     quantity: Number(row.quantity),
-    unitPrice: Number(row.unitPrice),
-    lineTotal: Number(row.unitPrice) * Number(row.quantity),
+    // `Number(null)` صفر — والصفر سعرٌ لا «بلا سعر».
+    unitPrice: row.unitPrice === null ? null : Number(row.unitPrice),
+    pairPrice: row.pairPrice === null ? null : Number(row.pairPrice),
+    // مبدئي لسطرٍ وحده؛ `withPairTotals` يضبطه حين تُقرأ أسطر العربة معاً.
+    lineTotal: row.unitPrice === null ? null : Number(row.unitPrice) * Number(row.quantity),
     stock: Number(row.stock),
     hasDeliveryPromo: row.hasDeliveryPromo === true,
     deliveryPromoAmount: Number(row.deliveryPromoAmount ?? 0),
@@ -56,15 +84,144 @@ function mapLine(row: Record<string, unknown>): CartLine {
   };
 }
 
+/**
+ * مبالغ الأسطر بعد عرض «قطعتان بسعر» (085) — على أسطر العربة **معاً**، لأن
+ * قطعتين بخيارين من المنتج نفسه عرضٌ واحد. سطرٌ بلا سعر يبقى `null`.
+ */
+function withPairTotals(lines: CartLine[]): CartLine[] {
+  const totals = pairPricedLineTotals(
+    lines.flatMap((line) =>
+      line.unitPrice === null
+        ? []
+        : [{
+            id: line.id,
+            productId: line.productId,
+            quantity: line.quantity,
+            unitPrice: line.unitPrice,
+            pairPrice: line.pairPrice,
+            createdAt: line.createdAt,
+          }],
+    ),
+  );
+  return lines.map((line) => ({ ...line, lineTotal: totals.get(line.id) ?? null }));
+}
+
 export const cartRepo = {
   async listItems(db: pg.Pool | pg.PoolClient, userId: string): Promise<CartLine[]> {
     const cartId = await ensureCart(db, userId);
     const { rows } = await db.query<Record<string, unknown>>(`${LINE_SELECT}
       ORDER BY ci.created_at DESC`, [cartId]);
-    return rows.map(mapLine);
+    return withPairTotals(rows.map(mapLine));
   },
 
-  /** إضافة/دمج منتج في العربة؛ إن وُجد سطر مطابق تُدمج الكمية. */
+  /**
+   * أسطر العربة **كلها** بلا قفل — لمعاينة الدفع (`orderService.checkoutQuote`).
+   *
+   * الأسطر نفسها التي يقرؤها الإرسال (`listItemsForCheckout`) ومنها المعطَّل،
+   * فتُبلغ المعاينةُ الزبونَ بما سيرفضه الإنشاء (`PRODUCT_UNAVAILABLE`) بدل أن
+   * تُخفيه عنه. القراءة لا تكتب ولا تقفل: المعاينة ليست وعداً.
+   */
+  async listAllItems(db: pg.Pool | pg.PoolClient, userId: string): Promise<CartLine[]> {
+    const cartId = await ensureCart(db, userId);
+    const { rows } = await db.query<Record<string, unknown>>(`${LINE_FROM}
+      ORDER BY ci.created_at DESC`, [cartId]);
+    return withPairTotals(rows.map(mapLine));
+  },
+
+  /**
+   * يقفل صفّ العربة داخل معاملة ثم يقرأ عناصرها — لإنشاء الطلب وحده.
+   *
+   * [CRITICAL] بلا هذا القفل كان إرسالان متزامنان (نقرتان سريعتان، أو إعادة
+   * إرسال شبكية) يقرآن العربة نفسها معاً، ولا يفصل بينهما إلا قفل صفوف
+   * المنتجات — فإن كفى المخزون خرج طلبان بالمبلغ نفسه. مقيسٌ قبل الإصلاح:
+   * ثلاثة إرسالات متزامنة ⇒ ثلاثة طلبات. `FOR UPDATE` على صفّ `carts` يجعل
+   * الثاني ينتظر الأول حتى يُفرغ العربة داخل معاملته، فيقرأ عربةً فارغة
+   * ويُرفض بـ«العربة فارغة» كما لو أرسل متأخّراً.
+   *
+   * [CRITICAL] يقرأ الأسطر **كلها** — منتجاً عُطِّل أيضاً (CA-14). كان يقرأ
+   * بمرشِّح `is_active` فيُسقط السطر المعطَّل من الطلب بصمت، ويمحوه تفريغُ
+   * العربة، ويخرج طلبٌ غير الذي زُومن للزبون. الآن يصل السطر إلى فحص
+   * `orderService.create` فيُرفض الإرسال بـ`409 PRODUCT_UNAVAILABLE`،
+   * والمزامنة التالية تُزيله وتبلّغ الزبون.
+   */
+  async listItemsForCheckout(tx: pg.PoolClient, userId: string): Promise<CartLine[]> {
+    const cartId = await ensureCart(tx, userId);
+    await tx.query('SELECT id FROM carts WHERE id = $1 FOR UPDATE', [cartId]);
+    const { rows } = await tx.query<Record<string, unknown>>(`${LINE_FROM}
+      ORDER BY ci.created_at DESC`, [cartId]);
+    return withPairTotals(rows.map(mapLine));
+  },
+
+  /**
+   * أسطر العربة كما تحتاجها المزامنة (`planCartSync`) — بعد قفل صفّ العربة.
+   *
+   * [CRITICAL] `FOR UPDATE` نفسه الذي يأخذه الإرسال: مزامنةٌ لا تتداخل مع
+   * طلبٍ قيد الإنشاء (يقرأ الأسطر ثم يفرّغها)، ولا مع دمج كميةٍ (`upsertItem`
+   * يأخذ `KEY SHARE`). الترتيب بالإضافة — الأقدم يحتفظ بقطعه أولاً.
+   */
+  async lockForSync(tx: pg.PoolClient, userId: string): Promise<CartSyncLine[]> {
+    const cartId = await ensureCart(tx, userId);
+    await tx.query('SELECT id FROM carts WHERE id = $1 FOR UPDATE', [cartId]);
+    const { rows } = await tx.query<{
+      id: string;
+      product_id: string;
+      name: string;
+      name_ckb: string | null;
+      option_value: string | null;
+      quantity: number;
+      stock: number;
+      is_active: boolean;
+      priced: boolean;
+    }>(
+      `SELECT ci.id, ci.product_id, p.name, p.name_ckb, ci.option_value, ci.quantity,
+              p.stock, p.is_active, p.price IS NOT NULL AS priced
+         FROM cart_items ci
+         JOIN products p ON p.id = ci.product_id
+        WHERE ci.cart_id = $1
+        ORDER BY ci.created_at, ci.id`,
+      [cartId],
+    );
+    return rows.map((row) => ({
+      id: row.id,
+      productId: row.product_id,
+      productName: row.name,
+      productNameCkb: kurdishOrNull(row.name_ckb),
+      optionValue: row.option_value,
+      quantity: Number(row.quantity),
+      stock: Number(row.stock),
+      isActive: row.is_active,
+      priced: row.priced,
+    }));
+  },
+
+  /** يطبّق خطة المزامنة: صفرٌ يحذف السطر، وغيره يضبط الكمية. */
+  async applySync(tx: pg.PoolClient, adjustments: readonly CartAdjustment[]): Promise<void> {
+    const removed = adjustments.filter((a) => a.quantity === 0).map((a) => a.lineId);
+    if (removed.length > 0) {
+      await tx.query('DELETE FROM cart_items WHERE id = ANY($1::uuid[])', [removed]);
+    }
+    for (const adjustment of adjustments.filter((a) => a.quantity > 0)) {
+      await tx.query('UPDATE cart_items SET quantity = $2 WHERE id = $1', [
+        adjustment.lineId,
+        adjustment.quantity,
+      ]);
+    }
+  },
+
+  /**
+   * إضافة/دمج منتج في العربة؛ إن وُجد سطر مطابق تُدمج الكمية.
+   *
+   * [CRITICAL] القفل `KEY SHARE` على صفّ العربة **في الجملة نفسها**. السطر
+   * الجديد يأخذه ضمناً (فحص المفتاح الأجنبي) فينتظر طلباً قيد الإنشاء يمسك
+   * العربة `FOR UPDATE` (`listItemsForCheckout`)؛ أمّا الدمج في سطرٍ قائم
+   * (`ON CONFLICT … DO UPDATE`) فلا يُدرج صفّاً ولا يفحص مفتاحاً، فكان يلتزم
+   * فوراً ثم يمحوه تفريغ العربة: الزيادة لا في الطلب ولا في العربة، بردّ
+   * ٢٠٠ (CA-6). بالقفل الصريح ينتظر الدمجُ كالسطر الجديد، ثم يقع على عربة
+   * ما بعد الطلب — ترتيبٌ تسلسلي: الطلب ثم الإضافة.
+   *
+   * الإدراج **يقرأ** من `locked` عمداً: تعبير `WITH` غير المعدِّل لا يُنفَّذ
+   * إن لم يُشر إليه، فالقفل بلا إشارة لا يُؤخذ أصلاً.
+   */
   async upsertItem(
     db: pg.Pool | pg.PoolClient,
     userId: string,
@@ -72,8 +229,9 @@ export const cartRepo = {
   ): Promise<CartLine> {
     const cartId = await ensureCart(db, userId);
     const { rows } = await db.query(
-      `INSERT INTO cart_items (cart_id, product_id, option_value, quantity)
-       VALUES ($1, $2, $3, $4)
+      `WITH locked AS (SELECT id FROM carts WHERE id = $1 FOR KEY SHARE)
+       INSERT INTO cart_items (cart_id, product_id, option_value, quantity)
+       SELECT locked.id, $2::uuid, $3::text, $4::int FROM locked
        ON CONFLICT (cart_id, product_id, option_value)
        DO UPDATE SET quantity = cart_items.quantity + EXCLUDED.quantity
        RETURNING *`,

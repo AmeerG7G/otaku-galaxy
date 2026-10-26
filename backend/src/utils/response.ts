@@ -1,5 +1,7 @@
 import type { Response } from 'express';
+import { localizeErrorMessage } from '../domain/errorMessages.js';
 import { AppError } from './errors.js';
+import type { AppLocale } from './locale.js';
 
 /** استجابة API موحّدة للجميع: { success, data, message }. */
 export function ok<T>(res: Response, data: T, message: string | null = null, status = 200) {
@@ -14,12 +16,17 @@ export function noContent(res: Response) {
   res.status(204).send();
 }
 
-export function httpError(res: Response, error: unknown) {
+/**
+ * `locale` تحسم لغة `message` قبل خروجها — انظر `domain/errorMessages.ts`.
+ * غيابها يعني العربية: مواضع النداء التي لا تحمل `req` (نادرة) تبقى كما
+ * كانت، والحاجز العالمي يمرّرها دائماً.
+ */
+export function httpError(res: Response, error: unknown, locale: AppLocale = 'ar') {
   if (error instanceof AppError) {
     res.status(error.statusCode).json({
       success: false,
       data: null,
-      message: error.message,
+      message: localizeErrorMessage(error.message, locale),
       error: { code: error.code, ...(error.details !== undefined ? { details: error.details } : {}) },
     });
     return;
@@ -28,7 +35,7 @@ export function httpError(res: Response, error: unknown) {
   res.status(500).json({
     success: false,
     data: null,
-    message: 'حدث خطأ غير متوقع',
+    message: localizeErrorMessage('حدث خطأ غير متوقع', locale),
     error: { code: 'INTERNAL_ERROR' },
   });
 }

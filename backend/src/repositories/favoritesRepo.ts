@@ -1,5 +1,5 @@
 import type pg from 'pg';
-import { SELECT_WITH_IMAGES, mapProduct } from './catalogRepo.js';
+import { SELECT_WITH_IMAGES, mapProduct, pricedOnly } from './catalogRepo.js';
 import type { Paginated, ProductRow } from '../types/index.js';
 
 export const favoriteRepo = {
@@ -23,13 +23,16 @@ export const favoriteRepo = {
     userId: string,
     page: number,
     limit: number,
+    /** «السعر يُعلن قريباً» (084) — لمن يطلبه صراحةً فقط (`pricedOnly`). */
+    includeUnpriced = false,
   ): Promise<Paginated<ReturnType<typeof mapProduct>>> {
     const values: unknown[] = [userId, limit, (page - 1) * limit];
+    const priced = pricedOnly('p', includeUnpriced);
     const [{ rows }, countRows] = await Promise.all([
       db.query<ProductRow & { images?: unknown; franchise_ids?: unknown }>(
         `${SELECT_WITH_IMAGES('p')}
          JOIN favorites fav ON fav.product_id = p.id AND fav.user_id = $1
-         WHERE p.is_active = TRUE
+         WHERE p.is_active = TRUE AND ${priced}
          ORDER BY fav.created_at DESC
          LIMIT $2 OFFSET $3`,
         values,
@@ -38,7 +41,7 @@ export const favoriteRepo = {
         `SELECT COUNT(*)::text AS total
          FROM favorites fav
          JOIN products p ON p.id = fav.product_id
-         WHERE fav.user_id = $1 AND p.is_active = TRUE`,
+         WHERE fav.user_id = $1 AND p.is_active = TRUE AND ${priced}`,
         [userId],
       ),
     ]);

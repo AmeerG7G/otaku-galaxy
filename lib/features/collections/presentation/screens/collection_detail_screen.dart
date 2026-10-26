@@ -1,12 +1,17 @@
 import 'package:auto_route/auto_route.dart';
+import '../../../../core/l10n/app_strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/design_system/design_system.dart';
+import '../../../visuals/domain/visual_slot.dart';
+import '../../../../core/l10n/gender.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../products/domain/entities/product.dart';
 import '../../../products/domain/usecases/fetch_product_details_usecase.dart';
 import '../cubit/collections_cubit.dart';
+import '../../../main_navigation/presentation/screens/main_navigation_screen.dart';
+import '../../../settings/presentation/cubit/locale_cubit.dart';
 
 /// تفاصيل مجموعة بتصميم Otaku Galaxy v2.
 ///
@@ -67,17 +72,22 @@ class _CollectionDetailScreenState extends State<CollectionDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Column(
-        children: [
-          OtakuScreenHeader(
-            title: widget.collectionName,
-            subtitle: _loading
-                ? 'جاري التحميل…'
-                : '${_products.length} منتج في هذه المجموعة',
-            onBack: () => context.router.maybePop(),
-          ),
-          Expanded(child: _buildBody()),
-        ],
+      // إطار الشبكة: يمنع تمدّد المحتوى بلا حدّ ويترك للشبكة عرضاً
+      // يكفي أعمدةً أكثر. لا أثر له على الهاتف.
+      body: ResponsiveContentFrame(
+        maxWidth: kGridMaxWidth,
+        child: Column(
+          children: [
+            OtakuScreenHeader(
+              title: widget.collectionName,
+              subtitle: _loading
+                  ? context.strings('loading')
+                  : context.strings.p('productsInThisCollectionCount', {'count': '${_products.length}'}),
+              onBack: () => context.router.maybePop(),
+            ),
+            Expanded(child: _buildBody()),
+          ],
+        ),
       ),
     );
   }
@@ -85,16 +95,25 @@ class _CollectionDetailScreenState extends State<CollectionDetailScreen> {
   Widget _buildBody() {
     if (_loading) return const OtakuListSkeleton(count: 4, height: 86);
     if (_products.isEmpty) {
-      return const AnimeEmptyState(
-        title: 'المجموعة فارغة',
-        subtitle:
-            'أضف منتجات لهذه المجموعة من صفحة المنتج عبر «أضف إلى مجموعتك».',
-        artwork: 'assets/art/opt/a-i5.png',
+      // لم تعد `const`: النصّ يُصرَّف بجنس صاحب الحساب فيُقرأ من السياق.
+      return AnimeEmptyState(
+        title: context.strings('collectionEmpty'),
+        subtitle: context.g(GenderedStrings.addProductsToCollection),
+        artwork: CharacterArt.emptyCollection,
+        // نمط السلة الفارغة: الرسم فوق، ثم النصّ، ثم زرّ «تصفّح الأقسام» —
+        // كلٌّ في وسط اللوحة. المجموعة تُملأ من الأقسام، فالزرّ يذهب إليها
+        // (كما في البحث بلا نتائج) لا إلى شاشةٍ لا تضيف شيئاً.
+        actionLabel: context.strings('browseCategories'),
+        onAction: () {
+          mainNavIndex.value = MainTab.categories;
+          context.router.popUntilRoot();
+        },
+        centered: true,
       );
     }
 
     return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(18, 12, 18, 26),
+      padding: context.scrollPadding(const EdgeInsets.fromLTRB(18, 12, 18, 26)),
       itemCount: _products.length,
       separatorBuilder: (_, _) => const SizedBox(height: 11),
       itemBuilder: (context, index) {
@@ -112,13 +131,21 @@ class _CollectionDetailScreenState extends State<CollectionDetailScreen> {
   Future<void> _confirmRemove(Product product) async {
     final confirmed = await showOtakuConfirm(
       context: context,
-      title: 'إزالة من المجموعة',
+      title: context.strings('removeFromCollection'),
       message:
-          'راح نشيل «${product.name}» من هذه المجموعة. المنتج نفسه راح يبقى '
-          'بالمتجر ومفضلتك.',
-      confirmLabel: 'إزالة',
-      cancelLabel: 'إلغاء',
+          context.strings.p('removeFromCollectionConfirm', {
+            'name': localizedProductName(product, context.language),
+          }),
+      confirmLabel: context.strings('remove'),
+      cancelLabel: context.strings('cancel'),
       destructive: true,
+      titleTranslations: AppStrings.across('removeFromCollection'),
+      messageTranslations: [
+        for (final l in AppLanguage.values)
+          AppStrings.of(l).p('removeFromCollectionConfirm', {
+            'name': localizedProductName(product, l),
+          }),
+      ],
     );
     if (confirmed != true || !mounted) return;
     await context.read<CollectionsCubit>().removeProduct(

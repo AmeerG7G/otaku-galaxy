@@ -1,17 +1,27 @@
 import { execFile } from 'node:child_process';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { config } from '../src/config/index.js';
 import { db } from '../src/database/pool.js';
-import { api, DEV_CODE, purgeTestUsers, registerAndLogin } from './helpers.js';
+import { accountRequestRepo } from '../src/repositories/accountRequestRepo.js';
+import { api, approveAsAdmin, createAdminUser, purgeTestUsers, registerAndLogin } from './helpers.js';
 
 const execFileAsync = promisify(execFile);
 const BACKEND_ROOT = path.resolve(import.meta.dirname, '..');
 
 /** رقم فريد لكل حالة — الاختبارات تتشارك القاعدة فلا يجوز تصادم الأرقام. */
 let counter = 0;
-function uniquePhone(prefix = '077') {
+/**
+ * رقم فريد **بالصيغة المعتمدة** `+9647XXXXXXXXX`.
+ *
+ * الأرقام تُخزَّن دولية الآن، وهذه السويت تستعلم القاعدة مباشرةً بالرقم
+ * (رموز التحقق، حالة التوثيق). إعادةُ الصيغة المحلية كانت تجعل كل استعلام
+ * يعود فارغاً — لا لأن السلوك خطأ بل لأن الاختبار يسأل عن تمثيل لم يعد
+ * موجوداً. مسارات الإدخال المحلية (`07…`, `7…`, `00964…`) مغطّاة في
+ * `tests/phone-normalization.test.ts`.
+ */
+function uniquePhone(prefix = '+96477') {
   counter += 1;
   const tail = String(Date.now()).slice(-6) + String(counter).padStart(2, '0');
   return `${prefix}${tail.slice(-8).padStart(8, '0')}`;
@@ -64,68 +74,65 @@ const VALID_PRODUCTION_ENV = {
   NODE_ENV: 'production',
   JWT_SECRET: 'a'.repeat(64),
   DATABASE_URL: 'postgres://user:pass@db.example.com:5432/otaku',
-  DEV_OTP_ENABLED: undefined,
-  DEV_OTP_CODE: undefined,
-  SMS_PROVIDER: 'http',
+  // إعدادان بديلُهما يعمل ويعطي سلوكاً خاطئاً بصمت، فصارا مطلوبين صراحةً
+  // خارج التطوير: `TRUST_PROXY` (بدونه ينهار حدّ المعدّل إلى دلو واحد خلف
+  // الوسيط) و`PUBLIC_BASE_URL` (بدونه تُبنى روابط الصور على localhost).
+  TRUST_PROXY: '1',
+  PUBLIC_BASE_URL: 'https://api.example.com',
 };
 
-describe('تسجيل حساب جديد — المسار الحقيقي كاملاً', () => {
+describe('تسجيل حساب جديد — المسار الحقيقي كاملاً (بلا رمز)', () => {
   beforeAll(async () => {
-    await purgeTestUsers('077%');
+    await purgeTestUsers();
     await purgeTestUsers('078%');
   });
   afterAll(async () => {
-    await purgeTestUsers('077%');
+    await purgeTestUsers();
     await purgeTestUsers('078%');
   });
 
-  it('حساب جديد تماماً: تسجيل ← رمز ← تحقق ← دخول', async () => {
+  it('[CRITICAL] حساب جديد: تسجيل ← طلب معلَّق ← موافقة الإدارة ← دخول', async () => {
     const phone = uniquePhone();
-
     const register = await api
       .post('/api/auth/register')
-      .send({ username: 'مستخدم جديد', phone, password: 'secret123' })
-      .expect(200);
-    // الحساب موجود لكنه غير محقَّق بعد.
-    expect(register.body.data.user.isPhoneVerified).toBe(false);
+      .send({ username: 'مختبر', phone, password: 'secret123', gender: 'male' })
+      .expect(202);
 
-    // الرمز لا يظهر في الاستجابة بأي شكل.
-    expect(JSON.stringify(register.body)).not.toContain(DEV_CODE);
+    // لا توكن، لا رمز، لا كلمة مرور في الردّ.
+    expect(register.body.data.token).toBeUndefined();
+    expect(JSON.stringify(register.body)).not.toContain('secret123');
+    expect(register.body.data.request.status).toBe('pending');
 
-    const { rows } = await db.query<{ code_hash: string; consumed_at: Date | null }>(
-      `SELECT code_hash, consumed_at FROM verification_codes
-       WHERE phone = $1 AND purpose = 'register' ORDER BY created_at DESC LIMIT 1`,
+    // القاعدة: صفٌّ غير مفعَّل يحمل تجزئةً لا كلمةً، وطلبٌ معلَّق بلا كلمة.
+    const { rows } = await db.query<{ password_hash: string; phone_verified_at: Date | null }>(
+      'SELECT password_hash, phone_verified_at FROM users WHERE phone = $1',
       [phone],
     );
-    // الرمز مخزَّن مُجزَّأً لا كنصّ صريح.
-    expect(rows[0]!.code_hash).not.toBe(DEV_CODE);
-    expect(rows[0]!.consumed_at).toBeNull();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.phone_verified_at).toBeNull();
+    expect(rows[0]!.password_hash).not.toBe('secret123');
+    expect(rows[0]!.password_hash.startsWith('$2')).toBe(true);
+    const { rows: req } = await db.query<Record<string, unknown>>(
+      `SELECT * FROM account_requests WHERE kind = 'registration' AND submitted_phone = $1`,
+      [phone],
+    );
+    expect(req).toHaveLength(1);
+    expect(JSON.stringify(req[0])).not.toContain('secret123');
+    expect(Object.keys(req[0]!).some((k) => k.includes('password'))).toBe(false);
 
-    const verify = await api
-      .post('/api/auth/verify')
-      .send({ phone, code: DEV_CODE })
-      .expect(200);
-    expect(verify.body.data.user.isPhoneVerified).toBe(true);
-    expect(verify.body.data.token).toBeTruthy();
+    await approveAsAdmin(register.body.data.request.id as string);
 
-    const login = await api
-      .post('/api/auth/login')
-      .send({ phone, password: 'secret123' })
-      .expect(200);
-    expect(login.body.data.user.phone).toBe(phone);
-
-    await api
-      .get('/api/auth/me')
-      .set('Authorization', `Bearer ${login.body.data.token}`)
-      .expect(200);
+    const login = await api.post('/api/auth/login').send({ phone, password: 'secret123' }).expect(200);
+    expect(login.body.data.user.isPhoneVerified).toBe(true);
+    expect(login.body.data.token).toBeTruthy();
   });
 
-  it('الحساب لا يصير محقَّقاً إلا بعد تحقق ناجح — والدخول ممنوع قبله', async () => {
+  it('[CRITICAL] الحساب لا يصير مفعَّلاً إلا بموافقة الإدارة — والدخول ممنوع قبلها', async () => {
     const phone = uniquePhone();
     await api
       .post('/api/auth/register')
-      .send({ username: 'غير محقَّق', phone, password: 'secret123' })
-      .expect(200);
+      .send({ username: 'مختبر', phone, password: 'secret123', gender: 'male' })
+      .expect(202);
 
     const { rows } = await db.query<{ phone_verified_at: Date | null }>(
       'SELECT phone_verified_at FROM users WHERE phone = $1',
@@ -133,228 +140,276 @@ describe('تسجيل حساب جديد — المسار الحقيقي كامل�
     );
     expect(rows[0]!.phone_verified_at).toBeNull();
 
-    // كلمة مرور صحيحة لكن الرقم غير مُثبَت → لا جلسة.
+    // كلمة مرور صحيحة + حساب غير مفعَّل = لا جلسة.
     const login = await api.post('/api/auth/login').send({ phone, password: 'secret123' });
     expect(login.status).toBe(403);
-    expect(login.body.error.code).toBe('PHONE_NOT_VERIFIED');
+    expect(login.body.error.code).toBe('ACCOUNT_PENDING_APPROVAL');
     expect(login.body.data).toBeNull();
   });
 
-  it('تسجيل مهجور يُستأنف بدل أن يحبس الرقم إلى الأبد', async () => {
+  it('تسجيل معلَّق يُستأنف بدل أن يحبس الرقم — ولا يستبدل كلمة المرور', async () => {
     const phone = uniquePhone();
     await api
       .post('/api/auth/register')
-      .send({ username: 'محاولة أولى', phone, password: 'first-pass' })
-      .expect(200);
+      .send({ username: 'محاولة أولى', phone, password: 'first-pass', gender: 'male' })
+      .expect(202);
 
-    // المستخدم لم يُدخل الرمز وأعاد المحاولة: يجب أن يُستأنف لا أن يُرفض.
-    // (تجاوز فترة التهدئة بإرجاع طابع آخر إرسال — إعادة الإرسال نفسها
-    //  محدودة عمداً، وهو ما يفحصه اختبار مستقل أدناه.)
-    await db.query(
-      `UPDATE verification_codes SET created_at = created_at - interval '5 minutes'
-       WHERE phone = $1`,
-      [phone],
-    );
-
-    const retry = await api
+    // الرقم نفسه ثانيةً ببيانات جديدة: يُقبل (لا 409) ويستأنف الطلب المعلَّق.
+    const second = await api
       .post('/api/auth/register')
-      .send({ username: 'محاولة ثانية', phone, password: 'second-pass' })
-      .expect(200);
-    expect(retry.body.data.user.username).toBe('محاولة ثانية');
+      .send({ username: 'محاولة ثانية', phone, password: 'second-pass', gender: 'female' })
+      .expect(202);
 
-    // كلمة المرور الجديدة هي المعتمدة بعد إتمام التحقق.
-    await api.post('/api/auth/verify').send({ phone, code: DEV_CODE }).expect(200);
-    await api.post('/api/auth/login').send({ phone, password: 'second-pass' }).expect(200);
-
-    // ولا حساب مكرر للرقم نفسه.
-    const { rows } = await db.query<{ total: string }>(
-      'SELECT COUNT(*)::text AS total FROM users WHERE phone = $1',
+    const { rows } = await db.query<{ username: string; gender: string; n: string; submitted: string }>(
+      `SELECT u.username, u.gender,
+              (SELECT COUNT(*)::text FROM account_requests r
+                WHERE r.kind = 'registration' AND r.submitted_phone = u.phone AND r.status = 'pending') AS n,
+              (SELECT r.submitted_username FROM account_requests r
+                WHERE r.kind = 'registration' AND r.submitted_phone = u.phone AND r.status = 'pending') AS submitted
+         FROM users u WHERE u.phone = $1`,
       [phone],
     );
-    expect(Number(rows[0]!.total)).toBe(1);
+    // الاسم والجنس يُحدَّثان (بياناتٌ لا اعتماد)، والطلب يحمل ما أُرسل ثانيةً.
+    expect(rows[0]!.username).toBe('محاولة ثانية');
+    expect(rows[0]!.gender).toBe('female');
+    expect(rows[0]!.submitted).toBe('محاولة ثانية');
+    // طلبٌ معلَّق واحد لا اثنان.
+    expect(rows[0]!.n).toBe('1');
+
+    await approveAsAdmin(second.body.data.request.id as string);
+    // الموافقة تفعّل كلمة المرور الأولى — الاستئناف لا يستبدلها.
+    await api.post('/api/auth/login').send({ phone, password: 'first-pass' }).expect(200);
+    await api.post('/api/auth/login').send({ phone, password: 'second-pass' }).expect(401);
   });
 
-  it('الرقم المحقَّق مأخوذ فعلاً — لا تسجيل ثانٍ عليه', async () => {
+  it('[SECURITY] من يعرف رقم طالبٍ معلَّق لا يضع كلمة مروره قبل الموافقة', async () => {
+    const phone = uniquePhone();
+    // الضحية تطلب حساباً.
+    const victim = await api
+      .post('/api/auth/register')
+      .send({ username: 'صاحب الرقم', phone, password: 'victim-pass-1', gender: 'female' })
+      .expect(202);
+    // المهاجم يعيد التسجيل على الرقم نفسه بكلمته — مراراً.
+    for (let i = 0; i < 3; i += 1) {
+      await api
+        .post('/api/auth/register')
+        .send({ username: 'صاحب الرقم', phone, password: `attacker-pass-${i}`, gender: 'female' })
+        .expect(202);
+    }
+    // المسؤول يتحقّق من صاحب الرقم الحقيقي عبر واتساب ويوافق.
+    await approveAsAdmin(victim.body.data.request.id as string);
+
+    for (let i = 0; i < 3; i += 1) {
+      await api.post('/api/auth/login').send({ phone, password: `attacker-pass-${i}` }).expect(401);
+    }
+    await api.post('/api/auth/login').send({ phone, password: 'victim-pass-1' }).expect(200);
+  });
+
+  it('بعد رفض الطلب: إعادة التسجيل تسجيلٌ جديد تُكتب بياناته وتُفعِّلها الموافقة', async () => {
+    const phone = uniquePhone();
+    const first = await api
+      .post('/api/auth/register')
+      .send({ username: 'طلب مرفوض', phone, password: 'rejected-pass', gender: 'male' })
+      .expect(202);
+    const adminToken = await createAdminUser();
+    await api
+      .post(`/api/admin/account-requests/${first.body.data.request.id}/reject`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ note: 'بيانات ناقصة' })
+      .expect(200);
+
+    const second = await api
+      .post('/api/auth/register')
+      .send({ username: 'طلب جديد', phone, password: 'fresh-pass-2', gender: 'male' })
+      .expect(202);
+    expect(second.body.data.request.id).not.toBe(first.body.data.request.id);
+
+    await approveAsAdmin(second.body.data.request.id as string);
+    await api.post('/api/auth/login').send({ phone, password: 'fresh-pass-2' }).expect(200);
+    await api.post('/api/auth/login').send({ phone, password: 'rejected-pass' }).expect(401);
+  });
+
+  /**
+   * [SECURITY] الحكم يُعاد تحت قفل الصفّ، لا من القراءتين قبله. الحالتان
+   * تقعان في نافذة جولةٍ واحدة على القاعدة؛ الاختبار يُدخل الحدث فيها بالضبط
+   * (عند أول قراءة لحال الطلب، قبل القفل).
+   */
+  async function registerWhile(event: () => Promise<void>, body: Record<string, string>) {
+    const original = accountRequestRepo.findLatest.bind(accountRequestRepo);
+    let fired = false;
+    const spy = vi.spyOn(accountRequestRepo, 'findLatest').mockImplementation(async (...args) => {
+      const before = await original(...args);
+      if (!fired) {
+        fired = true;
+        await event();
+      }
+      return before;
+    });
+    try {
+      return await api.post('/api/auth/register').send(body);
+    } finally {
+      spy.mockRestore();
+    }
+  }
+
+  it('[SECURITY] موافقةٌ تقع بين القراءة والقفل: الرقم صار مأخوذاً، ولا تُكتب كلمة مرور', async () => {
+    const phone = uniquePhone();
+    const owner = await api
+      .post('/api/auth/register')
+      .send({ username: 'صاحب الرقم', phone, password: 'owner-pass-1', gender: 'female' })
+      .expect(202);
+
+    const res = await registerWhile(() => approveAsAdmin(owner.body.data.request.id as string), {
+      username: 'منتحل',
+      phone,
+      password: 'intruder-pass-1',
+      gender: 'male',
+    });
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('PHONE_TAKEN');
+    await api.post('/api/auth/login').send({ phone, password: 'intruder-pass-1' }).expect(401);
+    await api.post('/api/auth/login').send({ phone, password: 'owner-pass-1' }).expect(200);
+  });
+
+  it('[SECURITY] رفضٌ يقع بين القراءة والقفل: تسجيلٌ جديد بكلمة صاحبه، لا بكلمة الطلب المرفوض', async () => {
+    const phone = uniquePhone();
+    const rejected = await api
+      .post('/api/auth/register')
+      .send({ username: 'طلب سيُرفض', phone, password: 'rejected-pass-1', gender: 'male' })
+      .expect(202);
+    const adminToken = await createAdminUser();
+
+    const res = await registerWhile(
+      async () => {
+        await api
+          .post(`/api/admin/account-requests/${rejected.body.data.request.id}/reject`)
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ note: 'ليس صاحب الرقم' })
+          .expect(200);
+      },
+      { username: 'صاحب الرقم', phone, password: 'owner-pass-2', gender: 'female' },
+    );
+    expect(res.status).toBe(202);
+    expect(res.body.data.request.id).not.toBe(rejected.body.data.request.id);
+
+    await approveAsAdmin(res.body.data.request.id as string);
+    await api.post('/api/auth/login').send({ phone, password: 'owner-pass-2' }).expect(200);
+    await api.post('/api/auth/login').send({ phone, password: 'rejected-pass-1' }).expect(401);
+  });
+
+  /**
+   * الحدث نفسه **داخل** القفل: بين قراءة حال الطلب تحت قفل الحساب وكتابة
+   * الطلب. لا يُنتظر الحدث داخل المعاملة (كان سينتظر قفلها إلى الأبد) — يبدأ،
+   * ثم يكمل التسجيل حين يقف الحدث على قفلٍ أو ينتهي.
+   */
+  async function registerWithConcurrent(event: () => Promise<void>, body: Record<string, string>) {
+    const original = accountRequestRepo.findLatest.bind(accountRequestRepo);
+    let calls = 0;
+    let pending: Promise<void> | null = null;
+    const spy = vi.spyOn(accountRequestRepo, 'findLatest').mockImplementation(async (...args) => {
+      const before = await original(...args);
+      calls += 1;
+      if (calls === 2) {
+        let settled = false;
+        pending = event().finally(() => {
+          settled = true;
+        });
+        pending.catch(() => {});
+        for (let i = 0; i < 1000 && !settled; i += 1) {
+          const { rows } = await db.query<{ n: number }>(
+            `SELECT COUNT(*)::int AS n FROM pg_stat_activity
+              WHERE datname = current_database() AND wait_event_type = 'Lock'`,
+          );
+          if (rows[0]!.n > 0) break;
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+      }
+      return before;
+    });
+    try {
+      const res = await api.post('/api/auth/register').send(body);
+      return { res, event: pending ?? Promise.resolve() };
+    } finally {
+      spy.mockRestore();
+    }
+  }
+
+  it('[SECURITY] رفضٌ يقع تحت قفل التسجيل: لا يُفتح طلبٌ يحمل كلمة الطالب المرفوض', async () => {
+    const phone = uniquePhone();
+    const rejected = await api
+      .post('/api/auth/register')
+      .send({ username: 'طلب سيُرفض', phone, password: 'rejected-pass-2', gender: 'male' })
+      .expect(202);
+    const adminToken = await createAdminUser();
+
+    const { res, event } = await registerWithConcurrent(
+      async () => {
+        await api
+          .post(`/api/admin/account-requests/${rejected.body.data.request.id}/reject`)
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ note: 'ليس صاحب الرقم' })
+          .expect(200);
+      },
+      { username: 'صاحب الرقم', phone, password: 'owner-pass-3', gender: 'female' },
+    );
+    await event;
+    expect(res.status).toBe(202);
+
+    // أيّ طلبٍ معلَّق بقي للرقم: موافقته لا تفعّل كلمة الطالب المرفوض.
+    const { rows } = await db.query<{ id: string }>(
+      `SELECT id FROM account_requests WHERE kind = 'registration' AND submitted_phone = $1 AND status = 'pending'`,
+      [phone],
+    );
+    for (const row of rows) await approveAsAdmin(row.id);
+    const login = await api.post('/api/auth/login').send({ phone, password: 'rejected-pass-2' });
+    expect(login.status).not.toBe(200);
+  });
+
+  it('[CONCURRENCY] موافقةٌ تقع تحت قفل إعادة التسجيل: تنتظر ولا تتقاطع (لا 40P01)', async () => {
+    const phone = uniquePhone();
+    const owner = await api
+      .post('/api/auth/register')
+      .send({ username: 'صاحب الرقم', phone, password: 'owner-pass-4', gender: 'female' })
+      .expect(202);
+
+    const { res, event } = await registerWithConcurrent(() => approveAsAdmin(owner.body.data.request.id as string), {
+      username: 'صاحب الرقم',
+      phone,
+      password: 'second-try-4',
+      gender: 'female',
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(202);
+    await expect(event).resolves.toBeUndefined();
+    await api.post('/api/auth/login').send({ phone, password: 'owner-pass-4' }).expect(200);
+    await api.post('/api/auth/login').send({ phone, password: 'second-try-4' }).expect(401);
+  });
+
+  it('الرقم المفعَّل مأخوذ فعلاً — لا تسجيل ثانٍ عليه', async () => {
     const { phone } = await registerAndLogin();
     const res = await api
       .post('/api/auth/register')
-      .send({ username: 'منتحل', phone, password: 'other-pass' });
+      .send({ username: 'منتحل', phone, password: 'other123', gender: 'male' });
     expect(res.status).toBe(409);
     expect(res.body.error.code).toBe('PHONE_TAKEN');
   });
 
   it('بيانات دخول خاطئة مرفوضة بلا كشف أيّ الحقلين خطأ', async () => {
     const { phone } = await registerAndLogin();
-
-    const badPassword = await api
-      .post('/api/auth/login')
-      .send({ phone, password: 'definitely-wrong' });
-    expect(badPassword.status).toBe(401);
-
-    const unknownPhone = await api
-      .post('/api/auth/login')
-      .send({ phone: uniquePhone(), password: 'definitely-wrong' });
-    expect(unknownPhone.status).toBe(401);
-
-    // نفس الرسالة في الحالتين — وإلا صارت النقطة أداة تعداد أرقام.
-    expect(badPassword.body.message).toBe(unknownPhone.body.message);
-  });
-});
-
-describe('دورة حياة رمز التحقق', () => {
-  afterAll(async () => {
-    await purgeTestUsers('077%');
-  });
-
-  async function registerUnverified() {
-    const phone = uniquePhone();
-    await api
-      .post('/api/auth/register')
-      .send({ username: 'صاحب رمز', phone, password: 'secret123' })
-      .expect(200);
-    return phone;
-  }
-
-  it('رمز خاطئ مرفوض', async () => {
-    const phone = await registerUnverified();
-    const res = await api.post('/api/auth/verify').send({ phone, code: '000000' });
-    expect(res.status).toBe(400);
-    expect(res.body.error.code).toBe('OTP_INVALID');
-  });
-
-  it('رمز منتهي الصلاحية مرفوض', async () => {
-    const phone = await registerUnverified();
-    await db.query(
-      `UPDATE verification_codes SET expires_at = now() - interval '1 minute'
-       WHERE phone = $1 AND consumed_at IS NULL`,
-      [phone],
-    );
-
-    const res = await api.post('/api/auth/verify').send({ phone, code: DEV_CODE });
-    expect(res.status).toBe(400);
-    expect(res.body.error.code).toBe('OTP_EXPIRED');
-
-    // ولا يُقبل بعدها حتى لو أُعيد تمديده — استُهلك عند رفضه.
-    const { rows } = await db.query<{ consumed_at: Date | null }>(
-      'SELECT consumed_at FROM verification_codes WHERE phone = $1 ORDER BY created_at DESC LIMIT 1',
-      [phone],
-    );
-    expect(rows[0]!.consumed_at).not.toBeNull();
-  });
-
-  it('الرمز لا يُستعمل مرتين', async () => {
-    const phone = await registerUnverified();
-    await api.post('/api/auth/verify').send({ phone, code: DEV_CODE }).expect(200);
-
-    const reuse = await api.post('/api/auth/verify').send({ phone, code: DEV_CODE });
-    expect(reuse.status).toBe(400);
-    expect(reuse.body.data).toBeNull();
-  });
-
-  it('سقف المحاولات يُبطل الرمز حتى لو أُدخل الصحيح بعده', async () => {
-    const phone = await registerUnverified();
-    const maxAttempts = config.verification.maxAttempts;
-
-    for (let i = 0; i < maxAttempts; i += 1) {
-      const res = await api.post('/api/auth/verify').send({ phone, code: '111111' });
-      expect(res.status).toBe(400);
-    }
-
-    // الرمز الصحيح لم يعد ينفع — استُنفدت المحاولات.
-    const correct = await api.post('/api/auth/verify').send({ phone, code: DEV_CODE });
-    expect(correct.status).toBe(400);
-
-    const login = await api.post('/api/auth/login').send({ phone, password: 'secret123' });
-    expect(login.status).toBe(403);
-  });
-
-  it('إعادة الإرسال محدودة بفترة تهدئة', async () => {
-    const phone = await registerUnverified();
-
-    // التسجيل نفسه أرسل رمزاً للتوّ، فطلبٌ فوري يقع داخل التهدئة.
-    const immediate = await api.post('/api/auth/resend-code').send({ phone });
-    expect(immediate.status).toBe(429);
-    expect(immediate.body.error.code).toBe('OTP_RESEND_COOLDOWN');
-
-    // بعد انقضاء التهدئة يُسمح.
-    await db.query(
-      `UPDATE verification_codes SET created_at = created_at - interval '5 minutes'
-       WHERE phone = $1`,
-      [phone],
-    );
-    await api.post('/api/auth/resend-code').send({ phone }).expect(200);
-  });
-
-  it('سقف الإرسالات داخل النافذة يمنع قصف الرقم بالرسائل', async () => {
-    const phone = await registerUnverified();
-    const maxSends = config.verification.maxSendsPerWindow;
-
-    // إرسالات متتالية مع تجاوز التهدئة فقط — يبقى سقف النافذة قائماً.
-    let blocked = false;
-    for (let i = 0; i < maxSends + 2; i += 1) {
-      await db.query(
-        `UPDATE verification_codes SET created_at = created_at - interval '90 seconds'
-         WHERE phone = $1 AND created_at > now() - interval '80 seconds'`,
-        [phone],
-      );
-      const res = await api.post('/api/auth/resend-code').send({ phone });
-      if (res.status === 429 && res.body.error.code === 'OTP_RESEND_LIMIT') {
-        blocked = true;
-        break;
-      }
-    }
-    expect(blocked).toBe(true);
-  });
-
-  it('إعادة الإرسال لا تكشف وجود الرقم من عدمه', async () => {
-    const known = await registerUnverified();
-    await db.query(
-      `UPDATE verification_codes SET created_at = created_at - interval '5 minutes'
-       WHERE phone = $1`,
-      [known],
-    );
-
-    const existing = await api.post('/api/auth/resend-code').send({ phone: known });
-    const missing = await api.post('/api/auth/resend-code').send({ phone: uniquePhone() });
-
-    expect(existing.status).toBe(200);
-    expect(missing.status).toBe(200);
-    expect(existing.body.message).toBe(missing.body.message);
+    const wrongPassword = await api.post('/api/auth/login').send({ phone, password: 'wrong' });
+    const wrongPhone = await api.post('/api/auth/login').send({ phone: uniquePhone(), password: 'secret123' });
+    expect(wrongPassword.status).toBe(401);
+    expect(wrongPhone.status).toBe(401);
+    expect(wrongPassword.body.message).toBe(wrongPhone.body.message);
   });
 
   it('استعادة كلمة المرور لا تكشف وجود الرقم من عدمه', async () => {
     const { phone } = await registerAndLogin();
-    const existing = await api.post('/api/auth/forgot-password').send({ phone });
-    const missing = await api.post('/api/auth/forgot-password').send({ phone: uniquePhone() });
-
-    expect(existing.status).toBe(200);
-    expect(missing.status).toBe(200);
+    const body = { username: 'مختبر', gender: 'male', levelKey: 'beginner' };
+    const existing = await api.post('/api/auth/forgot-password').send({ ...body, phone });
+    const missing = await api.post('/api/auth/forgot-password').send({ ...body, phone: uniquePhone() });
+    expect(existing.status).toBe(missing.status);
     expect(existing.body.message).toBe(missing.body.message);
-  });
-});
-
-describe('توليد الرمز', () => {
-  it('خارج وضع التطوير يُولَّد رمز عشوائي من ستة أرقام لا قيمة ثابتة', async () => {
-    // نستدعي المولّد عبر الخدمة مباشرة ببيئة لا تفعّل الرمز الثابت.
-    const result = await runFixture('print-config.ts', {
-      APP_ENV: undefined,
-      NODE_ENV: 'development',
-      DEV_OTP_ENABLED: undefined,
-      SMS_PROVIDER: 'console',
-    });
-    expect(result.ok).toBe(true);
-    const parsed = JSON.parse((result as { stdout: string }).stdout);
-    expect(parsed.devOtpEnabled).toBe(false);
-  });
-
-  it('رموز متتالية تختلف عن بعضها (عشوائية فعلية)', async () => {
-    // مولّد الرمز نفسه: عيّنة كبيرة يجب ألا تكون كلها متساوية.
-    const { randomInt } = await import('node:crypto');
-    const sample = new Set(
-      Array.from({ length: 200 }, () => randomInt(0, 1_000_000).toString().padStart(6, '0')),
-    );
-    expect(sample.size).toBeGreaterThan(150);
-    for (const code of sample) expect(code).toMatch(/^\d{6}$/);
+    expect(Object.keys(existing.body.data)).toEqual(Object.keys(missing.body.data));
   });
 });
 
@@ -404,12 +459,11 @@ describe('إعدادات الإقلاع — JWT وقاعدة البيانات', 
     expect((result as { stderr: string }).stderr).toContain('DATABASE_URL');
   });
 
-  it('الإنتاج المضبوط كاملاً يقلع — بلا رمز تطوير', async () => {
+  it('الإنتاج المضبوط كاملاً يقلع', async () => {
     const result = await runFixture('print-config.ts', VALID_PRODUCTION_ENV);
     expect(result.ok).toBe(true);
     const parsed = JSON.parse((result as { stdout: string }).stdout);
     expect(parsed.isProduction).toBe(true);
-    expect(parsed.devOtpEnabled).toBe(false);
     expect(parsed.jwtSecretLength).toBe(64);
   });
 
@@ -419,9 +473,7 @@ describe('إعدادات الإقلاع — JWT وقاعدة البيانات', 
       NODE_ENV: 'development',
       JWT_SECRET: undefined,
       DATABASE_URL: undefined,
-      DEV_OTP_ENABLED: undefined,
-      SMS_PROVIDER: 'console',
-    });
+        });
     expect(result.ok).toBe(true);
     const parsed = JSON.parse((result as { stdout: string }).stdout);
     expect(parsed.isProduction).toBe(false);
@@ -429,62 +481,14 @@ describe('إعدادات الإقلاع — JWT وقاعدة البيانات', 
   });
 });
 
-describe('سلوك الرمز الثابت بين التطوير والإنتاج', () => {
-  it('لا يعمل الرمز الثابت لمجرّد غياب NODE_ENV', async () => {
-    const result = await runFixture('print-config.ts', {
-      APP_ENV: undefined,
-      NODE_ENV: undefined,
-      DEV_OTP_ENABLED: undefined,
-      JWT_SECRET: undefined,
-      DATABASE_URL: undefined,
-      SMS_PROVIDER: 'console',
-    });
-    expect(result.ok).toBe(true);
-    const parsed = JSON.parse((result as { stdout: string }).stdout);
-    // غياب البيئة لا يفتح الباب — الطلب الصريح وحده يفتحه.
-    expect(parsed.devOtpEnabled).toBe(false);
-  });
-
-  it('يعمل في التطوير عند طلبه صراحةً', async () => {
-    const result = await runFixture('print-config.ts', {
-      APP_ENV: undefined,
-      NODE_ENV: 'development',
-      DEV_OTP_ENABLED: 'true',
-      JWT_SECRET: undefined,
-      DATABASE_URL: undefined,
-      SMS_PROVIDER: 'console',
-    });
-    expect(result.ok).toBe(true);
-    expect(JSON.parse((result as { stdout: string }).stdout).devOtpEnabled).toBe(true);
-  });
-
-  it('الإنتاج يرفض الإقلاع أصلاً إن طُلب الرمز الثابت', async () => {
-    const result = await runFixture('print-config.ts', {
-      ...VALID_PRODUCTION_ENV,
-      DEV_OTP_ENABLED: 'true',
-    });
-    expect(result.ok).toBe(false);
-    expect((result as { stderr: string }).stderr).toContain('DEV_OTP_ENABLED');
-  });
-});
-
-/**
- * [CRITICAL] الاختبار المسبق (staging) بيئةٌ حقيقية لا امتداد للتطوير.
- *
- * كان `staging` يقع خارج فرع الإنتاج في كل فحوص الأسرار، فيرث بدائل
- * التطوير: مفتاح توقيع معروف، ورمز تحقق ثابت `123456`، ومزوّد رسائل يطبع
- * في الطرفية. خادمٌ يحمل بيانات شبه حقيقية بحماية التطوير هو أسوأ تركيبة
- * ممكنة — يبدو جاهزاً وهو مكشوف.
- */
 describe('الاختبار المسبق مشدَّد كالإنتاج', () => {
   const VALID_STAGING_ENV = {
     APP_ENV: 'staging',
     NODE_ENV: 'production',
     JWT_SECRET: 'b'.repeat(64),
     DATABASE_URL: 'postgres://user:pass@staging-db.example.com:5432/otaku_staging',
-    DEV_OTP_ENABLED: undefined,
-    DEV_OTP_CODE: undefined,
-    SMS_PROVIDER: 'http',
+          TRUST_PROXY: '1',
+    PUBLIC_BASE_URL: 'https://staging-api.example.com',
   };
 
   it('يسقط عند غياب JWT_SECRET', async () => {
@@ -514,115 +518,19 @@ describe('الاختبار المسبق مشدَّد كالإنتاج', () => {
     expect((result as { stderr: string }).stderr).toContain('DATABASE_URL');
   });
 
-  it('يرفض الرمز الثابت 123456', async () => {
-    const result = await runFixture('print-config.ts', {
-      ...VALID_STAGING_ENV,
-      DEV_OTP_ENABLED: 'true',
-    });
-    expect(result.ok).toBe(false);
-    expect((result as { stderr: string }).stderr).toContain('DEV_OTP_ENABLED');
-  });
-
-  it('يرفض مزوّد الرسائل الطرفي والصامت', async () => {
-    for (const provider of ['console', 'noop']) {
-      const result = await runFixture('build-sms-provider.ts', {
-        ...VALID_STAGING_ENV,
-        SMS_PROVIDER: provider,
-      });
-      expect(result.ok, provider).toBe(false);
-      expect((result as { stderr: string }).stderr).toContain(provider);
-    }
-  });
-
-  it('يقلع حين تكتمل أسراره، وبلا رمز تطوير', async () => {
+  it('يقلع حين تكتمل أسراره', async () => {
     const result = await runFixture('print-config.ts', VALID_STAGING_ENV);
     expect(result.ok).toBe(true);
     const parsed = JSON.parse((result as { stdout: string }).stdout);
-    expect(parsed.devOtpEnabled).toBe(false);
     expect(parsed.appEnv).toBe('staging');
     // ولا يشترك مع الإنتاج في وصلة القاعدة.
     expect(parsed.databaseUrl).toContain('staging');
   });
 });
 
-describe('حدّ التماس مع مزوّد الرسائل', () => {
-  it('الإنتاج يرفض مزوّد الطرفية', async () => {
-    const result = await runFixture('build-sms-provider.ts', {
-      ...VALID_PRODUCTION_ENV,
-      SMS_PROVIDER: 'console',
-    });
-    expect(result.ok).toBe(false);
-    expect((result as { stderr: string }).stderr).toContain('console');
-  });
-
-  it('مزوّد http ينقصه إعداد → خطأ صريح يسمّي المفقود', async () => {
-    const result = await runFixture('build-sms-provider.ts', {
-      ...VALID_PRODUCTION_ENV,
-      SMS_PROVIDER: 'http',
-      SMS_BASE_URL: undefined,
-      SMS_API_KEY: undefined,
-      SMS_SENDER: undefined,
-    });
-    expect(result.ok).toBe(false);
-    const stderr = (result as { stderr: string }).stderr;
-    expect(stderr).toContain('SMS_BASE_URL');
-    expect(stderr).toContain('SMS_API_KEY');
-    expect(stderr).toContain('SMS_SENDER');
-  });
-
-  it('اسم مزوّد غير معروف يُرفض بدل تجاهله بصمت', async () => {
-    const result = await runFixture('build-sms-provider.ts', {
-      ...VALID_PRODUCTION_ENV,
-      SMS_PROVIDER: 'some-vendor-we-never-wired',
-    });
-    expect(result.ok).toBe(false);
-    expect((result as { stderr: string }).stderr).toContain('some-vendor-we-never-wired');
-  });
-
-  it('مزوّد http يرسل الطلب فعلاً بالشكل المتفق عليه', async () => {
-    const result = await runFixture('sms-http-roundtrip.ts', {
-      APP_ENV: undefined,
-      NODE_ENV: 'development',
-      DEV_OTP_ENABLED: undefined,
-      SMS_PROVIDER: undefined,
-      SMS_BASE_URL: undefined,
-      SMS_API_KEY: undefined,
-      SMS_API_SECRET: undefined,
-      SMS_SENDER: undefined,
-      FIXTURE_FAIL: undefined,
-    });
-    expect(result.ok).toBe(true);
-    const parsed = JSON.parse((result as { stdout: string }).stdout);
-    expect(parsed.error).toBeNull();
-    expect(parsed.providerName).toBe('http');
-    expect(parsed.received.method).toBe('POST');
-    expect(parsed.received.authorization).toBe('Bearer fixture-key');
-    expect(parsed.received.secret).toBe('fixture-secret');
-    expect(parsed.received.body.to).toBe('07700000001');
-    expect(parsed.received.body.sender).toBe('OtakuGalaxy');
-    expect(parsed.received.body.message).toContain('123456');
-  });
-
-  it('فشل المزوّد يظهر خطأً لا صمتاً', async () => {
-    const result = await runFixture('sms-http-roundtrip.ts', {
-      APP_ENV: undefined,
-      NODE_ENV: 'development',
-      DEV_OTP_ENABLED: undefined,
-      SMS_PROVIDER: undefined,
-      SMS_BASE_URL: undefined,
-      SMS_API_KEY: undefined,
-      SMS_SENDER: undefined,
-      FIXTURE_FAIL: 'true',
-    });
-    expect(result.ok).toBe(true);
-    const parsed = JSON.parse((result as { stdout: string }).stdout);
-    expect(parsed.error).toContain('502');
-  });
-});
-
 describe('إبطال التوكن عند إيقاف الحساب (S-8)', () => {
   afterAll(async () => {
-    await purgeTestUsers('077%');
+    await purgeTestUsers();
   });
 
   it('التوكن الصادر قبل الإيقاف يُرفض على كل المسارات المحمية', async () => {
@@ -724,7 +632,7 @@ describe('إبطال التوكن عند إيقاف الحساب (S-8)', () => {
 
 describe('أمان رابط الصورة الشخصية (S-4)', () => {
   afterAll(async () => {
-    await purgeTestUsers('077%');
+    await purgeTestUsers();
   });
 
   it('يرفض أصلاً خارجياً عشوائياً', async () => {
@@ -786,25 +694,45 @@ describe('أمان رابط الصورة الشخصية (S-4)', () => {
 });
 
 describe('أمان بذر حساب المسؤول', () => {
-  it('لا كلمة مرور افتراضية في سكربت البذر', async () => {
+  // منطق المسؤول انتقل إلى `scripts/seedAdmin.ts` (ليُختبر في العملية نفسها —
+  // انظر `seed-admin.test.ts`)؛ الحراسة هنا تقرأ الملفّين معاً لأن الضمانات
+  // تخصّ البذر كلّه لا ملفاً بعينه.
+  async function seedSources() {
     const { readFile } = await import('node:fs/promises');
-    const seed = await readFile(path.join(BACKEND_ROOT, 'scripts', 'seed.ts'), 'utf8');
+    const [seed, admin] = await Promise.all([
+      readFile(path.join(BACKEND_ROOT, 'scripts', 'seed.ts'), 'utf8'),
+      readFile(path.join(BACKEND_ROOT, 'scripts', 'seedAdmin.ts'), 'utf8'),
+    ]);
+    return { seed, admin, all: `${seed}\n${admin}` };
+  }
+
+  it('لا كلمة مرور افتراضية في سكربت البذر', async () => {
+    const { all, seed } = await seedSources();
 
     // لا قيمة ثابتة تُخبز في الكود…
-    expect(seed).not.toMatch(/hash\(\s*['"]admin123['"]/);
-    expect(seed).not.toMatch(/password_hash.*['"]admin123['"]/);
+    expect(all).not.toMatch(/hash\(\s*['"]admin123['"]/);
+    expect(all).not.toMatch(/password_hash.*['"]admin123['"]/);
     // …ولا طباعة لكلمة المرور في السجل.
-    expect(seed).not.toMatch(/console\.log\([^)]*\$\{?password\b/);
-    // والإنشاء مشروط بمتغيّرات بيئة صريحة.
-    expect(seed).toContain('SEED_ADMIN_PHONE');
-    expect(seed).toContain('SEED_ADMIN_PASSWORD');
+    expect(all).not.toMatch(/console\.log\([^)]*\$\{?password\b/);
+    expect(all).not.toMatch(/log\([^)]*\$\{?password\b/);
+    // والإنشاء مشروط بمتغيّرات بيئة صريحة، ويستدعيه البذر فعلاً.
+    expect(all).toContain('SEED_ADMIN_PHONE');
+    expect(all).toContain('SEED_ADMIN_PASSWORD');
+    expect(seed).toContain('await seedAdminUser(client)');
   });
 
   it('لا يُنشأ مسؤول ما لم تُضبط متغيّرات البيئة', async () => {
-    const { readFile } = await import('node:fs/promises');
-    const seed = await readFile(path.join(BACKEND_ROOT, 'scripts', 'seed.ts'), 'utf8');
+    const { admin, seed } = await seedSources();
     // الشرط الحارس موجود قبل أي إدراج لمسؤول.
-    expect(seed).toMatch(/if \(!phone \|\| !password\)/);
+    expect(admin).toMatch(/if \(!rawPhone \|\| !password\)/);
     expect(seed).toContain('ALLOW_PRODUCTION_SEED');
+  });
+
+  it('[CRITICAL] رقم المسؤول يمرّ من التوحيد المعتمد لا من تعبيرٍ محلي خاص', async () => {
+    const { admin } = await seedSources();
+    // كان `/^07\d{9}$/.test(phone)` يقبل الصيغة المحلية ثم يُدرجها كما هي
+    // فيرتطم بقيد E.164. الفحص على الاستدعاء لا على ذِكر النمط في تعليق.
+    expect(admin).toContain('normalizeIraqiPhone(rawPhone)');
+    expect(admin).not.toMatch(/\/\^07\\d\{9\}\$\/\.test\(/);
   });
 });

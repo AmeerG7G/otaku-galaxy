@@ -1,4 +1,6 @@
 import 'package:auto_route/auto_route.dart';
+import '../../../../core/l10n/app_strings.dart';
+import '../../../../core/l10n/locale_refetch.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -6,6 +8,7 @@ import '../../../../core/design_system/design_system.dart';
 import '../../../../core/router/app_router.dart';
 import '../../domain/entities/order.dart';
 import '../../domain/usecases/fetch_my_orders_usecase.dart';
+import '../../../visuals/domain/visual_slot.dart';
 
 /// قائمة طلباتي بتصميم Otaku Galaxy v2.
 ///
@@ -15,11 +18,22 @@ import '../../domain/usecases/fetch_my_orders_usecase.dart';
 class OrdersScreen extends StatefulWidget {
   const OrdersScreen({super.key});
 
+  /// مقياس رسم الترويسة من مقاسه الافتراضي — أصغر ٢٥٪.
+  ///
+  /// الصورة 41 (598×739، نسبة ٠٫٨١) أقصر بكثير من 19 التي كانت هنا (٠٫٥٤): بعرض
+  /// ٠٫٨ كان ارتفاعها ١٢٤٫٦ فيُقصّ ٢٫٦ من قدميها عند حافة الترويسة (١٤٦). ٠٫٧٥
+  /// ← ١١٦٫٨ وهامشٌ ٥ تحت حافتها.
+  static const double artScale = 0.75;
+
+  /// شخصية «لا طلبات بعد» — أكبر بـ٣٠٪ من رسم الحالة الفارغة الافتراضي
+  /// (١٥٠ ← ١٩٥، STEP 64 §22).
+  static const double emptyArtworkHeight = 150 * 1.3;
+
   @override
   State<OrdersScreen> createState() => _OrdersScreenState();
 }
 
-class _OrdersScreenState extends State<OrdersScreen> {
+class _OrdersScreenState extends State<OrdersScreen> with LocaleRefetch {
   List<Order> _orders = [];
   bool _loading = true;
   String? _error;
@@ -29,6 +43,10 @@ class _OrdersScreenState extends State<OrdersScreen> {
     super.initState();
     _load();
   }
+
+  /// المحتوى الخادمي يُصرَّف لحظة الجلب — يُعاد جلبه بلغة الواجهة الجديدة.
+  @override
+  void onLanguageChanged() => _load();
 
   Future<void> _load() async {
     setState(() {
@@ -55,17 +73,38 @@ class _OrdersScreenState extends State<OrdersScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Column(
-        children: [
-          OtakuScreenHeader(
-            title: 'طلباتي',
-            subtitle: 'تابع حالة طلباتك خطوة بخطوة',
-            artwork: 'assets/art/opt/a-i4.png',
-            onBack: () => context.router.maybePop(),
-          ),
-          const SizedBox(height: 8),
-          Expanded(child: _buildBody()),
-        ],
+      // عمودٌ موسَّط بعرض القراءة على اللوح — القائمة الممتدّة بعرض
+      // ١٣٦٦ بكسل تصير صفوفاً فارغة الوسط. لا أثر له على الهاتف.
+      body: ResponsiveContentFrame(
+        maxWidth: kReadingMaxWidth,
+        child: Column(
+          children: [
+            OtakuScreenHeader(
+              title: context.strings('myOrders'),
+              subtitle: context.strings('ordersSubtitle'),
+              titleTranslations: AppStrings.across('myOrders'),
+              subtitleTranslations: AppStrings.across('ordersSubtitle'),
+              artworkSlot: VisualSlots.ordersHeader,
+              // أصغر ٢٠٪ وداخل الشاشة كلّه (2026-09-28). كان يتجاوز الحافة
+              // اليسرى بـ٤٠ (`defaultArtworkEnd`) فيُقصّ جانبه، ويبدأ ١٤ فوق
+              // الترويسة فيُقصّ رأسه تحت شريط الحالة. الآن يلاصق الحافة
+              // اليسرى (`end: 0`) ويبدأ تحت شريط الحالة.
+              artworkWidth:
+                  OtakuScreenHeader.defaultArtworkWidth * OrdersScreen.artScale,
+              artworkEnd: 0,
+              artworkBelowStatusBar: true,
+              // [CRITICAL] (2026-10-13) العنوان والسطر الوصفي بجوار الشخصية لا
+              // تحتها: الكردي «هەنگاو بە هەنگاو …» كان يمتدّ تحت صندوقها عند
+              // ×١٫٣ فيلامس قدميها. الآن يُصغَّر داخل سطره بجوارها (حتى حدّ
+              // مقاس التصميم)، والترجمات أعلاه تجعل أيّ سطرٍ زائد يحتاجه يوماً
+              // محجوزاً بكل لغة فلا تتغيّر الترويسة بتغيّر اللغة.
+              textClearOfArtwork: true,
+              onBack: () => context.router.maybePop(),
+            ),
+            const SizedBox(height: 8),
+            Expanded(child: _buildBody()),
+          ],
+        ),
       ),
     );
   }
@@ -76,11 +115,17 @@ class _OrdersScreenState extends State<OrdersScreen> {
       return AnimeErrorState(message: _error!, onAction: _load);
     }
     if (_orders.isEmpty) {
+      // [PRODUCT] (STEP 64 §22) موسَّطة كالسلة: الشخصية ← العنوان ← الوصف
+      // ← الزرّ، والشخصية أكبر بـ٣٠٪ (١٥٠ ← ١٩٥)، واللوحة بارتفاع محتواها
+      // فلا فراغ ميت — والرسم يصغر على الهواتف القصيرة بدل أن يفيض.
       return AnimeEmptyState(
-        title: 'لا توجد طلبات بعد',
-        subtitle: 'كل طلب تكمله سيظهر هنا مع حالته ومحتوياته وتفاصيل توصيله.',
-        artwork: 'assets/art/opt/a-luffy-kid.png',
-        actionLabel: 'ابدأ التسوق',
+        title: context.strings('noOrdersTitle'),
+        subtitle: context.strings('noOrdersBody'),
+        artworkSlot: VisualSlots.emptyOrders,
+        artworkHeight: OrdersScreen.emptyArtworkHeight,
+        centered: true,
+        fitContent: true,
+        actionLabel: context.strings('startShopping'),
         onAction: () => context.router.maybePop(),
       );
     }
@@ -89,7 +134,9 @@ class _OrdersScreenState extends State<OrdersScreen> {
       onRefresh: _load,
       child: ListView.separated(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(18, 8, 18, 26),
+        padding: context.scrollPadding(
+          const EdgeInsets.fromLTRB(18, 8, 18, 26),
+        ),
         itemCount: _orders.length,
         separatorBuilder: (_, _) => const SizedBox(height: 12),
         itemBuilder: (context, index) {
@@ -98,6 +145,14 @@ class _OrdersScreenState extends State<OrdersScreen> {
             order: order,
             onTap: () =>
                 context.router.push(OrderDetailRoute(orderId: order.id)),
+            // زرّ التقييم يخصّ هذا الطلب: يُفتح تقييم منتجاته هو، ولا يمرّ
+            // بشاشة عامة. الأهلية من الخادم (`canReview`) لا من الحالة هنا.
+            onReview: () async {
+              await context.router.push(RateOrderRoute(order: order));
+              // العودة من التقييم قد تُغيّر ما يُعرض (تقييم أُرسل) — نُعيد
+              // القراءة من الخادم بدل تخمين النتيجة محلياً.
+              if (context.mounted) await _load();
+            },
           );
         },
       ),

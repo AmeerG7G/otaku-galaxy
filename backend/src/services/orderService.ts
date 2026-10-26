@@ -1,6 +1,31 @@
+import { createHash } from 'node:crypto';
 import type pg from 'pg';
+import { userRepo } from '../repositories/userRepo.js';
+import { renderNotification } from '../domain/notificationTemplates.js';
+import {
+  DEFAULT_LOCALE,
+  isAppLocale,
+  kurdishOrNull,
+  pickLocalized,
+  type AppLocale,
+} from '../utils/locale.js';
+import { config } from '../config/index.js';
 import { sendRatingReminderNow } from '../jobs/ratingReminderJob.js';
 import { db, withTransaction } from '../database/pool.js';
+import { adminEvents } from './adminEvents.js';
+import { birthdayDiscountAmount } from '../domain/birthday.js';
+import {
+  fitProductDiscounts,
+  pairPricedLineTotals,
+  priceOrder,
+  quoteFingerprint,
+  type PairPricedLine,
+  type QuotedLine,
+} from '../domain/orderPricing.js';
+import {
+  eligiblePurchaseValue,
+  purchasePointsFor,
+} from '../domain/galaxyPoints.js';
 import { birthdayRepo } from '../repositories/birthdayRepo.js';
 import { cartRepo } from '../repositories/cartRepo.js';
 import { productRepo } from '../repositories/catalogRepo.js';
@@ -8,56 +33,335 @@ import { governorateRepo } from '../repositories/storefrontRepo.js';
 import { notificationRepo } from '../repositories/notificationsRepo.js';
 import { orderRepo, type OrderItemSnapshot, type OrderWithItems } from '../repositories/orderRepo.js';
 import { pointsRepo } from '../repositories/pointsRepo.js';
+import { productCostsRepo } from '../repositories/productCostsRepo.js';
 import { zoneRepo } from '../repositories/zonesRepo.js';
 import { ORDER_STATUSES as ALL_ORDER_STATUSES } from '../types/order-status.js';
-import {
-  ORDER_STATUS_TRANSITIONS,
-  type OrderStatus,
-} from '../types/index.js';
-import { Errors } from '../utils/errors.js';
-import { businessConfigService } from './businessConfigService.js';
+import { ORDER_STATUS_TRANSITIONS, type OrderStatus } from '../types/index.js';
+import { AppError, Errors } from '../utils/errors.js';
+import { loyaltyRewardsService } from './loyaltyRewardsService.js';
+import { restockService } from './restockService.js';
 
 /**
- * رفض طلب داخل معاملة واحدة: تحديث الحالة + استرجاع المخزون المحجوز.
- * — تُسترد الكميات مرة واحدة (التحديث نفسه يسجَّل في order_status_history).
- * — تُحمى من الاسترجاع المزدوج: إذا كان الطلب مرفوضاً أصلاً لا يُسترد شيء.
- * يعتمد هذا المسارُ الموحّدَ في رفض الإدارة وفي إلغاء العميل.
+ * استهلاك مخزون طلبٍ لحظةَ **قبوله** — داخل معاملة القبول وبعد قفل صفّ الطلب.
+ *
+ * ═══ العقد (قرار عمل 2026-09-14) ═══
+ *   إرسال الزبون      ← لا تنزيل ولا حجز.
+ *   رفضُ طلبٍ منتظر   ← لا مساس بالمخزون (لا يوجد ما يُسترد).
+ *   قبول الإدارة      ← هنا وحده: قفلٌ، قراءةُ المخزون **الحالي**، تنزيلٌ
+ *                        كامل أو لا شيء.
+ *   رفضٌ بعد القبول   ← يُرجع ما استُهلك (`releaseStockOnRejection`) —
+ *                        القاعدة القائمة قبل نقل التنزيل، ولم تتغيّر.
+ *
+ * [CRITICAL] القفل بترتيبٍ ثابت (`ORDER BY id FOR UPDATE`) يمنع الجمود بين
+ * قبولَين يحملان المنتجين نفسيهما بترتيبين متعاكسين، ويُسلسل القبولَين
+ * المتنافسَين على المنتج نفسه: الثاني ينتظر التزام الأول ثم يقرأ المخزون
+ * المحدَّث — فيفشل بـ`INSUFFICIENT_STOCK` بدل أن يبيع ما بيع. يصحّ ذلك عبر
+ * عمليات خادم مستقلّة لأن الحارس في PostgreSQL لا في الذاكرة
+ * (`scripts/oversell-multi-instance.ts`).
+ *
+ * [CRITICAL] الكمية تُجمع على **المنتج** لا على السطر: سطران بخيارين لمنتجٍ
+ * مخزونه ٣ يُقاسان معاً. والتنزيل مشروط (`stock >= qty`) رغم القفل —
+ * حارسٌ ثانٍ لا يكلّف شيئاً. أي رمي هنا يُسقط المعاملة كلها: لا تنزيل
+ * جزئي، ولا يتحرّك الطلب من الانتظار.
  */
-async function rejectOrderInTransaction(
-  tx: pg.PoolClient,
-  order: OrderWithItems,
-  status: OrderStatus,
-  note: string | null,
-  changedBy: string,
-) {
-  await orderRepo.updateStatus(tx, order.id, status, note, changedBy);
+async function consumeStockOnApproval(tx: pg.PoolClient, order: OrderWithItems) {
+  const wanted = new Map<string, { name: string; quantity: number }>();
   for (const item of order.items) {
-    await tx.query('UPDATE products SET stock = stock + $2 WHERE id = $1', [
-      item.productId,
-      item.quantity,
-    ]);
+    const current = wanted.get(item.productId);
+    wanted.set(item.productId, {
+      name: item.productName,
+      quantity: (current?.quantity ?? 0) + item.quantity,
+    });
+  }
+  const ids = [...wanted.keys()].sort();
+  if (ids.length === 0) return;
+
+  const { rows } = await tx.query<{ id: string; name: string; stock: string }>(
+    `SELECT id, name, stock FROM products WHERE id = ANY($1::uuid[]) ORDER BY id FOR UPDATE`,
+    [ids],
+  );
+  const locked = new Map(rows.map((row) => [row.id, row]));
+
+  for (const [productId, line] of wanted) {
+    const product = locked.get(productId);
+    if (!product) {
+      throw Errors.conflict(`«${line.name}» لم يعد موجوداً في الكتالوج`, 'PRODUCT_UNAVAILABLE');
+    }
+    const available = Number(product.stock);
+    if (available < line.quantity) {
+      throw Errors.conflict(
+        `مخزون «${product.name}» غير كافٍ (المتاح: ${available})`,
+        'INSUFFICIENT_STOCK',
+      );
+    }
+  }
+
+  for (const [productId, line] of wanted) {
+    const { rowCount } = await tx.query(
+      'UPDATE products SET stock = stock - $2 WHERE id = $1 AND stock >= $2',
+      [productId, line.quantity],
+    );
+    if ((rowCount ?? 0) === 0) {
+      const available = Number(locked.get(productId)?.stock ?? 0);
+      throw Errors.conflict(
+        `مخزون «${line.name}» غير كافٍ (المتاح: ${available})`,
+        'INSUFFICIENT_STOCK',
+      );
+    }
+  }
+
+  // [D1] تكلفة الشراء تُلتقط هنا — لحظة خروج البضاعة من المخزون، تحت أقفال
+  // المنتجات نفسها، ومرة واحدة لكل بند. بندٌ بلا تكلفة مسجّلة يبقى بلا لقطة
+  // («الربح غير متاح»)، ولا تُكتب لاحقاً من تكلفةٍ حالية أبداً.
+  await productCostsRepo.snapshotOrderItemCosts(tx, order.id);
+}
+
+/**
+ * إرجاع مخزون طلبٍ **استُهلك** ثم رُفض — داخل معاملة الرفض وبعد قفل صفّ الطلب.
+ *
+ * يُستدعى فقط لطلبٍ غادر الانتظار (قُبل فنُزِّل مخزونه، أو طلبٍ موروث في
+ * `CONFIRMED`/`PREPARING` نُزِّل عند إنشائه تحت النموذج القديم). رفضُ
+ * المنتظر لا يمرّ من هنا: لم يُنزَّل شيء فلا شيء يُرجَع. وتكرار الرفض
+ * «حالةٌ نفسها» فلا يُرجع ثانيةً — مرةً واحدة بالبناء.
+ *
+ * الإرجاع بترتيب المعرّفات نفسه الذي يقفل به القبول، فلا يتقاطع رفضٌ
+ * وقبولٌ متزامنان على المنتجين نفسيهما بترتيبين متعاكسين. المنتج المحذوف
+ * من القاعدة (`product_id` فارغ) لا شيء يُرجَع إليه.
+ *
+ * [CRITICAL] إرجاعٌ يُعيد منتجاً من صفر هو «عودة التوفر» بعينها: عقد
+ * «أعلمني عند توفره» (§42.5) يسري هنا كما يسري على حفظ المسؤول
+ * (`restockService.stockReturned`) — في المعاملة نفسها، ومرة واحدة لأن تكرار
+ * الرفض «حالةٌ نفسها» لا يمرّ من هنا.
+ */
+async function releaseStockOnRejection(tx: pg.PoolClient, order: OrderWithItems) {
+  const released = new Map<string, number>();
+  for (const item of order.items) {
+    if (!item.productId) continue;
+    released.set(item.productId, (released.get(item.productId) ?? 0) + item.quantity);
+  }
+  for (const productId of [...released.keys()].sort()) {
+    const { rows } = await tx.query<{ name: string; name_ckb: string | null; previous: number }>(
+      `UPDATE products SET stock = stock + $2 WHERE id = $1
+       RETURNING name, name_ckb, stock - $2 AS previous`,
+      [productId, released.get(productId)],
+    );
+    const product = rows[0];
+    if (product && Number(product.previous) === 0) {
+      await restockService.stockReturned(tx, productId, {
+        ar: product.name,
+        ckb: kurdishOrNull(product.name_ckb),
+      });
+    }
   }
 }
 
 /**
- * مهلة فتح التقييم المعمول بها الآن.
+ * مهلة **تذكير** التقييم — لا مهلة فتحه.
  *
- * تُقرأ عند كل انتقال حالة لا مرة واحدة عند الإقلاع، فتغييرُها من لوحة
- * التحكم يسري على الطلب التالي مباشرةً. الطلبات القائمة لا تتأثر لأن
- * الموعد مثبَّت في `rating_available_at` وقت الخروج للتوصيل.
+ * التقييم يُفتح بتأكيد الاستلام فوراً. هذه القيمة تجدول إشعار «شلونها
+ * المنتجات؟» فقط، وهي ثابت تشغيلي في البيئة لا إعداد في لوحة التحكم.
  */
-async function ratingDelayHours(): Promise<number> {
-  return businessConfigService.value('order_rating_delay_hours');
+function reviewReminderDelayHours(): number {
+  return config.orders.reviewReminderDelayHours;
 }
 
 
+/**
+ * خصما الطلب على المنتجات كما يقرّرهما الخادم — مصدرٌ واحد للإنشاء والمعاينة.
+ *
+ * - **الميلاد**: نسبة ثابتة (`domain/birthday.ts`)، مرة واحدة سنوياً، بتقويم
+ *   المتجر — التقويم نفسه الذي يرى به المسؤول «عيد اليوم».
+ * - **مزيّة المستوى**: الخصم المطالَب به الأقدم، من مجموع المنتجات الفعلي
+ *   ومسقوفاً بسقفه المالي.
+ *
+ * `reserve` (إنشاء الطلب) يقفل صفّ المزيّة ليستهلكه بعد إنشاء الطلب؛
+ * `preview` (شاشة الدفع) يقرأ المرشّح نفسه بلا قفل ولا استهلاك. لا مبلغ
+ * يُقرأ من العميل في الحالتين.
+ *
+ * كلا المبلغين مقرَّب بقاعدة الخصم الواحدة (`domain/discountRounding.ts`)
+ * داخل دالته، ثم يتّسعان في مجموع المنتجات (`fitProductDiscounts`). ما يعود من
+ * هنا هو ما يُحفظ ويُستهلك بعينه: مزيّةٌ لم يبقَ لها شيء تعود `null` فلا
+ * تُستهلك، وخصم ميلادٍ صفريّ لا يُسجَّل.
+ */
+async function orderDiscounts(
+  client: pg.Pool | pg.PoolClient,
+  userId: string,
+  productsTotal: number,
+  mode: 'reserve' | 'preview',
+) {
+  const birthday = await birthdayRepo.status(client, userId, config.storeTimezone);
+  const candidate =
+    mode === 'reserve'
+      ? await loyaltyRewardsService.reserveDiscountForOrder(
+          client as pg.PoolClient,
+          userId,
+          productsTotal,
+        )
+      : await loyaltyRewardsService.previewDiscountForOrder(client, userId, productsTotal);
+  const fitted = fitProductDiscounts(productsTotal, {
+    birthday: birthday.rewardAvailable ? birthdayDiscountAmount(productsTotal) : 0,
+    loyalty: candidate?.amount ?? 0,
+  });
+  const loyaltyReward =
+    candidate && fitted.loyalty > 0 ? { ...candidate, amount: fitted.loyalty } : null;
+  return {
+    birthdayDiscount: fitted.birthday,
+    loyaltyReward,
+    discount: fitted.birthday + fitted.loyalty,
+  };
+}
+
+/**
+ * بصمة إرسال الطلب — ما يميّز «المحاولة نفسها» عن طلبٍ مختلف بالمفتاح نفسه.
+ *
+ * تُحسب من المدخل **بعد** التحقق (العنوان مقصوص، الرقم مطبَّع) فلا تختلف
+ * محاولتان متطابقتان بمسافة. العربة **ليست** فيها عمداً: المحاولة الأولى
+ * تُفرغها، فإعادةٌ صادقة كانت ستختلف بصمتها دائماً.
+ */
+/** ما راجعه الزبون لكل منتج — فحصٌ لا مصدر (`validators/orders.ts`). */
+interface ExpectedPrice {
+  productId: string;
+  unitPrice: number;
+  /** 085؛ الغائب = لا فحص (تطبيقٌ أقدم). */
+  pairPrice?: number | null;
+}
+
+function orderFingerprint(input: {
+  governorateId: string;
+  fullAddress: string;
+  phone: string;
+  zoneId?: string | null;
+  expectedPrices?: ReadonlyArray<ExpectedPrice>;
+  expectedQuote?: string;
+}): string {
+  // سعر القطعتين يدخل البصم حين يُرسَل وحده، فيبقى بصم العميل الأقدم كما كان حرفاً بحرف.
+  const expectedPrices = [...(input.expectedPrices ?? [])]
+    .map((entry) =>
+      entry.pairPrice === undefined
+        ? ([entry.productId, entry.unitPrice] as const)
+        : ([entry.productId, entry.unitPrice, entry.pairPrice] as const),
+    )
+    .sort((a, b) => (a[0] === b[0] ? a[1] - b[1] : a[0] < b[0] ? -1 : 1));
+  const canonical = JSON.stringify({
+    v: 1,
+    governorateId: input.governorateId,
+    zoneId: input.zoneId ?? null,
+    fullAddress: input.fullAddress,
+    phone: input.phone,
+    expectedPrices,
+    // الملخّص الذي راجعه الزبون جزءٌ من الطلب: المفتاح نفسه مع ملخّصٍ آخر
+    // طلبٌ آخر (422) لا إعادة. بلا ملخّص يبقى البصم كما كان حرفاً بحرف —
+    // `JSON.stringify` يُسقط الحقل غير المعرَّف — فلا يتغيّر شيء للتطبيق.
+    expectedQuote: input.expectedQuote,
+  });
+  return createHash('sha256').update(canonical).digest('hex');
+}
+
+/** القيد الفريد على (الزبون، المفتاح) — هجرة 083. */
+const IDEMPOTENCY_CONSTRAINT = 'uq_orders_user_idempotency_key';
+
+/**
+ * طلبٌ سابق لهذا الزبون بالمفتاح نفسه: يُعاد كما هو (بلا أي أثر جانبي)، أو
+ * يُرفض المفتاح إن حمل طلباً مختلفاً. `null` = لا طلب بهذا المفتاح بعد.
+ */
+async function replayIfSubmitted(
+  client: pg.Pool | pg.PoolClient,
+  userId: string,
+  idempotency: { key: string; fingerprint: string },
+): Promise<{ order: OrderWithItems | null; replayed: true } | null> {
+  const previous = await orderRepo.findByIdempotencyKey(client, userId, idempotency.key);
+  if (!previous) return null;
+  if (previous.fingerprint !== idempotency.fingerprint) {
+    // 422 لا 409: التطبيق يقرأ 409 تعارضاً في العربة (مخزون/سعر) فيعيد مزامنتها.
+    throw new AppError(
+      422,
+      'IDEMPOTENCY_KEY_REUSED',
+      'مفتاح الطلب استُعمل لطلبٍ مختلف — أعد المحاولة من صفحة المراجعة',
+    );
+  }
+  return { order: await orderRepo.findById(client, previous.id), replayed: true };
+}
+
 export const orderService = {
-  /** إنشاء طلب: معاملة واحدة — تحقق المخزون، لقطات، إنشاء، تنزيل المخزون، تفريغ العربة. */
+  /**
+   * إنشاء طلب: معاملة واحدة — بوّابة الطلب، لقطات، إنشاء، تفريغ العربة.
+   *
+   * [CRITICAL] **لا تنزيل مخزون هنا.** الطلب يدخل الانتظار والمخزون كما
+   * هو؛ الاستهلاك يقع عند قبول الإدارة (`consumeStockOnApproval`). ما يبقى
+   * هنا «هل يجوز للزبون أن يطلب هذه الكمية الآن؟» — بوّابةُ طلبٍ لا حجزٌ:
+   * طلبان منتظران قد يطلبان المخزون نفسه، ويحسم القبولُ بينهما.
+   */
   async create(
     userId: string,
-    input: { governorateId: string; fullAddress: string; phone: string; zoneId?: string | null },
-  ) {
+    input: {
+      governorateId: string;
+      fullAddress: string;
+      phone: string;
+      zoneId?: string | null;
+      expectedPrices?: ReadonlyArray<ExpectedPrice>;
+      /** بصمة المعاينة التي راجعها الزبون (`checkoutQuote().fingerprint`) — فحصٌ لا مصدر. */
+      expectedQuote?: string;
+    },
+    /**
+     * لغة الطلب — تسمّي المنتج في رسائل الرفض أدناه بلغة الزبون (066).
+     * الإطار العربي تترجمه طبقة الأخطاء (`errorMessages.ts`)، والاسم داخله
+     * يجب أن يكون بلغة الواجهة نفسها لا عربياً وسط جملة كردية.
+     */
+    locale: AppLocale = DEFAULT_LOCALE,
+    /**
+     * مفتاح عدم التكرار من ترويسة `Idempotency-Key` (اختياري — هجرة 083).
+     *
+     * [CRITICAL] غيابه = السلوك القائم حرفياً (العربة هي المفتاح الضمني،
+     * وإعادة المحاولة بعد الالتزام تعود `EMPTY_CART`). حضوره يجعل إعادة
+     * المحاولة نفسها تُعيد الطلب الملتزَم بدل خطأٍ ملتبس.
+     */
+    idempotencyKey: string | null = null,
+  ): Promise<{ order: OrderWithItems | null; replayed: boolean }> {
+    const idempotency = idempotencyKey
+      ? { key: idempotencyKey, fingerprint: orderFingerprint(input) }
+      : null;
+    try {
+      return await orderService.createInTransaction(userId, input, locale, idempotency);
+    } catch (error) {
+      // شبكة أمان: القيد الفريد يحسم سباقاً لم يمنعه قفل العربة (لا يقع اليوم
+      // لأن القفل يُسلسل محاولات الزبون، لكنه يحرس أي إعادة ترتيبٍ مستقبلية).
+      // يسبق ترجمة 23505 العامّة التي كانت ستردّ `409 DUPLICATE_VALUE`.
+      const { code, constraint } = (error ?? {}) as { code?: string; constraint?: string };
+      if (idempotency && code === '23505' && constraint === IDEMPOTENCY_CONSTRAINT) {
+        const replay = await replayIfSubmitted(db, userId, idempotency);
+        if (replay) return replay;
+      }
+      throw error;
+    }
+  },
+
+  /** جسم الإنشاء داخل معاملته — انظر [create]. */
+  async createInTransaction(
+    userId: string,
+    input: {
+      governorateId: string;
+      fullAddress: string;
+      phone: string;
+      zoneId?: string | null;
+      expectedPrices?: ReadonlyArray<ExpectedPrice>;
+      /** بصمة المعاينة التي راجعها الزبون (`checkoutQuote().fingerprint`) — فحصٌ لا مصدر. */
+      expectedQuote?: string;
+    },
+    locale: AppLocale,
+    idempotency: { key: string; fingerprint: string } | null,
+  ): Promise<{ order: OrderWithItems | null; replayed: boolean }> {
     return withTransaction(async (tx) => {
+      // [CRITICAL] العربة مقفولة لهذه المعاملة **أولاً**: إرسالٌ متزامن ينتظر ثم
+      // يجد عربةً فارغة — لا طلبين من عربة واحدة (انظر `listItemsForCheckout`).
+      // ويُسلسل القفلُ محاولات الزبون نفسه، فالبحث عن المفتاح بعده يرى محاولةً
+      // أولى التزمت أثناء الانتظار. الإعادة تسبق كل فحص آخر: محاولةٌ التزمت
+      // تُعاد كما هي ولو عُطِّلت محافظتها بعدها.
+      const cartItems = await cartRepo.listItemsForCheckout(tx, userId);
+      if (idempotency) {
+        const replay = await replayIfSubmitted(tx, userId, idempotency);
+        if (replay) return replay;
+      }
+
       const governorate = await governorateRepo.listActive(tx);
       const selected = governorate.find((g) => g.id === input.governorateId);
       if (!selected) throw Errors.badRequest('المحافظة غير موجودة أو غير نشطة');
@@ -82,49 +386,159 @@ export const orderService = {
         throw Errors.badRequest('هذه المحافظة بلا مناطق توصيل', 'ZONE_NOT_SUPPORTED');
       }
 
-      const cartItems = await cartRepo.listItems(tx, userId);
-      if (cartItems.length === 0) throw Errors.badRequest('العربة فارغة — أضف منتجات أولاً');
+      if (cartItems.length === 0) throw Errors.badRequest('العربة فارغة — أضف منتجات أولاً', 'EMPTY_CART');
 
-      const snapshots: OrderItemSnapshot[] = [];
+      // الأسطر التي اجتازت كل فحص — تُسعَّر معاً بعد الحلقة لأن عرض القطعتين
+      // (085) يعدّ قطع المنتج عبر أسطره، فمبلغ السطر لا يُعرف من السطر وحده.
+      const accepted: Array<{
+        item: (typeof cartItems)[number];
+        product: NonNullable<ReturnType<typeof products.get>>;
+        unitPrice: number;
+      }> = [];
       // خصم التوصيل: مجموع مبالغ الترويج عن الكميات المطلوبة. يُحتسب على
       // الخادم من بيانات المنتج وقت الطلب — لا يُقرأ أي مبلغ من العميل.
       let deliveryPromoTotal = 0;
+      // قراءةٌ واحدة لكل منتجات العربة لا قراءةٌ لكل سطر.
+      const products = await productRepo.findByIds(
+        tx,
+        [...new Set(cartItems.map((line) => line.productId))],
+      );
       for (const item of cartItems) {
-        const product = await productRepo.findById(tx, item.productId);
+        const product = products.get(item.productId);
+        // [CRITICAL] شبكة الأمان (CA-14): سطرٌ عُطِّل منتجه بعد آخر مزامنة يرفض
+        // الإرسال كله. كان يُسقط من الطلب بصمت فيخرج طلبٌ غير الذي رآه الزبون.
+        // الاسم في رسائل الرفض بلغة الزبون — سطر العربة يحمل اللغتين.
+        const shownName = pickLocalized(item.productNameAr, item.productNameCkb, locale);
         if (!product || !product.isActive) {
-          throw Errors.conflict(`«${item.productName}» لم يعد متاحاً — أزله من العربة`);
-        }
-        const maxQty = Number(product.stock);
-        if (maxQty < item.quantity) {
           throw Errors.conflict(
-            `مخزون «${item.productName}» غير كافٍ (المتاح: ${maxQty})`,
+            `«${shownName}» لم يعد متاحاً — أزله من العربة`,
+            'PRODUCT_UNAVAILABLE',
+          );
+        }
+        // [CRITICAL] «قريباً — السعر يُعلن لاحقاً» (084): سعرٌ أُزيل بعد الإضافة
+        // إلى العربة. لا يُحسب صفراً ولا يُسقط السطر: الإرسال كله يُرفض قبل
+        // حجز أي خصم أو كتابة، كما يُرفض المعطَّل.
+        const unitPrice = product.price;
+        if (unitPrice === null) {
+          throw Errors.conflict(
+            `سعر «${shownName}» لم يُعلن بعد — أزله من العربة`,
+            'PRODUCT_NOT_PRICED',
+          );
+        }
+        // [CRITICAL] اتّساق السعر (CA-14، الخيار أ): الزبون رأى في عربته المُزامَنة
+        // سعراً غير الحالي ⇒ الإرسال كله يُرفض. المقارنة بالقراءة **نفسها** التي
+        // تُبنى منها اللقطة أدناه وداخل هذه المعاملة بعد قفل العربة — لا قراءة
+        // سابقة يمكن أن يسبقها تعديلٌ ملتزَم. يقع قبل حجز الخصمين وقبل إنشاء
+        // الطلب، فالرفض لا يترك أثراً. السعر المتوقَّع فحصٌ لا مصدر.
+        // وسعر القطعتين (085) متى أرسله العميل: تعديل العرض يغيّر ما يُدفع ولو
+        // بقي سعر الوحدة كما هو.
+        if (
+          input.expectedPrices?.some(
+            (expected) =>
+              expected.productId === product.id &&
+              (expected.unitPrice !== unitPrice ||
+                (expected.pairPrice !== undefined && expected.pairPrice !== product.pairPrice)),
+          )
+        ) {
+          throw Errors.conflict(
+            `تغيّر سعر «${shownName}» — راجع سلتك قبل الإرسال`,
+            'PRODUCT_PRICE_CHANGED',
+          );
+        }
+        // [CRITICAL] المقارنة بمجموع الطلب من هذا المنتج لا بكمية السطر.
+        // التحقق سطراً سطراً كان يمرّر عربةً فيها ثلاثة أسطر من منتجٍ
+        // مخزونه ٣، كلٌّ منها قطعة، فيُباع أربعٌ أو خمس. القيد في القاعدة
+        // (هجرة ٠٤٦) يمنع انقسام الأسطر، وهذا يحرس المجموع مهما انقسمت.
+        //
+        // بوّابةُ طلبٍ لا استهلاك: قراءةٌ بلا قفل تكفي لأن لا شيء يُكتب
+        // في المنتج هنا. الحكم النهائي عند القبول بالرمز نفسه
+        // (`INSUFFICIENT_STOCK`) بعد قفلٍ وقراءةٍ للمخزون الحالي.
+        const maxQty = Number(product.stock);
+        const orderedFromProduct = cartItems
+          .filter((line) => line.productId === item.productId)
+          .reduce((sum, line) => sum + line.quantity, 0);
+        if (maxQty < orderedFromProduct) {
+          throw Errors.conflict(
+            `مخزون «${shownName}» غير كافٍ (المتاح: ${maxQty})`,
+            'INSUFFICIENT_STOCK',
           );
         }
         if (product.hasDeliveryPromo && product.deliveryPromoAmount > 0) {
           deliveryPromoTotal += product.deliveryPromoAmount * item.quantity;
         }
-        snapshots.push({
-          productId: product.id,
-          productName: product.name,
-          imageUrl: product.images[0] ?? null,
-          optionValue: item.optionValue,
-          price: product.price,
-          quantity: item.quantity,
-          lineTotal: product.price * item.quantity,
-        });
+        accepted.push({ item, product, unitPrice });
       }
 
-      // سقف الخصم رسوم التوصيل نفسها — لا توصيل سالب مهما تراكم الترويج.
-      const deliveryDiscount = Math.min(deliveryPromoTotal, deliveryFee);
+      // [CRITICAL] «قطعتان بسعر» (085): مبلغ كل سطر من الدالة نفسها التي تعاين
+      // بها العربة وشاشة الدفع، ومن قراءة المنتج **نفسها** داخل هذه المعاملة.
+      // السعران يُجمَّدان في اللقطة، فتعديل العرض لاحقاً لا يمسّ هذا الطلب.
+      const lineTotals = pairPricedLineTotals(
+        accepted.map(({ item, product, unitPrice }) => ({
+          id: item.id,
+          productId: product.id,
+          quantity: item.quantity,
+          unitPrice,
+          pairPrice: product.pairPrice,
+          createdAt: item.createdAt,
+        })),
+      );
+      const snapshots: OrderItemSnapshot[] = accepted.map(({ item, product, unitPrice }) => ({
+        productId: product.id,
+        // اللقطة باللغتين تُجمَّد الآن (066): تعديل اسم المنتج لاحقاً لا يغيّر
+        // طلباً قائماً، والزبون يرى طلبه بلغة واجهته.
+        productName: product.nameAr,
+        productNameAr: product.nameAr,
+        productNameCkb: product.nameCkb,
+        imageUrl: product.images[0] ?? null,
+        optionValue: item.optionValue,
+        price: unitPrice,
+        pairPrice: product.pairPrice,
+        quantity: item.quantity,
+        lineTotal: lineTotals.get(item.id)!,
+      }));
 
-      // خصم عيد الميلاد: يُحتسب على الخادم فقط، ويُستهلك مرة واحدة سنوياً.
-      // النسبة تُقرأ لحظة إنشاء الطلب، فتغييرها لاحقاً لا يمسّ طلباً مضى.
-      const birthday = await birthdayRepo.status(tx, userId);
-      const birthdayPercent = await businessConfigService.value('birthday_discount_percent');
+      // القسمة (سقفُ الزبون وفائضُ المتجر) تقع في `orderRepo.create` من
+      // القيمة الخام وحدها، فلا موضعان يحسبانها وقد يتباعدان.
+
+      // الخصمان (الميلاد ومزيّة المستوى) من المسار نفسه الذي تعاين به شاشة
+      // الدفع (`checkoutQuote`) — هنا بحجز المزيّة تحت القفل. الاستهلاك داخل
+      // هذه المعاملة، فسقوط الطلب لاحقاً يُرجع المزيّة. يسبق إنشاء الطلب لأن
+      // `discount` جزءٌ من الصفّ المُنشأ؛ الربط بالطلب يقع بعد وجود معرّفه.
       const productsTotal = snapshots.reduce((sum, item) => sum + item.lineTotal, 0);
-      const discount = birthday.rewardAvailable
-        ? Math.round((productsTotal * birthdayPercent) / 100)
-        : 0;
+      const { birthdayDiscount, loyaltyReward, discount } = await orderDiscounts(
+        tx,
+        userId,
+        productsTotal,
+        'reserve',
+      );
+
+      // [CRITICAL] ربط الإرسال بالمراجعة: البصمة من القيم التي ستُحفظ الآن بعينها
+      // (الأسطر، الوجهة برسومها، الخصمان المحجوزان) بالدالة نفسها التي تعاين بها
+      // شاشة الدفع. اختلافها ⇒ رفضٌ قبل أي كتابة — المزيّة المحجوزة يُرجعها
+      // تراجع المعاملة. غيابها (التطبيق اليوم) = لا فحص، كما كان.
+      if (input.expectedQuote !== undefined) {
+        const reviewed = quoteFingerprint({
+          lines: snapshots.map((item) => ({
+            productId: item.productId,
+            optionValue: item.optionValue,
+            quantity: item.quantity,
+            unitPrice: item.price,
+          })),
+          governorateId: selected.id,
+          zoneId,
+          deliveryFee,
+          pricing: priceOrder({
+            productsTotal,
+            deliveryFee,
+            deliveryPromoRaw: deliveryPromoTotal,
+            discount,
+            loyaltyDiscount: loyaltyReward?.amount ?? 0,
+          }),
+        });
+        if (reviewed !== input.expectedQuote) {
+          throw Errors.conflict('تغيّر ملخّص طلبك منذ راجعته', 'QUOTE_CHANGED');
+        }
+      }
 
       const order = await orderRepo.create(tx, {
         userId,
@@ -137,22 +551,199 @@ export const orderService = {
         zoneId,
         zoneName,
         discount,
-        deliveryDiscount,
+        deliveryPromoRaw: deliveryPromoTotal,
+        loyaltyDiscount: loyaltyReward?.amount ?? 0,
+        idempotency,
       });
 
-      if (discount > 0) {
+      if (birthdayDiscount > 0) {
         // القيد الفريد هو الحارس الحقيقي: إن فشل الإدراج فالخصم مستهلك
         // بالفعل هذه السنة، فنتراجع عن الطلب كاملاً بدل منحه مرتين.
-        const consumed = await birthdayRepo.consume(tx, userId, order.id, discount);
+        const consumed = await birthdayRepo.consume(
+          tx,
+          userId,
+          order.id,
+          birthdayDiscount,
+          config.storeTimezone,
+        );
         if (!consumed) {
           throw Errors.conflict('خصم عيد الميلاد مستخدم هذه السنة', 'BIRTHDAY_DISCOUNT_USED');
         }
       }
 
+      if (loyaltyReward) {
+        // الصفّ مقفول منذ الحجز، فهذا التثبيت لا يخسر سباقاً في الحالة
+        // العادية. الشرط يبقى: لو استُهلك رغم ذلك نُسقط الطلب كاملاً بدل
+        // إنشائه بخصمٍ لم يُحجز فعلاً.
+        const applied = await loyaltyRewardsService.consumeReserved(
+          tx,
+          loyaltyReward.redemptionId,
+          order.id,
+        );
+        if (!applied) {
+          throw Errors.conflict('مزيّة الخصم استُهلكت في طلب آخر', 'REWARD_ALREADY_USED');
+        }
+      }
+
+      // ربط هدية المستوى النشطة بهذا الطلب — إن وُجدت.
+      // [CRITICAL] الهدية لا تُكتَب consumed_at ولا تؤثر على المبالغ؛ هي فقط
+      // مرتبطةٌ بالطلب حتى يسلّمها المسؤول. الصفّ مقفول بـFOR UPDATE داخل
+      // reserveGiftForOrder، والمؤشر الفريد على orders.loyalty_gift_redemption_id
+      // هو الحارس النهائي ضد أي سباق لم يُكشف بالقفل.
+      await loyaltyRewardsService.reserveGiftForOrder(tx, userId, order.id);
+
       await cartRepo.clear(tx, userId);
       const created = await orderRepo.findById(tx, order.id);
-      return created;
+      // تنبيه هاتف المسؤول — في المعاملة نفسها: طلبٌ تراجع لا يرنّ هاتفاً.
+      if (created) await adminEvents.newOrder(tx, created);
+      return { order: created, replayed: false };
     });
+  },
+
+  /**
+   * ملخّص الدفع قبل التأكيد — المبالغ التي سيحفظها [create] لو أُرسل الطلب الآن.
+   *
+   * [CRITICAL] العطل الذي يعالجه (2026-09-27): الزبون يطالب بمزيّة الخصم ثم
+   * يملأ عربته ويصل إلى المراجعة فلا يجد الخصم — الشاشتان كانتا تعاينان خصم
+   * الميلاد على العميل وحده، ولا تعرفان المزيّة أصلاً، بينما كان الإنشاء
+   * يطبّقها. الآن تُعرض على الزبون أرقام الخادم نفسها:
+   *   • العربة المحفوظة على الخادم (ما سيُنشأ منه الطلب) بأسعار المنتجات الحالية.
+   *   • الخصمان من `orderDiscounts` بوضع `preview` — المرشّح نفسه بلا قفل،
+   *     فالمعاينة لا تحجز المزيّة ولا تستهلكها أبداً.
+   *   • المبالغ من `priceOrder` — الدالة نفسها التي يحفظ بها `orderRepo.create`.
+   * رسوم التوصيل تُحسب متى عُرفت المحافظة (والمنطقة إن كانت مقسّمة)؛ قبل
+   * ذلك تكون `null` ويبقى الإجمالي `null` — لا رقمَ نعرف أنه قد يتغيّر.
+   *
+   * المعاينة ليست وعداً: الإنشاء يعيد الحساب كله تحت الأقفال، وهو الحكم.
+   */
+  async checkoutQuote(
+    userId: string,
+    input: { governorateId?: string | null; zoneId?: string | null },
+  ) {
+    const lines = await cartRepo.listAllItems(db, userId);
+    const products = await productRepo.findByIds(db, [...new Set(lines.map((l) => l.productId))]);
+
+    let deliveryPromoRaw = 0;
+    const pricedLines: Array<PairPricedLine & { optionValue: string | null }> = [];
+    // ما سيرفض الإنشاءُ به الطلبَ كله — يُعرض قبل التأكيد لا بعده.
+    const issues: Array<
+      | { code: 'PRODUCT_UNAVAILABLE'; productId: string }
+      | { code: 'PRODUCT_NOT_PRICED'; productId: string }
+      | { code: 'INSUFFICIENT_STOCK'; productId: string; available: number }
+    > = [];
+    const orderedByProduct = new Map<string, number>();
+    for (const line of lines) {
+      const product = products.get(line.productId);
+      // سطرٌ عُطِّل منتجه سيرفضه الإنشاء كله (`PRODUCT_UNAVAILABLE`)؛ لا يُحسب هنا.
+      if (!product || !product.isActive) {
+        issues.push({ code: 'PRODUCT_UNAVAILABLE', productId: line.productId });
+        continue;
+      }
+      // سعرٌ لم يُعلن (084): الإنشاء يرفضه كله (`PRODUCT_NOT_PRICED`)، ولا يُحسب صفراً.
+      const unitPrice = product.price;
+      if (unitPrice === null) {
+        issues.push({ code: 'PRODUCT_NOT_PRICED', productId: line.productId });
+        continue;
+      }
+      if (product.hasDeliveryPromo && product.deliveryPromoAmount > 0) {
+        deliveryPromoRaw += product.deliveryPromoAmount * line.quantity;
+      }
+      orderedByProduct.set(product.id, (orderedByProduct.get(product.id) ?? 0) + line.quantity);
+      pricedLines.push({
+        id: line.id,
+        productId: product.id,
+        optionValue: line.optionValue,
+        quantity: line.quantity,
+        unitPrice,
+        pairPrice: product.pairPrice,
+        createdAt: line.createdAt,
+      });
+    }
+    // عرض القطعتين (085) بالدالة نفسها التي يحفظ بها الإنشاء.
+    const lineTotals = pairPricedLineTotals(pricedLines);
+    const quotedLines: Array<QuotedLine & { pairPrice: number | null; lineTotal: number }> =
+      pricedLines.map((line) => ({
+        productId: line.productId,
+        optionValue: line.optionValue,
+        quantity: line.quantity,
+        unitPrice: line.unitPrice,
+        pairPrice: line.pairPrice,
+        lineTotal: lineTotals.get(line.id)!,
+      }));
+    const productsTotal = quotedLines.reduce((sum, line) => sum + line.lineTotal, 0);
+    // البوّابة نفسها التي يطبّقها الإنشاء: مجموع المنتج لا كمية السطر.
+    for (const [productId, ordered] of orderedByProduct) {
+      const available = Number(products.get(productId)!.stock);
+      if (available < ordered) issues.push({ code: 'INSUFFICIENT_STOCK', productId, available });
+    }
+
+    let deliveryFee: number | null = null;
+    let governorateId: string | null = null;
+    let zoneId: string | null = null;
+    if (input.governorateId) {
+      const governorates = await governorateRepo.listActive(db);
+      const selected = governorates.find((g) => g.id === input.governorateId);
+      if (!selected) throw Errors.badRequest('المحافظة غير موجودة أو غير نشطة');
+      governorateId = selected.id;
+      const zones = await zoneRepo.listForGovernorate(db, selected.id);
+      if (zones.length === 0) {
+        if (input.zoneId) {
+          throw Errors.badRequest('هذه المحافظة بلا مناطق توصيل', 'ZONE_NOT_SUPPORTED');
+        }
+        deliveryFee = selected.deliveryFee;
+      } else if (input.zoneId) {
+        const zone = zones.find((entry) => entry.id === input.zoneId);
+        if (!zone) throw Errors.badRequest('منطقة التوصيل غير صالحة', 'ZONE_INVALID');
+        deliveryFee = zone.deliveryFee;
+        zoneId = zone.id;
+      }
+    }
+
+    const [{ birthdayDiscount, loyaltyReward, discount }, loyaltyGiftActivated] =
+      await Promise.all([
+        orderDiscounts(db, userId, productsTotal, 'preview'),
+        loyaltyRewardsService.previewGiftForOrder(db, userId),
+      ]);
+    const priced = priceOrder({
+      productsTotal,
+      deliveryFee: deliveryFee ?? 0,
+      deliveryPromoRaw,
+      discount,
+      loyaltyDiscount: loyaltyReward?.amount ?? 0,
+    });
+
+    return {
+      productsTotal: priced.productsTotal,
+      birthdayDiscount: priced.discount - priced.loyaltyDiscount,
+      loyaltyDiscount: priced.loyaltyDiscount,
+      loyaltyReward: loyaltyReward
+        ? {
+            levelKey: loyaltyReward.levelKey,
+            percent: loyaltyReward.percent,
+            capAmount: loyaltyReward.capAmount,
+          }
+        : null,
+      loyaltyGiftActivated,
+      discount: priced.discount,
+      deliveryFee,
+      deliveryDiscount: deliveryFee === null ? 0 : priced.deliveryDiscount,
+      total: deliveryFee === null ? null : priced.total,
+      lines: quotedLines,
+      issues,
+      // يُرسل مع الطلب (`expectedQuote`) فيُرفض إن تغيّر شيءٌ مما رآه الزبون.
+      // `null` = لا شيء قابلٌ للإرسال بعد: الرسوم مجهولة، أو العربة فارغة، أو
+      // فيها ما سيرفضه الإنشاء.
+      fingerprint:
+        deliveryFee === null || governorateId === null || quotedLines.length === 0 || issues.length > 0
+          ? null
+          : quoteFingerprint({
+              lines: quotedLines,
+              governorateId,
+              zoneId,
+              deliveryFee,
+              pricing: priced,
+            }),
+    };
   },
 
   async listMyOrders(userId: string, page: number, limit: number, status?: OrderStatus) {
@@ -181,19 +772,6 @@ export const orderService = {
     return order;
   },
 
-  async cancelOrder(userId: string, orderId: string) {
-    const order = await orderRepo.findById(db, orderId);
-    if (!order || order.customer?.id !== userId) throw Errors.notFound('الطلب غير موجود');
-    if (order.status !== 'PENDING_ADMIN_CONFIRMATION' && order.status !== 'CONFIRMED') {
-      throw Errors.conflict('لا يمكن إلغاء طلب في هذه المرحلة');
-    }
-    // تحديث الحالة + استرجاع المخزون في معاملة واحدة (نفس مسار رفض الإدارة).
-    await withTransaction((tx) =>
-      rejectOrderInTransaction(tx, order, 'REJECTED', 'أُلغي من قبل العميل', userId),
-    );
-    return orderRepo.findById(db, order.id);
-  },
-
   async adminList(page: number, limit: number, status?: OrderStatus) {
     const [orders, statusCounts] = await Promise.all([
       orderRepo.listAll(db, page, limit, status),
@@ -209,7 +787,7 @@ export const orderService = {
   },
 
   /**
-   * تحديث حالة الطلب. إضافةً للتحقق من الانتقال واسترجاع المخزون عند الرفض،
+   * تحديث حالة الطلب. إضافةً للتحقق من الانتقال واستهلاك المخزون عند القبول،
    * يتولّى هذا المسار الآثار الجانبية كلها داخل معاملة واحدة:
    * - إشعار العميل بكل انتقال يهمّه.
    * - منح نقاط المجرّة عند الاستلام (مرة واحدة لكل طلب).
@@ -220,9 +798,9 @@ export const orderService = {
     orderId: string,
     input: { status: OrderStatus; note?: string },
   ) {
-    const order = await orderRepo.findById(db, orderId);
-    if (!order) throw Errors.notFound('الطلب غير موجود');
-    return applyStatusTransition(order, input.status, input.note, adminId);
+    // القراءة تحت القفل داخل `applyStatusTransition` هي التي تحسم الوجود
+    // والحالة معاً؛ قراءةٌ قبلها كانت تُنفَّذ ثم تُهمَل.
+    return applyStatusTransition(orderId, input.status, input.note, adminId);
   },
 
   /**
@@ -272,8 +850,15 @@ export const orderService = {
       );
     }
 
+    // الحارس كله في الجملة الواحدة؛ الرفض يُقرأ بعدها لتسمية سببه. طلبٌ مستلَم
+    // لم يُرسَل تذكيره ورفضته الجملة لم يبقَ فيه ما يُقيَّم (CA-16) — تذكيرٌ
+    // «اكسب نقاط المجرّة» عنه وعدٌ لا يتحقق.
     const sent = await sendRatingReminderNow(orderId);
     if (!sent) {
+      const current = await orderRepo.findById(db, orderId);
+      if (current && !current.ratingReminderSentAt && current.reviewableProductCount === 0) {
+        throw Errors.conflict('قيّم العميل كل منتجات الطلب — لا تذكير يُرسل', 'NOTHING_TO_REVIEW');
+      }
       throw Errors.conflict('أُرسل التذكير مسبقاً', 'REMINDER_ALREADY_SENT');
     }
     return orderRepo.findById(db, orderId);
@@ -307,72 +892,106 @@ export const orderService = {
       );
     }
 
-    return applyStatusTransition(order, 'COMPLETED', undefined, userId);
+    return applyStatusTransition(order.id, 'COMPLETED', undefined, userId);
   },
 };
 
 /**
  * المسار الموحّد لأي انتقال حالة — تستخدمه الإدارة وتأكيد العميل معاً.
  *
- * كل الآثار الجانبية داخل معاملة واحدة: استرجاع المخزون عند الرفض، منح
- * نقاط الاستلام مرة واحدة (يحرسها فهرس فريد)، وإشعار العميل. الاحتفاظ
+ * كل الآثار الجانبية داخل معاملة واحدة: استهلاك المخزون عند القبول وإرجاعه
+ * عند رفض ما قُبل، منح نقاط الاستلام مرة واحدة (يحرسها فهرس فريد)، وإشعار
+ * العميل. الاحتفاظ
  * بها هنا يمنع ازدواج المنطق بين مدخلَي الإدارة والعميل.
+ *
+ * [CRITICAL] القرار كله **داخل** المعاملة وبعد قفل صفّ الطلب: الحالة تُقرأ
+ * من جديد تحت القفل لا من نسخةٍ قرأها المستدعي قبل لحظة. بلا ذلك يجتاز
+ * قبولان متزامنان للطلب نفسه فحصَ الانتقال معاً فيُستهلك المخزون مرتين؛
+ * ومع القفل يرى الثاني الحالة الجديدة فيصير «الحالة نفسها» بلا أثر.
  */
 async function applyStatusTransition(
-  order: OrderWithItems,
+  orderId: string,
   status: OrderStatus,
   rawNote: string | undefined,
   changedBy: string,
 ) {
-  const allowed = ORDER_STATUS_TRANSITIONS[order.status] ?? [];
-  if (!allowed.includes(status) && order.status !== status) {
-    throw Errors.conflict(`غير مسموح بالانتقال من ${order.status} إلى ${status}`);
-  }
-
   const note = rawNote?.trim() || null;
   const isRejection = status === 'REJECTED';
   if (isRejection && !note) {
     throw Errors.badRequest('سبب الرفض مطلوب', 'REJECTION_REASON_REQUIRED');
   }
 
-  const alreadyRejected = order.status === 'REJECTED';
-  const customerId = order.customer?.id ?? null;
-
   await withTransaction(async (tx) => {
-    if (isRejection && !alreadyRejected) {
-      await rejectOrderInTransaction(tx, order, status, note, changedBy);
-    } else {
-      await orderRepo.updateStatus(tx, order.id, status, note, changedBy);
+    await orderRepo.lockForUpdate(tx, orderId);
+    const order = await orderRepo.findById(tx, orderId);
+    if (!order) throw Errors.notFound('الطلب غير موجود');
+
+    const allowed = ORDER_STATUS_TRANSITIONS[order.status] ?? [];
+    if (!allowed.includes(status) && order.status !== status) {
+      throw Errors.conflict(`غير مسموح بالانتقال من ${order.status} إلى ${status}`);
     }
 
-    // نافذة التقييم تُثبَّت ساعةَ يخرج الطلب للتوصيل — وهو فعل الإدارة.
-    // تأكيد العميل لاحقاً لا يحرّكها، فلا يبدأ المؤقّت من ضغطته.
-    // المهلة تُقرأ الآن من إعدادات الأعمال وتُثبَّت في `rating_available_at`.
-    // الطلبات التي خرجت للتوصيل سابقاً تحتفظ بموعدها المحفوظ: `markDispatched`
-    // مشروط بـ`dispatched_at IS NULL`، فتغيير الإعداد لا يعيد تشغيل عدّاد أحد.
+    const customerId = order.customer?.id ?? null;
+
+    // القبول = أول خروجٍ من الانتظار إلى غير الرفض. هنا وحده يُستهلك
+    // المخزون؛ رفضُ المنتظر لا يمسّه (لم يُحجز شيء)، وإعادة القبول «حالةٌ
+    // نفسها» فلا تمرّ من هنا — التنزيل مرة واحدة بالبناء لا بالعدّ.
+    const isApproval =
+      order.status === 'PENDING_ADMIN_CONFIRMATION' && !isRejection && status !== order.status;
+    if (isApproval) {
+      await consumeStockOnApproval(tx, order);
+    }
+    // رفضُ طلبٍ استُهلك مخزونه (غادر الانتظار ولم يُرفض بعد) يُرجعه. الحالة
+    // تُقرأ تحت القفل، فرفضان متزامنان يمرّ أحدهما والآخر يرى `REJECTED`.
+    const isReleasingRejection =
+      isRejection && order.status !== 'PENDING_ADMIN_CONFIRMATION' && order.status !== 'REJECTED';
+    if (isReleasingRejection) {
+      await releaseStockOnRejection(tx, order);
+    }
+
+    await orderRepo.updateStatus(tx, order.id, status, note, changedBy);
+
+    // موعد **تذكير** التقييم يُثبَّت ساعةَ يخرج الطلب للتوصيل — وهو فعل
+    // الإدارة. لا علاقة له بفتح التقييم: ذاك يقع بتأكيد الاستلام.
     if (status === 'OUT_FOR_DELIVERY') {
-      await orderRepo.markDispatched(tx, order.id, await ratingDelayHours());
+      await orderRepo.markDispatched(tx, order.id, reviewReminderDelayHours());
     }
 
     if (!customerId) return;
 
     // منح نقاط الاستلام مرة واحدة — الفهرس الفريد يمنع التكرار.
     if (status === 'COMPLETED' && order.status !== 'COMPLETED') {
-      // تثبيت لحظة الاستلام وفتح نافذة التقييم بعدها. داخل المعاملة نفسها،
-      // فإمّا أن يُسجَّل الاستلام بنافذته كاملاً أو لا يُسجَّل شيء.
-      await orderRepo.markDelivered(tx, order.id, await ratingDelayHours());
-      // المبلغ يُقرأ لحظة المنح ويُكتب في الدفتر. تغيير الإعداد لاحقاً لا
-      // يمسّ هذا الصفّ ولا أي صفّ سابق — الرصيد مجموع ما كُتب فعلاً.
-      await pointsRepo.award(tx, {
-        userId: customerId,
-        label: 'استلام طلب',
-        amount: await businessConfigService.value('points_order_received'),
-        reason: 'order_received',
-        orderId: order.id,
-      });
+      // تثبيت لحظة الاستلام — وهي وحدها ما يفتح التقييم. داخل المعاملة
+      // نفسها مع منح النقاط: إمّا أن يُسجَّل الاستلام كاملاً أو لا شيء.
+      await orderRepo.markDelivered(tx, order.id, reviewReminderDelayHours());
+      // نقاط الشراء: خمس نقاط عن كل ١٠٬٠٠٠ دينار من قيمة الشراء المؤهَّلة
+      // (مجموع المنتجات ناقص خصوماتها — بلا رسوم التوصيل). كانت القيمة
+      // مبلغاً ثابتاً يضبطه المسؤول، فطلبٌ بعشرة آلاف وطلبٌ بمليون كانا
+      // يمنحان الشيء نفسه.
+      //
+      // الحساب على الخادم من صفّ الطلب المحفوظ، لا من أي رقم يرسله العميل.
+      const purchasePoints = purchasePointsFor(
+        eligiblePurchaseValue({
+          productsTotal: order.productsTotal,
+          discount: order.discount,
+        }),
+      );
+      // طلبٌ صغير قد يستحق صفراً؛ الدفتر يرفض الصفر (`amount <> 0`) ولا معنى
+      // لسطر «+٠» في سجلّ الزبون أصلاً.
+      if (purchasePoints > 0) {
+        await pointsRepo.award(tx, {
+          userId: customerId,
+          label: 'نقاط شراء',
+          amount: purchasePoints,
+          reason: 'order_received',
+          orderId: order.id,
+        });
+      }
     }
 
-    const notification = buildStatusNotification(status, note);
+    // لغة **المستلِم** لا لغة المسؤول الذي غيّر الحالة.
+    const recipientLocale = await userRepo.localeOf(tx, customerId);
+    const notification = buildStatusNotification(order.status, status, note, recipientLocale);
     if (notification && status !== order.status) {
       await notificationRepo.create(tx, {
         userId: customerId,
@@ -384,16 +1003,23 @@ async function applyStatusTransition(
     }
   });
 
-  return orderRepo.findById(db, order.id);
+  return orderRepo.findById(db, orderId);
 }
 
 /**
- * نص الإشعار لكل انتقال حالة. الحالات الداخلية (التجهيز) لا تُشعر العميل —
- * التطبيق يعرضها ضمن «قيد التوصيل» أصلاً.
+ * نص الإشعار لكل انتقال حالة.
+ *
+ * الحالة السابقة جزء من القرار لا زينة: في المسار الجديد يقفز القبول من
+ * الانتظار إلى التوصيل في انتقال واحد، فيجب أن يحمل الإشعارُ القبولَ نفسه
+ * (لا يُشعَر العميل «خرج للتوصيل» فقط بلا أن يعرف أن طلبه قُبل). الطلبات
+ * الموروثة الواقفة في `CONFIRMED` أو`PREPARING` كانت قد استلمت إشعار القبول
+ * أصلاً، فلا يُشعَر القادمُ منها قبولاً ثانياً — يحصل على إشعار التوصيل فقط.
  */
 function buildStatusNotification(
+  from: OrderStatus,
   status: OrderStatus,
   note: string | null,
+  locale: AppLocale,
 ):
   | {
       type: 'orderAccepted' | 'orderRejected' | 'deliveryUpdate' | 'receiptReminder';
@@ -402,31 +1028,26 @@ function buildStatusNotification(
     }
   | null {
   switch (status) {
+    // المسار الموروث: طلبات توقّفت عند «تم تأكيده» قبل الدمج الأول.
     case 'CONFIRMED':
-      return {
-        type: 'orderAccepted',
-        title: 'تم قبول طلبك 🎉',
-        body: note ?? 'طلبك مقبول وقيد التجهيز، وراح يوصلك قريباً.',
-      };
+      return { type: 'orderAccepted', ...renderNotification('orderAccepted', locale, note) };
+    // المسار الموروث: طلبات توقّفت عند «قيد التجهيز» قبل الدمج الثاني.
+    case 'PREPARING':
+      if (from !== 'PENDING_ADMIN_CONFIRMATION') return null;
+      return { type: 'orderAccepted', ...renderNotification('orderAccepted', locale, note) };
     case 'OUT_FOR_DELIVERY':
-      return {
-        type: 'deliveryUpdate',
-        title: 'طلبك بالطريق 🚚',
-        // ملاحظة الإدارة هنا هي وقت الوصول المتوقع (مثل: سيصل غداً).
-        body: note ?? 'طلبك خرج للتوصيل — الدفع عند الاستلام.',
-      };
+      // القبول الجديد: الانتظار → التوصيل في خطوة واحدة — إشعار القبول.
+      if (from === 'PENDING_ADMIN_CONFIRMATION') {
+        return {
+          type: 'orderAccepted',
+          ...renderNotification('orderAcceptedDispatched', locale, note),
+        };
+      }
+      return { type: 'deliveryUpdate', ...renderNotification('deliveryUpdate', locale, note) };
     case 'COMPLETED':
-      return {
-        type: 'receiptReminder',
-        title: 'تم استلام طلبك',
-        body: note ?? 'نتمنى المنتجات عجبتك — شاركنا رأيك واكسب نقاط المجرّة.',
-      };
+      return { type: 'receiptReminder', ...renderNotification('orderCompleted', locale, note) };
     case 'REJECTED':
-      return {
-        type: 'orderRejected',
-        title: 'ما تم قبول طلبك',
-        body: note ?? 'تكدر تتواصل ويانا أو تسوي طلب جديد.',
-      };
+      return { type: 'orderRejected', ...renderNotification('orderRejected', locale, note) };
     default:
       return null;
   }

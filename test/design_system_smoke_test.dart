@@ -14,9 +14,9 @@ import 'package:otaku_galaxy/features/settings/presentation/widgets/personalize_
 /// الاختيارية ظاهرة معاً، وهي التركيبة التي كانت تتجاوز التخطيط سابقاً.
 const _product = Product(
   id: 'p1',
-  name: 'تيشيرت أنمي بتصميم حصري ومطبوع بجودة عالية جداً وخامة ممتازة',
+  nameAr: 'تيشيرت أنمي بتصميم حصري ومطبوع بجودة عالية جداً وخامة ممتازة',
   price: 25000,
-  description: 'وصف',
+  descriptionAr: 'وصف',
   images: [],
   stock: 2,
   rating: 4.6,
@@ -64,7 +64,7 @@ void main() {
     'OtakuScreenHeader.plain': const OtakuScreenHeader(
       title: 'طلباتي',
       subtitle: 'تابع حالة كل طلب خطوة بخطوة',
-      artwork: 'assets/art/opt/a-i4.png',
+      artwork: 'assets/art/characters/34.png',
     ),
     'OtakuScreenHeader.tab': const OtakuScreenHeader.tab(
       title: 'الأقسام',
@@ -82,7 +82,7 @@ void main() {
     'OtakuEditorialPanel': const OtakuEditorialPanel(
       title: 'لوحة تحريرية',
       body: 'نص وصفي قصير داخل اللوحة.',
-      artwork: 'assets/art/opt/a-luffy-kid.png',
+      artwork: 'assets/art/characters/7.png',
     ),
     'OtakuSectionTitle': const OtakuSectionTitle(title: 'قسم'),
     'OtakuGroupLabel': const OtakuGroupLabel(label: 'الحساب'),
@@ -135,7 +135,7 @@ void main() {
     'AnimeEmptyState': const AnimeEmptyState(
       title: 'لا توجد طلبات بعد',
       subtitle: 'كل طلب تكمله سيظهر هنا.',
-      artwork: 'assets/art/opt/a-luffy-kid.png',
+      artwork: 'assets/art/characters/7.png',
     ),
     'LanguageCard': LanguageCard(
       name: 'العربية',
@@ -169,6 +169,7 @@ void main() {
           icon: Icons.grid_view_outlined,
           activeIcon: Icons.grid_view_rounded,
           label: 'الأقسام',
+          gridIconCount: 4,
         ),
         OtakuNavItem(
           icon: Icons.photo_library_outlined,
@@ -196,6 +197,10 @@ void main() {
     'narrow': Size(375, 812),
     // أصغر مقاس مدعوم — أكثر ما يكشف تجاوز التخطيط (overflow).
     'tiny': Size(320, 640),
+    // ألواح: الطرف الآخر من المدى. الضيق يكشف التجاوز، والاتّساع يكشف
+    // المكوّنات التي تتمدّد بلا حدّ أو تُبنى على عرضٍ مفترَض.
+    'tablet': Size(834, 1112),
+    'tablet-landscape': Size(1194, 834),
   };
 
   for (final entry in cases.entries) {

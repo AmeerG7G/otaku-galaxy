@@ -1,4 +1,6 @@
 import 'package:auto_route/auto_route.dart';
+import '../../../../core/l10n/app_strings.dart';
+import '../../../../core/l10n/locale_refetch.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -6,6 +8,8 @@ import '../../../../core/design_system/design_system.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../products/domain/entities/category.dart';
 import '../../../products/domain/usecases/fetch_categories_usecase.dart';
+import '../../../visuals/domain/visual_slot.dart';
+import '../../../visuals/presentation/character_artwork.dart';
 
 /// تبويب الأقسام بتصميم Otaku Galaxy v2.
 ///
@@ -19,7 +23,7 @@ class CategoriesScreen extends StatefulWidget {
   State<CategoriesScreen> createState() => _CategoriesScreenState();
 }
 
-class _CategoriesScreenState extends State<CategoriesScreen> {
+class _CategoriesScreenState extends State<CategoriesScreen> with LocaleRefetch {
   List<Category> _categories = [];
   bool _loading = true;
   String? _error;
@@ -29,6 +33,10 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     super.initState();
     _load();
   }
+
+  /// المحتوى الخادمي يُصرَّف لحظة الجلب — يُعاد جلبه بلغة الواجهة الجديدة.
+  @override
+  void onLanguageChanged() => _load();
 
   Future<void> _load() async {
     setState(() {
@@ -51,27 +59,65 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     }
   }
 
+  // [PRODUCT] بلا `SafeArea` على مستوى الشاشة (2026-09-28، لهذه الشاشة
+  // وحدها). كانت تدفع الشاشة كلّها تحت شريط الحالة، فيبقى شريطٌ فارغ بارتفاعه
+  // فوق الترويسة. الآن تمتدّ الترويسة ورسمها إلى منطقة شريط الحالة كما طلب
+  // المالك، والمحتوى التفاعلي محميّ من مكانين:
+  // - `OtakuScreenHeader` يحمل `SafeArea` داخلياً حول العنوان وسطره الوصفي،
+  //   فلا نصَّ تحت أيقونات البطارية والشبكة.
+  // - الجسم تحت الترويسة يُنزَع عنه الهامش العلوي (`removeTop`): الترويسة
+  //   استهلكته، فلا تضيفه قائمةٌ أو حالةٌ فارغة مرّة ثانية.
+  // لا يمسّ هذا وضع واجهة النظام العام (`edgeToEdge` في `bootstrap.dart`) ولا
+  // أيّ شاشةٍ أخرى.
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      bottom: false,
-      child: Column(
-        children: [
-          const OtakuScreenHeader.tab(
-            title: 'الأقسام',
-            subtitle: 'تصفّح المتجر حسب ما تحتاجه',
-            artwork: 'assets/art/opt/a-i2.png',
+    return Stack(
+      children: [
+        Column(
+          children: [
+            OtakuScreenHeader.tab(
+              title: context.strings('navCategories'),
+              subtitle: context.strings('categoriesSubtitle'),
+            ),
+            Expanded(
+              child: MediaQuery.removePadding(
+                context: context,
+                removeTop: true,
+                child: _buildBody(),
+              ),
+            ),
+          ],
+        ),
+        // رسم الترويسة فوق الشاشة كلّها (الترويسة والقائمة معاً) لا داخل
+        // صندوق الترويسة: ذاك يُقصّ بـ`Clip.hardEdge` بارتفاع صندوقه القصير
+        // (نصّ العنوان فقط) لا بارتفاع الرسم، فدفعُ الرسم لأسفل هناك كان
+        // سيقصّ جزءاً منه بصمت. هنا يبقى آخر طفلٍ في المكدّس (أعلى الجميع)
+        // ولا يُقصّ أبداً طالما بقي داخل حدود الشاشة.
+        //
+        // `top: 0` (قرار المالك: «الأقسام» وحدها): الرسم يمتدّ إلى منطقة شريط
+        // الحالة كما تفعل الترويسة نفسها. هو `IgnorePointer` فلا يعترض لمساً،
+        // والعنوان ووصفه تحت `SafeArea` الترويسة فلا نصَّ تحت البطارية والشبكة.
+        // `a83fdf9` كان قد أنزله إلى `paddingOf(context).top` فناقض هذا القرار.
+        PositionedDirectional(
+          top: 0,
+          end: -10,
+          child: IgnorePointer(
+            child: CharacterArtwork(
+              slot: VisualSlots.categoriesHeader,
+              width: 110,
+            ),
           ),
-          Expanded(child: _buildBody()),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
   Widget _buildBody() {
     if (_loading) {
       return ListView.separated(
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 26),
+        padding: context.scrollPadding(
+          const EdgeInsets.fromLTRB(18, 18, 18, 26),
+        ),
         itemCount: 5,
         separatorBuilder: (_, _) => const SizedBox(height: 13),
         itemBuilder: (_, _) =>
@@ -82,10 +128,10 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
       return AnimeErrorState(message: _error!, onAction: _load);
     }
     if (_categories.isEmpty) {
-      return const AnimeEmptyState(
-        title: 'لا توجد أقسام بعد',
-        subtitle: 'سيظهر هنا كل قسم فور إضافته إلى المتجر.',
-        artwork: 'assets/art/opt/a-i2.png',
+      // بلا رسم: الصورة 37 حُذفت (2026-09-28).
+      return AnimeEmptyState(
+        title: context.strings('noCategoriesTitle'),
+        subtitle: context.strings('noCategoriesBody'),
       );
     }
 
@@ -93,7 +139,9 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
       onRefresh: _load,
       child: ListView.separated(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 104),
+        padding: context.scrollPadding(
+          const EdgeInsets.fromLTRB(18, 18, 18, OtakuBottomNav.contentGap),
+        ),
         itemCount: _categories.length,
         separatorBuilder: (_, _) => const SizedBox(height: 13),
         itemBuilder: (context, index) {

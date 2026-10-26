@@ -18,8 +18,16 @@ export interface OrderItem {
   imageUrl: string | null
   optionValue: string | null
   price: number
+  /** لقطة سعر القطعتين وقت الطلب (085)؛ `null` = لا عرض أو طلبٌ أقدم. */
+  pairPrice?: number | null
   quantity: number
+  /** ما دفعه الزبون عن السطر — قد يقلّ عن `price × quantity` بعرض القطعتين. */
   lineTotal: number
+  /**
+   * مخزون المنتج **الآن** — يرسله `GET /admin/orders/:id` وحده، مقروءاً عند فتح
+   * الطلب. `null` لمنتجٍ حُذف؛ غائبٌ في القوائم التي لا تحمله.
+   */
+  currentStock?: number | null
 }
 
 export interface AdminOrder {
@@ -31,7 +39,14 @@ export interface AdminOrder {
   fullAddress: string
   phone: string
   productsTotal: number
+  /** الخصم على المنتجات كلّه (الميلاد + مزيّة المستوى) كما حُفظ مع الطلب. */
   discount: number
+  /**
+   * الجزء الآتي من مزيّة مستوى داخل `discount` — `orders.loyalty_discount`.
+   *
+   * اختياري لأن خادماً أقدم لا يرسله؛ غيابه يعني صفراً.
+   */
+  loyaltyDiscount?: number
   total: number
   customer: OrderCustomer | null
   createdAt: string
@@ -44,18 +59,41 @@ export interface AdminOrder {
   rejectionReason: string | null
   /** خصم التوصيل المطبَّق وقت الطلب — بدونه لا تتطابق الإجماليات المعروضة. */
   deliveryDiscount: number
+  /**
+   * ما تجاوز رسوم التوصيل من ترويج المنتجات — مبلغ محتفَظ به للمتجر.
+   *
+   * [CRITICAL] ليس خصماً للزبون: لا يدخل `total` ولا ينقص `productsTotal`.
+   * يصل من مسار `/admin/orders/:id` وحده ولا يخرج في أي استجابة للعميل،
+   * لذلك هو اختياري — قوائم الطلبات لا تحمله.
+   */
+  deliveryDiscountExcess?: number
   /** لحظة خروج الطلب للتوصيل — مرجع نافذة التقييم. */
   dispatchedAt: string | null
   /** لحظة تأكيد الاستلام؛ null قبل الاستلام. */
   deliveredAt: string | null
-  /** لحظة فتح التقييم للعميل (الاستلام + المهلة). */
-  ratingAvailableAt: string | null
-  /** هل صار التقييم مفتوحاً للعميل الآن؟ */
-  ratingAvailable: boolean
+  /**
+   * موعد إرسال تذكير التقييم — **ليس** موعد فتح التقييم.
+   *
+   * [CRITICAL] الاسم كما يرسله الخادم (`orderRepo.mapOrder`). كانت اللوحة
+   * تقرأ `ratingAvailableAt`/`ratingAvailable` — حقلين لم يعد الخادم يرسلهما
+   * منذ صار التقييم يُفتح بالاستلام — فتعرض «—» مكان موعدٍ موجود.
+   */
+  ratingReminderAt: string | null
   /** لحظة إرسال تذكير الاستلام؛ null إن لم يُرسل بعد. */
   ratingReminderSentAt: string | null
+  /** هل يستطيع الزبون تقييم منتجات الطلب الآن؟ يقرّره الخادم من الاستلام. */
+  canReview: boolean
+  /** منتجات الطلب التي لم يقيّمها صاحبه بعد — من الخادم. */
+  reviewableProductCount: number
   /** مسار الطلب بأوقاته. */
   statusHistory: OrderStatusEvent[]
+  /**
+   * هل فعَّل الزبون هديةَ مستوى مرتبطةً بهذا الطلب؟
+   *
+   * [CRITICAL] هذه هديةٌ فيزيائية يسلّمها المتجر — لا خصمٌ مالي. لا تأثير
+   * على `discount` ولا على `total`. خادمٌ أقدم لا يرسل الحقل: غيابه = لا هدية.
+   */
+  loyaltyGiftActivated?: boolean
 }
 
 /** حدث واحد في مسار الطلب. */

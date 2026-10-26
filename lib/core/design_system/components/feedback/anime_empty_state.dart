@@ -4,6 +4,9 @@ import '../../tokens/app_colors.dart';
 import '../../tokens/app_dimens.dart';
 import '../../tokens/app_theme_colors.dart';
 import '../buttons/anime_primary_button.dart';
+import '../layout/scroll_insets.dart';
+import '../typography/bounded_text.dart';
+import '../../../../features/visuals/presentation/character_artwork.dart';
 
 /// حالة فارغة بتصميم Otaku Galaxy v2 — لوحة تحريرية مستديرة مع هالة لونية
 /// ورسم شخصية اختياري يخرج من حافة اللوحة، بدل أيقونة وسط الشاشة.
@@ -17,6 +20,12 @@ class AnimeEmptyState extends StatelessWidget {
     this.onAction,
     this.iconSize = AppDimens.iconHero,
     this.artwork,
+    this.artworkSlot,
+    this.centered = false,
+    this.artworkHeight = 150,
+    this.fitContent = false,
+    this.titleTranslations = const [],
+    this.subtitleTranslations = const [],
   });
 
   final String title;
@@ -29,6 +38,78 @@ class AnimeEmptyState extends StatelessWidget {
   /// رسم شخصية تزييني يظهر أسفل جهة البداية داخل اللوحة.
   final String? artwork;
 
+  /// مفتاح موضع الرسم (`VisualSlots`) — صورته الثابتة في `CharacterArt`.
+  ///
+  /// حين يُمرَّر يحدّد الموضعُ صورته ولا يلزم [artwork] (المسار المباشر لرسمٍ
+  /// ليس موضعاً). المقاس والموضع كما هما.
+  final String? artworkSlot;
+
+  /// رسمٌ يُعرض: موضعٌ بصورته الثابتة، أو مسارٌ مباشر.
+  bool get _hasArtwork => artworkSlot != null || artwork != null;
+
+  /// تركيب موسّط: الرسم فوق، ثم النصّ، ثم الإجراء — كلٌّ في وسط اللوحة.
+  ///
+  /// [CRITICAL] خيارٌ اختياري لا تغييرٌ افتراضي. هذا المكوّن مشترك بين إحدى
+  /// عشرة شاشة، وتوسيطُه للجميع كان سيعيد تصميم عشر شاشات لم يُطلب تغييرها
+  /// — بينما التخطيط الجانبي (رسمٌ يخرج من الحافة وإجراءٌ أسفل جهة البداية)
+  /// هو ما يصفه مرجع التصميم لبقيتها. السلة وحدها تطلبه اليوم.
+  final bool centered;
+
+  /// ارتفاع الرسم التزييني (الشخصية). الافتراضي 150.
+  final double artworkHeight;
+
+  /// اللوحة بارتفاع محتواها لا بالارتفاع الثابت (~٣٨٠) — للتركيب الموسَّط
+  /// وحده ([centered]).
+  ///
+  /// اللوحة الثابتة تترك فراغاً ميتاً فوق المحتوى وتحته، وتقلّص الرسم حين
+  /// يكبر (`Flexible`) — فلا يصير الرسم الأكبر أكبر. هنا يأخذ الرسم
+  /// [artworkHeight] كاملاً ما اتّسعت المساحة، ولا يتجاوز
+  /// [_fitArtworkShare] من ارتفاعها المتاح على الهواتف القصيرة (لا أقلّ من
+  /// [_fitArtworkMin])، وما زاد بعد ذلك يُمرَّر لا يفيض. خيارٌ اختياري:
+  /// «طلباتي» وحدها تطلبه اليوم (STEP 64 §22).
+  final bool fitContent;
+
+  /// ترجمات [title] و[subtitle] بكل اللغات (`AppStrings.across` / `gAcross`).
+  ///
+  /// [CRITICAL] (البوّابة ٨، 2026-10-10) في التخطيط الموسَّط يأخذ الرسم
+  /// (`Flexible`) ما يتركه النصّ — نصٌّ كردي أطول بسطر كان يُصغّر الرسم حتى
+  /// ٣٦ بكسل. بالترجمات يحجز العنوان والتوضيح ما تحتاجه أطول ترجماتهما فيبقى
+  /// الرسم بمقاسٍ واحد. بلا ترجمات: كما كان.
+  final List<String> titleTranslations;
+  final List<String> subtitleTranslations;
+
+  Widget _title(TextStyle? style, {TextAlign? align}) =>
+      titleTranslations.isEmpty
+      ? Text(title, textAlign: align, style: style)
+      : BoundedText(
+          title,
+          maxLines: 3,
+          reserveFor: titleTranslations,
+          textAlign: align,
+          alignment: align == TextAlign.center
+              ? Alignment.topCenter
+              : AlignmentDirectional.topStart,
+          style: style,
+        );
+
+  Widget _subtitle(TextStyle? style, {TextAlign? align}) =>
+      subtitleTranslations.isEmpty
+      ? Text(subtitle!, textAlign: align, style: style)
+      : BoundedText(
+          subtitle!,
+          maxLines: 12,
+          minScale: 1,
+          reserveFor: subtitleTranslations,
+          textAlign: align,
+          alignment: align == TextAlign.center
+              ? Alignment.topCenter
+              : AlignmentDirectional.topStart,
+          style: style,
+        );
+
+  static const double _fitArtworkShare = 0.4;
+  static const double _fitArtworkMin = 110;
+
   @override
   Widget build(BuildContext context) {
     final colors = context.themeColors;
@@ -37,11 +118,30 @@ class AnimeEmptyState extends StatelessWidget {
     // يوسّطها عمودياً. على الشاشات القصيرة تتقلّص حتى ٢٦٠ بدل أن تفيض.
     return LayoutBuilder(
       builder: (context, constraints) {
-        final panelHeight = constraints.hasBoundedHeight
-            ? (constraints.maxHeight - 36).clamp(260.0, 380.0)
+        // [CRITICAL] المساحة **المرئية** لا المساحة كلّها: تحت الشريط العائم
+        // (أو شريط النظام) يمتدّ الجسم خلفه، فلوحةٌ تُقاس بالارتفاع كاملاً
+        // يقع أسفلها — وزرّها — تحت الشريط على الهاتف القصير. وتجاوزُه في
+        // المُمرِّر (`scrollPadding`) يُبلغ آخر اللوحة فوقه حين لا تتّسع.
+        final visibleHeight = constraints.maxHeight - context.bottomOverlap;
+        final fit = centered && fitContent;
+        final panelHeight = fit
+            ? null
+            : constraints.hasBoundedHeight
+            ? (visibleHeight - 36).clamp(260.0, 380.0)
             : 380.0;
+        final fitArtworkHeight = constraints.hasBoundedHeight
+            ? artworkHeight.clamp(
+                0.0,
+                (visibleHeight * _fitArtworkShare).clamp(
+                  _fitArtworkMin,
+                  double.infinity,
+                ),
+              )
+            : artworkHeight;
         return SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+          padding: context.scrollPadding(
+            const EdgeInsets.fromLTRB(18, 14, 18, 18),
+          ),
           child: Container(
             width: double.infinity,
             height: panelHeight,
@@ -53,122 +153,245 @@ class AnimeEmptyState extends StatelessWidget {
               ),
             ),
             clipBehavior: Clip.antiAlias,
-            child: Stack(
-              children: [
-              // المصدر: الهالة أعلى اليمين الفيزيائي (right) والرسم أسفل
-              // اليسار (left) — أي `start` و`end` في واجهة عربية.
-              PositionedDirectional(
-                top: -40,
-                start: -50,
-                child: Container(
-                  width: 200,
-                  height: 200,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: RadialGradient(
-                      colors: [
-                        colors.glowSecondary,
-                        colors.glowSecondary.withValues(alpha: 0),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              if (artwork != null)
-                PositionedDirectional(
-                  bottom: -10,
-                  end: -22,
-                  child: Image.asset(
-                    artwork!,
-                    height: 150,
-                    fit: BoxFit.contain,
-                  ),
-                ),
-              Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(
-                  24,
-                  30,
-                  24,
-                  onAction != null ? 24 : 30,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (icon != null && artwork == null) ...[
-                      Container(
-                        width: 52,
-                        height: 52,
-                        decoration: BoxDecoration(
-                          gradient: colors.primaryGradient,
-                          borderRadius: BorderRadius.circular(
-                            AppDimens.radiusMd,
+            child: centered
+                ? _buildCentered(
+                    context,
+                    colors,
+                    fitArtworkHeight: fit ? fitArtworkHeight : null,
+                  )
+                : Stack(
+                    children: [
+                      // المصدر: الهالة أعلى اليمين الفيزيائي (right) والرسم أسفل
+                      // اليسار (left) — أي `start` و`end` في واجهة عربية.
+                      PositionedDirectional(
+                        top: -40,
+                        start: -50,
+                        child: Container(
+                          width: 200,
+                          height: 200,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: RadialGradient(
+                              colors: [
+                                colors.glowSecondary,
+                                colors.glowSecondary.withValues(alpha: 0),
+                              ],
+                            ),
                           ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: colors.glowPrimary,
-                              blurRadius: 18,
-                              offset: const Offset(0, 6),
+                        ),
+                      ),
+                      if (_hasArtwork)
+                        PositionedDirectional(
+                          bottom: -10,
+                          end: -22,
+                          child: artworkSlot == null
+                              ? Image.asset(
+                                  artwork!,
+                                  height: artworkHeight,
+                                  fit: BoxFit.contain,
+                                )
+                              : CharacterArtwork(
+                                  slot: artworkSlot!,
+                                  height: artworkHeight,
+                                ),
+                        ),
+                      Padding(
+                        padding: EdgeInsetsDirectional.fromSTEB(
+                          24,
+                          30,
+                          24,
+                          onAction != null ? 24 : 30,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (icon != null && !_hasArtwork) ...[
+                              Container(
+                                width: 52,
+                                height: 52,
+                                decoration: BoxDecoration(
+                                  gradient: colors.primaryGradient,
+                                  borderRadius: BorderRadius.circular(
+                                    AppDimens.radiusMd,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: colors.glowPrimary,
+                                      blurRadius: 18,
+                                      offset: const Offset(0, 6),
+                                    ),
+                                  ],
+                                ),
+                                child: Icon(
+                                  icon,
+                                  color: Colors.white,
+                                  size: 26,
+                                ),
+                              ),
+                              const SizedBox(height: AppDimens.space5),
+                            ],
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 260),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  _title(
+                                    Theme.of(context).textTheme.titleLarge
+                                        ?.copyWith(
+                                          fontSize: 20,
+                                          height: 1.4,
+                                          fontWeight: AppDimens.weightBlack,
+                                        ),
+                                  ),
+                                  if (subtitle != null) ...[
+                                    const SizedBox(height: AppDimens.space3),
+                                    _subtitle(
+                                      Theme.of(context).textTheme.bodyMedium
+                                          ?.copyWith(
+                                            height: 1.8,
+                                            color: Theme.of(
+                                              context,
+                                            ).colorScheme.onSurfaceVariant,
+                                          ),
+                                    ),
+                                  ],
+                                ],
+                              ),
                             ),
                           ],
                         ),
-                        child: Icon(icon, color: Colors.white, size: 26),
                       ),
-                      const SizedBox(height: AppDimens.space5),
-                    ],
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 260),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            title,
-                            style: Theme.of(context).textTheme.titleLarge
-                                ?.copyWith(
-                                  fontSize: 20,
-                                  height: 1.4,
-                                  fontWeight: AppDimens.weightBlack,
-                                ),
+                      // المصدر يثبّت الإجراء أسفل جهة البداية داخل اللوحة، لا تحت
+                      // النصّ مباشرةً.
+                      if (actionLabel != null && onAction != null)
+                        PositionedDirectional(
+                          bottom: 26,
+                          start: 24,
+                          child: AnimePrimaryButton(
+                            label: actionLabel!,
+                            onPressed: onAction,
+                            expanded: false,
+                            borderRadius: AppDimens.radiusFull,
+                            gradient: AppColors.ctaGradient,
                           ),
-                          if (subtitle != null) ...[
-                            const SizedBox(height: AppDimens.space3),
-                            Text(
-                              subtitle!,
-                              style: Theme.of(context).textTheme.bodyMedium
-                                  ?.copyWith(
-                                    height: 1.8,
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.onSurfaceVariant,
-                                  ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // المصدر يثبّت الإجراء أسفل جهة البداية داخل اللوحة، لا تحت
-              // النصّ مباشرةً.
-              if (actionLabel != null && onAction != null)
-                PositionedDirectional(
-                  bottom: 26,
-                  start: 24,
-                  child: AnimePrimaryButton(
-                    label: actionLabel!,
-                    onPressed: onAction,
-                    expanded: false,
-                    borderRadius: AppDimens.radiusFull,
-                    gradient: AppColors.ctaGradient,
+                        ),
+                    ],
                   ),
-                ),
-              ],
-            ),
           ),
         );
       },
+    );
+  }
+
+  /// التركيب الموسّط — الرسم فوق، ثم النصّ، ثم الإجراء، كلٌّ في المنتصف.
+  ///
+  /// الهالة تبقى كما هي في التخطيط الجانبي (عنصر هوية لا تخطيط)، ويبقى كل
+  /// شيء داخل اللوحة نفسها بمقاسها وحدودها ونصف قطرها — لا إعادة تصميم،
+  /// إعادةُ ترتيبٍ فقط.
+  ///
+  /// [fitArtworkHeight] غير فارغ = [fitContent]: العمود بارتفاعه الطبيعي
+  /// (`StackFit.passthrough` يمرّر عرض اللوحة المحكَم إليه فيبقى المركز
+  /// مركزها)، والرسم بارتفاعه المحسوب. `Flexible` الرخو في عمودٍ `min` بلا
+  /// حدٍّ علوي يُبنى كطفلٍ عادي، فيبقى هو نفسه في الوضعين.
+  Widget _buildCentered(
+    BuildContext context,
+    AppThemeColors colors, {
+    double? fitArtworkHeight,
+  }) {
+    final theme = Theme.of(context);
+    final fit = fitArtworkHeight != null;
+    final art = !_hasArtwork
+        ? null
+        : artworkSlot == null
+        ? Image.asset(
+            artwork!,
+            height: fitArtworkHeight ?? artworkHeight,
+            fit: BoxFit.contain,
+          )
+        : CharacterArtwork(
+            slot: artworkSlot!,
+            height: fitArtworkHeight ?? artworkHeight,
+          );
+    final column = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        mainAxisSize: fit ? MainAxisSize.min : MainAxisSize.max,
+        children: [
+          // الرسم **فوق** الإجراء — وهو جوهر الطلب.
+          if (art != null) Flexible(child: art),
+          const SizedBox(height: AppDimens.space4),
+          _title(
+            theme.textTheme.titleLarge?.copyWith(
+              fontSize: 20,
+              height: 1.4,
+              fontWeight: AppDimens.weightBlack,
+            ),
+            align: TextAlign.center,
+          ),
+          if (subtitle != null) ...[
+            const SizedBox(height: AppDimens.space3),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 280),
+              child: _subtitle(
+                theme.textTheme.bodyMedium?.copyWith(
+                  height: 1.8,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                align: TextAlign.center,
+              ),
+            ),
+          ],
+          if (actionLabel != null && onAction != null) ...[
+            const SizedBox(height: AppDimens.space5),
+            AnimePrimaryButton(
+              label: actionLabel!,
+              onPressed: onAction,
+              expanded: false,
+              borderRadius: AppDimens.radiusFull,
+              gradient: AppColors.ctaGradient,
+            ),
+          ],
+        ],
+      ),
+    );
+    return Stack(
+      fit: fit ? StackFit.passthrough : StackFit.loose,
+      children: [
+        PositionedDirectional(
+          top: -40,
+          start: -50,
+          child: IgnorePointer(
+            child: Container(
+              width: 200,
+              height: 200,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    colors.glowSecondary,
+                    colors.glowSecondary.withValues(alpha: 0),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        // [CRITICAL] `Positioned.fill` لا طفلٌ حرّ في `Stack`.
+        //
+        // الطفل غير المموضَع في `Stack` يُحاذى افتراضياً إلى
+        // `AlignmentDirectional.topStart`، وهي في واجهة عربية أعلى **اليمين**،
+        // ويُمنح قيوداً مرنة فيأخذ عرض أوسع أبنائه لا عرض اللوحة. النتيجة أن
+        // العمود «الموسّط» كان يلتصق بالحافة اليمنى: توسيطٌ داخل صندوقٍ
+        // ملتصقٍ بالحافة ليس توسيطاً في اللوحة. المِلء يجعل العمود يمتدّ على
+        // عرض اللوحة كاملاً فيصير مركزه مركزها. (رُصد بالقياس لا بالقراءة.)
+        // [fitContent] وحده يترك العمود حرّاً — لأن اللوحة تأخذ ارتفاعها منه —
+        // و`StackFit.passthrough` هو ما يعطيه عرض اللوحة المحكَم هناك.
+        if (fit) column else Positioned.fill(child: column),
+      ],
     );
   }
 }

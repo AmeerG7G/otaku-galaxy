@@ -1,5 +1,11 @@
+import 'dart:async';
+
 import 'package:auto_route/auto_route.dart';
+import '../../../../core/l10n/app_strings.dart';
+import '../../../../core/l10n/locale_refetch.dart';
 import 'package:flutter/material.dart';
+
+import '../../../../core/utils/request_sequence.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/design_system/design_system.dart';
@@ -11,6 +17,11 @@ import '../../../auth/presentation/cubit/auth_state.dart';
 import '../../../reviews/presentation/cubit/reviews_cubit.dart';
 import '../../../products/domain/entities/category.dart';
 import '../../../products/domain/usecases/fetch_categories_usecase.dart';
+import '../../../visuals/domain/visual_slot.dart';
+import '../../../visuals/presentation/character_artwork.dart';
+
+/// عرض رسم الترويسة (45) — يُقاس ارتفاعه 860:702 من عرضه.
+const double _galleryArtWidth = 160;
 
 /// المجتمع بتصميم Otaku Galaxy v2.
 ///
@@ -27,7 +38,7 @@ class CommunityScreen extends StatefulWidget {
   State<CommunityScreen> createState() => _CommunityScreenState();
 }
 
-class _CommunityScreenState extends State<CommunityScreen> {
+class _CommunityScreenState extends State<CommunityScreen> with LocaleRefetch {
   List<Review> _photos = [];
   bool _loading = true;
   String? _error;
@@ -42,11 +53,16 @@ class _CommunityScreenState extends State<CommunityScreen> {
   void initState() {
     super.initState();
     _loadCategories();
+    // تقييمات العميل نفسه (لافتتا «قيد المراجعة» و«لم يتم قبولها») تُحمَّل
+    // داخل `_load` مع المعرض، وعند الدخول من `app.dart`.
     _load();
-    // تقييمات العميل نفسه تغذّي لافتتَي «قيد المراجعة» و«لم يتم قبولها».
-    if (context.read<AuthCubit>().state is AuthAuthenticated) {
-      context.read<ReviewsCubit>().load();
-    }
+  }
+
+  /// الأقسام والمعرض يأتيان مصرَّفَين من الخادم — يُعاد جلبهما بلغة الواجهة.
+  @override
+  void onLanguageChanged() {
+    _loadCategories();
+    _load();
   }
 
   /// شرائح الفلترة تُبنى من الأقسام الحقيقية؛ فشلها لا يكسر المعرض.
@@ -61,24 +77,38 @@ class _CommunityScreenState extends State<CommunityScreen> {
     }
   }
 
+  /// أحدث طلب جلب للمعرض — ردّ رقاقةٍ سابقة يُهمَل (انظر [RequestSequence]).
+  final _requests = RequestSequence();
+
   Future<void> _load() async {
+    // [CRITICAL] رقاقات الأقسام تبقى قابلةً للنقر أثناء التحميل، فالمستخدم
+    // يطلق «قرطاسية» ثم «الكل» قبل أن يصل ردّ الأولى؛ بلا هذا الرقم كان ردّ
+    // «قرطاسية» يصل متأخّراً ويطمس معرض «الكل» — صورُ قسمٍ تحت رقاقة قسمٍ آخر.
+    final token = _requests.next();
     setState(() {
       _loading = true;
       _error = null;
     });
+    // [CRITICAL] تقييمات العميل تُعاد معها: لافتة «صورتك قيد المراجعة» تقرأ
+    // `ReviewsCubit`، وكان السحب للتحديث يُعيد المعرض وحده — فتبقى اللافتة
+    // بعد أن وافقت الإدارة حتى يُعاد تشغيل التطبيق. لا انتظار: المعرض لا
+    // يتوقّف على تقييمات الزبون.
+    if (context.read<AuthCubit>().state is AuthAuthenticated) {
+      unawaited(context.read<ReviewsCubit>().load());
+    }
     try {
       // الفلترة على الخادم: النتيجة تشمل كامل البيانات لا المحمَّل فقط.
       final photos = await context
           .read<ReviewRepository>()
           .fetchApprovedPhotoReviews(categoryId: _categoryId);
-      if (!mounted) return;
+      if (!mounted || !_requests.isCurrent(token)) return;
       setState(() {
         _photos = photos;
         _loading = false;
       });
     } catch (e) {
       // المعرض يقرأ من الخادم — الفشل يعرض حالة خطأ لا تحميلاً أبدياً.
-      if (!mounted) return;
+      if (!mounted || !_requests.isCurrent(token)) return;
       setState(() {
         _error = '$e';
         _loading = false;
@@ -128,12 +158,16 @@ class _CommunityScreenState extends State<CommunityScreen> {
             ),
           ),
           PositionedDirectional(
-            top: -6,
-            end: -40,
+            // 45 نصفٌ علويّ مقصوص عند منتصف الصورة (860×702): حافّة القصّ
+            // السفلى تُلصَق بأسفل الترويسة فتبدو الشخصية خارجةً منها، أياً
+            // كان ارتفاع الترويسة (نصٌّ أكبر / كردية).
+            bottom: 0,
+            end: -30,
             child: IgnorePointer(
-              child: Opacity(
-                opacity: 0.16,
-                child: Image.asset('assets/art/opt/a-i0.png', width: 120),
+              // بلا شفافية — الشخصية كما صورتها (قرار 2026-09-15).
+              child: const CharacterArtwork(
+                slot: VisualSlots.communityGallery,
+                width: _galleryArtWidth,
               ),
             ),
           ),
@@ -142,11 +176,20 @@ class _CommunityScreenState extends State<CommunityScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
+              // [CRITICAL] (البوّابة ٦، 2026-10-10) ارتفاع الترويسة يتبع نصّها،
+              // ورسم المعرض مثبَّتٌ بأسفلها — توضيحٌ كردي أطول بسطرٍ كان يطيلها
+              // ٢٧ عند ×١٫٣ (٢١ على ٣٧٥) ويُنزل الرسم والشرائح. العنوان نصّ
+              // ترويسة (الحدّ من مقاس التصميم)، والتوضيح فقرة تحجز أسطر أطول
+              // ترجماتها.
               children: [
-                Text(
-                  'المجتمع',
+                BoundedText(
+                  context.strings('navCommunity'),
+                  maxLines: 2,
+                  floorAtDesignSize: true,
+                  reserveFor: AppStrings.across('navCommunity'),
                   style: theme.textTheme.headlineSmall?.copyWith(
-                    fontFamily: 'Tajawal',
+                    fontFamily: AppFonts.heading,
+                    fontFamilyFallback: AppFonts.headingFallback,
                     fontWeight: AppDimens.weightBlack,
                     fontSize: 24,
                     height: 1.3,
@@ -156,8 +199,12 @@ class _CommunityScreenState extends State<CommunityScreen> {
                 const SizedBox(height: 7),
                 FractionallySizedBox(
                   widthFactor: 0.82,
-                  child: Text(
-                    'صور حقيقية من عملاء استلموا منتجاتهم',
+                  child: BoundedText(
+                    context.strings('communitySubtitle'),
+                    maxLines: 8,
+                    minScale: 1,
+                    reserveFor: AppStrings.across('communitySubtitle'),
+                    alignment: AlignmentDirectional.topStart,
                     style: theme.textTheme.bodyMedium?.copyWith(
                       fontSize: 13,
                       height: 1.6,
@@ -170,8 +217,8 @@ class _CommunityScreenState extends State<CommunityScreen> {
                   alignment: AlignmentDirectional.centerStart,
                   child: OtakuStatusPill(
                     label: _loading
-                        ? 'جاري التحميل…'
-                        : '${_photos.length} صورة معتمدة',
+                        ? context.strings('loading')
+                        : context.strings.p('approvedPhotosCount', {'count': '${_photos.length}'}),
                     color: AppColors.success,
                     showDot: false,
                     fontSize: 11,
@@ -205,7 +252,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                     ? _categoryId == null
                     : _categoryId == category!.id;
                 return _CategoryChip(
-                  label: isAll ? 'الكل' : category!.name,
+                  label: isAll ? context.strings('all') : category!.name,
                   selected: selected,
                   onTap: () {
                     if (selected) return;
@@ -230,16 +277,22 @@ class _CommunityScreenState extends State<CommunityScreen> {
     }
     if (_photos.isEmpty) {
       // فلتر مفعّل بلا نتائج ≠ مجتمع فارغ — الرسالة تختلف والإجراء كذلك.
+      //
+      // [PRODUCT] (STEP 64 §24) الحالتان بمكوّن الحالات الفارغة نفسه — اللوحة
+      // بإطارها وهالتها، موسَّطةً كالسلة و«طلباتي». كانت حالة القسم الفارغ
+      // عموداً عارياً بلا لوحة (نسخةٌ ثانية من التصميم).
       if (_categoryId != null) {
         return AnimeEmptyState(
-          title: 'ما في صور بهذا القسم بعد',
-          subtitle: 'جرّب قسماً ثانياً أو تصفّح كل الصور.',
-          artwork: 'assets/art/opt/a-i1.png',
-          actionLabel: 'كل الأقسام',
+          title: context.strings('noPhotosInCategoryTitle'),
+          subtitle: context.strings('noPhotosInCategoryBody'),
+          artworkSlot: VisualSlots.communityHeader,
+          actionLabel: context.strings('allCategories'),
           onAction: () {
             setState(() => _categoryId = null);
             _load();
           },
+          centered: true,
+          fitContent: true,
         );
       }
       // المجتمع شاشة تصفّح حرّة: زرّ «شارك تجربتك» يفتح «طلباتي» المحمية،
@@ -248,14 +301,16 @@ class _CommunityScreenState extends State<CommunityScreen> {
         (cubit) => cubit.state is AuthAuthenticated,
       );
       return AnimeEmptyState(
-        title: 'كن أول من يشارك تجربته',
+        title: context.strings('beFirstToShareTitle'),
         subtitle:
-            'شارك صورة لمنتجك بعد استلام طلبك، وقد تظهر هنا بعد مراجعتها.',
-        artwork: 'assets/art/opt/a-i4.png',
-        actionLabel: isLoggedIn ? 'شارك تجربتك' : null,
+            context.strings('beFirstToShareBody'),
+        artworkSlot: VisualSlots.communityEmpty,
+        actionLabel: isLoggedIn ? context.strings('shareYourExperience') : null,
         onAction: isLoggedIn
             ? () => context.router.push(const OrdersRoute())
             : null,
+        centered: true,
+        fitContent: true,
       );
     }
 
@@ -270,7 +325,11 @@ class _CommunityScreenState extends State<CommunityScreen> {
       onRefresh: _load,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 104),
+        // ما يغطّيه الشريط العائم يصل من `MediaQuery` (`extendBody`)، وخارج
+        // الغلاف (المسار المستقلّ) هو إزاحة النظام وحدها.
+        padding: context.scrollPadding(
+          const EdgeInsets.fromLTRB(18, 18, 18, OtakuBottomNav.contentGap),
+        ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -347,8 +406,8 @@ class _MyPhotoStatusBanners extends StatelessWidget {
                 child: _StatusBanner(
                   tone: context.themeColors.warning,
                   glyph: '◔',
-                  title: 'صورتك قيد المراجعة',
-                  body: 'راح تظهر بالمجتمع وبصفحة المنتج بعد الموافقة.',
+                  title: context.strings('photoUnderReviewTitle'),
+                  body: context.strings('photoUnderReviewBody'),
                 ),
               ),
             if (rejected != null)
@@ -357,17 +416,17 @@ class _MyPhotoStatusBanners extends StatelessWidget {
                 child: _StatusBanner(
                   tone: context.themeColors.error,
                   glyph: '!',
-                  title: 'لم يتم قبول الصورة',
+                  title: context.strings('photoRejectedTitle'),
                   titleTinted: true,
                   body: rejected.rejectionReason?.trim().isNotEmpty == true
                       ? rejected.rejectionReason!
-                      : 'الصورة لا تظهر المنتج بوضوح.',
-                  actionLabel: 'تعديل وإعادة الإرسال',
+                      : context.strings('photoRejectedDefaultReason'),
+                  actionLabel: context.strings('editAndResubmit'),
                   onTap: () => context.router.push(
                     WriteReviewRoute(
                       orderId: rejected.orderId,
                       productId: rejected.productId,
-                      productName: rejected.productName,
+                      productName: rejected.productNames.of(context.language),
                     ),
                   ),
                 ),
@@ -524,7 +583,9 @@ class _CommunitySkeleton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 104),
+      padding: context.scrollPadding(
+        const EdgeInsets.fromLTRB(18, 18, 18, OtakuBottomNav.contentGap),
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -606,7 +667,7 @@ class _PhotoTile extends StatelessWidget {
                   ),
                 ),
                 child: Text(
-                  review.productName,
+                  review.productNames.of(context.language),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.labelSmall?.copyWith(
@@ -662,7 +723,7 @@ class _CustomerPhotoViewerState extends State<CustomerPhotoViewer> {
     final current = widget.photos[_index];
 
     return Scaffold(
-      backgroundColor: const Color(0xFF08050F),
+      backgroundColor: AppColors.groundDark,
       body: SafeArea(
         child: Column(
           children: [
@@ -749,9 +810,10 @@ class _CustomerPhotoViewerState extends State<CustomerPhotoViewer> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    current.productName,
+                    current.productNames.of(context.language),
                     style: theme.textTheme.titleMedium?.copyWith(
-                      fontFamily: 'Tajawal',
+                      fontFamily: AppFonts.heading,
+                      fontFamilyFallback: AppFonts.headingFallback,
                       fontWeight: AppDimens.weightExtraBold,
                       fontSize: 16,
                       color: Colors.white,
@@ -770,7 +832,7 @@ class _CustomerPhotoViewerState extends State<CustomerPhotoViewer> {
                   ),
                   const SizedBox(height: 16),
                   AnimePrimaryButton(
-                    label: 'عرض المنتج',
+                    label: context.strings('viewProduct'),
                     onPressed: () => context.router.push(
                       ProductDetailRoute(productId: current.productId),
                     ),

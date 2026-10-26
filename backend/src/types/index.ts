@@ -1,6 +1,18 @@
 /** أنواع مشتركة للـ API (يُعتمد عليها في التحكم والتطبيقات الزبونة). */
 
+import type { AdminSection } from '../domain/adminPermissions.js';
+import type { AppLocale } from '../utils/locale.js';
+
 export type Role = 'customer' | 'admin';
+
+/**
+ * جنس صاحب الحساب — لتصريف الخطاب العربي لا لأي منطق تجاري.
+ *
+ * `null` حالةٌ مشروعة دائمة: الحسابات التي أُنشئت قبل هذا الحقل لم تُسأل،
+ * ولا يجوز أن يُخمَّن لها شيء. طبقةُ العرض تخاطبها بصيغة محايدة.
+ */
+export const GENDERS = ['male', 'female'] as const;
+export type Gender = (typeof GENDERS)[number];
 
 export type OrderStatus =
   | 'PENDING_ADMIN_CONFIRMATION'
@@ -10,9 +22,25 @@ export type OrderStatus =
   | 'COMPLETED'
   | 'REJECTED';
 
-/** انتقالات الحالة المسموح بها (المفتاح → الحالات المقبولة). */
+/**
+ * انتقالات الحالة المسموح بها (المفتاح → الحالات المقبولة).
+ *
+ * [CRITICAL] `CONFIRMED` و`PREPARING` لم تعودا مرحلةً تشغيلية يمرّ بها طلب جديد.
+ *
+ * الدمج الأول: ضغطتا «تأكيد» ثم «بدء التجهيز» كانتا لا تنتجان شيئاً، فصار
+ * التأكيد ينقل مباشرةً إلى التجهيز.
+ * الدمج الثاني: «قيد التجهيز» هي النشاط الذي يقوله المسؤول بالضربة نفسها —
+ * القبول ثم بدء العمل فعلان في نفس اللحظة عند كل متجر فعلي. لذلك صار القبول
+ * ينقل الطلب مباشرةً إلى `OUT_FOR_DELIVERY`؛ تُثبَّت نافذة التقييم ويرسل
+ * إشعار القبول في نفس الانتقال.
+ *
+ * الحالتان تبقَيان قيمتين مشروعتين في القاعدة ولهما انتقالهما الخارج، لأن
+ * طلبات سابقة توقّفت عندهما فعلاً؛ حذفهما كان سيترك صفوفاً في حالة لا
+ * تعرفها آلة الحالات ولا سبيل لتحريكها. ولا مسار جديد ينتجهما بعد اليوم.
+ */
 export const ORDER_STATUS_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
-  PENDING_ADMIN_CONFIRMATION: ['CONFIRMED', 'REJECTED'],
+  // القبول يرسل للتوضيب مباشرةً — لا مرحلة «قيد التجهيز» منفصلة في الواجهة.
+  PENDING_ADMIN_CONFIRMATION: ['OUT_FOR_DELIVERY', 'REJECTED'],
   CONFIRMED: ['PREPARING', 'REJECTED'],
   PREPARING: ['OUT_FOR_DELIVERY', 'REJECTED'],
   OUT_FOR_DELIVERY: ['COMPLETED', 'REJECTED'],
@@ -20,10 +48,41 @@ export const ORDER_STATUS_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   REJECTED: [],
 };
 
+/**
+ * الحالات التي يمرّ بها طلبٌ جديد اليوم — ما تعرضه لوحة التحكم كمراحل.
+ *
+ * تُقصي `CONFIRMED` و`PREPARING` (مرحلتان موروثتان) و`REJECTED` (نهاية لا
+ * مرحلة). القبول اليوم يغادر الانتظار إلى التوصيل مباشرةً.
+ */
+export const ACTIVE_ORDER_STAGES = [
+  'PENDING_ADMIN_CONFIRMATION',
+  'OUT_FOR_DELIVERY',
+  'COMPLETED',
+] as const satisfies readonly OrderStatus[];
+
 export interface AuthUser {
   id: string;
   role: Role;
   phone: string;
+  /** لغة المخاطبة المختارة — تقودها `resolveLocale` والإشعارات. */
+  locale: AppLocale;
+  /**
+   * المسؤول الأعلى — يملك كل الأقسام ضمناً. `false` لكل من ليس مسؤولاً.
+   * يُقرأ من الصفّ في كل طلب (لا من التوكن)، فالتغيير يسري فوراً.
+   */
+  isSuperAdmin: boolean;
+  /** أقسام المسؤول الفرعي. فارغةٌ للمسؤول الأعلى (يملك كل شيء) وللزبون. */
+  permissions: readonly AdminSection[];
+  /**
+   * موعد انتهاء الجلسة (`exp` التوكن الذي صادق الطلب) — يُربط به جهاز إشعار
+   * المسؤول فلا يستقبل بعد انتهائها (هجرة ٠٨٢). `null` لتوكنٍ بلا `exp`.
+   */
+  sessionExpiresAt?: Date | null;
+  /**
+   * `token_version` الذي صادق الطلب — يعيد التسجيل فحصه تحت قفل الصف فلا يُحفظ
+   * جهازٌ لجلسةٍ أُبطلت بين المصادقة والمعاملة.
+   */
+  sessionTokenVersion?: number;
 }
 
 /** بيانات المستخدم المكشوفة في الردود (بلا password_hash). */
@@ -33,8 +92,17 @@ export interface PublicUser {
   phone: string;
   avatarUrl: string | null;
   role: Role;
+  /** `null` لمن لم يُسأل بعد — لا افتراض. */
+  gender: Gender | null;
   /** هل أثبت المستخدم ملكية رقمه؟ التطبيق يوجّه غير المحقَّق لشاشة الرمز. */
   isPhoneVerified: boolean;
+  /**
+   * لغة المخاطبة المختارة — يقرؤها التطبيق عند الدخول ليوافق حالته المحلية.
+   *
+   * بدونها كان جهازٌ ثانٍ لنفس الحساب يبدأ بالعربية بينما إشعاراته تصل
+   * بالكردية: التفضيل على الخادم والحالة المحلية مصدران لا يلتقيان.
+   */
+  preferredLanguage: AppLocale;
   createdAt: string;
 }
 
@@ -83,7 +151,17 @@ export type ProductRow = {
   subcategory_id: string | null;
   name: string;
   description: string;
-  price: string | number;
+  /**
+   * النسخة الكردية — `null` تعني «ناقصة» (منتج قديم؛ هجرة ٠٤٦). لا فراغ أبداً:
+   * الهجرة ٠٦٦ تمنع النصّ الفارغ في العمودين، فـ`null` هي صورة النقص الوحيدة.
+   * `name`/`description` هما **العربية** (انظر تعليقات الأعمدة في ٠٦٦).
+   */
+  name_ckb: string | null;
+  description_ckb: string | null;
+  /** `null` = «السعر يُعلن قريباً» (084): يُعرض ولا يُشترى. لا يُقرأ صفراً أبداً. */
+  price: string | number | null;
+  /** سعر قطعتين من المنتج نفسه (085)؛ `null` = لا عرض. */
+  pair_price: string | number | null;
   stock: number;
   is_active: boolean;
   is_offer: boolean;
@@ -96,15 +174,38 @@ export type ProductRow = {
   previous_price: string | number | null;
   has_delivery_promo: boolean;
   delivery_promo_amount: string | number;
+  /** موعد التوفر القادم الذي يحدده المسؤول — معلومة إرشادية لا تغيّر المخزون. */
+  restock_at: Date | string | null;
   created_at: Date | string;
   updated_at: Date | string;
 };
 
+/** أين يظهر البنر في الرئيسية. */
+export const BANNER_PLACEMENTS = ['hero', 'promo'] as const;
+export type BannerPlacement = (typeof BANNER_PLACEMENTS)[number];
+
+export const BANNER_DESTINATIONS = [
+  'product',
+  'category',
+  'subcategory',
+  'anime',
+  'none',
+] as const;
+export type BannerDestination = (typeof BANNER_DESTINATIONS)[number];
+
 export type BannerRow = {
   id: string;
   image_url: string;
+  /** العنوان بالعربية (067: اختياري، `NULL` = بلا عنوان عربي). */
   title: string | null;
-  destination_type: 'product' | 'category' | 'subcategory' | 'none';
+  /** السطر الثاني بالعربية (`''` = بلا سطر عربي). */
+  subtitle: string;
+  /** العنوان بالكردية — `NULL` = ناقص، لا فراغ أبداً (046/067). */
+  title_ckb: string | null;
+  /** السطر الثاني بالكردية — `NULL` = ناقص، لا فراغ أبداً (067). */
+  subtitle_ckb: string | null;
+  placement: BannerPlacement;
+  destination_type: BannerDestination;
   destination_value: string | null;
   sort_order: number;
   is_active: boolean;
@@ -115,6 +216,7 @@ export type BannerRow = {
 export type GovernorateRow = {
   id: string;
   name: string;
+  name_ckb: string | null;
   delivery_fee: string | number;
   is_active: boolean;
   sort_order: number;
@@ -153,10 +255,15 @@ export type OrderItemRow = {
   id: string;
   order_id: string;
   product_id: string | null;
+  /** لقطة الاسم العربي وقت الطلب. */
   product_name: string;
+  /** لقطة الاسم الكردي وقت الطلب؛ `null` = لم تكن للمنتج كردية حينها (٠٦٦). */
+  product_name_ckb: string | null;
   image_url: string | null;
   option_value: string | null;
   price: string | number;
+  /** لقطة سعر القطعتين وقت الطلب (085)؛ `null` = لا عرض أو طلبٌ أقدم. */
+  pair_price: string | number | null;
   quantity: number;
   line_total: string | number;
   created_at: Date;
@@ -175,10 +282,14 @@ export type ReviewRow = {
   user_id: string;
   order_id: string;
   product_id: string | null;
+  /** لقطة الاسم العربي — من لقطة سطر الطلب. */
   product_name: string;
+  /** لقطة الاسم الكردي — من لقطة سطر الطلب؛ `null` = بلا كردية (٠٦٦). */
+  product_name_ckb: string | null;
   rating: number;
   comment: string;
-  photo_url: string | null;
+  /** من صفر إلى خمس صور — السقف تفرضه القاعدة لا الواجهة. */
+  photo_urls: string[];
   status: ReviewStatus;
   rejection_reason: string | null;
   customer_name: string;
@@ -195,10 +306,24 @@ export type ReviewRow = {
 export interface ReviewDto {
   id: string;
   productId: string;
+  /** لقطة الاسم العربي — الحقل القديم، باقٍ بمعناه لعملاءٍ أقدم. */
   productName: string;
+  /** لقطة الاسم بالعربية صراحةً (= `productName`). */
+  productNameAr: string;
+  /** لقطة الاسم بالكردية؛ `null` = بلا كردية وقت الطلب. التطبيق يختار بلغة واجهته. */
+  productNameCkb: string | null;
   orderId: string;
   rating: number;
   comment: string;
+  /** صور التقييم بترتيب إضافتها (صفر إلى خمس). */
+  photoUrls: string[];
+  /**
+   * أول صورة، أو `null`.
+   *
+   * حقلٌ مشتقّ للعرض لا مصدرٌ ثانٍ: شاشة المجتمع وبطاقةُ التقييم في اللوحة
+   * تعرضان صورةً واحدة، فتقرآن هذا بدل أن يعرف كلٌّ منهما أن الأولى هي
+   * المقصودة.
+   */
   photoUrl: string | null;
   status: ReviewStatus;
   rejectionReason: string | null;
@@ -217,13 +342,10 @@ export type PointsReason =
   | 'review_with_photo'
   | 'manual';
 
-/** مقادير المنح — مصدر الحقيقة الوحيد لقيم النقاط. */
-export const POINTS_AWARDS = {
-  // مطابق لمصدر تصميم v2: استلام الطلب يمنح ٢٠ نقطة.
-  orderReceived: 20,
-  reviewApproved: 1,
-  reviewWithPhoto: 5,
-} as const;
+/**
+ * [NOTE] `POINTS_AWARDS` حُذف. مقادير المنح لم تعد إعداداً ولا ثابتاً هنا:
+ * القواعد الثابتة كلها في `src/domain/galaxyPoints.ts` وهي مصدرها الوحيد.
+ */
 
 export type PointsLedgerRow = {
   id: string;
@@ -271,7 +393,9 @@ export type NotificationType =
   | 'reviewApproved'
   | 'reviewRejected'
   | 'backInStock'
-  | 'promotion';
+  | 'promotion'
+  | 'rewardClaimed'
+  | 'restockScheduled';
 
 export const NOTIFICATION_TYPES = [
   'orderAccepted',
@@ -282,6 +406,8 @@ export const NOTIFICATION_TYPES = [
   'reviewRejected',
   'backInStock',
   'promotion',
+  'rewardClaimed',
+  'restockScheduled',
 ] as const satisfies readonly NotificationType[];
 
 export type NotificationRow = {
@@ -316,6 +442,8 @@ export interface NotificationDto {
 export type FranchiseRow = {
   id: string;
   name: string;
+  /** مرادفات الاسم — يطابقها البحث. فارغة لا `null` (القيد NOT NULL). */
+  alt_names: string[];
   image_url: string | null;
   sort_order: number;
   is_active: boolean;
@@ -329,6 +457,7 @@ export type GovernorateZoneRow = {
   id: string;
   governorate_id: string;
   name: string;
+  name_ckb: string | null;
   delivery_fee: string | number;
   sort_order: number;
   is_active: boolean;
@@ -352,8 +481,10 @@ export interface BirthdayStatusDto {
   discountPercent: number;
 }
 
-/** نسبة خصم عيد الميلاد — مصدر الحقيقة على الخادم. */
-export const BIRTHDAY_DISCOUNT_PERCENT = 5;
+/**
+ * [NOTE] `BIRTHDAY_DISCOUNT_PERCENT` انتقل إلى `src/domain/birthday.ts`.
+ * النسبة قاعدة تجارية ثابتة، ومكانها طبقةُ القواعد لا ملفُّ أنواع الـAPI.
+ */
 
 // ═══════════════ الوسائط ═══════════════
 
@@ -363,7 +494,10 @@ export type MediaPurpose =
   | 'avatar'
   | 'banner'
   | 'franchise'
-  | 'category';
+  | 'category'
+  // صفوفٌ تاريخية من ميزة «رسوم الشخصيات» المحذوفة (الهجرة 065) — تُقرأ ولا
+  // تُرفع بعد اليوم (ليست في [MEDIA_PURPOSES]).
+  | 'slot';
 
 export const MEDIA_PURPOSES = [
   'product',
@@ -372,6 +506,20 @@ export const MEDIA_PURPOSES = [
   'banner',
   'franchise',
   'category',
+] as const satisfies readonly MediaPurpose[];
+
+/**
+ * الأغراض التي يقبلها قيد القاعدة `media_files_purpose_check` — ما يُرفع
+ * اليوم **وما رُفع سابقاً**.
+ *
+ * `slot` ليس غرض رفعٍ منذ الهجرة 065 (أُزيلت «رسوم الشخصيات»)، لكن صفوفه
+ * التاريخية ما زالت في الجدول ويجب أن تبقى صالحةً للقيد؛ إسقاطه من القيد
+ * يستلزم حذفها أو تزوير غرضها. الفرق بين القائمتين مقصود ومحروس
+ * (`api-contract-audit.test.ts`).
+ */
+export const STORED_MEDIA_PURPOSES = [
+  ...MEDIA_PURPOSES,
+  'slot',
 ] as const satisfies readonly MediaPurpose[];
 
 // ═══════════════ ترتيب المنتجات ═══════════════

@@ -1,0 +1,533 @@
+// [CRITICAL] العربية ← الكردية: يتغيّر النصّ، ولا تتغيّر الهندسة.
+//
+// كل شاشةٍ هنا تُبنى حقيقيةً مرّتين — عربيةً ثم كردية — بالمقاس وتكبير الخط
+// نفسيهما، ثم تُقارن مستطيلات كل عنصرٍ غير نصّي (`support/geometry_probe.dart`).
+// المسموح: نصٌّ أطول داخل منطقته، وكبسولةٌ/زرٌّ يلتفّ على تسميته فيتّسع
+// عرضه وحده («text-region»). الممنوع: أن يتحرّك أو يتغيّر حجم أي شيءٍ آخر
+// — رسمٌ، شعار، بطاقة، زرّ، فاصل — لأن نصّاً طال («bug»)، وأن تتجاوز
+// الكردية حيث لا تتجاوز العربية.
+//
+// [RATCHET] `_knownBugs` و`_knownKurdishOverflows` هما الفروق القائمة يوم كُتب
+// الاختبار. العدد **دقيق**: يفشل الاختبار إن زاد (تراجع) وإن نقص (إصلاحٌ لم
+// يُسجَّل). بعد كل إصلاح: أنقص الرقم أو احذف السطر. لا يُرفع رقمٌ أبداً.
+// و`_knownUnmatched` (البوّابة ١٠) عناصر لغةٍ دون أخرى، دقيقةٌ مثلها: البديل
+// المصمَّم المعتمد وحده. وأيّ تجاوز — بالعربية أيضاً — يُفشل الاختبار.
+// و`_cleanAtLargestScale` (البوّابة ١٥) شاشاتٌ ثبتت عند ×٢٫٠ فتبقى ثابتة.
+//
+// للتشخيص: `GEOMETRY_REPORT=/path/report.txt flutter test test/kurdish_geometry_test.dart`
+// يكتب كل فرقٍ بعناصره ومساراته.
+
+import 'dart:io';
+
+import 'package:auto_route/auto_route.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:otaku_galaxy/core/router/app_router.dart';
+import 'package:otaku_galaxy/core/design_system/design_system.dart';
+import 'package:otaku_galaxy/core/l10n/app_strings.dart';
+import 'package:otaku_galaxy/features/app_update/domain/app_version_config.dart';
+import 'package:otaku_galaxy/features/birthday/presentation/birthday_prompt.dart';
+import 'package:otaku_galaxy/features/checkout/presentation/screens/order_data_screen.dart';
+import 'package:otaku_galaxy/features/checkout/presentation/screens/order_review_screen.dart';
+import 'package:otaku_galaxy/features/checkout/presentation/widgets/order_success_view.dart';
+import 'package:otaku_galaxy/features/collections/presentation/screens/collection_detail_screen.dart';
+import 'package:otaku_galaxy/features/collections/presentation/screens/collections_tab.dart';
+import 'package:otaku_galaxy/features/collections/presentation/widgets/add_to_collection_sheet.dart';
+import 'package:otaku_galaxy/features/orders/presentation/widgets/delivery_confirmation_sheet.dart';
+import 'package:otaku_galaxy/features/splash/presentation/screens/splash_screen.dart';
+import 'package:otaku_galaxy/features/app_update/presentation/screens/force_update_screen.dart';
+import 'package:otaku_galaxy/features/auth/domain/entities/account_request.dart';
+import 'package:otaku_galaxy/features/auth/presentation/gender_required_gate.dart';
+import 'package:otaku_galaxy/features/auth/presentation/screens/account_pending_screen.dart';
+import 'package:otaku_galaxy/features/categories/presentation/screens/category_products_screen.dart';
+import 'package:otaku_galaxy/features/connectivity/presentation/offline_gate.dart';
+import 'package:otaku_galaxy/features/favorites/presentation/screens/favorites_screen.dart';
+import 'package:otaku_galaxy/features/main_navigation/presentation/screens/main_navigation_screen.dart';
+import 'package:otaku_galaxy/features/notifications/presentation/screens/notifications_screen.dart';
+import 'package:otaku_galaxy/features/onboarding/presentation/screens/onboarding_screen.dart';
+import 'package:otaku_galaxy/features/orders/domain/entities/order.dart';
+import 'package:otaku_galaxy/features/orders/presentation/screens/order_detail_screen.dart';
+import 'package:otaku_galaxy/features/orders/presentation/screens/orders_screen.dart';
+import 'package:otaku_galaxy/features/points/presentation/screens/galaxy_points_screen.dart';
+import 'package:otaku_galaxy/features/product_detail/presentation/screens/product_detail_screen.dart';
+import 'package:otaku_galaxy/features/reviews/presentation/screens/rate_order_screen.dart';
+import 'package:otaku_galaxy/features/reviews/presentation/screens/review_submitted_screen.dart';
+import 'package:otaku_galaxy/features/reviews/presentation/screens/write_review_screen.dart';
+import 'package:otaku_galaxy/features/search/presentation/screens/search_screen.dart';
+import 'package:otaku_galaxy/features/settings/presentation/cubit/locale_cubit.dart';
+import 'package:otaku_galaxy/features/settings/presentation/screens/personalize_screen.dart';
+import 'package:otaku_galaxy/features/settings/presentation/screens/settings_screen.dart';
+
+import 'support/geometry_probe.dart';
+import 'support/render_harness.dart';
+import 'support/screen_fixtures.dart';
+
+typedef _Pump =
+    Future<void> Function(
+      WidgetTester tester,
+      AppLanguage language,
+      double textScale,
+    );
+
+_Pump _tab(int tab, {bool loggedIn = true}) =>
+    (tester, language, scale) => pumpFixtureShell(
+      tester,
+      tab: tab,
+      language: language,
+      textScale: scale,
+      loggedIn: loggedIn,
+    );
+
+_Pump _screen(Widget Function() build, {bool loggedIn = true}) =>
+    (tester, language, scale) => pumpFixtureApp(
+      tester,
+      home: build(),
+      language: language,
+      textScale: scale,
+      loggedIn: loggedIn,
+    );
+
+/// شاشةٌ ثم نقراتٌ تفتح ورقتها من مستدعيها الحقيقي — فتُقاس الورقة بما
+/// يمرّره مستدعيها فعلاً (التأكيد والإدخال والاختيار، والأوراق الخاصة).
+_Pump _opened(_Pump screen, List<Finder Function(AppLanguage)> taps) =>
+    (tester, language, scale) async {
+      await screen(tester, language, scale);
+      for (final tap in taps) {
+        final finder = tap(language);
+        // قائمةٌ كسولة لا تبني ما تحت الطيّة: تُمرَّر حتى يُبنى الهدف.
+        if (finder.evaluate().isEmpty) {
+          await tester.scrollUntilVisible(
+            finder,
+            200,
+            scrollable: find
+                .byWidgetPredicate(
+                  (w) =>
+                      w is Scrollable && w.axisDirection == AxisDirection.down,
+                )
+                .first,
+          );
+        }
+        final target = finder.first;
+        await tester.ensureVisible(target);
+        await tester.pump();
+        await tester.tap(target);
+        await settleFixture(tester);
+      }
+    };
+
+Finder Function(AppLanguage) _text(String key) =>
+    (language) => find.text(AppStrings.of(language)(key));
+
+Finder Function(AppLanguage) _literal(String text) =>
+    (_) => find.text(text);
+
+Finder Function(AppLanguage) _icon(IconData icon) =>
+    (_) => find.byIcon(icon);
+
+_Pump _collections() => _screen(() => const Scaffold(body: CollectionsTab()));
+
+_Pump _auth(PageRouteInfo route) =>
+    (tester, language, scale) => pumpFixtureAuth(
+      tester,
+      route: route,
+      language: language,
+      textScale: scale,
+    );
+
+final _cases = <String, _Pump>{
+  'home': _tab(MainTab.home),
+  'categories': _tab(MainTab.categories),
+  'community': _tab(MainTab.community),
+  'cart': _tab(MainTab.cart),
+  'account': _tab(MainTab.account),
+  'cart-guest': _tab(MainTab.cart, loggedIn: false),
+  'account-guest': _tab(MainTab.account, loggedIn: false),
+  'orders': _screen(() => const OrdersScreen()),
+  'order-detail': _screen(() => const OrderDetailScreen(orderId: 'o1')),
+  'product-detail': _screen(() => const ProductDetailScreen(productId: 'p3')),
+  'settings': _screen(() => const SettingsScreen()),
+  'settings-guest': _screen(() => const SettingsScreen(), loggedIn: false),
+  'personalize': _screen(() => const PersonalizeScreen()),
+  'search': _screen(() => const SearchScreen()),
+  'favorites': _screen(() => const FavoritesScreen()),
+  'notifications': _screen(() => const NotificationsScreen()),
+  'galaxy-points': _screen(() => const GalaxyPointsScreen()),
+  'rate-order': _screen(
+    () => RateOrderScreen(order: fixtureOrder(OrderStatus.completed)),
+  ),
+  'write-review': _screen(
+    () => const WriteReviewScreen(
+      orderId: 'o1',
+      productId: 'p1',
+      productName: 'منتج 1',
+    ),
+  ),
+  'review-submitted': _screen(
+    () => const ReviewSubmittedScreen(
+      productName: 'منتج 1',
+      rating: 4,
+      comment: 'رائع جداً',
+    ),
+  ),
+  'pending-register': _screen(
+    () => const AccountPendingScreen(kind: AccountRequestKind.registration),
+    loggedIn: false,
+  ),
+  'pending-reset': _screen(
+    () => const AccountPendingScreen(kind: AccountRequestKind.passwordReset),
+    loggedIn: false,
+  ),
+  'onboarding': _screen(() => const OnboardingScreen(), loggedIn: false),
+  'offline': _screen(
+    () => Scaffold(body: Stack(children: [OfflineGateScreen(onRetry: () {})])),
+    loggedIn: false,
+  ),
+  'force-update': _screen(
+    () => ForceUpdateScreen(
+      config: const AppVersionConfig(
+        minimumSupportedVersion: '1.2.0',
+        updateUrl: 'https://example.com',
+      ),
+      installedVersion: '1.1.0',
+      onOpenStore: (_) async {},
+    ),
+    loggedIn: false,
+  ),
+  'category-products': _screen(
+    () => const CategoryProductsScreen(categoryId: 'c1', categoryName: 'قسم 1'),
+  ),
+  // [NOTE] (البوّابة ٨، 2026-10-10) شاشاتٌ وأوراق لم تُقَس في التدقيق الأول.
+  'order-data': _screen(() => const OrderDataScreen()),
+  'order-review': _screen(
+    () => OrderReviewScreen(orderData: fixtureOrderData()),
+  ),
+  'order-success': _screen(
+    () => Scaffold(
+      body: OrderSuccessView(onOpenOrders: () {}, onKeepShopping: () {}),
+    ),
+  ),
+  'collections': _screen(() => const Scaffold(body: CollectionsTab())),
+  'collection-detail': _screen(
+    () => const CollectionDetailScreen(
+      collectionId: 'col1',
+      collectionName: 'مجموعتي',
+    ),
+  ),
+  'splash': _screen(() => const SplashScreen(), loggedIn: false),
+  // التوفّر: لا ورقة ولا حوار — زرّ «أعلمني عند توفره» في تفاصيل منتجٍ نافد.
+  'product-restock': _screen(
+    () => const ProductDetailScreen(productId: fixtureOutOfStockId),
+  ),
+  'sheet-login-gate': _screen(
+    () => FixtureSheetHost(open: (context) => showLoginGate(context)),
+    loggedIn: false,
+  ),
+  'sheet-add-to-collection': _screen(
+    () => FixtureSheetHost(
+      open: (context) => showAddToCollectionSheet(context, productId: 'p1'),
+    ),
+  ),
+  'sheet-delivery-confirmation': _screen(
+    () => FixtureSheetHost(
+      open: (context) => showDeliveryConfirmationSheet(
+        context,
+        order: fixtureOrder(OrderStatus.delivering),
+      ),
+    ),
+  ),
+  'sheet-birthday': _screen(
+    () => FixtureSheetHost(open: (context) => showBirthdayPrompt(context)),
+  ),
+  // [NOTE] (البوّابة ١٠، 2026-10-12) ما فات البوّابة ٨: حاجز الجنس، وكل ورقة
+  // تأكيدٍ وإدخالٍ واختيار تُفتح من مستدعيها الحقيقي بالنقر.
+  'gender-required': _screen(() => const GenderRequiredScreen()),
+  'sheet-confirm-logout': _opened(_tab(MainTab.account), [_text('logout')]),
+  'sheet-confirm-remove-product': _opened(_tab(MainTab.cart), [
+    _icon(Icons.close_rounded),
+  ]),
+  'sheet-collection-actions': _opened(_collections(), [
+    _icon(Icons.more_horiz_rounded),
+  ]),
+  'sheet-confirm-delete-collection': _opened(_collections(), [
+    _icon(Icons.more_horiz_rounded),
+    _text('deleteCollection'),
+  ]),
+  'sheet-prompt-rename-collection': _opened(_collections(), [
+    _icon(Icons.more_horiz_rounded),
+    _text('rename'),
+  ]),
+  'sheet-confirm-remove-from-collection': _opened(
+    _screen(
+      () => const CollectionDetailScreen(
+        collectionId: 'k1',
+        collectionName: 'مجموعتي',
+      ),
+    ),
+    [_icon(Icons.close_rounded)],
+  ),
+  'sheet-prompt-display-name': _opened(_screen(() => const SettingsScreen()), [
+    _text('editDisplayName'),
+  ]),
+  'sheet-settings-gender': _opened(_screen(() => const SettingsScreen()), [
+    _text('gender'),
+  ]),
+  'sheet-change-password': _opened(_screen(() => const SettingsScreen()), [
+    _text('resetPassword'),
+  ]),
+  'sheet-province': _opened(_screen(() => const OrderDataScreen()), [
+    _text('chooseProvince'),
+  ]),
+  'sheet-zone': _opened(_screen(() => const OrderDataScreen()), [
+    _text('chooseProvince'),
+    _literal('بغداد'),
+    _text('chooseZone'),
+  ]),
+  'login': _auth(const LoginRoute()),
+  'register': _auth(const RegisterRoute()),
+  'forgot-password': _auth(const ForgotPasswordRoute()),
+};
+
+/// [RATCHET] عدد فروق «bug» القائمة لكل شاشة×مقاس. الغائب = صفر.
+const _knownBugs = <String, int>{};
+
+/// [RATCHET] تجاوزاتٌ كردية لا تقع بالعربية: «شاشة@مقاس: جهة @ ملف».
+const _knownKurdishOverflows = <String>{};
+
+/// [RATCHET] عدد العناصر غير النصّية الموجودة بلغةٍ دون الأخرى، لكل شاشة×مقاس.
+/// الغائب = صفر. كلّها بديلٌ مصمَّم معتمد ([PRODUCT] 2026-10-05: تسميةٌ لا تتّسع
+/// حتى عند حدّها تصير أيقونةً بتلميح، في خانةٍ لا يتغيّر مستطيلها):
+/// - notifications: «تعليم الكل كمقروء» الكردية أيقونة في كل مقاس.
+/// - forgot-password@320x3000@1.3: «إعادة المحاولة» الكردية أيقونة في خانة
+///   أعرض ترجماتها (البوّابة ٨).
+const _knownUnmatched = <String, int>{
+  'notifications@412x892@1.0': 1,
+  'notifications@412x892@1.3': 1,
+  'notifications@375x812@1.0': 1,
+  'notifications@320x568@1.3': 1,
+  'notifications@412x3000@1.3': 1,
+  'notifications@320x3000@1.3': 1,
+  'forgot-password@320x3000@1.3': 1,
+};
+
+/// [RATCHET] (البوّابة ١٥، 2026-10-17) شاشة@مقاس ثابتةٌ عند ×٢٫٠ — أكبر تكبيرٍ
+/// في مصفوفة القياس الموثّقة، خارج المقاسات المطلوبة: لا فرق غير نصّي، ولا
+/// عنصر بلغةٍ دون أخرى، ولا خطأ (تجاوز أو نصٌّ لا يتّسع) بأيّ لغة. تنمو ولا
+/// تنقص؛ ما ليس فيها لم يثبت بعد عند ×٢٫٠ (جردُه في تقرير البوّابة ١٥).
+const _cleanAtLargestScale = <String>{
+  'cart-guest@412x892@2.0',
+  'cart@412x892@2.0',
+  'category-products@320x568@2.0',
+  'category-products@412x892@2.0',
+  'collections@320x568@2.0',
+  'collections@412x892@2.0',
+  'community@412x892@2.0',
+  'favorites@412x892@2.0',
+  'force-update@320x568@2.0',
+  'force-update@412x892@2.0',
+  'forgot-password@412x892@2.0',
+  'gender-required@320x568@2.0',
+  'gender-required@412x892@2.0',
+  'login@320x568@2.0',
+  'login@412x892@2.0',
+  'offline@412x892@2.0',
+  'order-success@320x568@2.0',
+  'order-success@412x892@2.0',
+  'pending-register@412x892@2.0',
+  'pending-reset@412x892@2.0',
+  'personalize@320x568@2.0',
+  'rate-order@320x568@2.0',
+  'rate-order@412x892@2.0',
+  'register@320x568@2.0',
+  'register@412x892@2.0',
+  'review-submitted@320x568@2.0',
+  'review-submitted@412x892@2.0',
+  'search@320x568@2.0',
+  'search@412x892@2.0',
+  'sheet-add-to-collection@320x568@2.0',
+  'sheet-add-to-collection@412x892@2.0',
+  'sheet-birthday@320x568@2.0',
+  'sheet-birthday@412x892@2.0',
+  'sheet-collection-actions@320x568@2.0',
+  'sheet-collection-actions@412x892@2.0',
+  'sheet-delivery-confirmation@320x568@2.0',
+  'sheet-delivery-confirmation@412x892@2.0',
+  'sheet-login-gate@320x568@2.0',
+  'sheet-login-gate@412x892@2.0',
+  'sheet-prompt-rename-collection@320x568@2.0',
+};
+
+final _geometry = <String, Map<String, GeoNode>>{};
+final _errors = <String, List<String>>{};
+
+Future<void> _measure(
+  WidgetTester tester,
+  String name,
+  GeoView view,
+  AppLanguage language,
+) async {
+  useGeoView(tester, view);
+  final key = '$name@$view@${language.code}';
+  _errors[key] = await captureLayoutErrors(
+    () => _cases[name]!(tester, language, view.textScale),
+  );
+  _geometry[key] = collectGeometry(tester, view: view.size);
+  // تفكيك الشجرة قبل `tearDown` يُنهي مؤقّتات الشاشة داخل الاختبار.
+  await tester.pumpWidget(const SizedBox.shrink());
+  await tester.pump(const Duration(seconds: 2));
+}
+
+void main() {
+  setUpAll(loadProjectFonts);
+
+  final views = [...kGeoViews, ...kGeoFullContentViews];
+  for (final view in views) {
+    for (final entry in _cases.entries) {
+      for (final language in AppLanguage.values) {
+        testWidgets(
+          '${entry.key} $view ${language.code}',
+          (tester) => _measure(tester, entry.key, view, language),
+        );
+      }
+    }
+  }
+  for (final view in kGeoLargestScaleViews) {
+    for (final name in _cases.keys) {
+      if (!_cleanAtLargestScale.contains('$name@$view')) continue;
+      for (final language in AppLanguage.values) {
+        testWidgets(
+          '$name $view ${language.code}',
+          (tester) => _measure(tester, name, view, language),
+        );
+      }
+    }
+  }
+
+  test('[CRITICAL] العقد: لا هندسة غير نصّية تتغيّر بتغيّر اللغة', () {
+    final report = StringBuffer();
+    final actualBugs = <String, int>{};
+    final actualOverflows = <String>{};
+    final failures = <String>[];
+
+    for (final view in views) {
+      for (final name in _cases.keys) {
+        final caseKey = '$name@$view';
+        final ar = _geometry['$caseKey@ar'];
+        final ckb = _geometry['$caseKey@ckb'];
+        if (ar == null || ckb == null) {
+          failures.add('$caseKey: لم تُبنَ الشاشة');
+          continue;
+        }
+        final comparison = compareGeometry(ar, ckb);
+        final bugs = comparison.bugs.toList();
+        if (bugs.isNotEmpty) actualBugs[caseKey] = bugs.length;
+
+        Set<String> overflows(String code) => {
+          for (final e in _errors['$caseKey@$code'] ?? const <String>[])
+            if (e.contains('overflowed')) overflowKey(e),
+        };
+        final arOverflows = overflows('ar');
+        for (final o in overflows('ckb').difference(arOverflows)) {
+          actualOverflows.add('$caseKey: $o');
+        }
+        // (البوّابة ٩) لا تجاوز بأيّ لغة — كان التجاوز المشترك يُكتب ولا يُفشل.
+        if (arOverflows.isNotEmpty) {
+          failures.add('$caseKey: تجاوزٌ بالعربية أيضاً: $arOverflows');
+        }
+        final otherErrors = {
+          for (final code in ['ar', 'ckb'])
+            for (final e in _errors['$caseKey@$code'] ?? const <String>[])
+              if (!e.contains('overflowed')) '[$code] $e',
+        };
+
+        report.writeln(
+          '== $caseKey: bugs=${bugs.length} '
+          'text-region=${comparison.textRegions.length} '
+          'unmatched=${comparison.unmatched}',
+        );
+        for (final d in comparison.diffs) {
+          report.writeln('  $d');
+        }
+        for (final o in overflows('ckb').union(arOverflows)) {
+          report.writeln('  overflow $o');
+        }
+        for (final e in otherErrors) {
+          report.writeln('  error $e');
+        }
+        if (otherErrors.isNotEmpty) {
+          failures.add('$caseKey: أخطاء غير التجاوز: $otherErrors');
+        }
+
+        final knownUnmatched = _knownUnmatched[caseKey] ?? 0;
+        if (comparison.unmatched != knownUnmatched) {
+          failures.add(
+            '$caseKey: عناصر بلغةٍ دون أخرى = ${comparison.unmatched}، '
+            'المسجَّل $knownUnmatched',
+          );
+        }
+
+        final known = _knownBugs[caseKey] ?? 0;
+        if (bugs.length != known) {
+          failures.add(
+            '$caseKey: فروق bug = ${bugs.length}، المسجَّل $known'
+            '${bugs.length < known ? ' — تحسُّن: أنقص الرقم' : ''}\n'
+            '${bugs.map((d) => '    $d').join('\n')}',
+          );
+        }
+      }
+    }
+
+    final newOverflows = actualOverflows.difference(_knownKurdishOverflows);
+    final fixedOverflows = _knownKurdishOverflows.difference(actualOverflows);
+    if (newOverflows.isNotEmpty) {
+      failures.add('تجاوزٌ كردي جديد: $newOverflows');
+    }
+    if (fixedOverflows.isNotEmpty) {
+      failures.add('تجاوزٌ كردي زال — احذفه من القائمة: $fixedOverflows');
+    }
+
+    final path = Platform.environment['GEOMETRY_REPORT'];
+    if (path != null) {
+      report
+        ..writeln('\n// _knownBugs')
+        ..writeln(
+          (actualBugs.entries.toList()..sort((a, b) => a.key.compareTo(b.key)))
+              .map((e) => "  '${e.key}': ${e.value},")
+              .join('\n'),
+        )
+        ..writeln('\n// _knownKurdishOverflows')
+        ..writeln((actualOverflows.toList()..sort()).map((o) => "  '$o',").join('\n'));
+      File(path).writeAsStringSync(report.toString());
+    }
+
+    expect(failures, isEmpty, reason: failures.join('\n'));
+  });
+
+  test('[RATCHET] ×٢٫٠: ما ثبت يبقى ثابتاً بكل لغة', () {
+    final failures = <String>[];
+    for (final caseKey in _cleanAtLargestScale) {
+      final ar = _geometry['$caseKey@ar'];
+      final ckb = _geometry['$caseKey@ckb'];
+      if (ar == null || ckb == null) {
+        failures.add('$caseKey: لم تُبنَ الشاشة');
+        continue;
+      }
+      final comparison = compareGeometry(ar, ckb);
+      final errors = [
+        for (final code in ['ar', 'ckb'])
+          for (final e in _errors['$caseKey@$code'] ?? const <String>[])
+            '[$code] ${e.split('\n').first}',
+      ];
+      if (comparison.bugs.isNotEmpty ||
+          comparison.unmatched != 0 ||
+          errors.isNotEmpty) {
+        failures.add(
+          '$caseKey: bugs=${comparison.bugs.length} '
+          'unmatched=${comparison.unmatched}\n'
+          '${comparison.bugs.map((d) => '    $d').join('\n')}\n'
+          '${errors.map((e) => '    $e').join('\n')}',
+        );
+      }
+    }
+    expect(failures, isEmpty, reason: failures.join('\n'));
+  });
+}

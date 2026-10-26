@@ -1,12 +1,29 @@
 import type pg from 'pg';
 import type { OrderRow, OrderStatus, Paginated } from '../types/index.js';
+import { priceOrder } from '../domain/orderPricing.js';
 
 export interface OrderItemSnapshot {
   productId: string;
+  /**
+   * لقطة الاسم العربي وقت الطلب — الحقل القديم، باقٍ بمعناه لعملاءٍ أقدم
+   * وللوحة التحكم.
+   */
   productName: string;
+  /** لقطة الاسم بالعربية صراحةً (= `productName`) — 066. */
+  productNameAr: string;
+  /**
+   * لقطة الاسم بالكردية وقت الطلب؛ `null` = لم تكن للمنتج كردية حينها، أو
+   * طلبٌ أقدم من 066 (لا تُختلق لقطةٌ لتاريخٍ مضى). التطبيق يختار بلغة واجهته.
+   */
+  productNameCkb: string | null;
   imageUrl: string | null;
   optionValue: string | null;
   price: number;
+  /**
+   * لقطة «سعر القطعتين» وقت الطلب (085)؛ `null` = لم يكن للمنتج عرض، أو طلبٌ
+   * أقدم. `lineTotal` هو ما دفعه الزبون — قد يقلّ عن `price × quantity` بالعرض.
+   */
+  pairPrice: number | null;
   quantity: number;
   lineTotal: number;
 }
@@ -21,6 +38,8 @@ export interface OrderWithItems {
   phone: string;
   productsTotal: number;
   discount: number;
+  /** ما جاء من مزيّة مستوى ضمن `discount` — للعرض والتدقيق. */
+  loyaltyDiscount: number;
   /** خصم التوصيل المطبَّق وقت الطلب (لقطة تاريخية). */
   deliveryDiscount: number;
   total: number;
@@ -38,16 +57,39 @@ export interface OrderWithItems {
   /** لحظة تأكيد الاستلام؛ null قبل الاستلام. */
   deliveredAt: Date | null;
   /** لحظة فتح التقييم (الاستلام + المهلة)؛ null قبل الاستلام. */
-  ratingAvailableAt: Date | null;
   /**
-   * هل صار التقييم مسموحاً الآن؟ يُحسب على الخادم من `rating_available_at`
+   * موعد إرسال تذكير التقييم — **ليس** موعد فتح التقييم.
+   *
+   * التقييم يُفتح بالاستلام (انظر [canReview]). هذا الحقل يخصّ إشعار
+   * «شلونها المنتجات؟» وحده.
+   */
+  ratingReminderAt: Date | null;
+  /**
+   * هل يستطيع صاحب الطلب تقييم منتجاته الآن؟
    * لا في التطبيق — الواجهة تعرض القرار ولا تتخذه.
    */
-  ratingAvailable: boolean;
+  canReview: boolean;
+  /**
+   * عدد منتجات الطلب التي ما زال لصاحبه فيها ما يفعله: بلا تقييم بعد، أو
+   * تقييمٌ مرفوض يمكن تصحيحه. المعلَّق والمنشور لا يُحتسبان.
+   *
+   * [CRITICAL] `canReview` بوّابة الاستلام وتبقى صحيحة إلى الأبد؛ وحدها كانت
+   * تُبقي زرّ «قيّم طلبك» ظاهراً بعد أن قُيّم كل منتج في الطلب. هذا العدد
+   * هو ما يُخفي الزرّ — على الخادم لا بتخمين التطبيق. المنتج المحذوف من
+   * الكتالوج (`product_id` فارغ في اللقطة) لا يُعدّ قابلاً للتقييم.
+   */
+  reviewableProductCount: number;
   /** لحظة إرسال تذكير التقييم؛ null إن لم يُرسل بعد. */
   ratingReminderSentAt: Date | null;
   /** سجل انتقالات الحالة بأوقاتها (بلا هوية من غيّرها — لا تُكشف للعميل). */
   statusHistory: OrderStatusEvent[];
+  /**
+   * هل يحمل هذا الطلب هديةَ مستوى مفعَّلة من الزبون؟
+   *
+   * `true` متى كان `loyalty_gift_redemption_id` غير فارغ — أي أن الزبون فعَّل
+   * هديةً وصارت مرتبطةً بهذا الطلب. لا تأثير على المبلغ ولا على الإجمالي.
+   */
+  loyaltyGiftActivated: boolean;
 }
 
 /** حدث واحد في مسار الطلب. */
@@ -57,15 +99,40 @@ export interface OrderStatusEvent {
   createdAt: Date;
 }
 
+/**
+ * منتجات الطلب `o` التي ما زال لصاحبه فيها ما يفعله: بلا تقييم، أو تقييمٌ
+ * مرفوض يُصحَّح. المعلَّق والمنشور نهائيان (القيد الفريد على (الزبون،
+ * المنتج) يمنع ثانياً، §40.5).
+ *
+ * [CRITICAL] **التعريف الوحيد** — يقرؤه عدّ `reviewableProductCount` (الذي
+ * يُخفي به التطبيق كل دعوة تقييم) وأهليةُ تذكير التقييم (المجدول و«أرسل
+ * الآن»). تعريفان كانا سيتباعدان: التطبيق يقول «لا شيء يُقيَّم» والتذكير
+ * يعد بنقاط عنه (CA-16). يُستعمل بعد `SELECT …`/`EXISTS (SELECT 1 …` ويحتاج
+ * الاسم المستعار `o` لصفّ الطلب.
+ */
+export const REVIEWABLE_ITEMS_OF_ORDER = `
+    FROM order_items oi
+   WHERE oi.order_id = o.id
+     AND oi.product_id IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM reviews r
+        WHERE r.user_id = o.user_id
+          AND r.product_id = oi.product_id
+          AND r.status <> 'rejected'
+     )`;
+
 const ORDER_WITH_CUSTOMER = `
   SELECT o.*,
          COALESCE(
            (SELECT json_agg(json_build_object(
               'productId', oi.product_id,
               'productName', oi.product_name,
+              'productNameAr', oi.product_name,
+              'productNameCkb', oi.product_name_ckb,
               'imageUrl', oi.image_url,
               'optionValue', oi.option_value,
               'price', oi.price,
+              'pairPrice', oi.pair_price,
               'quantity', oi.quantity,
               'lineTotal', oi.line_total
             ) ORDER BY oi.id)
@@ -84,8 +151,12 @@ const ORDER_WITH_CUSTOMER = `
             WHERE h.order_id = o.id),
            '[]'::json
          ) AS status_history,
-         (o.rating_available_at IS NOT NULL AND o.rating_available_at <= now())
-           AS rating_available,
+         -- [CRITICAL] الأهلية من الاستلام لا من مؤقّت. كان الشرط يقارن
+         -- rating_available_at بالساعة، أي مهلةً يضبطها المسؤول تفصل بين
+         -- ضغطة «استلمت طلبي» وفتح التقييم. صارت: استُلم الطلب ⇒ يُقيَّم.
+         (o.delivered_at IS NOT NULL) AS can_review,
+         -- انظر REVIEWABLE_ITEMS_OF_ORDER — التعريف نفسه لأهلية تذكير التقييم.
+         (SELECT COUNT(DISTINCT oi.product_id) ${REVIEWABLE_ITEMS_OF_ORDER}) AS reviewable_product_count,
          (SELECT h.note FROM order_status_history h
           WHERE h.order_id = o.id AND h.status = 'REJECTED'
           ORDER BY h.created_at DESC LIMIT 1) AS rejection_reason,
@@ -95,6 +166,32 @@ const ORDER_WITH_CUSTOMER = `
           ORDER BY h.created_at DESC LIMIT 1) AS delivery_note
   FROM orders o
   LEFT JOIN users u ON u.id = o.user_id`;
+
+/**
+ * الطلب كما تراه الإدارة — يضيف المحاسبة الداخلية إلى ما يراه العميل.
+ *
+ * [CRITICAL] نوعٌ منفصل لا حقلٌ اختياري على `OrderWithItems`: `mapOrder`
+ * قائمةُ سماحٍ صريحة يقرأها مسارُ العميل ومسارُ الإدارة معاً، وإضافة الفائض
+ * إليها كانت تكشف رقماً محاسبياً داخلياً لكل زبون يفتح طلبه.
+ */
+export interface AdminOrderItem extends OrderItemSnapshot {
+  /**
+   * مخزون المنتج **الآن** — يُقرأ عند كل فتحٍ للطلب في اللوحة، لا لقطةٌ من لحظة
+   * الإنشاء. معلومةٌ للمسؤول لا قرار: القبول يعيد قراءة المخزون تحت القفل
+   * (`consumeStockOnApproval`). `null` لمنتجٍ حُذف من القاعدة.
+   */
+  currentStock: number | null;
+}
+
+export interface AdminOrderWithItems extends OrderWithItems {
+  /**
+   * ما تجاوز رسوم التوصيل من ترويج المنتجات — محتفَظ به للمتجر.
+   *
+   * ليس خصماً للزبون ولا يدخل `total`. يُقرأ من مسارات `/admin` وحدها.
+   */
+  deliveryDiscountExcess: number;
+  items: AdminOrderItem[];
+}
 
 function mapOrder(row: Record<string, unknown>): OrderWithItems {
   return {
@@ -108,6 +205,7 @@ function mapOrder(row: Record<string, unknown>): OrderWithItems {
     productsTotal: Number(row.products_total),
     discount: Number(row.discount),
     deliveryDiscount: Number(row.delivery_discount ?? 0),
+    loyaltyDiscount: Number(row.loyalty_discount ?? 0),
     total: Number(row.total),
     customer: (row.customer as OrderWithItems['customer']) ?? null,
     createdAt: new Date(row.created_at as string),
@@ -117,10 +215,11 @@ function mapOrder(row: Record<string, unknown>): OrderWithItems {
     rejectionReason: (row.rejection_reason as string | null) ?? null,
     dispatchedAt: row.dispatched_at ? new Date(row.dispatched_at as string) : null,
     deliveredAt: row.delivered_at ? new Date(row.delivered_at as string) : null,
-    ratingAvailableAt: row.rating_available_at
-      ? new Date(row.rating_available_at as string)
+    ratingReminderAt: row.rating_reminder_at
+      ? new Date(row.rating_reminder_at as string)
       : null,
-    ratingAvailable: row.rating_available === true,
+    canReview: row.can_review === true,
+    reviewableProductCount: Number(row.reviewable_product_count ?? 0),
     ratingReminderSentAt: row.rating_reminder_sent_at
       ? new Date(row.rating_reminder_sent_at as string)
       : null,
@@ -132,11 +231,76 @@ function mapOrder(row: Record<string, unknown>): OrderWithItems {
         createdAt: new Date(event.createdAt),
       };
     }),
+    loyaltyGiftActivated: row.loyalty_gift_redemption_id != null,
+  };
+}
+
+/** يضيف الفائض المحاسبي إلى الشكل الذي يراه العميل — لمسارات الإدارة وحدها. */
+function mapAdminOrder(
+  row: Record<string, unknown>,
+  stockById: ReadonlyMap<string, number>,
+): AdminOrderWithItems {
+  const order = mapOrder(row);
+  return {
+    ...order,
+    deliveryDiscountExcess: Number(row.delivery_discount_excess ?? 0),
+    items: order.items.map((item) => ({
+      ...item,
+      currentStock: item.productId ? (stockById.get(item.productId) ?? null) : null,
+    })),
   };
 }
 
 export const orderRepo = {
-  /** إنشاء الطلب داخل المعاملة: لقطات + تنزيل المخزون + سجل الحالة. */
+  /**
+   * قفل صفّ الطلب داخل معاملة.
+   *
+   * [CRITICAL] هذا ما يجعل سقفَ نقاط التقييم لكل طلب صحيحاً تحت التزامن.
+   * اعتمادُ تقييمين من الطلب نفسه في اللحظة ذاتها يقرأ كلٌّ منهما «المُنح
+   * حتى الآن» قبل أن يكتب الآخر، فيمنحان معاً أكثر من السقف. القفل يُسلسل
+   * الاعتمادَين: الثاني ينتظر ثم يقرأ ما كتبه الأول فعلاً.
+   *
+   * القفل على `orders` لا على `points_ledger` عمداً: السقف تعريفُه «لكل
+   * طلب»، والصفّ الذي يمثّل الطلب هو نقطة التسلسل الطبيعية الموجودة أصلاً.
+   */
+  /**
+   * طلبٌ سابق لهذا الزبون بمفتاح عدم التكرار نفسه، إن وُجد.
+   *
+   * [SECURITY] البحث بـ`user_id` دائماً: المفتاح لا يُطابَق إلا ضمن طلبات
+   * صاحبه، فلا يُعاد طلب زبونٍ آخر مهما تشابه المفتاحان. يقرؤه الإنشاء **بعد**
+   * قفل العربة، فيرى محاولةً أولى التزمت أثناء انتظاره.
+   */
+  async findByIdempotencyKey(
+    db: pg.Pool | pg.PoolClient,
+    userId: string,
+    key: string,
+  ): Promise<{ id: string; fingerprint: string } | null> {
+    const { rows } = await db.query<{ id: string; fingerprint: string }>(
+      `SELECT id, idempotency_fingerprint AS fingerprint
+         FROM orders
+        WHERE user_id = $1 AND idempotency_key = $2`,
+      [userId, key],
+    );
+    return rows[0] ?? null;
+  },
+
+  async lockForUpdate(client: pg.PoolClient, orderId: string) {
+    const { rows } = await client.query<{ id: string }>(
+      'SELECT id FROM orders WHERE id = $1 FOR UPDATE',
+      [orderId],
+    );
+    return rows[0]?.id ?? null;
+  },
+
+  /**
+   * إنشاء الطلب داخل المعاملة: لقطات + سجل الحالة — **بلا تنزيل مخزون**.
+   *
+   * [CRITICAL] المخزون يُستهلك عند **قبول الإدارة** لا هنا (قرار عمل
+   * 2026-09-14؛ انظر `consumeStockOnApproval` في `orderService`). الطلب
+   * المنتظر لا يحجز شيئاً، فلا يوجد ما يُسترد عند رفضه. كان التنزيل
+   * المشروط يقع هنا ويُسترد في الرفض؛ حُذف الاثنان معاً — إبقاءُ أحدهما
+   * وحده يُنتج مخزوناً مزدوج الحساب.
+   */
   async create(
     db: pg.PoolClient,
     input: {
@@ -152,8 +316,22 @@ export const orderRepo = {
       zoneName?: string | null;
       /** خصم مطبَّق عند الإنشاء (خصم عيد الميلاد حالياً). */
       discount?: number;
-      /** خصم التوصيل المحسوب على الخادم — لقطة تاريخية لا تتغيّر لاحقاً. */
-      deliveryDiscount?: number;
+      /** الجزء الآتي من مزيّة مستوى — تفصيلٌ للتدقيق داخل `discount`. */
+      loyaltyDiscount?: number;
+      /**
+       * مجموع ترويج التوصيل **قبل السقف**: Σ(الكمية × مبلغ المنتج).
+       *
+       * [CRITICAL] يُمرَّر الخام لا المسقوف، والقسمة تقع هنا وحدها:
+       * `min` للزبون و`max(0, الخام − الرسوم)` للمتجر. تمرير القيمتين
+       * محسوبتين من الخدمة كان يعني موضعين قد يتباعدان، فيُقيَّد للمتجر
+       * فائضٌ لا يقابله خصمٌ بلغ الرسوم — وهو بالضبط ما يمنعه قيد القاعدة.
+       */
+      deliveryPromoRaw?: number;
+      /**
+       * مفتاح عدم التكرار وبصمة الطلب (هجرة 083) — يُكتبان مع الطلب في الصفّ
+       * نفسه، فلا مفتاح بلا طلبٍ ملتزَم ولا طلب يضيع مفتاحه. غيابهما = `NULL`.
+       */
+      idempotency?: { key: string; fingerprint: string } | null;
     },
   ): Promise<OrderWithItems> {
     const { rows: numRows } = await db.query<{ number: string }>(
@@ -161,26 +339,34 @@ export const orderRepo = {
     );
     const orderNumber = numRows[0]!.number;
 
-    const productsTotal = input.items.reduce((sum, item) => sum + item.lineTotal, 0);
-    const discount = Math.min(input.discount ?? 0, productsTotal);
-    // خصم التوصيل مسقوف برسوم التوصيل — يُخزَّن كما طُبِّق وقت الطلب.
-    const deliveryDiscount = Math.min(
-      Math.max(input.deliveryDiscount ?? 0, 0),
-      input.deliveryFee,
-    );
-    const payableDelivery = input.deliveryFee - deliveryDiscount;
-    // لا يُسمح بإجمالي سالب مهما بلغ الخصم.
-    const total = Math.max(0, productsTotal + payableDelivery - discount);
+    // المبالغ كلها من `priceOrder` — الدالة نفسها التي تعاين بها شاشة الدفع
+    // (`orderService.checkoutQuote`)، فما يراه الزبون قبل التأكيد هو ما يُحفظ.
+    const {
+      productsTotal,
+      discount,
+      loyaltyDiscount,
+      deliveryDiscount,
+      deliveryDiscountExcess,
+      total,
+    } = priceOrder({
+      productsTotal: input.items.reduce((sum, item) => sum + item.lineTotal, 0),
+      deliveryFee: input.deliveryFee,
+      deliveryPromoRaw: input.deliveryPromoRaw ?? 0,
+      discount: input.discount ?? 0,
+      loyaltyDiscount: input.loyaltyDiscount ?? 0,
+    });
 
     const { rows } = await db.query<Record<string, unknown>>(
       `INSERT INTO orders (
          number, user_id, governorate_id, province, delivery_fee, full_address,
          phone, products_total, discount, total, status, zone_id, zone_name,
-         delivery_discount
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'PENDING_ADMIN_CONFIRMATION', $11, $12, $13)
+         delivery_discount, loyalty_discount, delivery_discount_excess,
+         idempotency_key, idempotency_fingerprint
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'PENDING_ADMIN_CONFIRMATION', $11, $12, $13, $14, $15, $16, $17)
        RETURNING id, number, status, province, delivery_fee, full_address,
                  phone, products_total, discount, total, created_at, zone_name,
-                 delivery_discount`,
+                 delivery_discount, loyalty_discount, delivery_discount_excess,
+                 loyalty_gift_redemption_id`,
       [
         orderNumber,
         input.userId,
@@ -195,6 +381,10 @@ export const orderRepo = {
         input.zoneId ?? null,
         input.zoneName ?? null,
         deliveryDiscount,
+        loyaltyDiscount,
+        deliveryDiscountExcess,
+        input.idempotency?.key ?? null,
+        input.idempotency?.fingerprint ?? null,
       ],
     );
     const order = rows[0]!;
@@ -202,13 +392,21 @@ export const orderRepo = {
     for (const item of input.items) {
       await db.query(
         `INSERT INTO order_items (
-           order_id, product_id, product_name, image_url, option_value, price, quantity, line_total
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [order.id, item.productId, item.productName, item.imageUrl, item.optionValue, item.price, item.quantity, item.lineTotal],
-      );
-      await db.query(
-        'UPDATE products SET stock = stock - $2 WHERE id = $1 AND stock >= $2',
-        [item.productId, item.quantity],
+           order_id, product_id, product_name, product_name_ckb, image_url, option_value,
+           price, quantity, line_total, pair_price
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          order.id,
+          item.productId,
+          item.productNameAr,
+          item.productNameCkb,
+          item.imageUrl,
+          item.optionValue,
+          item.price,
+          item.quantity,
+          item.lineTotal,
+          item.pairPrice,
+        ],
       );
     }
 
@@ -226,6 +424,37 @@ export const orderRepo = {
       status_history: [],
       rating_available: false,
     });
+  },
+
+  /**
+   * الطلب لمسار الإدارة — مثل [findById] مع الفائض المحاسبي.
+   *
+   * دالةٌ مستقلة عمداً: `findById` يخدم العميل أيضاً، وتوسيعُه كان يسرّب
+   * الرقم من حيث لا يقصد أحد.
+   */
+  async findByIdForAdmin(
+    db: pg.Pool | pg.PoolClient,
+    id: string,
+  ): Promise<AdminOrderWithItems | null> {
+    const { rows } = await db.query<Record<string, unknown>>(
+      `${ORDER_WITH_CUSTOMER} WHERE o.id = $1`,
+      [id],
+    );
+    if (!rows[0]) return null;
+    // المخزون الحالي بقراءةٍ واحدة لكل منتجات الطلب — مسار اللوحة وحده، فلا
+    // يخرج رقم مخزون المتجر في استجابة الزبون.
+    const productIds = [
+      ...new Set(
+        ((rows[0].items as OrderItemSnapshot[]) ?? [])
+          .map((item) => item.productId)
+          .filter((productId): productId is string => Boolean(productId)),
+      ),
+    ];
+    const { rows: stock } = await db.query<{ id: string; stock: number }>(
+      'SELECT id, stock FROM products WHERE id = ANY($1::uuid[])',
+      [productIds],
+    );
+    return mapAdminOrder(rows[0], new Map(stock.map((p) => [p.id, Number(p.stock)])));
   },
 
   async findById(db: pg.Pool | pg.PoolClient, id: string): Promise<OrderWithItems | null> {
@@ -345,12 +574,12 @@ export const orderRepo = {
   },
 
   /**
-   * تثبيت لحظة الإرسال للتوصيل وفتح نافذة التقييم منها.
+   * تثبيت لحظة الإرسال للتوصيل، وجدولة تذكير التقييم منها.
    *
-   * **مرجع النافذة هو فعل الإدارة لا ضغطة العميل.** كان الحساب يجري عند
-   * COMPLETED، وCOMPLETED في مسار العميل هو لحظة ضغطه «استلمت الطلب» —
-   * فيبدأ المؤقّت من عنده. الآن يُثبَّت الموعد ساعةَ يخرج الطلب للتوصيل،
-   * فلا يؤجّله تأخّرُ العميل في التأكيد ولا يُعيده تأكيدُه.
+   * [NOTE] هذه المهلة لم تعد تفتح التقييم ولا تؤخّره — التقييم يُفتح
+   * بالاستلام. ما تجدوله هنا هو **إشعار** «شلونها المنتجات؟» لمن استلم ولم
+   * يقيّم. مرجعه فعل الإدارة (الخروج للتوصيل) لا ضغطة العميل، فلا يؤجّله
+   * تأخّرُ العميل في التأكيد.
    *
    * `dispatched_at IS NULL` يجعلها تُنفَّذ مرة واحدة: إعادة تطبيق
    * OUT_FOR_DELIVERY لا تُزحزح الموعد. الوقت يُحسب في القاعدة (`now()`).
@@ -358,39 +587,44 @@ export const orderRepo = {
   async markDispatched(
     db: pg.Pool | pg.PoolClient,
     id: string,
-    ratingDelayHours: number,
+    reminderDelayHours: number,
   ): Promise<boolean> {
     const { rowCount } = await db.query(
       `UPDATE orders
           SET dispatched_at = now(),
-              rating_available_at = now() + make_interval(hours => $2)
+              rating_reminder_at = now() + make_interval(hours => $2)
         WHERE id = $1 AND dispatched_at IS NULL`,
-      [id, Math.max(0, Math.trunc(ratingDelayHours))],
+      [id, Math.max(0, Math.trunc(reminderDelayHours))],
     );
     return (rowCount ?? 0) > 0;
   },
 
   /**
-   * تثبيت لحظة تأكيد الاستلام.
+   * تثبيت لحظة تأكيد الاستلام — وهي وحدها ما يفتح التقييم.
    *
-   * لا تمسّ `rating_available_at` إطلاقاً — ذلك الموعد مِلك لحظةِ الإرسال.
-   * الاحتياط الوحيد: طلب بلا `dispatched_at` (بيانات قديمة) يأخذ نافذته
-   * من لحظة الاستلام حتى لا يبقى بلا موعد أصلاً.
+   * [CRITICAL] لا مهلة بعدها. الكتابة في `delivered_at` تجعل `can_review`
+   * صحيحاً في نفس اللحظة، فضغطة «استلمت طلبي» تفتح التقييم فوراً.
+   *
+   * `reminderDelayHours` يخصّ الإشعار فقط، ويُستعمل احتياطاً لطلبٍ بلا
+   * `dispatched_at` (بيانات قديمة) حتى لا يبقى بلا موعد تذكير أصلاً.
+   *
+   * `delivered_at IS NULL` يجعلها مرة واحدة: إعادة تطبيق COMPLETED لا
+   * تُزحزح لحظة الاستلام.
    */
   async markDelivered(
     db: pg.Pool | pg.PoolClient,
     id: string,
-    ratingDelayHours: number,
+    reminderDelayHours: number,
   ): Promise<boolean> {
     const { rowCount } = await db.query(
       `UPDATE orders
           SET delivered_at = now(),
-              rating_available_at = COALESCE(
-                rating_available_at,
+              rating_reminder_at = COALESCE(
+                rating_reminder_at,
                 now() + make_interval(hours => $2)
               )
         WHERE id = $1 AND delivered_at IS NULL`,
-      [id, Math.max(0, Math.trunc(ratingDelayHours))],
+      [id, Math.max(0, Math.trunc(reminderDelayHours))],
     );
     return (rowCount ?? 0) > 0;
   },
@@ -410,7 +644,7 @@ export const orderRepo = {
   ): Promise<boolean> {
     const { rowCount } = await db.query(
       `UPDATE orders
-          SET rating_available_at = GREATEST($2::timestamptz, dispatched_at)
+          SET rating_reminder_at = GREATEST($2::timestamptz, dispatched_at)
         WHERE id = $1
           AND dispatched_at IS NOT NULL
           AND rating_reminder_sent_at IS NULL`,

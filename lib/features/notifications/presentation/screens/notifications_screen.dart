@@ -1,4 +1,5 @@
 import 'package:auto_route/auto_route.dart';
+import '../../../../core/l10n/app_strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -6,6 +7,7 @@ import '../../../../core/design_system/design_system.dart';
 import '../../../../core/router/app_router.dart';
 import '../../domain/entities/app_notification.dart';
 import '../cubit/notifications_cubit.dart';
+import '../../../visuals/domain/visual_slot.dart';
 
 /// مركز الإشعارات بتصميم Otaku Galaxy v2.
 ///
@@ -60,10 +62,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       );
       // المصدر يعرّف ثلاث مجموعات فقط: اليوم، هذا الأسبوع، أقدم.
       final label = day == today
-          ? 'اليوم'
+          ? context.strings('today')
           : day.isAfter(today.subtract(const Duration(days: 7)))
-          ? 'هذا الأسبوع'
-          : 'أقدم';
+          ? context.strings('thisWeek')
+          : context.strings('older');
       groups.putIfAbsent(label, () => []).add(item);
     }
     return groups;
@@ -72,25 +74,34 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: BlocBuilder<NotificationsCubit, NotificationsState>(
-        builder: (context, state) {
-          return Column(
-            children: [
-              OtakuScreenHeader.compact(
-                title: 'الإشعارات',
-                onBack: () => context.router.maybePop(),
-                trailing: state.hasUnread
-                    ? AnimeTextButton(
-                        label: 'تعليم الكل كمقروء',
-                        onPressed: () =>
-                            context.read<NotificationsCubit>().markAllRead(),
-                      )
-                    : null,
-              ),
-              Expanded(child: _buildBody(context, state)),
-            ],
-          );
-        },
+      // عمودٌ موسَّط بعرض القراءة على اللوح — القائمة الممتدّة بعرض
+      // ١٣٦٦ بكسل تصير صفوفاً فارغة الوسط. لا أثر له على الهاتف.
+      body: ResponsiveContentFrame(
+        maxWidth: kReadingMaxWidth,
+        child: BlocBuilder<NotificationsCubit, NotificationsState>(
+          builder: (context, state) {
+            return Column(
+              children: [
+                OtakuScreenHeader.compact(
+                  title: context.strings('notifications'),
+                  onBack: () => context.router.maybePop(),
+                  trailing: state.hasUnread
+                      ? AnimeTextButton(
+                          label: context.strings('markAllRead'),
+                          // حيث لا تتّسع التسمية بجوار العنوان حتى عند الحدّ
+                          // (الكردية): الإجراء نفسه أيقونةً ([PRODUCT]
+                          // 2026-10-05). القرار بالمساحة لا باللغة.
+                          fallbackIcon: Icons.done_all_rounded,
+                          onPressed: () =>
+                              context.read<NotificationsCubit>().markAllRead(),
+                        )
+                      : null,
+                ),
+                Expanded(child: _buildBody(context, state)),
+              ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -106,10 +117,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       );
     }
     if (state.items.isEmpty) {
-      return const AnimeEmptyState(
-        title: 'لا توجد إشعارات',
-        subtitle: 'كل تحديثات طلباتك وتقييماتك راح تظهر هنا أول ما تصير.',
-        artwork: 'assets/art/opt/a-i3.png',
+      return AnimeEmptyState(
+        title: context.strings('noNotificationsTitle'),
+        subtitle: context.strings('noNotificationsBody'),
+        artworkSlot: VisualSlots.notificationsHeader,
+        centered: true,
+        artworkHeight: 180,
       );
     }
 
@@ -118,7 +131,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       onRefresh: () => context.read<NotificationsCubit>().load(),
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(18, 6, 18, 26),
+        padding: context.scrollPadding(
+          const EdgeInsets.fromLTRB(18, 6, 18, 26),
+        ),
         children: [
           for (final entry in groups.entries) ...[
             Padding(
@@ -129,7 +144,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   fontSize: 11.5,
                   fontWeight: AppDimens.weightBold,
                   letterSpacing: 0.6,
-                  color: Theme.of(context).colorScheme.outline,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
             ),
@@ -178,15 +193,17 @@ class _NotificationRow extends StatelessWidget {
         Icons.local_offer_outlined,
         AppColors.secondary,
       ),
+      // المزيّة هدية أو خصم — أيقونة العطاء لا العلامة الترويجية.
+      NotificationType.rewardClaimed => (Icons.redeem_outlined, colors.success),
     };
   }
 
-  String _relativeTime() {
+  String _relativeTime(BuildContext context) {
     final diff = DateTime.now().difference(notification.createdAt);
-    if (diff.inMinutes < 1) return 'الآن';
-    if (diff.inMinutes < 60) return 'قبل ${diff.inMinutes} دقيقة';
-    if (diff.inHours < 24) return 'قبل ${diff.inHours} ساعة';
-    return 'قبل ${diff.inDays} يوم';
+    if (diff.inMinutes < 1) return context.strings('justNow');
+    if (diff.inMinutes < 60) return context.strings.p('minutesAgo', {'count': '${diff.inMinutes}'});
+    if (diff.inHours < 24) return context.strings.p('hoursAgo', {'count': '${diff.inHours}'});
+    return context.strings.p('daysAgo', {'count': '${diff.inDays}'});
   }
 
   @override
@@ -262,10 +279,10 @@ class _NotificationRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  _relativeTime(),
+                  _relativeTime(context),
                   style: theme.textTheme.labelSmall?.copyWith(
                     fontSize: 10.5,
-                    color: theme.colorScheme.outline,
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
               ],

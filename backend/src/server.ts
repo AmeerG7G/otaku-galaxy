@@ -1,41 +1,94 @@
 import { createApp } from './app.js';
 import { config } from './config/index.js';
 import { closePools } from './database/pool.js';
+import { startAnalyticsScheduler } from './jobs/analyticsJob.js';
+import { startPushOutboxScheduler } from './jobs/pushOutboxJob.js';
+import { trackingService } from './services/trackingService.js';
 import { startRatingReminderScheduler } from './jobs/ratingReminderJob.js';
-import { smsProvider } from './services/sms/index.js';
 
 const app = createApp();
 
-/**
- * فحص إقلاع للمزوّد.
- *
- * بناء المزوّد كسولٌ (عند أول رسالة)، ولو تُرك كذلك لاكتشفنا نقص إعداده عند
- * أول مستخدم يحاول التسجيل لا عند النشر. نبنيه هنا مرة واحدة ليسقط الإقلاع
- * فوراً إن كان الإعداد ناقصاً.
- */
-smsProvider();
-
-const server = app.listen(config.port, () => {
-  console.log(`Otaku Galaxy API running on http://localhost:${config.port} [${config.nodeEnv}]`);
-  console.log(`SMS provider: ${config.sms.provider}`);
-  if (config.verification.devOtpEnabled) {
-    console.log('⚠  DEV_OTP_ENABLED=true — رمز التحقق ثابت (تطوير فقط، مستحيل في الإنتاج)');
+// `config.host` غائبٌ في التطوير = كل الواجهات كما كان؛ الواجهة المحلية في
+// البيئتين الحقيقيتين خلف nginx (انظر `config.host`).
+// سطر الإقلاع نفسه كما كان (تنتظره `process-lifecycle.test.ts` وأي مراقبة سجلّ).
+//
+// [CRITICAL] express 5 يستدعي الدالة نفسها عند فشل الربط (`server.once('error')`)
+// والخطأ وسيطُها الأول. تجاهُله كان يطبع «running» لعنوانٍ لم يُربط (منفذ
+// مشغول، HOST غير موجود على الجهاز) ثم تخرج العملية بالرمز صفر — «توقّفتُ كما
+// طُلب» — فلا يعيد المدير تشغيلها.
+const onListening = (error?: Error) => {
+  if (error) {
+    console.error(`[fatal] listen ${config.host ?? '*'}:${config.port} failed: ${error.message}`);
+    process.exit(1);
   }
-});
+  console.log(
+    `Otaku Galaxy API running on http://${config.host ?? 'localhost'}:${config.port} [${config.nodeEnv}]`,
+  );
+};
+const server =
+  config.host === undefined
+    ? app.listen(config.port, onListening)
+    : app.listen(config.port, config.host, onListening);
 
 // جدولة تذكير التقييم تعيش مع الخادم لا مع التطبيق (createApp)، فلا
 // تشتغل أثناء الاختبارات التي تبني التطبيق وحده.
 const stopRatingReminders = startRatingReminderScheduler();
+// صندوق الدفع الصادر — يرسل الإشعارات الفورية خارج الطلبات (هجرة ٠٧٠).
+const stopPushOutbox = startPushOutboxScheduler();
+// التحليلات التاريخية — ملخّصات يومية/شهرية وإغلاق الأشهر المنقضية (STEP 67).
+const stopAnalytics = startAnalyticsScheduler();
+// حقبة التتبّع تتبع الإعداد عند كل إقلاع (D3: مطفأ افتراضياً) — من أي يومٍ بدأ القياس.
+void trackingService.syncEpoch().catch((error) => console.error('[tracking] epoch sync failed', error));
 
-async function shutdown(signal: string) {
-  console.log(`\n${signal} received — shutting down...`);
+/**
+ * إغلاق منظَّم.
+ *
+ * `exitCode` يميّز الخروج الطبيعي (إشارة إيقاف) من الخروج بعد عطل غير
+ * قابل للتعافي. المدير (PM2 أو Docker) يقرأ الرمز: الصفر يعني «توقّفتُ كما
+ * طُلب مني»، وغيرُه يعني «سقطتُ، أعِد تشغيلي».
+ *
+ * المهلة القسرية تضمن ألّا يعلق الحاوي إلى الأبد على اتصال لا يُغلق:
+ * Docker يمهل عشر ثوانٍ بعد SIGTERM ثم يرسل SIGKILL، فالخروج بأنفسنا قبلها
+ * أنظف من أن نُقتل في منتصف كتابة.
+ */
+async function shutdown(reason: string, exitCode = 0) {
+  console.log(`\n${reason} — shutting down...`);
   stopRatingReminders();
+  stopPushOutbox();
+  stopAnalytics();
   server.close(async () => {
     await closePools();
-    process.exit(0);
+    process.exit(exitCode);
   });
-  setTimeout(() => process.exit(1), 10_000).unref();
+  setTimeout(() => process.exit(exitCode === 0 ? 1 : exitCode), 10_000).unref();
 }
 
-process.on('SIGINT', () => void shutdown('SIGINT'));
-process.on('SIGTERM', () => void shutdown('SIGTERM'));
+process.on('SIGINT', () => void shutdown('SIGINT received'));
+process.on('SIGTERM', () => void shutdown('SIGTERM received'));
+
+/**
+ * [CRITICAL] العطل غير المتوقَّع ينهي العملية — لا يواصل بحالة مجهولة.
+ *
+ * بعد `uncaughtException` تكون العملية في حالة غير معرَّفة: قد تكون معاملةٌ
+ * على القاعدة نصفَ منفَّذة، أو قفلٌ لم يُحرَّر، أو كائنٌ نصفَ مبنيّ. مواصلةُ
+ * الخدمة عندئذٍ أخطر من التوقّف — خادمٌ يردّ ببيانات فاسدة أسوأ من خادمٍ لا
+ * يردّ، لأن الأول لا يُلاحَظ. المدير يعيد التشغيل على حالة نظيفة خلال ثوانٍ.
+ *
+ * الرفض غير المعالَج يُعامَل بالمنطق نفسه: Node ينهي العملية عليه افتراضياً
+ * منذ الإصدار ١٥، ونحن نسبقه إلى ذلك بإغلاق منظَّم وسجلٍّ مفهوم بدل أثرٍ خام.
+ *
+ * ما لا نفعله هنا: ابتلاع الخطأ، أو طباعة الإعدادات، أو تسجيل جسم الطلب —
+ * فالأسرار والتوكنات تعيش هناك.
+ */
+let crashing = false;
+
+function fatal(kind: string, error: unknown) {
+  // عطلٌ ثانٍ أثناء الإغلاق يجب ألّا يعيد الدورة من أولها.
+  if (crashing) return;
+  crashing = true;
+  console.error(`[fatal] ${kind}:`, error);
+  void shutdown(`${kind} — عطل غير قابل للتعافي`, 1);
+}
+
+process.on('uncaughtException', (error) => fatal('uncaughtException', error));
+process.on('unhandledRejection', (reason) => fatal('unhandledRejection', reason));

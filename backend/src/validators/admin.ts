@@ -1,4 +1,14 @@
 import { z } from 'zod';
+import { GENDERS } from '../types/index.js';
+import { GALAXY_LEVEL_KEYS } from '../domain/galaxyPoints.js';
+import {
+  MAX_OPTION_NAME_LENGTH,
+  MAX_OPTION_VALUE_LENGTH,
+  MAX_OPTION_VALUES,
+  MAX_PRODUCT_OPTIONS,
+} from '../domain/productOptions.js';
+import { BIRTHDAY_FILTERS, CUSTOMER_SORTS } from '../repositories/userRepo.js';
+import { BANNER_DESTINATIONS, BANNER_PLACEMENTS, NOTIFICATION_TYPES } from '../types/index.js';
 
 /**
  * رابط صورة: إمّا رابط مطلق، أو مسار نسبي تحت /uploads يخدمه الخادم نفسه.
@@ -21,34 +31,221 @@ export const adminBannerIdSchema = idSchema;
 export const adminGovernorateIdSchema = idSchema;
 export const adminUserIdSchema = idSchema;
 
+/**
+ * الحالة التي يقصدها المسؤول — «حظر» أو «تفعيل».
+ *
+ * [CRITICAL] الطلب يحمل **النتيجة المقصودة** لا أمراً بالقلب. طلبٌ بلا نتيجة
+ * كان يقلب الحالة الراهنة أياً كانت، فمسؤولان يريان «نشط» ويضغطان «حظر» (أو
+ * إعادةُ الضغط بعد مهلة) يُنهيان بحسابٍ **مفعَّل**. الحقل اختياري لنسخة لوحة
+ * أقدم لا ترسله (قلبٌ كما كان)، و`z.boolean()` لا `coerce`: `"false"` و`0` و
+ * `null` تُرفض ولا تُقرأ نتيجةً.
+ */
+export const adminUserActiveSchema = z.object({ isActive: z.boolean().optional() });
+
 const price = z.number().positive('السعر يجب أن يكون موجباً').max(1_000_000_000);
 
+/**
+ * مبلغ خصم التوصيل عن القطعة الواحدة.
+ *
+ * غير سالب، وبمنزلتين عشريتين على الأكثر — العمود `NUMERIC(12,2)`، وقيمةٌ
+ * أدقّ منه تُقرَّب في القاعدة بصمت فيحفظ المتجر رقماً غير الذي أدخله المسؤول.
+ *
+ * السقف عند رسوم التوصيل **لا يقع هنا**: الرسوم تختلف بالمحافظة والمنطقة
+ * وتتغيّر بعد ضبط المنتج، فالسقف قرارُ وقتِ الطلب لا وقتِ الضبط.
+ */
+const deliveryPromoAmount = z
+  .number()
+  .min(0, 'قيمة خصم التوصيل لا يمكن أن تكون سالبة')
+  .max(1_000_000)
+  .refine(
+    (value) => Number.isInteger(Math.round(value * 100)) && value * 100 % 1 === 0,
+    'قيمة خصم التوصيل تقبل منزلتين عشريتين على الأكثر',
+  );
+
+/**
+ * «مفعَّل ⇔ مبلغ موجب» — نفس ثابت قيد القاعدة
+ * (`products_delivery_promo_amount_positive`)، مرفوعاً إلى الحدّ ليصل المسؤول
+ * سببٌ مفهوم بدل رسالة القيد العامة «قيمة غير صالحة لأحد حقول المنتج».
+ *
+ * القيد يبقى: هو الحارس الحقيقي، وهذا تحسينُ رسالةٍ لا بديلٌ عنه.
+ */
+function assertDeliveryPromoCoherent(
+  value: { hasDeliveryPromo?: boolean; deliveryPromoAmount?: number },
+  ctx: z.RefinementCtx,
+): void {
+  const { hasDeliveryPromo, deliveryPromoAmount: amount } = value;
+  if (hasDeliveryPromo === true && amount !== undefined && amount <= 0) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['deliveryPromoAmount'],
+      message: 'فعّلت خصم التوصيل — أدخل قيمة أكبر من صفر',
+    });
+  }
+  if (hasDeliveryPromo === false && amount !== undefined && amount > 0) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['deliveryPromoAmount'],
+      message: 'خصم التوصيل معطَّل — القيمة يجب أن تكون صفراً',
+    });
+  }
+}
+
+/** موعد التوفر القادم (إن حدّده المسؤول) — ISO 8601؛ null يفرّغه. */
+const restockAt = z
+  .string()
+  .datetime({ offset: true, message: 'تاريخ توفر غير صالح' })
+  .nullable()
+  .optional();
+
+/**
+ * محتوى المنتج بلغتين — أربعة حقول مستقلة يكتبها المسؤول بيده (066).
+ *
+ * الاسم: ٢..١٢٠ حرفاً بعد القصّ — **سقف القاعدة نفسه** (`products_name_check`
+ * للعربي، وقيد `name_ckb` من ٠٤٦ للكردي). كان المدقّق يقبل ١٥٠ فيمرّ اسمٌ من
+ * ١٣٠ حرفاً ثم يرفضه القيد برسالةٍ عامّة لا تقول أيَّ حقل. الحدّ عند الحدّ.
+ *
+ * الوصف: غير فارغ بعد القصّ، ٣٠٠٠ حرف كحدٍّ أقصى.
+ *
+ * `trim()` يسبق الحدّ الأدنى، فالمسافات وحدها تُرفض بالرسالة نفسها. لا قيد
+ * على الحروف: عربية، كردية (ێ ۆ ڵ ڕ ە)، أرقام، لاتينية — النصّ يُحفظ كما كُتب.
+ * والرسالة الأولى وحدها تصل المسؤول (`parse`)، فكل رسالة تسمّي حقلها ولغته.
+ */
+function contentName(language: 'العربية' | 'الكردية') {
+  const required = `اسم المنتج ب${language} مطلوب`;
+  return z
+    .string({ error: required })
+    .trim()
+    .min(1, required)
+    .min(2, `اسم المنتج ب${language} قصير جداً (حرفان كحد أدنى)`)
+    .max(120, `اسم المنتج ب${language} طويل جداً (١٢٠ حرفاً كحد أقصى)`);
+}
+
+function contentDescription(language: 'العربية' | 'الكردية') {
+  const required = `وصف المنتج ب${language} مطلوب`;
+  return z
+    .string({ error: required })
+    .trim()
+    .min(1, required)
+    .max(3000, `وصف المنتج ب${language} طويل جداً (٣٠٠٠ حرف كحد أقصى)`);
+}
+
+/**
+ * [CRITICAL] `name`/`description` لم يعودا مفتاحَي كتابة: الاسم صار أربعة
+ * حقولٍ صريحة. `zod` يُسقط المفتاح المجهول بصمت، فنسخةُ لوحةٍ قديمة مخبّأة في
+ * متصفّح كانت سترسل `name` معدَّلاً فيُحذف، ويقول الخادم «تم الحفظ» والاسم لم
+ * يتغيّر. رفضٌ صريح يسمّي البديل خيرٌ من حفظٍ كاذب.
+ */
+function retiredKey(replacement: string) {
+  return z
+    .unknown()
+    .refine(() => false, {
+      message: `هذا الحقل لم يعد مقبولاً — حدّث لوحة التحكم (استعمل ${replacement})`,
+    })
+    .optional();
+}
+
+/**
+ * خيارات المنتج — حدودها في `domain/productOptions.ts` لأن سقف `optionValue`
+ * في العربة مشتقٌّ منها: ما تقبله اللوحة هنا هو ما يجب أن تقبله العربة.
+ *
+ * الترجمة الكردية (046) اختيارية لكل خيار، وغيابُها غيرُ إفراغها:
+ *   - `nameCkb`: نصٌّ، أو `null`/`''` = لا اسم كردي.
+ *   - `valuesCkb`: قيمةٌ كردية لكل قيمةٍ عربية بالترتيب نفسه، أو `[]` (أو
+ *     كلها فارغة) = لا ترجمة. ترجمةُ بعض القيم دون بعض مرفوضة — القاعدة
+ *     لا تقبل قائمتين بطولين مختلفين، والزبون الكردي لا يرى نصفَ خيار.
+ *   - غياب الحقل = «لم يُرسله العميل»: الخدمة تُبقي الترجمة المحفوظة
+ *     (`adminService.updateProduct`) ولا تمحوها.
+ */
+const productOptions = z
+  .array(
+    z
+      .object({
+        name: z
+          .string()
+          .trim()
+          .min(1, 'اسم الخيار مطلوب')
+          .max(MAX_OPTION_NAME_LENGTH, `اسم الخيار طويل جداً (${MAX_OPTION_NAME_LENGTH} حرفاً كحد أقصى)`),
+        values: z
+          .array(
+            z
+              .string()
+              .trim()
+              .min(1, 'قيمة الخيار مطلوبة')
+              .max(MAX_OPTION_VALUE_LENGTH, `قيمة الخيار طويلة جداً (${MAX_OPTION_VALUE_LENGTH} حرفاً كحد أقصى)`),
+          )
+          .min(1, 'أضف قيمةً واحدة على الأقل لكل خيار')
+          .max(MAX_OPTION_VALUES, `${MAX_OPTION_VALUES} قيمة كحد أقصى لكل خيار`),
+        nameCkb: z
+          .string({ error: 'اسم الخيار الكردي يجب أن يكون نصاً' })
+          .trim()
+          .max(MAX_OPTION_NAME_LENGTH, `اسم الخيار الكردي طويل جداً (${MAX_OPTION_NAME_LENGTH} حرفاً كحد أقصى)`)
+          .nullable()
+          .optional(),
+        valuesCkb: z
+          .array(
+            z
+              .string({ error: 'قيمة الخيار الكردية يجب أن تكون نصاً' })
+              .trim()
+              .max(MAX_OPTION_VALUE_LENGTH, `قيمة الخيار الكردية طويلة جداً (${MAX_OPTION_VALUE_LENGTH} حرفاً كحد أقصى)`),
+            { error: 'قيم الخيار الكردية يجب أن تكون قائمة' },
+          )
+          .max(MAX_OPTION_VALUES, `${MAX_OPTION_VALUES} قيمة كحد أقصى لكل خيار`)
+          .optional(),
+      })
+      .superRefine((option, ctx) => {
+        if (option.valuesCkb === undefined) return;
+        const filled = option.valuesCkb.filter((value) => value.length > 0).length;
+        if (filled === 0) return;
+        if (option.valuesCkb.length !== option.values.length || filled !== option.values.length) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['valuesCkb'],
+            message: `ترجم كل قيم الخيار «${option.name}» إلى الكردية أو اترك ترجمتها فارغة كلها`,
+          });
+        }
+      })
+      .transform(({ nameCkb, valuesCkb, ...option }) => ({
+        ...option,
+        ...(nameCkb !== undefined ? { nameCkb: nameCkb === '' ? null : nameCkb } : {}),
+        ...(valuesCkb !== undefined
+          ? { valuesCkb: valuesCkb.every((value) => value.length === 0) ? [] : valuesCkb }
+          : {}),
+      })),
+  )
+  .max(MAX_PRODUCT_OPTIONS, `${MAX_PRODUCT_OPTIONS} خيارات كحد أقصى للمنتج`);
+
 export const adminProductCreateSchema = z.object({
-  name: z.string().trim().min(2).max(150),
-  description: z.string().trim().max(3000).default(''),
-  price,
+  nameAr: contentName('العربية'),
+  descriptionAr: contentDescription('العربية'),
+  nameCkb: contentName('الكردية'),
+  descriptionCkb: contentDescription('الكردية'),
+  name: retiredKey('nameAr/nameCkb'),
+  description: retiredKey('descriptionAr/descriptionCkb'),
+  /**
+   * `null` صريحة = «السعر يُعلن قريباً» (084): يُعرض ولا يُشترى. الحقل يبقى
+   * إلزامياً — غيابُه خطأ في العميل لا «بلا سعر» — والصفر مرفوض كما كان.
+   */
+  price: price.nullable(),
+  /**
+   * سعر قطعتين من المنتج نفسه (085) — اختياري، والغائب = لا عرض. العرض الحقيقي
+   * (بين سعر القطعة وضعفه، ولا عرض بلا سعر) تفرضه القاعدة: `INVALID_PAIR_PRICE`.
+   */
+  pairPrice: price.nullable().optional(),
   categoryId: z.string().uuid('معرّف قسم غير صالح'),
   subcategoryId: z.string().uuid('معرّف قسم فرعي غير صالح').nullable().optional(),
   stock: z.number().int().min(0).max(100000),
   images: z.array(imageUrl).max(10).default([]),
-  options: z
-    .array(
-      z.object({
-        name: z.string().trim().min(1).max(40),
-        values: z.array(z.string().trim().min(1).max(80)).min(1).max(50),
-      }),
-    )
-    .max(10)
-    .default([]),
+  options: productOptions.default([]),
   isOffer: z.boolean().default(false),
   isSelected: z.boolean().default(false),
   /** السعر قبل الخصم — يجب أن يكون أعلى من السعر الحالي (تتحقق القاعدة أيضاً). */
   previousPrice: z.number().positive().max(1_000_000_000).nullable().optional(),
   hasDeliveryPromo: z.boolean().default(false),
   /** قيمة خصم التوصيل عن كل قطعة — إلزامية موجبة متى فُعِّل الترويج. */
-  deliveryPromoAmount: z.number().min(0).max(1_000_000).default(0),
+  deliveryPromoAmount: deliveryPromoAmount.default(0),
   franchiseIds: z.array(z.string().uuid('معرّف أنمي غير صالح')).max(20).default([]),
-});
+  restockAt,
+}).superRefine(assertDeliveryPromoCoherent);
 
 /**
  * شكل التحديث يختلف عن الإنشاء:
@@ -58,37 +255,81 @@ export const adminProductCreateSchema = z.object({
  * كان يُعيد ملء الافتراضات ([]) عند غياب الحقل فيمسح البيانات — خلل موثّق.
  */
 export const adminProductUpdateSchema = z.object({
-  name: z.string().trim().min(2).max(150).optional(),
-  description: z.string().trim().max(3000).optional(),
-  price: z.number().positive('السعر يجب أن يكون موجباً').max(1_000_000_000).optional(),
+  // كل لغةٍ مستقلة: الحقل الغائب لا يُمسّ، فتعديل العربية لا يلمس الكردية
+  // ولا العكس. الحاضر يجب أن يكون نصاً غير فارغ — لا يُفرَّغ محتوى بتعديل،
+  // و`null` مرفوضة: «ناقص» حالُ منتجٍ قديم لم يُكمَل، لا خيارٌ يُحفظ.
+  nameAr: contentName('العربية').optional(),
+  descriptionAr: contentDescription('العربية').optional(),
+  nameCkb: contentName('الكردية').optional(),
+  descriptionCkb: contentDescription('الكردية').optional(),
+  name: retiredKey('nameAr/nameCkb'),
+  description: retiredKey('descriptionAr/descriptionCkb'),
+  /** `null` يعيد المنتج «قريباً» بلا سعر (084)؛ الغائب لا يُمسّ. */
+  price: price.nullable().optional(),
+  /** `null` يزيل عرض القطعتين (085)؛ الغائب لا يُمسّ. */
+  pairPrice: price.nullable().optional(),
   categoryId: z.string().uuid('معرّف قسم غير صالح').optional(),
   subcategoryId: z.string().uuid('معرّف قسم فرعي غير صالح').nullable().optional(),
   stock: z.number().int().min(0).max(100000).optional(),
+  /**
+   * المخزون الذي فُتحت عليه صفحة التعديل — فحصٌ لا قيمة تُكتب.
+   *
+   * [CRITICAL] `stock` قيمةٌ مطلقة، فحفظُ صفحةٍ فُتحت قبل قبول طلبٍ كان يُرجع
+   * القطع التي استهلكها القبول إلى البيع. مع هذا الحقل يقارن الخادم المخزون
+   * الحالي تحت القفل ويرفض بـ409 `STOCK_CHANGED` إن اختلف. غيابه (لوحةٌ أقدم)
+   * يُبقي السلوك القديم: القيمة المطلقة تُكتب كما هي.
+   */
+  expectedStock: z.number().int().min(0).max(100000).optional(),
   images: z.array(imageUrl).max(10).optional(),
-  options: z
-    .array(
-      z.object({
-        name: z.string().trim().min(1).max(40),
-        values: z.array(z.string().trim().min(1).max(80)).min(1).max(50),
-      }),
-    )
-    .max(10)
-    .optional(),
+  options: productOptions.optional(),
   isOffer: z.boolean().optional(),
   isSelected: z.boolean().optional(),
   isActive: z.boolean().optional(),
-  rating: z.number().min(0).max(5).nullable().optional(),
-  reviewCount: z.number().int().min(0).max(1_000_000).optional(),
+  // [CRITICAL] لا `rating` ولا `reviewCount` هنا: قيمتان مشتقّتان من التقييمات
+  // المنشورة (زناد `refresh_product_rating` في هجرة 009). كانتا مقبولتين،
+  // وصفحة التعديل تعيد إرسال ما عرضته، فأي تقييم يُنشر بين فتح الصفحة
+  // وحفظها كان يُمحى بقيمةٍ قديمة. `zod` يُسقط المفتاحين إن أُرسلا.
   previousPrice: z.number().positive().max(1_000_000_000).nullable().optional(),
   hasDeliveryPromo: z.boolean().optional(),
-  deliveryPromoAmount: z.number().min(0).max(1_000_000).optional(),
+  deliveryPromoAmount: deliveryPromoAmount.optional(),
   franchiseIds: z.array(z.string().uuid('معرّف أنمي غير صالح')).max(20).optional(),
+  restockAt,
+})
+  .superRefine(assertDeliveryPromoCoherent)
+  .refine((value) => value.expectedStock === undefined || value.stock !== undefined, {
+    message: 'المخزون المتوقَّع يُرسل مع المخزون الجديد فقط',
+    path: ['expectedStock'],
+  });
+
+/**
+ * «العروض» — علَما العرض والاختيار وحدهما (STEP 64).
+ *
+ * [SECURITY] مسارٌ ضيّق لصلاحية «العروض»: كانت الصفحة تكتب عبر
+ * `PATCH /products/:id` الكامل، فمن يملك العروض يعدّل السعر والمخزون والصور.
+ * `strictObject` يرفض أي حقلٍ آخر بدل أن يُسقطه.
+ */
+export const adminOfferFlagsSchema = z
+  .strictObject({
+    isOffer: z.boolean().optional(),
+    isSelected: z.boolean().optional(),
+  })
+  .refine((v) => v.isOffer !== undefined || v.isSelected !== undefined, {
+    message: 'لا تغيير في الطلب',
+  });
+
+/** «طلبات التوفر» — موعد التوفر وحده؛ `null` يمسحه. */
+export const adminRestockScheduleSchema = z.strictObject({
+  restockAt: z
+    .string()
+    .datetime({ offset: true, message: 'تاريخ توفر غير صالح' })
+    .nullable(),
 });
 
 export const adminCategorySchema = z.object({
   name: z.string().trim().min(2).max(60),
   imageUrl: imageUrl.nullable().optional(),
   sortOrder: z.number().int().min(0).max(1000).optional(),
+  isActive: z.boolean().optional(),
 });
 
 export const adminSubcategorySchema = z.object({
@@ -97,10 +338,43 @@ export const adminSubcategorySchema = z.object({
   sortOrder: z.number().int().min(0).max(1000).optional(),
 });
 
+/**
+ * نصّ البنر بلغة — عنوانٌ أو سطرٌ ثانٍ (067).
+ *
+ * اختياريٌّ باللغتين كما كان قبل الفصل: بنرٌ بصورةٍ وحدها مشروع، فلا تُفرض
+ * لغةٌ ولا تُلزَم الأخرى بوجود الأولى. الغياب = «لا تغيير» في التعديل؛
+ * `null` أو الفراغ أو المسافات وحدها = «لا نصّ بهذه اللغة» (يُحفظ `NULL`،
+ * صورة «ناقص» الوحيدة — قيدا 067 يرفضان الفراغ في العمودين الكرديين). الحدود
+ * حدود ما قبل الفصل لكل لغة. لا قيد على الحروف: النصّ يُحفظ كما كُتب.
+ */
+function bannerText(kind: 'title' | 'subtitle', language: 'العربية' | 'الكردية') {
+  const label = kind === 'title' ? 'عنوان البنر' : 'السطر الثاني';
+  const max = kind === 'title' ? 120 : 160;
+  return z
+    .string({ error: `${label} ب${language} يجب أن يكون نصاً` })
+    .trim()
+    .max(max, `${label} ب${language} طويل جداً (${max} حرفاً كحد أقصى)`)
+    .nullable()
+    .optional()
+    .transform((value) => (value === undefined ? undefined : value || null));
+}
+
+const bannerContent = {
+  titleAr: bannerText('title', 'العربية'),
+  subtitleAr: bannerText('subtitle', 'العربية'),
+  titleCkb: bannerText('title', 'الكردية'),
+  subtitleCkb: bannerText('subtitle', 'الكردية'),
+  // مفتاحا الكتابة القديمان: `zod` كان سيُسقطهما بصمت فتقول لوحةٌ قديمة
+  // «تم الحفظ» والنصّ لم يتغيّر — رفضٌ يسمّي البديل (نفس قاعدة المنتج).
+  title: retiredKey('titleAr/titleCkb'),
+  subtitle: retiredKey('subtitleAr/subtitleCkb'),
+};
+
 export const adminBannerSchema = z.object({
   imageUrl,
-  title: z.string().trim().max(120).nullable().optional(),
-  destinationType: z.enum(['product', 'category', 'subcategory', 'none']).default('none'),
+  ...bannerContent,
+  placement: z.enum(BANNER_PLACEMENTS).default('promo'),
+  destinationType: z.enum(BANNER_DESTINATIONS).default('none'),
   destinationValue: z.string().trim().max(80).nullable().optional(),
   sortOrder: z.number().int().min(0).max(1000).optional(),
 });
@@ -119,8 +393,10 @@ export const adminBannerSchema = z.object({
  */
 export const adminBannerUpdateSchema = z.object({
   imageUrl: imageUrl.optional(),
-  title: z.string().trim().max(120).nullable().optional(),
-  destinationType: z.enum(['product', 'category', 'subcategory', 'none']).optional(),
+  // كل لغةٍ مستقلة: تعديل العربية لا يلمس الكردية ولا العكس.
+  ...bannerContent,
+  placement: z.enum(BANNER_PLACEMENTS).optional(),
+  destinationType: z.enum(BANNER_DESTINATIONS).optional(),
   destinationValue: z.string().trim().max(80).nullable().optional(),
   sortOrder: z.number().int().min(0).max(1000).optional(),
   isActive: z.boolean().optional(),
@@ -129,6 +405,7 @@ export const adminBannerUpdateSchema = z.object({
 export const adminGovernorateSchema = z.object({
   name: z.string().trim().min(2).max(60),
   deliveryFee: z.number().min(0).max(10_000_000),
+  isActive: z.boolean().optional(),
 });
 
 /** تعديل قسم فرعي — القسم الأب لا يتغيّر بعد الإنشاء. */
@@ -144,12 +421,9 @@ export const adminSubcategoryIdSchema = idSchema;
 export const adminNotificationQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
-  type: z
-    .enum([
-      'orderAccepted', 'orderRejected', 'deliveryUpdate', 'receiptReminder',
-      'reviewApproved', 'reviewRejected', 'backInStock', 'promotion',
-    ])
-    .optional(),
+  // القائمة المعتمدة نفسها (`NOTIFICATION_TYPES`) لا نسخةٌ مكتوبة هنا: نسخةٌ
+  // من ثمانية أنواع كانت تجعل ترشيح «مزيّة» و«موعد توفر» يُرفض بـ٤٠٠.
+  type: z.enum(NOTIFICATION_TYPES).optional(),
   userId: z.string().uuid('معرّف مستخدم غير صالح').optional(),
   // نصّ لأن الاستعلام يصل كسلسلة: 'true' / 'false' / غياب = الكل.
   read: z
@@ -161,29 +435,186 @@ export const adminNotificationQuerySchema = z.object({
 /** معرّف عميل لمسار النقاط. */
 export const adminCustomerIdSchema = idSchema;
 
-/**
- * إعدادات الأعمال.
- *
- * القيم تصل نصّاً أو رقماً أو `null` (إفراغ = عودة للافتراضي). المدى نفسه
- * يُفحص في `businessConfigService` حيث تعيش المواصفات، فلا يُكرَّر هنا رقمٌ
- * قد يتباعد عنه.
- */
-const businessSettingValue = z.union([z.string(), z.number(), z.null()]).optional();
-
-/**
- * كل المفاتيح اختيارية: اللوحة ترسل ما غيّره المسؤول فقط.
- *
- * لا تستعمل `z.record` مع مفتاح `enum` هنا: في Zod 4 يصير السجلّ **شاملاً**
- * فيطالب بكل المفاتيح دفعةً واحدة، فيُرفض أي حفظ جزئي بـ400.
- */
-export const adminBusinessSettingsSchema = z.object({
-  points_order_received: businessSettingValue,
-  points_review_approved: businessSettingValue,
-  points_review_with_photo: businessSettingValue,
-  birthday_discount_percent: businessSettingValue,
-  order_rating_delay_hours: businessSettingValue,
-});
+// [NOTE] حُذف `adminBusinessSettingsSchema` و`businessSettingValue`.
+//
+// لم تبقَ إعدادات أعمال رقمية تُكتب من اللوحة، فمدقّقٌ لجسم طلبٍ لا وجود
+// لمساره يوحي بقدرةٍ أُزيلت.
 
 export type AdminProductCreateInput = z.infer<typeof adminProductCreateSchema>;
 export type AdminProductUpdateInput = z.infer<typeof adminProductUpdateSchema>;
 export type AdminBannerInput = z.infer<typeof adminBannerSchema>;
+
+// ── الزبائن وأعياد الميلاد ──
+
+/** «true»/«false» من سلسلة استعلام، أو غياب يعني «بلا ترشيح». */
+const optionalBoolean = z
+  .enum(['true', 'false'])
+  .optional()
+  .transform((value) => (value === undefined ? undefined : value === 'true'));
+
+export const adminCustomersQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  search: z.string().trim().min(1).max(80).optional(),
+  isActive: optionalBoolean,
+  hasBirthday: optionalBoolean,
+  hasOrders: optionalBoolean,
+  minPoints: z.coerce.number().int().min(0).optional(),
+  maxPoints: z.coerce.number().int().min(0).optional(),
+  /**
+   * ترشيح بالجنس — ذكر أو أنثى فقط.
+   *
+   * [STEP 66] للمتجر جنسان (قيد `users.gender` منذ الهجرة ٠٤٠). كان هنا
+   * `unknown` ثالثاً يرشّح الحسابات القديمة التي لم تُسأل (`NULL`) — فبدا في
+   * اللوحة خيارُ «غير محدد» جنساً ثالثاً. `NULL` غيابُ قيمة لا فئة: يظهر
+   * «—» في الصفّ ويدخل المجموع، ولا يُرشَّح به ولا يُعدّ وحده.
+   *
+   * قيمةٌ خارجه تُرفض عند الحدّ بدل أن تُتجاهل بصمت: مسؤولٌ كتب `Male` يجب
+   * أن يرى الرفض لا قائمةً كاملة يظنّها مرشَّحة.
+   */
+  gender: z.enum(GENDERS).optional(),
+  /** ترشيح بمستوى المجرّة — يُحوَّل إلى مدى نقاط في القاعدة. */
+  levelKey: z.enum(GALAXY_LEVEL_KEYS).optional(),
+  sort: z.enum(CUSTOMER_SORTS).optional(),
+});
+
+// ═══ طلبات الحساب ═══
+
+export const adminAccountRequestIdSchema = idSchema;
+
+export const adminAccountRequestsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  kind: z.enum(['registration', 'password_reset']).optional(),
+  status: z.enum(['pending', 'approved', 'rejected']).optional(),
+  search: z.string().trim().min(1).max(80).optional(),
+});
+
+/** ملاحظة المسؤول عند الحسم — اختيارية، تبقى في السجل. */
+export const adminResolveRequestSchema = z.object({
+  note: z.string().trim().max(500).optional(),
+});
+
+/**
+ * كلمة المرور الجديدة التي يضعها المسؤول — نفس قواعد التسجيل (٨ أحرف فأكثر).
+ *
+ * [CRITICAL] لا حقل «مؤقّتة» ولا «يجب تغييرها»: هذه كلمة المرور الدائمة.
+ * `requestId` اختياري ويُربط بالحساب في الخدمة — لا يُخوِّل وحده شيئاً.
+ */
+export const adminSetCustomerPasswordSchema = z.object({
+  newPassword: z
+    .string()
+    .min(8, 'كلمة المرور يجب أن تكون 8 أحرف على الأقل')
+    .max(200, 'كلمة المرور طويلة جداً'),
+  requestId: z.string().uuid('معرّف غير صالح').optional(),
+  note: z.string().trim().max(500).optional(),
+});
+
+/**
+ * إكمال جنس حسابٍ قديم (D5) — ذكر أو أنثى فقط، ولمرةٍ واحدة.
+ *
+ * يُستعمل بعد تحقّق المسؤول عبر واتساب من صاحب الحساب نفسه. لا يغيّر جنساً
+ * مضبوطاً (الخدمة ترفض)، ولا يقبل حقلاً غير معروف.
+ */
+export const adminCustomerGenderSchema = z
+  .object({ gender: z.enum(GENDERS, { message: 'اختر ذكراً أو أنثى' }) })
+  .strict();
+
+/**
+ * تعليم حساب زبونٍ داخلياً/اختبارياً (D2) — يُخرج طلباته من تحليلات المتجر.
+ *
+ * السبب مطلوب ويُحفظ في سجلّ النشاط: التعليم يغيّر أرقام الأشهر المفتوحة.
+ */
+export const adminCustomerInternalSchema = z
+  .object({
+    isInternal: z.boolean({ message: 'حدّد هل الحساب داخلي' }),
+    reason: z.string().trim().min(3, 'اكتب سبباً واضحاً').max(200, 'السبب طويل جداً'),
+  })
+  .strict();
+
+/**
+ * تكلفة شراء جديدة للمنتج (D1) — رقمٌ موجب بدينار العراق، منزلتان عشريتان كحدٍّ
+ * أقصى. لا تأريخ في الطلب: الخادم يختم وقت الإدخال، ولا تأريخ رجعي.
+ */
+export const adminProductCostSchema = z
+  .object({
+    unitCost: z
+      .number({ message: 'أدخل تكلفة صحيحة' })
+      .positive('التكلفة يجب أن تكون أكبر من صفر')
+      .max(1_000_000_000, 'التكلفة أكبر من المسموح')
+      .refine((value) => Number.isInteger(Math.round(value * 100)) && Math.abs(value * 100 - Math.round(value * 100)) < 1e-6, 'منزلتان عشريتان كحدٍّ أقصى'),
+    note: z.string().trim().max(200, 'الملاحظة طويلة جداً').optional(),
+  })
+  .strict();
+
+export const adminBirthdayQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  filter: z.enum(BIRTHDAY_FILTERS).default('registered'),
+  /** نافذة «قريباً»/«مؤخّراً» — الواجهة تعرض ٧/١٤/٣٠. */
+  windowDays: z.coerce.number().int().min(1).max(365).default(7),
+});
+
+// ── مزايا مستويات نقاط المجرّة ──
+//
+// [NOTE] حُذفت `loyaltyLevelCreate/Update/Id`. كانت تسمح ببناء السلّم من
+// اللوحة؛ السلّم الآن ثابت في `domain/galaxyPoints.ts` ولا مسار يعدّله، فبقاء
+// مدقّقاتٍ لأجسام طلبات لا وجود لها يوحي بقدرةٍ أُزيلت.
+
+/** طابور الهدايا: كلّها أو غير المسلَّمة فقط. */
+export const giftClaimsQuerySchema = z.object({
+  pending: z
+    .union([z.boolean(), z.enum(['true', 'false'])])
+    .transform((value) => value === true || value === 'true')
+    .optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+// ── قائمة منتجات الإدارة ──
+
+/**
+ * ترشيح قائمة المنتجات بالقسم أو القسم الفرعي.
+ *
+ * يخدم المسار «الأقسام ← قسم فرعي ← منتجاته»: بدونه كانت الشاشة تُحمّل كل
+ * المنتجات ثم تُرشِّحها في المتصفح، فتبدو صحيحة على صفحة واحدة وتُخفي
+ * منتجات الصفحات التالية.
+ */
+export const adminProductsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(50).default(12),
+  /**
+   * بحث بالاسم — جزءٌ من الاسم يكفي، على الخادم لا على صفحة اللوحة.
+   *
+   * كانت القائمة بلا أي معامل بحث، فيقلّب المسؤول الصفحات ليجد منتجاً.
+   * البحث العام `/catalog/products/search` لا يصلح بديلاً: يستثني غير النشط.
+   */
+  q: z.string().trim().min(1).max(120).optional(),
+  categoryId: z.string().uuid('معرّف قسم غير صالح').optional(),
+  subcategoryId: z.string().uuid('معرّف قسم فرعي غير صالح').optional(),
+  /**
+   * ترشيح العروض/المختارة للإدارة.
+   *
+   * [CRITICAL] كانت لوحة التحكم تقرأ هذين القسمين من `/api/catalog/products`
+   * العام لأن مسار الإدارة لا يقبلهما. ونتيجةُ ذلك أن منتجاً معطّلاً مرفوعاً
+   * كعرض لا يظهر في شاشة العروض أصلاً، فلا سبيل لإزالته منها: القائمة العامة
+   * تُخفي غير النشط عمداً. الترشيح هنا يقرأ نفس مستودع المنتجات بـ
+   * `includeInactive`، فتُدار العروض من مسارٍ يتطلّب صلاحية مسؤول لا من مسارٍ
+   * عام.
+   *
+   * القيمة نصّية لأن معايير الاستعلام نصوص؛ نفس صيغة `listProductsSchema`.
+   */
+  offer: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === 'true')),
+  selected: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === 'true')),
+  /** `true` ← المنتجات التي ينقصها اسمٌ أو وصفٌ كردي وحدها (066). */
+  missingKurdish: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === 'true')),
+});

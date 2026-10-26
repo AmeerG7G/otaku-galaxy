@@ -2,6 +2,7 @@ export interface AdminSubcategory {
   id: string
   name: string
   sortOrder: number
+  isActive: boolean
 }
 
 export interface AdminCategory {
@@ -27,6 +28,7 @@ export interface CategoryUpdatePayload {
   name?: string
   imageUrl?: string | null
   sortOrder?: number
+  isActive?: boolean
 }
 
 export interface SubcategoryCreatePayload {

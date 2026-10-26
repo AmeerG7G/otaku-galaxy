@@ -1,3 +1,4 @@
+import type pg from 'pg';
 import { db, withTransaction } from '../database/pool.js';
 import {
   categoryRepo,
@@ -8,11 +9,30 @@ import { notificationRepo } from '../repositories/notificationsRepo.js';
 import { orderRepo } from '../repositories/orderRepo.js';
 import { pointsRepo } from '../repositories/pointsRepo.js';
 import { bannerRepo, governorateRepo } from '../repositories/storefrontRepo.js';
-import { userRepo } from '../repositories/userRepo.js';
+import {
+  userRepo,
+  type BirthdayFilter,
+  type CustomerSort,
+} from '../repositories/userRepo.js';
+import { config } from '../config/index.js';
 import type { NotificationType, OrderStatus } from '../types/index.js';
+import type { Gender } from '../types/index.js';
 import { Errors } from '../utils/errors.js';
+import type { ProductNames } from '../utils/locale.js';
 import { orderService } from './orderService.js';
+import { restockService } from './restockService.js';
+import { renumberPlacement, type AssignedOrder, type PlacementRow } from '../utils/bannerOrder.js';
 import { franchiseRepo } from '../repositories/franchisesRepo.js';
+import { adminAuditRepo } from '../repositories/adminAuditRepo.js';
+import { analyticsPeriodsRepo } from '../repositories/analyticsPeriodsRepo.js';
+import bcrypt from 'bcryptjs';
+import {
+  accountRequestRepo,
+  type AccountRequestKind,
+  type AccountRequestRow,
+  type AccountRequestStatus,
+} from '../repositories/accountRequestRepo.js';
+import { placeOnLadder } from '../domain/galaxyPoints.js';
 
 /** إدارة المتجر للمشرف (لوحة تحكم React مستقبلية). */
 /**
@@ -28,6 +48,18 @@ function mapProductConstraintError(error: unknown): never {
       'INVALID_PREVIOUS_PRICE',
     );
   }
+  if (code === '23514' && constraint === 'products_previous_price_needs_price') {
+    throw Errors.badRequest(
+      'لا «سعر قبل الخصم» لمنتجٍ لم يُعلن سعره بعد',
+      'INVALID_PREVIOUS_PRICE',
+    );
+  }
+  if (code === '23514' && constraint === 'products_pair_price_offer') {
+    throw Errors.badRequest(
+      'سعر القطعتين يجب ألا يقل عن سعر القطعة وأن يكون أقل من ضعفه — ولا عرض لمنتجٍ لم يُعلن سعره',
+      'INVALID_PAIR_PRICE',
+    );
+  }
   if (code === '23514') {
     throw Errors.badRequest('قيمة غير صالحة لأحد حقول المنتج', 'INVALID_PRODUCT_FIELD');
   }
@@ -37,36 +69,212 @@ function mapProductConstraintError(error: unknown): never {
   throw error;
 }
 
+/**
+ * مجموعة البنرات النشطة لموضعٍ ما، مقفولة (FOR UPDATE) كي تتسلسل تعديلات
+ * الموضع المتزامنة. تُستقى بعد التحديث فيضمّ البنرُ بنفسه حتى عند تنقّله
+ * من موضعه أو تفعيله للتو.
+ */
+async function bannerPlacementGroup(
+  tx: pg.PoolClient,
+  placement: string,
+): Promise<PlacementRow[]> {
+  const { rows } = await tx.query<{ id: string; sort_order: number; created_at: Date }>(
+    `SELECT id, sort_order, created_at FROM banners
+      WHERE placement = $1 AND is_active = TRUE
+      ORDER BY sort_order, created_at
+      FOR UPDATE`,
+    [placement],
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    sortOrder: row.sort_order,
+    createdAt: row.created_at,
+  }));
+}
+
+/**
+ * تطبيق أوامر الترقيم على دفعة واحدة — على مرحلتين.
+ *
+ * جلستنا الأولى صفاً صفاً ثم دفعةٌ واحدة، كلاهما اصطدم بالفهرس الفريد
+ * الجزئي (هجرة ٠٣٥): بوستغرِس يفحص الفائدة بعد كل صفٍّ داخل الجملة نفسها،
+ * فتبادل ترتيبين يعني لحظةً يصطفّ فيها اثنان على نفس الترتيب. الحل مرحلتان:
+ * (١) إزاحة الجميع بمقدار ثابت كبير — إزاحة متزاحة تحفظ التمييز فلا تصادم؛
+ * (٢) تثبيت القيم النهائية الصغيرة على ساحة بلا عشّاقٍ سابقين.
+ */
+async function applyBannerOrders(tx: pg.PoolClient, assignments: AssignedOrder[]) {
+  if (assignments.length === 0) return;
+  const clauses = assignments
+    .map((_, index) => `($${index * 2 + 1}::uuid, $${index * 2 + 2}::int)`)
+    .join(', ');
+  const params: unknown[] = [];
+  for (const assignment of assignments) {
+    params.push(assignment.id, assignment.sortOrder);
+  }
+  const values = `FROM (VALUES ${clauses}) AS v(id, sort_order) WHERE b.id = v.id`;
+  const offsetParam = params.length + 1;
+  await tx.query(
+    `UPDATE banners b SET sort_order = b.sort_order + $${offsetParam} ${values}`,
+    [...params, assignments.length + 1_000_000],
+  );
+  await tx.query(`UPDATE banners b SET sort_order = v.sort_order ${values}`, params);
+}
+
+/**
+ * القسم الفرعي للمنتج يجب أن يتبع قسمَ المنتج نفسه.
+ *
+ * [CRITICAL] لا قيدٌ في القاعدة يربط `products.subcategory_id` بـ
+ * `products.category_id` (المفتاحان الأجنبيان مستقلّان)، فكان الإنشاء
+ * والتعديل يقبلان منتجاً قسمُه «ملابس» وقسمُه الفرعي من «حقائب» ويحفظانه —
+ * فيظهر تحت شريحة قسمٍ ليس قسمه، ولا تراه لوحةُ التحكم لأن نموذجها يحصر
+ * الاختيار في فرعيّات القسم المختار. الفحص هنا عند الحدّ، وبالقيم
+ * **الفعلية** بعد التعديل: نقلُ القسم وحده مع فرعيٍّ قديم لا يتبعه تناقضٌ
+ * كذلك ويُرفض، فينقل المسؤول الاثنين معاً أو يفرّغ الفرعي صراحةً.
+ */
+async function assertSubcategoryBelongs(
+  tx: pg.PoolClient,
+  categoryId: string,
+  subcategoryId: string | null,
+): Promise<void> {
+  if (subcategoryId === null) return;
+  const subcategory = await subcategoryRepo.findById(tx, subcategoryId);
+  if (!subcategory || subcategory.categoryId !== categoryId) {
+    throw Errors.badRequest('القسم الفرعي لا يتبع هذا القسم', 'SUBCATEGORY_MISMATCH');
+  }
+}
+
+/** خيارٌ كما يصل من المدقّق: الكردية غائبة = لم يُرسلها العميل (`validators/admin.ts`). */
+interface ProductOptionInput {
+  name: string;
+  values: string[];
+  nameCkb?: string | null;
+  valuesCkb?: string[];
+}
+
+interface StoredProductOption {
+  name: string;
+  nameCkb: string | null;
+  values: string[];
+  valuesCkb: string[];
+}
+
+/**
+ * الترجمة الكردية التي تُكتب مع كل خيار عند استبدال خيارات المنتج.
+ *
+ * [CRITICAL] الحفظ يحذف الخيارات ويُدرجها من جديد، فكان كل حفظٍ من اللوحة
+ * يكتب `name`/`values` وحدهما فيمحو `name_ckb`/`values_ckb` بصمت — والزبون
+ * الكردي يعود إلى الخيارات بالعربية بعد تعديل سعرٍ أو صورة.
+ *
+ * الحقل المُرسَل يُكتب كما هو (`null`/`[]` = إفراغٌ مقصود). الغائب — عميلٌ
+ * أقدم من الحقلين — يُؤخذ من الخيار المحفوظ بالاسم العربي نفسه، وتُنقل كل
+ * قيمة كردية مع قيمتها العربية فتبقى إعادة الترتيب والحذف صحيحتين. قيمةٌ
+ * جديدة في خيارٍ مترجَم لا ترجمة لها: رفضٌ برسالة لا خيارٌ نصفه كردي ولا
+ * إسقاطٌ صامت لترجمة الخيار كله.
+ */
+function resolveOptionTranslations(
+  previous: readonly StoredProductOption[],
+  next: readonly ProductOptionInput[],
+): StoredProductOption[] {
+  const matched = new Set<number>();
+  const resolved = next.map((option) => {
+    // خياران بالاسم العربي نفسه: الأولى به من تحوي قيمُه القيمَ المرسلة.
+    const candidates = previous.flatMap((old, i) => (!matched.has(i) && old.name === option.name ? [i] : []));
+    const index = candidates.find((i) => option.values.every((value) => previous[i]!.values.includes(value)))
+      ?? candidates[0]
+      ?? -1;
+    if (index >= 0) matched.add(index);
+    const old = index >= 0 ? previous[index]! : null;
+
+    const nameCkb = option.nameCkb !== undefined ? option.nameCkb : (old?.nameCkb ?? null);
+    let valuesCkb: string[];
+    if (option.valuesCkb !== undefined) {
+      valuesCkb = option.valuesCkb;
+    } else if (!old || old.valuesCkb.length === 0) {
+      valuesCkb = [];
+    } else {
+      valuesCkb = option.values.map((value) => {
+        const at = old.values.indexOf(value);
+        if (at < 0) {
+          throw Errors.badRequest(
+            `القيمة «${value}» في خيار «${option.name}» بلا ترجمة كردية — أعد تحميل الصفحة وأدخل ترجمتها`,
+            'OPTION_TRANSLATION_MISSING',
+          );
+        }
+        return old.valuesCkb[at]!;
+      });
+    }
+    return { name: option.name, nameCkb, values: option.values, valuesCkb, matched: old !== null, omitted: option.nameCkb === undefined || option.valuesCkb === undefined };
+  });
+  // خيارٌ بلا مطابقٍ بالاسم وكرديّته غائبة، وخيارٌ مترجَم محفوظ لم يطابقه
+  // أحد: الأرجح إعادة تسمية من عميلٍ لا يعرف الترجمة — حفظُه يُسقطها بصمت.
+  // الحذف الصريح (لا خيار جديد غائب الكردية) يبقى مقبولاً.
+  const orphanTranslated = previous.find(
+    (old, i) => !matched.has(i) && (old.nameCkb !== null || old.valuesCkb.length > 0),
+  );
+  const unmatchedOmitted = resolved.find((option) => !option.matched && option.omitted);
+  if (orphanTranslated && unmatchedOmitted) {
+    throw Errors.badRequest(
+      `الخيار «${unmatchedOmitted.name}» بلا ترجمة كردية والخيار المترجَم «${orphanTranslated.name}» حُذف — أعد تحميل الصفحة وأدخل ترجمته`,
+      'OPTION_TRANSLATION_MISSING',
+    );
+  }
+  return resolved.map(({ matched: _matched, omitted: _omitted, ...option }) => option);
+}
+
+async function insertProductOptions(
+  tx: pg.PoolClient,
+  productId: string,
+  options: readonly StoredProductOption[],
+) {
+  for (const option of options) {
+    await tx.query(
+      // `clock_timestamp()` لا `now()`: كل الخيارات تُدرج في معاملةٍ واحدة،
+      // و`now()` يعطيها اللحظة نفسها فيضيع ترتيب إدخال المسؤول.
+      `INSERT INTO product_options (product_id, name, name_ckb, values, values_ckb, created_at)
+       VALUES ($1, $2, $3, $4, $5, clock_timestamp())`,
+      [productId, option.name, option.nameCkb, option.values, option.valuesCkb],
+    );
+  }
+}
+
 export const adminService = {
   // ===== المنتجات =====
   async createProduct(input: {
-    name: string;
-    description: string;
-    price: number;
+    /** المحتوى بلغتين (066) — الأربعة إلزامية ومقصوصة في المدقّق. */
+    nameAr: string;
+    descriptionAr: string;
+    nameCkb: string;
+    descriptionCkb: string;
+    /** `null` = «السعر يُعلن قريباً» (084). */
+    price: number | null;
+    /** سعر قطعتين (085)؛ الغائب/`null` = لا عرض. */
+    pairPrice?: number | null;
     categoryId: string;
     subcategoryId?: string | null;
     stock: number;
     images: string[];
-    options: { name: string; values: string[] }[];
+    options: ProductOptionInput[];
     isOffer?: boolean;
     isSelected?: boolean;
     previousPrice?: number | null;
     hasDeliveryPromo?: boolean;
     deliveryPromoAmount?: number;
     franchiseIds?: string[];
+    restockAt?: string | null;
   }) {
     return withTransaction(async (tx) => {
+      await assertSubcategoryBelongs(tx, input.categoryId, input.subcategoryId ?? null);
       const { rows } = await tx.query(
         `INSERT INTO products (
            name, description, price, category_id, subcategory_id, stock,
            is_offer, is_selected, previous_price, has_delivery_promo,
-           delivery_promo_amount
+           delivery_promo_amount, restock_at, name_ckb, description_ckb, pair_price
          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
          RETURNING *`,
         [
-          input.name,
-          input.description,
+          // `name`/`description` هما العمودان العربيان (046، موثَّقان في 066).
+          input.nameAr,
+          input.descriptionAr,
           input.price,
           input.categoryId,
           input.subcategoryId ?? null,
@@ -78,6 +286,10 @@ export const adminService = {
           // القيد في القاعدة يرفض «مفعَّل بمبلغ صفر»، فنُصفّر المبلغ متى
           // كان الترويج مطفأً بدل تمرير قيمة متناقضة.
           input.hasDeliveryPromo ? (input.deliveryPromoAmount ?? 0) : 0,
+          input.restockAt ?? null,
+          input.nameCkb,
+          input.descriptionCkb,
+          input.pairPrice ?? null,
         ],
       );
       const product = rows[0]!;
@@ -90,79 +302,168 @@ export const adminService = {
           [product.id, url, index],
         );
       }
-      for (const option of input.options) {
-        await tx.query(
-          'INSERT INTO product_options (product_id, name, values) VALUES ($1, $2, $3)',
-          [product.id, option.name, option.values],
-        );
-      }
+      // منتجٌ جديد لا ترجمة محفوظة له: الغائب = لا ترجمة.
+      await insertProductOptions(tx, product.id, resolveOptionTranslations([], input.options));
       return (await productRepo.findById(tx, product.id))!;
     });
   },
 
-  async listProducts(page: number, limit: number) {
-    return productRepo.list(db, { page, limit, includeInactive: true });
+  /**
+   * منتجٌ واحد لصفحة التعديل — الموقوف أيضاً، وخياراته بلغتيها كما حُفظت.
+   *
+   * [CRITICAL] كانت الصفحة تقرأ المسار العام بـ`Accept-Language: ar`: خياراتٌ
+   * محسومة إلى العربية بلا `nameCkb`/`valuesCkb`، فلا يرى المسؤول الترجمة ولا
+   * يُعيدها مع الحفظ — والمنتج الموقوف 404 هناك فتُفتح صفحته بلا خيارات.
+   */
+  async getProductForEdit(id: string) {
+    const product = await productRepo.findDetailById(db, id, { includeInactive: true });
+    if (!product) throw Errors.notFound('المنتج غير موجود');
+    return product;
+  },
+
+  /**
+   * منتجات الإدارة — بما فيها الموقوفة، مع ترشيح اختياري بالقسم.
+   *
+   * الترشيح على الخادم لا في المتصفح: قائمة مرقَّمة تُرشَّح بعد جلبها تعرض
+   * منتجات الصفحة الحالية فقط، فيبدو القسم الفرعي فارغاً وفيه عشرات
+   * المنتجات على الصفحة الثانية.
+   */
+  async listProducts(options: {
+    page: number;
+    limit: number;
+    q?: string;
+    categoryId?: string;
+    subcategoryId?: string;
+    offer?: boolean;
+    selected?: boolean;
+    missingKurdish?: boolean;
+  }) {
+    // `includeInactive` هو الفارق عن القائمة العامة: المسؤول يدير المنتجات
+    // المعطّلة أيضاً — بما فيها المرفوعة كعروض — لا النشطة وحدها.
+    const { offer, selected, q, missingKurdish, ...rest } = options;
+    return productRepo.list(db, {
+      ...rest,
+      ...(q !== undefined ? { query: q } : {}),
+      ...(offer !== undefined ? { isOffer: offer } : {}),
+      ...(selected !== undefined ? { isSelected: selected } : {}),
+      ...(missingKurdish === true ? { missingKurdish: true } : {}),
+      includeInactive: true,
+      // «السعر يُعلن قريباً» (084): المسؤول يرى ما أعلنه ليسعّره لاحقاً.
+      includeUnpriced: true,
+    });
   },
 
   async updateProduct(
     id: string,
     input: {
-      name?: string;
-      description?: string;
-      price?: number;
+      /**
+       * كل حقلٍ لغويٍّ مستقل (066): الغائب لا يُمسّ. تعديل العربية يكتب
+       * عمودَي العربية وحدهما، والكردية عمودَيها وحدهما — لا نسخ بين لغتين.
+       */
+      nameAr?: string;
+      descriptionAr?: string;
+      nameCkb?: string;
+      descriptionCkb?: string;
+      price?: number | null;
+      /** `null` يزيل عرض القطعتين (085)؛ الغائب لا يُمسّ. */
+      pairPrice?: number | null;
       categoryId?: string;
       subcategoryId?: string | null;
       stock?: number;
+      /** المخزون الذي فُتحت عليه صفحة التعديل — يُقارَن تحت القفل (انظر أدناه). */
+      expectedStock?: number;
       isActive?: boolean;
       isOffer?: boolean;
       isSelected?: boolean;
-      rating?: number | null;
-      reviewCount?: number;
       images?: string[];
-      options?: { name: string; values: string[] }[];
+      options?: ProductOptionInput[];
       previousPrice?: number | null;
       hasDeliveryPromo?: boolean;
       deliveryPromoAmount?: number;
       franchiseIds?: string[];
+      /** موعد التوفر القادم — معلومة إرشادية، لا يغيّر المخزون. */
+      restockAt?: string | null;
     },
   ) {
     return withTransaction(async (tx) => {
+      // [CRITICAL] قفل صفّ المنتج قبل قراءته.
+      //
+      // القرارات التالية كلها مبنيّة على المقارنة بين القديم والجديد: هل
+      // عاد المخزون؟ هل تغيّر موعد التوفر؟ مسؤولان يحفظان معاً كانا يقرآن
+      // القيمة القديمة نفسها ثم يكتبان، فيُرسل إشعارُ «تغيّر الموعد» مرتين
+      // أو لا يُرسل إطلاقاً بحسب ترتيب الكتابة. القفل يُسلسلهما.
+      await tx.query('SELECT id FROM products WHERE id = $1 FOR UPDATE', [id]);
+
       const existing = await productRepo.findById(tx, id);
       if (!existing) throw Errors.notFound('المنتج غير موجود');
+      const previousStock = Number(existing.stock);
+      const previousRestockAt = existing.restockAt;
+
+      // [CRITICAL] مقارنةٌ ثم كتابة تحت القفل نفسه (compare-and-set).
+      //
+      // `stock` قيمةٌ مطلقة يكتبها المسؤول من صفحةٍ فُتحت قبل لحظات أو ساعات.
+      // قبولُ طلبٍ بين الفتح والحفظ ينزّل المخزون؛ كتابةُ القيمة القديمة
+      // فوقه تُرجع القطع المستهلكة إلى البيع — بيعٌ فوق المخزون الفعلي. القفل
+      // وحده يُسلسل الكتابتين ولا يكشف أن إحداهما بُنيت على قراءةٍ قديمة.
+      // الرفض هنا يسبق كل كتابة، فلا يُحفظ أي حقلٍ آخر من الطلب نفسه.
+      if (
+        input.stock !== undefined &&
+        input.expectedStock !== undefined &&
+        input.expectedStock !== previousStock
+      ) {
+        throw Errors.conflict(
+          `المخزون تغيّر منذ فتح الصفحة (الحالي: ${previousStock}) — راجع القيمة ثم احفظ`,
+          'STOCK_CHANGED',
+        );
+      }
+
+      await assertSubcategoryBelongs(
+        tx,
+        input.categoryId ?? existing.categoryId,
+        input.subcategoryId === undefined ? existing.subcategoryId : input.subcategoryId,
+      );
 
       const fields = [
         'name',
         'description',
+        'name_ckb',
+        'description_ckb',
         'price',
+        'pair_price',
         'category_id',
         'subcategory_id',
         'stock',
         'is_active',
         'is_offer',
         'is_selected',
-        'rating',
-        'review_count',
         'previous_price',
         'has_delivery_promo',
         'delivery_promo_amount',
+        'restock_at',
       ] as const;
       const map: Record<string, unknown> = {
-        name: input.name,
-        description: input.description,
+        name: input.nameAr,
+        description: input.descriptionAr,
+        name_ckb: input.nameCkb,
+        description_ckb: input.descriptionCkb,
         price: input.price,
+        pair_price: input.pairPrice,
         category_id: input.categoryId,
         subcategory_id: input.subcategoryId,
         stock: input.stock,
         is_active: input.isActive,
         is_offer: input.isOffer,
         is_selected: input.isSelected,
-        rating: input.rating,
-        review_count: input.reviewCount,
         previous_price: input.previousPrice,
         has_delivery_promo: input.hasDeliveryPromo,
         delivery_promo_amount: input.hasDeliveryPromo === false
           ? 0
           : input.deliveryPromoAmount,
+        // التحديث لا يمسّ تاريخ الإعادة إلا إن حُدّد صراحةً — لا يحذفه أي
+        // حفظٍ لاحقٍ لسعر أو مخزون.
+        ...(input.restockAt !== undefined
+          ? { restock_at: input.restockAt ?? null }
+          : {}),
       };
       const sets: string[] = [];
       const values: unknown[] = [id];
@@ -174,6 +475,52 @@ export const adminService = {
       }
       if (sets.length > 0) {
         await tx.query(`UPDATE products SET ${sets.join(', ')} WHERE id = $1`, values);
+      }
+
+      // اسم المنتج بلغتيه **بعد** هذا الحفظ — الإشعار يصل كل مشترك بلغته
+      // (`restockService`)، والاسم الذي عدّله المسؤول للتوّ هو الصحيح.
+      const names: ProductNames = {
+        ar: input.nameAr ?? existing.nameAr,
+        ckb: input.nameCkb ?? existing.nameCkb,
+      };
+
+      // عودة المخزون من صفر إلى ما فوق: إشعارات المشتركين وفراغ اشتراكاتهم
+      // داخل معاملة التحديث نفسها — إمّا كاملة أو لا شيء.
+      const cameBackInStock =
+        input.stock !== undefined && previousStock === 0 && Number(input.stock) > 0;
+      // «قريباً» (084) أُعلن سعره ومخزونه موجود: صار قابلاً للشراء الآن، والمنتظرون
+      // الذين أُجِّل تبليغهم ما دام بلا سعر (`stockReturned`) يُبلَّغون الآن.
+      const stockAfter = input.stock !== undefined ? Number(input.stock) : previousStock;
+      const priceAnnounced =
+        existing.price === null && input.price !== undefined && input.price !== null && stockAfter > 0;
+
+      if (cameBackInStock || priceAnnounced) {
+        // إشعارات المشتركين وفراغ اشتراكاتهم ومسح الموعد المتوقَّع — التعريف
+        // نفسه الذي يستعمله رفضُ طلبٍ مقبول حين يُرجع القطعة.
+        await restockService.stockReturned(tx, id, names);
+      } else if (input.restockAt !== undefined) {
+        // ═══ تغيّر موعد التوفر المتوقَّع ═══
+        //
+        // [CRITICAL] الإشعار مشروط بتغيّر **فعلي** في القيمة، لا بضغطة حفظ.
+        // المسؤول الذي يفتح الصفحة ويحفظ نفس التاريخ لم يُحدث شيئاً يستحق
+        // إزعاج مئة زبون به. المقارنة على اللحظة نفسها، فحفظُ اليوم ذاته
+        // يُنتج القيمة ذاتها ولا يُشعر.
+        //
+        // ولا يقع هذا في نفس الحفظ الذي أعاد المخزون: هناك يفوز «عاد
+        // للتوفر»، وهو الخبر الصحيح — لا موعدٌ متوقَّع لشيء صار متاحاً.
+        const nextRestockAt = input.restockAt ?? null;
+        const changed = !sameInstant(previousRestockAt, nextRestockAt);
+
+        // إفراغ الموعد (تاريخ → لا شيء) لا يُشعر أحداً: ليس خبراً يُبلَّغ،
+        // والحالة المعروضة للزبون تعود إلى «بانتظار التوفر» من تلقائها.
+        if (changed && nextRestockAt !== null) {
+          await restockService.notifyExpectedRestock(tx, {
+            productId: id,
+            productNames: names,
+            restockAt: nextRestockAt,
+            updated: previousRestockAt !== null,
+          });
+        }
       }
 
       if (input.franchiseIds !== undefined) {
@@ -190,13 +537,15 @@ export const adminService = {
         }
       }
       if (input.options !== undefined) {
+        // تُقرأ قبل الحذف وتحت قفل المنتج — الترجمة المحفوظة هي مرجع الغائب.
+        const { rows: stored } = await tx.query<StoredProductOption>(
+          `SELECT name, name_ckb AS "nameCkb", values, values_ckb AS "valuesCkb"
+           FROM product_options WHERE product_id = $1 ORDER BY created_at, ctid`,
+          [id],
+        );
+        const options = resolveOptionTranslations(stored, input.options);
         await tx.query('DELETE FROM product_options WHERE product_id = $1', [id]);
-        for (const option of input.options) {
-          await tx.query(
-            'INSERT INTO product_options (product_id, name, values) VALUES ($1, $2, $3)',
-            [id, option.name, option.values],
-          );
-        }
+        await insertProductOptions(tx, id, options);
       }
       return (await productRepo.findById(tx, id))!;
     });
@@ -278,22 +627,91 @@ export const adminService = {
   },
 
   // ===== البانرات والمحافظات =====
+  /** البنرات مع ترتيبها — منها يبني لوحة التحكم قائمة «الترتيب» القابلة للتعديل. */
   async listBanners() {
     return bannerRepo.listAll(db);
   },
 
+  /** طلبات «أخبرني عند توفره» من وجهة الإدارة — المنتجات النافدة وعليها اشتراكات. */
+  async restockDemand() {
+    return restockService.adminDemand();
+  },
+
   async createBanner(input: {
     imageUrl: string;
-    title?: string | null;
-    destinationType: 'product' | 'category' | 'subcategory' | 'none';
+    /** نصّ البنر بلغتيه (067) — كلٌّ اختياري ومستقل، `null` = لا نصّ. */
+    titleAr?: string | null;
+    subtitleAr?: string | null;
+    titleCkb?: string | null;
+    subtitleCkb?: string | null;
+    placement?: 'hero' | 'promo';
+    destinationType: 'product' | 'category' | 'subcategory' | 'anime' | 'none';
     destinationValue?: string | null;
     sortOrder?: number;
   }) {
-    return bannerRepo.create(db, input);
+    return withTransaction(async (tx) => {
+      const placement = input.placement ?? 'promo';
+      // قفلُ صفّي الموضع يسلسل إدراجين متزامنين.
+      await tx.query(
+        'SELECT id FROM banners WHERE placement = $1 AND is_active = TRUE FOR UPDATE',
+        [placement],
+      );
+      const group = await bannerPlacementGroup(tx, placement);
+      const occupied = new Set(group.map((row) => row.sortOrder));
+      const requested = input.sortOrder ?? 0;
+
+      // إدراجٌ لا يصطدم بالفهرس الفريد الجزئي: القيمة الأقصى بالزيادة.
+      const safeOrder =
+        group.reduce((max, row) => Math.max(max, row.sortOrder), -1) + 1;
+      const banner = await bannerRepo.create(tx, {
+        ...input,
+        placement,
+        sortOrder: safeOrder,
+      });
+
+      // الإنشاء لا يزاحم أحداً: الترتيب الحر يُثبَّت كما طلبه المسؤول، والترتيب
+      // المحجوز يُبقيه في مؤخرة الموضع. إعادةُ الترقيم شأنُ «النقلة» فقط
+      // (تحديث البنر الموجود بترتيب جديد) — لا مصادفة خلف إنشاءٍ عابر.
+      if (banner.isActive && !occupied.has(requested) && requested !== safeOrder) {
+        await tx.query('UPDATE banners SET sort_order = $2 WHERE id = $1', [
+          banner.id,
+          requested,
+        ]);
+      }
+      return banner;
+    });
   },
 
   async updateBanner(id: string, input: Record<string, unknown>) {
-    return bannerRepo.update(db, id, input as never);
+    return withTransaction(async (tx) => {
+      const { rows } = await tx.query<{ id: string; placement: string; is_active: boolean }>(
+        'SELECT id, placement, is_active FROM banners WHERE id = $1 FOR UPDATE',
+        [id],
+      );
+      if (rows.length === 0) throw Errors.notFound('البنر غير موجود');
+      const before = rows[0]!;
+
+      // الترتيب يُحسم بإعادة الترقيم الذرّية لا كحقل تحديثٍ قد يصطدم
+      // بصفٍّ آخر على نفس الموضع وهو لا يزال واقفاً في مكانه.
+      const { sortOrder, ...fields } = input as Record<string, unknown> & { sortOrder?: number };
+      const banner = await bannerRepo.update(tx, id, fields as never);
+
+      // إعادة الترقيم فقط متى تغيّر انتماءُ البنر أو ترتيبه — تعديلُ الصورة
+      // وحدها يبقى كما هو تماماً، فلا يُعاد خلط ترتيب موضعٍ لا مساس به.
+      const membershipChanged =
+        sortOrder !== undefined ||
+        before.placement !== banner?.placement ||
+        !before.is_active;
+      if (banner?.isActive && membershipChanged) {
+        const assigned = renumberPlacement(
+          await bannerPlacementGroup(tx, banner.placement),
+          banner.id,
+          sortOrder ?? banner.sortOrder,
+        );
+        await applyBannerOrders(tx, assigned);
+      }
+      return banner;
+    });
   },
 
   async deleteBanner(id: string) {
@@ -303,7 +721,7 @@ export const adminService = {
   },
 
   async listGovernorates() {
-    return governorateRepo.listActive(db);
+    return governorateRepo.listAll(db);
   },
 
   async createGovernorate(input: { name: string; deliveryFee: number }) {
@@ -345,13 +763,16 @@ export const adminService = {
   },
 
   async getOrder(orderId: string) {
-    const order = await orderRepo.findById(db, orderId);
+    // المسار الإداري يقرأ الشكل الإداري: يحمل الفائض المحاسبي الذي لا
+    // يخرج في استجابة العميل.
+    const order = await orderRepo.findByIdForAdmin(db, orderId);
     if (!order) throw Errors.notFound('الطلب غير موجود');
     return order;
   },
 
   async updateOrderStatus(adminId: string, orderId: string, status: OrderStatus, note?: string) {
-    // مسار موحّد عبر orderService: تحقق الانتقال + استرجاع المخزون عند الرفض في معاملة واحدة.
+    // مسار موحّد عبر orderService: تحقق الانتقال + استهلاك المخزون عند القبول
+    // (وإرجاعه عند رفض ما قُبل) في معاملة واحدة.
     const updated = await orderService.adminUpdateStatus(adminId, orderId, {
       status,
       note,
@@ -360,31 +781,72 @@ export const adminService = {
   },
 
   // ===== المستخدمون =====
-  async listUsers(page: number, limit: number) {
-    const { items, total } = await userRepo.listCustomers(db, page, limit);
+  /**
+   * قائمة الزبائن للإدارة — البحث والترشيح يجريان في القاعدة.
+   *
+   * الشكل المُعاد يحمل ما تحتاجه شاشة الزبائن للقرار (النقاط، عدد الطلبات،
+   * آخر طلب) لا الصفَّ الخام: `password_hash` و`token_version` لا يخرجان
+   * من هذه الطبقة أبداً.
+   */
+  async listUsers(options: {
+    page: number;
+    limit: number;
+    search?: string;
+    isActive?: boolean;
+    hasBirthday?: boolean;
+    hasOrders?: boolean;
+    minPoints?: number;
+    maxPoints?: number;
+    gender?: Gender;
+    sort?: CustomerSort;
+  }) {
+    // العدّادات تُحسب على كامل المطابق للبحث لا على الصفحة المعروضة، وتُرسل
+    // مع كل صفحة ليبقى تصنيف اللوحة صحيحاً مهما تنقّل المسؤول.
+    const [{ items, total }, genderCounts] = await Promise.all([
+      userRepo.listCustomers(db, options),
+      userRepo.genderCounts(db, {
+        ...(options.search !== undefined ? { search: options.search } : {}),
+        ...(options.isActive !== undefined ? { isActive: options.isActive } : {}),
+      }),
+    ]);
     return {
-      items: items.map((u) => ({
-        id: u.id,
-        username: u.username,
-        phone: u.phone,
-        avatarUrl: u.avatar_url,
-        isActive: u.is_active,
-        createdAt: u.created_at,
-      })),
-      page,
-      limit,
+      items,
+      page: options.page,
+      limit: options.limit,
       total,
+      hasMore: options.page * options.limit < total,
+      genderCounts,
     };
   },
 
-  /** العملاء الذين سجّلوا تاريخ ميلادهم — قسم مستقل في لوحة التحكم. */
-  async listBirthdayCustomers(
-    page: number,
-    limit: number,
-    filter: 'all' | 'registered' | 'pending' = 'registered',
-  ) {
-    const { items, total } = await userRepo.listBirthdayCustomers(db, page, limit, filter);
-    return { items, page, limit, total, hasMore: page * limit < total };
+  /**
+   * العملاء حسب حالة عيد الميلاد — قسم مستقل في لوحة التحكم.
+   *
+   * «اليوم» و«قريباً» تُحسبان بمنطقة المتجر الزمنية لا بساعة الخادم، وإلا
+   * وصلت تهنئةُ الغد قبل منتصف ليل صاحبها بثلاث ساعات.
+   */
+  async listBirthdayCustomers(options: {
+    page: number;
+    limit: number;
+    filter?: BirthdayFilter;
+    windowDays?: number;
+  }) {
+    const [{ items, total }, counts] = await Promise.all([
+      userRepo.listBirthdayCustomers(db, {
+        ...options,
+        timezone: config.storeTimezone,
+      }),
+      userRepo.birthdayCounts(db, config.storeTimezone, options.windowDays ?? 7),
+    ]);
+    return {
+      items,
+      page: options.page,
+      limit: options.limit,
+      total,
+      hasMore: options.page * options.limit < total,
+      counts,
+      timezone: config.storeTimezone,
+    };
   },
 
   /**
@@ -407,7 +869,9 @@ export const adminService = {
    */
   async customerPoints(userId: string) {
     const user = await userRepo.findById(db, userId);
-    if (!user) throw Errors.notFound('العميل غير موجود');
+    // [SECURITY] زبائن فقط: صفّ مسؤولٍ ليس «عميلاً» يُقرأ من هنا — وإلا قرأ
+    // مسؤولٌ فرعي بصلاحية الزبائن اسمَ المسؤول الأعلى ورقمه بمعرّفه.
+    if (!user || user.role !== 'customer') throw Errors.notFound('العميل غير موجود');
 
     const [balance, ledger] = await Promise.all([
       pointsRepo.balance(db, userId),
@@ -452,14 +916,366 @@ export const adminService = {
     return notificationRepo.statsForAdmin(db);
   },
 
-  async toggleUserActive(userId: string) {
+  /**
+   * حظر/تفعيل حساب إلى الحالة **المقصودة** — تكرارُه آمن.
+   *
+   * [CRITICAL] `isActive` هو ما رآه المسؤول وقرّره في النافذة. الحالة نفسها
+   * لا تغيّر شيئاً: «حظر» ثانٍ من لوحةٍ قديمة العرض، أو إعادةُ الضغط بعد
+   * مهلة، يبقى حظراً ولا يرفع نسخة التوكن ثانيةً (جلسات الموقوف سقطت أصلاً)،
+   * و«تفعيل» مكرَّر لا يُسقط الجلسة التي فتحها الزبون بين الضغطتين. غيابه
+   * (نسخة لوحة أقدم) يقلب الحالة كما كان.
+   */
+  async setUserActive(userId: string, isActive?: boolean) {
     const user = await userRepo.findById(db, userId);
-    if (!user) throw Errors.notFound('المستخدم غير موجود');
-    const nextActive = !user.is_active;
+    // [SECURITY] إيقاف **الزبائن** وحدهم. كان المسار يقبل أي معرّف، فيوقف
+    // مسؤولٌ فرعي بصلاحية الزبائن المسؤولَ الأعلى ويُسقط جلساته. إيقاف
+    // المسؤولين مسارُه `PATCH /admin/admins/:id` للمسؤول الأعلى وحده.
+    if (!user || user.role !== 'customer') throw Errors.notFound('المستخدم غير موجود');
+    const nextActive = isActive ?? !user.is_active;
+    if (nextActive === user.is_active) return { id: user.id, isActive: user.is_active };
     const updated = await userRepo.update(db, userId, {
       isActive: nextActive,
       bumpTokenVersion: !nextActive,
     });
     return { id: updated.id, isActive: updated.is_active };
   },
+
+  // ═══════════════════════════════════════════════════════════════════
+  // طلبات الحساب — إنشاءٌ وإعادةُ تعيين، تُحسم يدوياً بعد تحقّق واتساب.
+  //
+  // [CRITICAL] لا مسار هنا يقبل رمزاً أو بياناتِ تعريفٍ ليحسم آلياً. الحسم
+  // فعلُ مسؤولٍ مصادَق (`requireAdmin` على المسار) يرى الطلب بجانب الحساب
+  // المخزَّن ويقرّر بنفسه. معرّف الطلب وحده لا يُخوِّل شيئاً: كل فعلٍ يعيد
+  // التحقّق من أن الطلب معلَّق ومن نوعه ومن ارتباطه بالحساب المستهدف.
+  // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * الطلب ومعه لقطة الحساب المرتبط **لمقارنة** المسؤول — لا كلمة مرور ولا
+   * تجزئة ولا نسخة توكن، ولا شيء يقول «مطابق ⇒ موافق».
+   */
+  async shapeAccountRequest(row: AccountRequestRow) {
+    return (await this.shapeAccountRequests([row]))[0]!;
+  },
+
+  /**
+   * صفحة طلبات دفعةً واحدة: الحسابات المرتبطة بجملة والأرصدة بجملة.
+   *
+   * كان كل صفٍّ يقرأ حسابه ثم رصيده (٢×N جملة لصفحة واحدة، تتزاحم كلها
+   * على المجمّع معاً عبر `Promise.all`).
+   */
+  async shapeAccountRequests(rows: AccountRequestRow[]) {
+    const userIds = [...new Set(rows.flatMap((row) => (row.user_id ? [row.user_id] : [])))];
+    const users = await userRepo.findByIds(db, userIds);
+    const balances = await pointsRepo.balances(db, [...users.keys()]);
+    return rows.map((row) => {
+      const user = row.user_id ? (users.get(row.user_id) ?? null) : null;
+      const balance = user ? (balances.get(user.id) ?? 0) : null;
+      return shapeAccountRequestRow(row, user, balance);
+    });
+  },
+
+  async listAccountRequests(options: {
+    page: number;
+    limit: number;
+    kind?: AccountRequestKind;
+    status?: AccountRequestStatus;
+    search?: string;
+  }) {
+    const [{ items, total }, pending] = await Promise.all([
+      accountRequestRepo.list(db, options),
+      accountRequestRepo.pendingCounts(db),
+    ]);
+    return {
+      items: await this.shapeAccountRequests(items),
+      page: options.page,
+      limit: options.limit,
+      total,
+      hasMore: options.page * options.limit < total,
+      pending,
+    };
+  },
+
+  async getAccountRequest(id: string) {
+    const row = await accountRequestRepo.findById(db, id);
+    if (!row) throw Errors.notFound('الطلب غير موجود');
+    return this.shapeAccountRequest(row);
+  },
+
+  /**
+   * الموافقة على طلب **تسجيل**: يفعّل الحساب المعلَّق.
+   *
+   * طلب إعادة التعيين لا يُوافَق عليه من هنا عمداً: «موافقة» بلا كلمة مرور
+   * جديدة لا معنى لها، والحسم الوحيد له هو `setCustomerPassword` مع معرّفه.
+   * فلا يوجد مسار يضع طلب إعادة تعيين في حالة «موافَق» دون أن تُوضع كلمة.
+   */
+  async approveAccountRequest(id: string, adminId: string, note?: string | null) {
+    const row = await accountRequestRepo.findById(db, id);
+    if (!row) throw Errors.notFound('الطلب غير موجود');
+    if (row.status !== 'pending') throw Errors.conflict('الطلب محسوم مسبقاً', 'REQUEST_RESOLVED');
+    if (row.kind !== 'registration') {
+      throw Errors.badRequest('طلب إعادة التعيين يُحسم بوضع كلمة مرور جديدة لا بالموافقة', 'USE_SET_PASSWORD');
+    }
+    if (!row.user_id) throw Errors.conflict('لا حساب مرتبط بهذا الطلب', 'NO_LINKED_ACCOUNT');
+    const user = await userRepo.findById(db, row.user_id);
+    if (!user) throw Errors.conflict('الحساب المرتبط لم يعد موجوداً', 'NO_LINKED_ACCOUNT');
+    // [D5] الجنس إلزامي: حسابٌ بلا جنس (طلبٌ سبق الهجرة ٠٤٠) لا يُفعَّل حتى يُكمَل
+    // بعد التحقّق عبر واتساب. زناد ٠٧٢ يمنع التفعيل أصلاً؛ هذه رسالته المفهومة.
+    if (user.gender === null) {
+      throw Errors.conflict('أكمل جنس الحساب (ذكر أو أنثى) بعد التحقّق عبر واتساب قبل القبول', 'GENDER_REQUIRED');
+    }
+
+    return withTransaction(async (tx) => {
+      // [CONCURRENCY] الحساب قبل الطلب — الترتيب الذي يقفل به التسجيل
+      // (`authService.register`) ووضعُ كلمة المرور. بالترتيب المعاكس كانت
+      // الموافقة وإعادةُ التسجيل المتزامنة تتبادلان الانتظار (40P01 → 500).
+      await tx.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [user.id]);
+      const resolved = await accountRequestRepo.resolve(tx, id, { status: 'approved', resolvedBy: adminId, note });
+      if (!resolved) throw Errors.conflict('الطلب محسوم مسبقاً', 'REQUEST_RESOLVED');
+      // التفعيل: الحساب يصير قابلاً للدخول هنا فقط — لا عند إنشائه.
+      if (user.phone_verified_at === null) {
+        await userRepo.update(tx, user.id, { phoneVerifiedAt: new Date() });
+      }
+      return this.shapeAccountRequest(resolved);
+    });
+  },
+
+  /** الرفض يبقي الطلب في السجل بحالته وملاحظة المسؤول — لا حذف. */
+  async rejectAccountRequest(id: string, adminId: string, note?: string | null) {
+    const row = await accountRequestRepo.findById(db, id);
+    if (!row) throw Errors.notFound('الطلب غير موجود');
+    if (row.status !== 'pending') throw Errors.conflict('الطلب محسوم مسبقاً', 'REQUEST_RESOLVED');
+    return withTransaction(async (tx) => {
+      // [SECURITY] الرفض يقفل الحساب أولاً كالموافقة. التسجيل يقرّر «استئناف
+      // معلَّق» تحت قفل الحساب ثم يكتب الطلب؛ رفضٌ لا ينتظر ذلك القفل كان يقع
+      // بين القرار والكتابة، فيُفتح طلبٌ جديد يحمل كلمة الطالب المرفوض.
+      if (row.user_id) await tx.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [row.user_id]);
+      const resolved = await accountRequestRepo.resolve(tx, id, { status: 'rejected', resolvedBy: adminId, note });
+      if (!resolved) throw Errors.conflict('الطلب محسوم مسبقاً', 'REQUEST_RESOLVED');
+      return this.shapeAccountRequest(resolved);
+    });
+  },
+
+  /**
+   * المسؤول يضع كلمة مرور **جديدة دائمة** لزبون تحقّق منه عبر واتساب.
+   *
+   * ═══ القرار ═══ هذه كلمةُ المرور الفعلية للحساب، لا مؤقّتة ولا تنتهي ولا
+   * تفرض تغييراً بعد الدخول. الزبون يستعملها كما هي إلى أن يغيّرها بنفسه من
+   * الإعدادات إن شاء. لا حالة خاصة تُخزَّن ولا حقل يُضاف.
+   *
+   * [CRITICAL]
+   * - الهدف زبونٌ فقط: لا يُغيَّر بها حساب مسؤول.
+   * - كلمة المرور تُجزَّأ هنا ولا تُعاد ولا تُسجَّل — الردّ لا يحمل إلا معرّف
+   *   الحساب وحالة الطلب.
+   * - نسخة التوكن تُرفع: من استعاد حسابه بعد اختراقه يجب ألا يبقى للمخترق
+   *   توكنٌ صالح.
+   * - `requestId` اختياري: إن وُجد يجب أن يكون **معلَّقاً**، من نوع
+   *   `password_reset`، ومرتبطاً **بهذا** الحساب — وإلّا رُفض. معرّف طلبٍ
+   *   وحده لا يُخوِّل تغيير كلمة مرور حسابٍ آخر.
+   */
+  async setCustomerPassword(
+    customerId: string,
+    adminId: string,
+    input: { newPassword: string; requestId?: string | null; note?: string | null },
+    options: { requireRequest?: boolean } = {},
+  ) {
+    const user = await userRepo.findById(db, customerId);
+    if (!user || user.role !== 'customer') throw Errors.notFound('الزبون غير موجود');
+    // [SECURITY] مسؤولٌ بصلاحية «طلبات الحساب» دون «الزبائن» يحسم طلب إعادة
+    // تعيينٍ قائماً فقط — لا يضع كلمة مرورٍ لأي زبونٍ بلا طلب.
+    if (options.requireRequest && !input.requestId) {
+      throw Errors.forbidden('لا تملك صلاحية هذا القسم', 'ADMIN_PERMISSION_DENIED');
+    }
+
+    let request: AccountRequestRow | null = null;
+    if (input.requestId) {
+      request = await accountRequestRepo.findById(db, input.requestId);
+      if (!request || request.kind !== 'password_reset') throw Errors.notFound('الطلب غير موجود');
+      if (request.status !== 'pending') throw Errors.conflict('الطلب محسوم مسبقاً', 'REQUEST_RESOLVED');
+      if (request.user_id !== user.id) {
+        throw Errors.badRequest('الطلب لا يخصّ هذا الحساب', 'REQUEST_ACCOUNT_MISMATCH');
+      }
+    }
+
+    const passwordHash = await bcrypt.hash(input.newPassword, config.bcryptRounds);
+    return withTransaction(async (tx) => {
+      await userRepo.update(tx, user.id, { passwordHash, bumpTokenVersion: true });
+      let resolved: AccountRequestRow | null = null;
+      if (request) {
+        resolved = await accountRequestRepo.resolve(tx, request.id, {
+          status: 'approved',
+          resolvedBy: adminId,
+          note: input.note ?? null,
+        });
+        if (!resolved) throw Errors.conflict('الطلب محسوم مسبقاً', 'REQUEST_RESOLVED');
+      }
+      return {
+        customerId: user.id,
+        request: resolved ? { id: resolved.id, status: resolved.status } : null,
+      };
+    });
+  },
+
+  /**
+   * ملفّ الزبون الكامل من مكانٍ واحد: هوية، نقاط ومستوى، طلبات الشراء،
+   * وتاريخ طلبات الحساب. لا تجزئة ولا توكن ولا نسخة توكن — أبداً.
+   */
+  async getCustomerDetail(customerId: string) {
+    const user = await userRepo.findById(db, customerId);
+    if (!user || user.role !== 'customer') throw Errors.notFound('الزبون غير موجود');
+    const [balance, orders, requests] = await Promise.all([
+      pointsRepo.balance(db, user.id),
+      orderRepo.listByUser(db, user.id, 1, 20),
+      accountRequestRepo.listForUser(db, user.id),
+    ]);
+    const placement = placeOnLadder(balance);
+    return {
+      profile: {
+        id: user.id,
+        username: user.username,
+        phone: user.phone,
+        gender: user.gender,
+        avatarUrl: user.avatar_url,
+        isActive: user.is_active,
+        isVerified: user.phone_verified_at !== null,
+        verifiedAt: user.phone_verified_at?.toISOString() ?? null,
+        preferredLanguage: user.preferred_language,
+        isInternalAccount: user.is_internal_account,
+        createdAt: user.created_at.toISOString(),
+      },
+      points: {
+        balance,
+        levelKey: placement.current.key,
+        levelNumber: placement.current.number,
+        levelName: placement.current.nameMale,
+        nextLevelKey: placement.next?.key ?? null,
+        pointsToNextLevel: placement.pointsToNext,
+      },
+      orders: {
+        items: orders.items,
+        total: orders.total,
+      },
+      requests: await this.shapeAccountRequests(requests),
+    };
+  },
+
+  /**
+   * إكمال جنس حسابٍ قديم بلا جنس (D5) — لمرةٍ واحدة، بعد تحقّق واتساب.
+   *
+   * [CRITICAL] لا يغيّر جنساً مضبوطاً: اختيار صاحب الحساب لا يُستبدل من اللوحة
+   * (`409 GENDER_ALREADY_SET`). الحساب يُقفل داخل المعاملة فلا يتسابق إكمالان،
+   * والسجلّ الدلالي يُكتب في المعاملة نفسها، والأشهر المفتوحة تُعاد حسابها.
+   */
+  async completeCustomerGender(customerId: string, actorId: string, gender: Gender) {
+    return withTransaction(async (tx) => {
+      const { rows } = await tx.query<{ role: string; gender: Gender | null }>(
+        'SELECT role, gender FROM users WHERE id = $1 FOR UPDATE',
+        [customerId],
+      );
+      const row = rows[0];
+      if (!row || row.role !== 'customer') throw Errors.notFound('الزبون غير موجود');
+      if (row.gender !== null) {
+        throw Errors.conflict('جنس هذا الحساب مضبوط ولا يُغيَّر من اللوحة', 'GENDER_ALREADY_SET');
+      }
+      await userRepo.update(tx, customerId, { gender });
+      await analyticsPeriodsRepo.markOpenMonthsDirty(tx);
+      await adminAuditRepo.record(tx, {
+        actorId,
+        action: 'customer.gender_completed',
+        targetType: 'customer',
+        targetId: customerId,
+        details: { gender },
+      });
+      return { id: customerId, gender };
+    });
+  },
+
+  /**
+   * تعليم حساب زبونٍ داخلياً/اختبارياً أو إلغاؤه (D2) — للمسؤول الأعلى وحده.
+   *
+   * يُخرج طلبات الحساب (السابقة واللاحقة) من تحليلات المتجر: الأشهر المفتوحة
+   * تُعاد حسابها في الدور التالي، والمُغلقة لا تتغيّر إلا بإعادة بناءٍ مُدقَّقة.
+   * تكراره بالقيمة نفسها لا يفعل شيئاً ولا يكتب سجلّاً.
+   */
+  async setCustomerInternal(customerId: string, actorId: string, input: { isInternal: boolean; reason: string }) {
+    return withTransaction(async (tx) => {
+      const { rows } = await tx.query<{ role: string; is_internal_account: boolean }>(
+        'SELECT role, is_internal_account FROM users WHERE id = $1 FOR UPDATE',
+        [customerId],
+      );
+      const row = rows[0];
+      if (!row || row.role !== 'customer') throw Errors.notFound('الزبون غير موجود');
+      if (row.is_internal_account === input.isInternal) {
+        return { id: customerId, isInternalAccount: row.is_internal_account, changed: false };
+      }
+      await tx.query('UPDATE users SET is_internal_account = $2 WHERE id = $1', [customerId, input.isInternal]);
+      await analyticsPeriodsRepo.markOpenMonthsDirty(tx);
+      await adminAuditRepo.record(tx, {
+        actorId,
+        action: 'customer.internal_account_set',
+        targetType: 'customer',
+        targetId: customerId,
+        details: { isInternal: input.isInternal, reason: input.reason },
+      });
+      return { id: customerId, isInternalAccount: input.isInternal, changed: true };
+    });
+  },
 };
+
+/** الطلب ومعه لقطة الحساب المرتبط — تحويلٌ خالص بعد أن قُرئ الحساب والرصيد. */
+function shapeAccountRequestRow(
+  row: AccountRequestRow,
+  user: Awaited<ReturnType<typeof userRepo.findById>>,
+  balance: number | null,
+) {
+  const level = balance === null ? null : placeOnLadder(balance).current;
+  return {
+    id: row.id,
+    kind: row.kind,
+    status: row.status,
+    submitted: {
+      phone: row.submitted_phone,
+      username: row.submitted_username,
+      gender: row.submitted_gender,
+      levelKey: row.submitted_level_key,
+    },
+    account: user
+      ? {
+          id: user.id,
+          username: user.username,
+          phone: user.phone,
+          gender: user.gender,
+          isActive: user.is_active,
+          isVerified: user.phone_verified_at !== null,
+          levelKey: level?.key ?? null,
+          levelNumber: level?.number ?? null,
+          points: balance,
+          createdAt: user.created_at.toISOString(),
+        }
+      : null,
+    // إشاراتٌ للعين لا قرار: المسؤول يقارن بنفسه ويسأل عبر واتساب.
+    match: user
+      ? {
+          username: user.username.trim().toLowerCase() === row.submitted_username.trim().toLowerCase(),
+          gender: user.gender !== null && user.gender === row.submitted_gender,
+          level: level !== null && row.submitted_level_key !== null && level.key === row.submitted_level_key,
+        }
+      : null,
+    adminNote: row.admin_note,
+    resolvedAt: row.resolved_at?.toISOString() ?? null,
+    resolvedBy: row.resolved_by,
+    createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
+  };
+}
+
+/**
+ * هل يشير التاريخان إلى اللحظة نفسها؟ (`null` يساوي `null`.)
+ *
+ * المقارنة على اللحظة لا على النصّ: `2026-09-15T00:00:00Z` و
+ * `2026-09-15T03:00:00+03:00` نصّان مختلفان للحظة واحدة، وإشعارٌ بـ«تغيّر
+ * الموعد» بينهما كذبٌ على الزبون.
+ */
+function sameInstant(a: string | null, b: string | null): boolean {
+  if (a === null || b === null) return a === b;
+  return new Date(a).getTime() === new Date(b).getTime();
+}

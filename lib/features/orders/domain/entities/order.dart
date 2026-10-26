@@ -43,6 +43,7 @@ class Order {
     required this.status,
     this.productsTotal = 0,
     this.discount = 0,
+    this.loyaltyDiscount = 0,
     this.deliveryDiscount = 0,
     this.items = const [],
     this.createdAt,
@@ -50,9 +51,10 @@ class Order {
     this.zoneName,
     this.deliveryNote,
     this.deliveredAt,
-    this.ratingAvailableAt,
-    this.ratingAvailable = false,
+    this.canReview = false,
+    this.reviewableProductCount = 0,
     this.statusHistory = const [],
+    this.loyaltyGiftActivated = false,
   });
 
   final String id;
@@ -68,6 +70,13 @@ class Order {
 
   /// الخصم المطبق (من الخادم).
   final double discount;
+
+  /// ما جاء من مزيّة مستوى داخل [discount] — `orders.loyalty_discount` المحفوظ.
+  final double loyaltyDiscount;
+
+  /// ما بقي من [discount] بعد المزيّة (خصم الميلاد).
+  double get otherDiscount =>
+      (discount - loyaltyDiscount).clamp(0, double.infinity);
 
   /// خصم التوصيل المطبَّق وقت الطلب — لقطة تاريخية من الخادم.
   final double deliveryDiscount;
@@ -94,28 +103,46 @@ class Order {
   /// لحظة تأكيد الاستلام كما سجّلها الخادم؛ null قبل الاستلام.
   final DateTime? deliveredAt;
 
-  /// لحظة فتح التقييم (الاستلام + المهلة)؛ null قبل الاستلام.
-  final DateTime? ratingAvailableAt;
-
-  /// هل التقييم مسموح الآن؟ يقرّره الخادم — التطبيق يعرض ولا يحسب.
+  /// هل يستطيع صاحب الطلب تقييم منتجاته الآن؟
   ///
-  /// لا نشتقّها من ساعة الجهاز: تغيير وقت الهاتف يجب ألّا يفتح التقييم.
-  final bool ratingAvailable;
+  /// [CRITICAL] يقرّرها الخادم ويرسلها جاهزة — التطبيق يعرض ولا يحسب. لا
+  /// تُشتقّ من الحالة ولا من الطوابع الزمنية ولا من ساعة الجهاز، وإخفاء
+  /// الزرّ ليس الحارس: الخادم يرفض أي إرسال لطلبٍ لم يُستلم.
+  ///
+  /// حلّت محل `ratingAvailable` و`ratingAvailableAt`. تلك كانت تحمل مهلةً
+  /// يضبطها المسؤول تفصل بين تأكيد الاستلام وفتح التقييم؛ صار التقييم
+  /// يُفتح بالاستلام نفسه، فلا موعد يُنتظر ولا وقت متبقٍّ يُعرض.
+  final bool canReview;
+
+  /// منتجات الطلب التي لم يقيّمها صاحبه بعد — من الخادم.
+  ///
+  /// [CRITICAL] `canReview` بوّابة الاستلام وتبقى صحيحة إلى الأبد؛ هذا العدد
+  /// هو ما يُخفي زرّ «قيّم طلبك» بعد أن قُيّم كل منتج.
+  ///
+  /// التوافق: خادمٌ **أقدم** لا يرسل الحقل أصلاً — تطبيقٌ من المتجر قد يسبق
+  /// نشر الخادم بساعات. غيابُ الحقل يعني «لا نعرف»، فيُفترض أن كل المنتجات
+  /// قابلة للتقييم (سلوك ما قبل الحقل: الزرّ ظاهر، وشاشة التقييم تعرض حالة
+  /// كل منتج من `ReviewsCubit`، والخادم يرفض التكرار بـ`REVIEW_EXISTS`).
+  /// إخفاءُ الزرّ عند الغياب كان يعطّل التقييم كلّه حتى يُنشر الخادم. أما
+  /// الحقل الحاضر — ولو صفراً أو `null` — فهو كلمة الخادم وتُحترم.
+  final int reviewableProductCount;
+
+  /// هل بقي في الطلب ما يُقيَّم؟ — الشرط الكامل لعرض أي دعوة تقييم.
+  bool get hasReviewableProducts => canReview && reviewableProductCount > 0;
 
   /// مسار الطلب بأوقاته كما سجّله الخادم (بلا هوية من غيّر الحالة).
   final List<OrderStatusEvent> statusHistory;
 
-  /// الوقت المتبقي حتى يُفتح التقييم، أو null إن كان مفتوحاً/غير منطبق.
+  /// هل فعَّل الزبون هديةَ مستوى مرتبطة بهذا الطلب؟
   ///
-  /// للعرض فقط: القرار النهائي هو [ratingAvailable] القادم من الخادم.
-  Duration? get timeUntilRating {
-    final at = ratingAvailableAt;
-    if (ratingAvailable || at == null) return null;
-    final remaining = at.difference(DateTime.now());
-    return remaining.isNegative ? Duration.zero : remaining;
-  }
+  /// [CRITICAL] هديةٌ فيزيائية — لا تأثير على الأرقام. خادمٌ أقدم لا يرسل
+  /// الحقل: غيابه = لا هدية (false).
+  final bool loyaltyGiftActivated;
 
   factory Order.fromJson(Map<String, dynamic> json) {
+    final items = (json['items'] as List? ?? const [])
+        .map((e) => _mapItem(e as Map<String, dynamic>))
+        .toList();
     return Order(
       id: json['id']?.toString() ?? '',
       number: json['number']?.toString() ?? '',
@@ -126,42 +153,51 @@ class Order {
       total: (json['total'] as num?)?.toDouble() ?? 0,
       productsTotal: (json['productsTotal'] as num?)?.toDouble() ?? 0,
       discount: (json['discount'] as num?)?.toDouble() ?? 0,
-      deliveryDiscount:
-          (json['deliveryDiscount'] as num?)?.toDouble() ?? 0,
+      loyaltyDiscount: (json['loyaltyDiscount'] as num?)?.toDouble() ?? 0,
+      deliveryDiscount: (json['deliveryDiscount'] as num?)?.toDouble() ?? 0,
       status: OrderStatus.fromString(json['status'] as String? ?? ''),
-      items: (json['items'] as List? ?? const [])
-          .map((e) => _mapItem(e as Map<String, dynamic>))
-          .toList(),
+      items: items,
       createdAt: DateTime.tryParse(json['createdAt'] as String? ?? ''),
       rejectionReason: json['rejectionReason'] as String?,
       zoneName: json['zoneName'] as String?,
       deliveryNote: json['deliveryNote'] as String?,
       deliveredAt: DateTime.tryParse(json['deliveredAt'] as String? ?? ''),
-      ratingAvailableAt: DateTime.tryParse(
-        json['ratingAvailableAt'] as String? ?? '',
-      ),
-      ratingAvailable: json['ratingAvailable'] as bool? ?? false,
+      canReview: json['canReview'] as bool? ?? false,
+      reviewableProductCount: json.containsKey('reviewableProductCount')
+          ? (json['reviewableProductCount'] as num?)?.toInt() ?? 0
+          // خادمٌ أقدم: افتراض ما قبل الحقل — انظر تعليق الحقل.
+          : items.length,
       statusHistory: (json['statusHistory'] as List? ?? const [])
           .map((e) => OrderStatusEvent.fromJson(e as Map<String, dynamic>))
           .toList(),
+      loyaltyGiftActivated: json['loyaltyGiftActivated'] as bool? ?? false,
     );
   }
 
   /// يحوّل عنصر طلب الخادم
-  /// ({ productId, productName, imageUrl, optionValue, price, quantity, lineTotal })
+  /// ({ productId, productNameAr, productNameCkb, imageUrl, optionValue, price,
+  ///    quantity, lineTotal })
   /// إلى [CartItem] بالنموذج الذي تعرضه الواجهة.
+  ///
+  /// الاسم **لقطة** وقت الطلب باللغتين (هجرة ٠٦٦) — تعديل المنتج لاحقاً لا
+  /// يغيّرها، والواجهة تختار منها بلغتها. طلبٌ أقدم من 066 بلا كردية ⇒
+  /// `nameCkb: null` صريحة، لا اسمٌ كرديٌّ حاليّ يُلصق بتاريخٍ مضى.
   static CartItem _mapItem(Map<String, dynamic> json) {
     final image = resolveMediaUrl(json['imageUrl'] as String?);
     return CartItem(
       product: Product.fromJson({
         'id': json['productId']?.toString() ?? '',
-        'name': json['productName'] as String? ?? '',
+        'nameAr': json['productNameAr'] ?? json['productName'] ?? '',
+        'nameCkb': json['productNameCkb'],
         'price': (json['price'] as num?)?.toDouble() ?? 0,
         'images': image != null && image.isNotEmpty ? [image] : const [],
         'stock': (json['quantity'] as num?)?.toInt() ?? 0,
       }),
       quantity: json['quantity'] as int? ?? 1,
       selectedOption: json['optionValue'] as String?,
+      // ما دفعه الزبون عن السطر — لقطةٌ محفوظة، قد تقلّ عن السعر × الكمية
+      // بعرض القطعتين (085).
+      serverLineTotal: (json['lineTotal'] as num?)?.toDouble(),
     );
   }
 }

@@ -112,24 +112,20 @@ describe('cart + order flow', () => {
       .send({ status: 'COMPLETED' });
     expect(invalid.status).toBe(409);
 
+    // الموافقة تنقل الطلب مباشرةً إلى «قيد التوصيل» — لا مرحلة «تجهيز» وسيطة.
     const confirmed = await api
       .patch(`/api/admin/orders/${orderId}/status`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ status: 'CONFIRMED' })
+      .send({ status: 'OUT_FOR_DELIVERY' })
       .expect(200);
-    expect(confirmed.body.data.status).toBe('CONFIRMED');
+    expect(confirmed.body.data.status).toBe('OUT_FOR_DELIVERY');
 
     const customerCannotAdmin = await api
       .patch(`/api/admin/orders/${orderId}/status`)
       .set('Authorization', `Bearer ${token}`)
-      .send({ status: 'PREPARING' });
+      .send({ status: 'OUT_FOR_DELIVERY' });
     expect(customerCannotAdmin.status).toBe(403);
 
-    await api
-      .patch(`/api/admin/orders/${orderId}/status`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ status: 'PREPARING' })
-      .expect(200);
     await api
       .patch(`/api/admin/orders/${orderId}/status`)
       .set('Authorization', `Bearer ${adminToken}`)

@@ -1,15 +1,58 @@
 import { z } from 'zod';
+import { isValidVersionString } from '../services/appVersionService.js';
+import { canonicalPlayStoreUrl } from '../utils/playStoreUrl.js';
+
+/**
+ * المرادفات: أسماء بديلة يطابقها بحث العميل («قاتل الشياطين» لـDemon Slayer).
+ *
+ * تُنظَّف هنا لا في الاستعلام: الفراغات والمكرَّرات تنتفخ في العمود وتُبطئ
+ * كل بحث لاحق، وتصحيحها عند الكتابة مرة واحدة أرخص من تجاهلها كل قراءة.
+ */
+const altNames = z
+  .array(z.string().trim().min(1).max(80))
+  .max(10, 'حد المرادفات عشرة')
+  .transform((values) => [...new Set(values.filter(Boolean))]);
+
+/**
+ * صورة الأنمي: مرفوعة على الخادم أو رابط خارجي كامل.
+ *
+ * الفحص هنا هو نفسه المطبَّق على صور المنتجات والفتحات البصرية. كان هذا
+ * الحقل الوحيد الذي يقبل أي نصّ حتى ٥٠٠ حرف بلا فحص مخطَّط — فيصلح لتخزين
+ * `javascript:` أو `data:text/html`. المسار إداري، لكن اتّساق القاعدة عبر
+ * كل حقول الروابط أرخص من تذكّر أيّها استُثني ولماذا.
+ */
+const franchiseImageUrl = z
+  .string()
+  .trim()
+  .max(500)
+  .refine(
+    (value) => value === '' || value.startsWith('/uploads/') || /^https?:\/\/.+/.test(value),
+    'رابط صورة غير صالح — ارفع صورة أو أدخل رابطاً يبدأ بـ http(s)://',
+  );
+
+/**
+ * الأرقام في أجسام JSON تصل أرقاماً — **لا إكراه**.
+ *
+ * [CRITICAL] كان `z.coerce.number()` يحوّل `null` و`""` و`[]` إلى ٠ و`true`
+ * إلى ١ بصمت، فطلبُ `{deliveryFee: null}` كان يجعل التوصيل مجانياً بدل أن
+ * يُرفض. الإكراه مبرَّر لمعاملات الاستعلام (نصوص دائماً) لا للجسم. والسقف
+ * يطابق عمود القاعدة (`NUMERIC(12,2)` / `int4`): قيمةٌ تفيض عنه كانت تصل
+ * القاعدة فتخرج ٥٠٠ بدل ٤٠٠. سقف الترتيب هو سقف بقية مواضع الإدارة.
+ */
+const sortOrder = z.number().int().min(0).max(1000);
 
 export const createFranchiseSchema = z.object({
   name: z.string().trim().min(1, 'اسم الأنمي مطلوب').max(80),
-  imageUrl: z.string().trim().max(500).nullish(),
-  sortOrder: z.coerce.number().int().min(0).optional(),
+  altNames: altNames.optional(),
+  imageUrl: franchiseImageUrl.nullish(),
+  sortOrder: sortOrder.optional(),
 });
 
 export const updateFranchiseSchema = z.object({
   name: z.string().trim().min(1).max(80).optional(),
-  imageUrl: z.string().trim().max(500).nullish(),
-  sortOrder: z.coerce.number().int().min(0).optional(),
+  altNames: altNames.optional(),
+  imageUrl: franchiseImageUrl.nullish(),
+  sortOrder: sortOrder.optional(),
   isActive: z.boolean().optional(),
 });
 
@@ -19,17 +62,20 @@ export const franchiseIdParamSchema = z.object({
 
 // ── مناطق التوصيل ──
 
+/** رسوم المنطقة — نفس سقف رسوم المحافظة (`adminGovernorateSchema`). */
+const zoneDeliveryFee = z.number().min(0, 'رسوم غير صالحة').max(10_000_000);
+
 export const createZoneSchema = z.object({
   governorateId: z.string().uuid('معرّف محافظة غير صالح'),
   name: z.string().trim().min(1, 'اسم المنطقة مطلوب').max(80),
-  deliveryFee: z.coerce.number().min(0, 'رسوم غير صالحة'),
-  sortOrder: z.coerce.number().int().min(0).optional(),
+  deliveryFee: zoneDeliveryFee,
+  sortOrder: sortOrder.optional(),
 });
 
 export const updateZoneSchema = z.object({
   name: z.string().trim().min(1).max(80).optional(),
-  deliveryFee: z.coerce.number().min(0).optional(),
-  sortOrder: z.coerce.number().int().min(0).optional(),
+  deliveryFee: zoneDeliveryFee.optional(),
+  sortOrder: sortOrder.optional(),
   isActive: z.boolean().optional(),
 });
 
@@ -66,4 +112,53 @@ export const updateSettingsSchema = z.object({
       'أدخل رابط واتساب أو رقماً صالحاً أو اتركه فارغاً',
     )
     .optional(),
+  // سطر واحد مشترك تحت صفّ الروابط الاجتماعية (1..60 حرفاً).
+  social_description: z.string().trim().max(60).optional(),
+  // رابط المتجر في رسالة مشاركة المنتج (STEP 64) — http(s) أو فارغ.
+  store_share_url: optionalUrl.optional(),
+});
+
+// ── نسخة التطبيق ──
+
+/** نسخة دلالية صالحة أو نص فارغ (الفارغ = «لا حدّ أدنى» = لا حجب). */
+const optionalSemver = z
+  .string()
+  .trim()
+  .max(40)
+  .refine(
+    (value) => value === '' || isValidVersionString(value),
+    'أدخل نسخة بصيغة 1.2.3 أو اتركها فارغة',
+  );
+
+/** رابط صفحة تطبيقنا على Google Play أو فارغ؛ يُحفظ بشكله القانوني. */
+const optionalPlayStoreUrl = z
+  .string()
+  .trim()
+  .max(300)
+  .refine(
+    (value) => value === '' || canonicalPlayStoreUrl(value) !== null,
+    'الصق رابط صفحة التطبيق على Google Play: https://play.google.com/store/apps/details?id=com.otakugalaxy.otaku_galaxy',
+  )
+  .transform((value) => (value === '' ? '' : canonicalPlayStoreUrl(value)!));
+
+/**
+ * سياسة تحديث التطبيق (STEP 64، ثم STEP 70: أحدث إصدار ونوع التحديث).
+ *
+ * [CRITICAL] الفصل عن `updateSettingsSchema` مقصود: الخطأ هنا يحجب التطبيق
+ * عن كل مستخدميه، فلا يجوز أن يُحفظ حدٌّ بصيغة فاسدة لأنه مرّ ضمن دفعة روابط
+ * تواصل. هنا الصيغة وحدها؛ اتّساق السياسة المفعّلة (حدٌّ ≤ أحدث إصدار، رابطٌ
+ * قبل التفعيل...) يُفحص في `appVersionService.updatePolicy` على السياسة بعد
+ * دمج المحفوظ — فالحقل الغائب يبقى كما حُفظ، و`{ enabled: false, revision }`
+ * (الإيقاف) لا يُرفض أبداً.
+ */
+export const updateAppVersionSettingsSchema = z.strictObject({
+  enabled: z.boolean({ error: 'حدّد تفعيل سياسة التحديث' }),
+  mode: z.enum(['optional', 'mandatory'], { error: 'اختر نوع التحديث: اختياري أو إجباري' }).optional(),
+  latestVersion: optionalSemver.optional(),
+  minimumVersion: optionalSemver.optional(),
+  updateUrl: optionalPlayStoreUrl.optional(),
+  revision: z
+    .number({ error: 'أعد تحميل الصفحة — رقم مراجعة السياسة مفقود' })
+    .int('أعد تحميل الصفحة — رقم مراجعة السياسة غير صالح')
+    .nonnegative('أعد تحميل الصفحة — رقم مراجعة السياسة غير صالح'),
 });

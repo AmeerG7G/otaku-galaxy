@@ -8,6 +8,8 @@ export const NOTIFICATION_TYPES = [
   'reviewRejected',
   'backInStock',
   'promotion',
+  'rewardClaimed',
+  'restockScheduled',
 ] as const
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number]
@@ -22,6 +24,8 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
   reviewRejected: 'رفض تقييم',
   backInStock: 'عاد للمخزون',
   promotion: 'إعلان',
+  rewardClaimed: 'مزيّة مستوى',
+  restockScheduled: 'موعد توفر',
 }
 
 export interface AdminNotification {
@@ -59,4 +63,94 @@ export interface NotificationStats {
   unread: number
   recipients: number
   byType: NotificationTypeStat[]
+}
+
+// ── بثّ الإشعارات ──
+
+/** شرائح الجمهور — تطابق `AUDIENCE_SEGMENTS` على الخادم. */
+export const AUDIENCE_SEGMENTS = [
+  'birthday_today',
+  'birthday_upcoming',
+  'birthday_missing',
+  'birthday_recent',
+  'has_orders',
+  'no_orders',
+] as const
+
+export type AudienceSegment = (typeof AUDIENCE_SEGMENTS)[number]
+
+export const AUDIENCE_SEGMENT_LABELS: Record<AudienceSegment, string> = {
+  birthday_today: 'عيد ميلادهم اليوم',
+  birthday_upcoming: 'عيد ميلادهم قريباً',
+  birthday_recent: 'مرّ عيد ميلادهم مؤخّراً',
+  birthday_missing: 'لم يسجّلوا تاريخ ميلادهم',
+  has_orders: 'لهم طلب مكتمل',
+  no_orders: 'لا طلب مكتمل لهم',
+}
+
+/** الشرائح التي تعتمد على نافذة زمنية بالأيام. */
+export const WINDOWED_SEGMENTS: AudienceSegment[] = [
+  'birthday_upcoming',
+  'birthday_recent',
+]
+
+export type BroadcastAudience =
+  | { audience: 'all' }
+  | { audience: 'users'; userIds: string[] }
+  | { audience: 'segment'; segment: AudienceSegment; windowDays?: number }
+
+export type BroadcastPayload = BroadcastAudience & {
+  title: string
+  body: string
+}
+
+/**
+ * نتيجة البثّ.
+ *
+ * [CRITICAL] `recipients` عدد السجلات المنشأة **داخل التطبيق**، و`push.queued`
+ * عدد رسائل الدفع المنتظِرة في الصندوق الصادر — تُرسل **بعد** الردّ ولمن سمح
+ * بها في تفضيلاته (STEP 64). `provider` اسم المزوّد أو `not_configured`. لا رقم
+ * «وصل» هنا: الردّ لا ينتظر FCM.
+ */
+export interface BroadcastResult {
+  recipients: number
+  push: { provider: string; queued: number }
+  campaignId: string
+  /** أُعيد طلبٌ بالمفتاح نفسه — لم يُنشأ شيءٌ جديد. */
+  replayed: boolean
+}
+
+/**
+ * حملة إشعارات (٠٧٤) — «مقبولة لدى FCM» = قبلتها FCM لجهازٍ واحد على الأقل، لا
+ * «وصلت». لا أسماء مستلمين ولا أرقامهم.
+ */
+export interface Campaign {
+  id: string
+  kind: 'broadcast' | 'manual'
+  title: string
+  body: string
+  audience: { type: string; segment: string | null; windowDays: number | null; userCount: number | null }
+  recipients: number
+  createdAt: string
+  createdByName: string | null
+  frozen: boolean
+  push: {
+    pending: number
+    acceptedByFcm: number
+    failed: number
+    skippedNotConfigured: number
+    skippedPreference: number
+    skippedNoDevices: number
+    devicesAcceptedByFcm: number
+    devicesInvalid: number
+  }
+  readInApp: number
+  openedFromPush: number
+}
+
+export interface CampaignList {
+  items: Campaign[]
+  total: number
+  page: number
+  limit: number
 }

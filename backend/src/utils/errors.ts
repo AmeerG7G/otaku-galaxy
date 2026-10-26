@@ -25,4 +25,6 @@ export const Errors = {
     new AppError(422, 'VALIDATION_ERROR', message, details),
   tooManyRequests: (message = 'طلبات كثيرة، حاول لاحقاً', code = 'RATE_LIMITED') =>
     new AppError(429, code, message),
+  /** عطلٌ داخلي **معروف السبب** برمزٍ يميّزه — لا تفاصيل داخلية في الرسالة. */
+  internal: (message: string, code: string) => new AppError(500, code, message),
 } as const;

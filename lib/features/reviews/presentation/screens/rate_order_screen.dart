@@ -1,13 +1,17 @@
 import 'package:auto_route/auto_route.dart';
+import '../../../../core/l10n/app_strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/design_system/design_system.dart';
+import '../../../../core/l10n/gender.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../orders/domain/entities/order.dart';
+import '../../../products/domain/entities/product.dart';
 import '../../domain/entities/review.dart';
 import '../cubit/reviews_cubit.dart';
 import '../widgets/review_status_chip.dart';
+import '../../../visuals/domain/visual_slot.dart';
 
 /// «قيّم منتجات طلبك» بتصميم Otaku Galaxy v2.
 ///
@@ -19,12 +23,23 @@ class RateOrderScreen extends StatefulWidget {
 
   final Order order;
 
+  /// عرض رسم الترويسة (الصورة 43، 860×820، مقصوصة الحافة اليسرى والسفلى)
+  /// وإزاحته من النهاية. العرض يُنزل أسفل الرسم (الصف 766 من 820) عند أسفل
+  /// الترويسة فلا يظهر قصّه، والإزاحة تُخفي جزءاً من الشعر الأيسر خلف حافة
+  /// الشاشة فيبقى الوجه كاملاً (كانت 28: عرض ٠٫٨٥×126 وإزاحة ٠٫٨٥×-40).
+  static const double artWidth = 168;
+  static const double artEnd = -49;
+
+  /// حافة الرسم المقصوصة (الصف 766 من 820): الترويسة الأطول من موضعها عند
+  /// العرض أعلاه (خطٌّ مكبَّر، عنوانٌ في سطرين بجوار الوجه) تُنزل الرسم معها
+  /// فلا يظهر القصّ (2026-10-12).
+  static const double artCutAt = 766 / 820;
+
   @override
   State<RateOrderScreen> createState() => _RateOrderScreenState();
 }
 
 class _RateOrderScreenState extends State<RateOrderScreen> {
-  Map<String, Review> _byProduct = {};
   bool _loading = true;
 
   @override
@@ -33,21 +48,24 @@ class _RateOrderScreenState extends State<RateOrderScreen> {
     _load();
   }
 
+  /// حالة كل منتج تُقرأ من `ReviewsCubit` — مصدرٌ واحد يحدّثه الإرسال نفسه.
+  ///
+  /// [CRITICAL] كانت الشاشة تجلب تقييم كل منتج على حدة في `initState` ثم
+  /// تنتظر نتيجة `push<bool>(WriteReviewRoute)` لتعيد الجلب. لكن شاشة الكتابة
+  /// تستبدل نفسها بشاشة التأكيد (`replace`)، و`auto_route` لا يُكمل وعد
+  /// الدفع إلا بإغلاقٍ حقيقي — فلم تكن النتيجة تصل قط، وبقي المنتج المقيَّم
+  /// يبدو قابلاً للتقييم حتى تُعاد الشاشة من جديد. المكعّب يُحمَّل بعد كل
+  /// إرسال، و`BlocBuilder` يرسم ما فيه.
   Future<void> _load() async {
-    final cubit = context.read<ReviewsCubit>();
-    final map = <String, Review>{};
-    for (final item in widget.order.items) {
-      final review = await cubit.reviewFor(
-        orderId: widget.order.id,
-        productId: item.product.id,
-      );
-      if (review != null) map[item.product.id] = review;
+    await context.read<ReviewsCubit>().load();
+    if (mounted) setState(() => _loading = false);
+  }
+
+  Review? _reviewOf(ReviewsState state, String productId) {
+    for (final review in state.reviews) {
+      if (review.productId == productId) return review;
     }
-    if (!mounted) return;
-    setState(() {
-      _byProduct = map;
-      _loading = false;
-    });
+    return null;
   }
 
   @override
@@ -55,51 +73,80 @@ class _RateOrderScreenState extends State<RateOrderScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      body: Column(
-        children: [
-          OtakuScreenHeader(
-            title: '⭐ قيّم منتجات طلبك',
-            subtitle: 'رأيك يساعد بقية العملاء يختارون بثقة',
-            artwork: 'assets/art/opt/a-i6.png',
-            onBack: () => context.router.maybePop(),
-          ),
-          Expanded(
-            child: _loading
-                ? const OtakuListSkeleton(count: 3, height: 140)
-                : ListView(
-                    padding: const EdgeInsets.fromLTRB(18, 12, 18, 26),
-                    children: [
-                      for (final item in widget.order.items) ...[
-                        _ProductReviewCard(
-                          product: item.product,
-                          review: _byProduct[item.product.id],
-                          onTap: () async {
-                            final done = await context.router.push<bool>(
-                              WriteReviewRoute(
-                                orderId: widget.order.id,
-                                productId: item.product.id,
-                                productName: item.product.name,
+      // عمودٌ موسَّط بعرض القراءة على اللوح — القائمة الممتدّة بعرض
+      // ١٣٦٦ بكسل تصير صفوفاً فارغة الوسط. لا أثر له على الهاتف.
+      body: ResponsiveContentFrame(
+        maxWidth: kReadingMaxWidth,
+        child: Column(
+          children: [
+            OtakuScreenHeader(
+              title: '⭐ ${context.g(GenderedStrings.rateOrderProducts)}',
+              subtitle: context.strings('rateOrderSubtitle'),
+              titleTranslations: [
+                for (final t in context.gAcross(GenderedStrings.rateOrderProducts))
+                  '⭐ $t',
+              ],
+              subtitleTranslations: AppStrings.across('rateOrderSubtitle'),
+              artworkSlot: VisualSlots.rateOrder,
+              // يبدأ الرسم تحت شريط الحالة (2026-09-28): كان رأس الشخصية يقع
+              // تحت أيقونات البطارية والشبكة. العرض والإزاحة: انظر الثوابت.
+              artworkWidth: RateOrderScreen.artWidth,
+              artworkEnd: RateOrderScreen.artEnd,
+              artworkBelowStatusBar: true,
+              // العنوان والسطر الوصفي بجوار الوجه لا فوقه (2026-10-12).
+              textClearOfArtwork: true,
+              artworkCutAt: RateOrderScreen.artCutAt,
+              onBack: () => context.router.maybePop(),
+            ),
+            Expanded(
+              child: _loading
+                  ? const OtakuListSkeleton(count: 3, height: 140)
+                  : BlocBuilder<ReviewsCubit, ReviewsState>(
+                      builder: (context, state) => ListView(
+                        padding: context.scrollPadding(
+                          const EdgeInsets.fromLTRB(18, 12, 18, 26),
+                        ),
+                        children: [
+                          for (final item in widget.order.items) ...[
+                            _ProductReviewCard(
+                              product: item.product,
+                              review: _reviewOf(state, item.product.id),
+                              onTap: () => context.router.push(
+                                WriteReviewRoute(
+                                  orderId: widget.order.id,
+                                  productId: item.product.id,
+                                  // عنوانٌ للعرض وحده (الخادم يأخذ لقطة الاسم
+                                  // من الطلب) — بلغة الواجهة لحظة الفتح.
+                                  productName: localizedProductName(
+                                    item.product,
+                                    context.language,
+                                  ),
+                                ),
                               ),
-                            );
-                            if (done == true) _load();
-                          },
-                        ),
-                        const SizedBox(height: 12),
-                      ],
-                      const SizedBox(height: 4),
-                      Text(
-                        'تكدر تقيّم كل منتج مرة وحدة. التقييم يُراجع قبل نشره.',
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          fontSize: 11.5,
-                          height: 1.7,
-                          color: theme.colorScheme.outline,
-                        ),
+                            ),
+                            const SizedBox(height: 12),
+                          ],
+                          const SizedBox(height: 4),
+                          // فقرة تحجز أسطر أطول ترجماتها (البوّابة ٧).
+                          BoundedText(
+                            context.strings('oneReviewPerProductReviewed'),
+                            maxLines: 8,
+                            minScale: 1,
+                            reserveFor: AppStrings.across('oneReviewPerProductReviewed'),
+                            alignment: Alignment.topCenter,
+                            textAlign: TextAlign.center,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              fontSize: 11.5,
+                              height: 1.7,
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-          ),
-        ],
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -113,7 +160,7 @@ class _ProductReviewCard extends StatelessWidget {
     required this.onTap,
   });
 
-  final dynamic product;
+  final Product product;
   final Review? review;
   final VoidCallback onTap;
 
@@ -122,7 +169,7 @@ class _ProductReviewCard extends StatelessWidget {
     final theme = Theme.of(context);
     // التقييم المعتمد أو قيد المراجعة لا يُفتح للتعديل — المرفوض فقط يُعدَّل.
     final canEdit = review == null || review!.status == ReviewStatus.rejected;
-    final images = product.images as List<String>;
+    final images = product.images;
 
     return OtakuPanel(
       padding: const EdgeInsets.all(15),
@@ -153,7 +200,7 @@ class _ProductReviewCard extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      product.name as String,
+                      localizedProductName(product, context.language),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodyMedium?.copyWith(
@@ -165,8 +212,8 @@ class _ProductReviewCard extends StatelessWidget {
                     const SizedBox(height: 7),
                     if (review == null)
                       OtakuStatusPill(
-                        label: 'لم يُقيَّم بعد',
-                        color: theme.colorScheme.outline,
+                        label: context.strings('notRatedYet'),
+                        color: theme.colorScheme.onSurface,
                         showDot: false,
                       )
                     else
@@ -196,7 +243,9 @@ class _ProductReviewCard extends StatelessWidget {
           const SizedBox(height: 14),
           if (canEdit)
             AnimePrimaryButton(
-              label: review == null ? 'قيّم المنتج' : 'عدّل وأعد الإرسال',
+              label: review == null
+                  ? context.g(GenderedStrings.rateProduct)
+                  : context.strings('editAndResend'),
               onPressed: onTap,
               height: AppDimens.buttonHeightMd,
             )
@@ -212,8 +261,8 @@ class _ProductReviewCard extends StatelessWidget {
               ),
               child: Text(
                 review!.status == ReviewStatus.approved
-                    ? 'تقييمك منشور — شكراً 💜'
-                    : 'تقييمك قيد المراجعة',
+                    ? context.strings('reviewPublishedThanks')
+                    : context.strings('reviewUnderReview'),
                 style: theme.textTheme.labelLarge?.copyWith(
                   fontSize: 13,
                   fontWeight: AppDimens.weightBold,

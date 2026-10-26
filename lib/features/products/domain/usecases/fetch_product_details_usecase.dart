@@ -7,5 +7,13 @@ class FetchProductDetailsUsecase {
 
   final ProductRepository _repository;
 
-  Future<Product> call(String id) => _repository.fetchProductDetails(id);
+  /// `track` ترويسة إشارة القياس (من `TrackingSignals.headerFor`) — `null`
+  /// والقياس مطفأ أو الجلب ليس فتحاً للصفحة (إعادة جلبٍ بتبديل اللغة).
+  Future<Product> call(String id, {Map<String, String>? track}) {
+    final repository = _repository;
+    if (track != null && repository is TrackedProductRepository) {
+      return repository.fetchProductDetails(id, headers: track);
+    }
+    return repository.fetchProductDetails(id);
+  }
 }

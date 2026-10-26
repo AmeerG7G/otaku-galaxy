@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../l10n/app_strings.dart';
 
 import '../../tokens/app_dimens.dart';
 import '../../tokens/app_theme_colors.dart';
@@ -12,13 +13,11 @@ class ProductPhotoSlot extends StatelessWidget {
   const ProductPhotoSlot({
     super.key,
     this.imageUrl,
-    this.desaturated = false,
     this.showLabel = true,
     this.iconSize = 30,
   });
 
   final String? imageUrl;
-  final bool desaturated;
   final bool showLabel;
   final double iconSize;
 
@@ -42,18 +41,12 @@ class ProductPhotoSlot extends StatelessWidget {
       );
     }
 
-    if (desaturated) {
-      content = ColorFiltered(
-        colorFilter: const ColorFilter.matrix(<double>[
-          0.46, 0.36, 0.11, 0, 0,
-          0.46, 0.36, 0.11, 0, 0,
-          0.46, 0.36, 0.11, 0, 0,
-          0, 0, 0, 1, 0,
-        ]),
-        child: content,
-      );
-    }
-
+    // [CRITICAL] لا مرشِّح لوني هنا مهما كانت حالة المخزون.
+    //
+    // كان المنتج غير المتوفر يُعرض بصورة رمادية (`ColorFilter.matrix`)، أي
+    // أن المنظومة كانت تُعدّل صورة رفعها صاحب المتجر وتعرضها بلون لم
+    // يخترْه. حالة النفاد تُقال بالنص والشارة (`ProductStockPill` وشارة
+    // الزاوية) — أما الصورة فتُعرض كما هي دائماً.
     return ColoredBox(color: colors.photoSlot, child: content);
   }
 }
@@ -79,7 +72,7 @@ class _Placeholder extends StatelessWidget {
           if (showLabel) ...[
             const SizedBox(height: AppDimens.space2),
             Text(
-              'صورة المنتج',
+              context.strings('productPhoto'),
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
                 fontSize: 9.5,
                 color: colors.photoSlotInk,

@@ -6,11 +6,11 @@ import type {
   ProductCreatePayload,
   ProductFormDraft,
   ProductListResponse,
+  ProductOption,
+  ProductOptionInput,
   ProductUpdatePayload,
-  PublicProduct,
 } from '../types/products'
 import { ApiError } from './client'
-import { listAdminCategories } from './categoriesApi'
 
 export function listProducts(params: ListProductsParams): Promise<ProductListResponse> {
   return get<ProductListResponse>('/admin/products', { params })
@@ -55,38 +55,46 @@ async function findProductInAdminList(id: string): Promise<Product | null> {
   return null
 }
 
-function publicProductToDraft(product: PublicProduct): ProductFormDraft {
+/**
+ * محتوى النموذج باللغتين من الحقول **الصريحة** وحدها.
+ *
+ * [CRITICAL] لا `name`/`description`: في المسار العام هما محسومان بلغة الطلب،
+ * ومتصفّحٌ يرسل `ckb` (أو مسؤولٌ تفضيله المحفوظ كردي) كان سيملأ حقل «الاسم
+ * بالعربية» بالكردية — فيكتبها الحفظ في العمود العربي. الكردية الناقصة
+ * (`null`) تصل حقلاً فارغاً يكمله المسؤول، لا نسخةً من العربية.
+ */
+function contentDraft(
+  product: Pick<Product, 'nameAr' | 'descriptionAr' | 'nameCkb' | 'descriptionCkb'>,
+) {
   return {
-    name: product.name,
-    description: product.description,
-    price: product.price,
-    stock: product.stock,
-    categoryId: product.categoryId,
-    subcategoryId: product.subcategoryId,
-    images: product.images,
-    options: product.options.map((option) => ({ name: option.name, values: option.values })),
-    isActive: true,
-    isOffer: product.isOffer,
-    isSelected: product.isSelected,
-    rating: product.rating,
-    reviewCount: product.reviewCount,
-    previousPrice: product.previousPrice,
-    hasDeliveryPromo: product.hasDeliveryPromo,
-    deliveryPromoAmount: product.deliveryPromoAmount ?? 0,
-    franchiseIds: product.franchiseIds,
+    nameAr: product.nameAr,
+    descriptionAr: product.descriptionAr,
+    nameCkb: product.nameCkb ?? '',
+    descriptionCkb: product.descriptionCkb ?? '',
   }
 }
 
-function adminProductToDraft(product: Product): ProductFormDraft {
+/** الخيار بلغتيه كما حُفظ — يصل النموذجَ ويعود منه كاملاً (انظر `ProductOptionInput`). */
+function optionToDraft(option: ProductOption): ProductOptionInput {
   return {
-    name: product.name,
-    description: product.description,
+    name: option.name,
+    values: option.values,
+    nameCkb: option.nameCkb ?? null,
+    valuesCkb: option.valuesCkb ?? [],
+  }
+}
+
+function adminProductToDraft(product: Product, options: ProductOption[]): ProductFormDraft {
+  return {
+    ...contentDraft(product),
     price: product.price,
+    // خادمٌ أقدم من 085 لا يرسل الحقل: لا عرض.
+    pairPrice: product.pairPrice ?? null,
     stock: product.stock,
     categoryId: product.categoryId,
     subcategoryId: product.subcategoryId,
     images: product.images,
-    options: [],
+    options: options.map(optionToDraft),
     isActive: product.isActive,
     isOffer: product.isOffer,
     isSelected: product.isSelected,
@@ -96,6 +104,9 @@ function adminProductToDraft(product: Product): ProductFormDraft {
     hasDeliveryPromo: product.hasDeliveryPromo,
     deliveryPromoAmount: product.deliveryPromoAmount ?? 0,
     franchiseIds: product.franchiseIds,
+    // [CRITICAL] بلا هذا يصل النموذجَ حقلٌ فارغ، و`handleSubmit` يرسل
+    // `restockAt: null` صراحةً — فيمسح حفظُ منتجٍ معطّل موعدَه المحفوظ.
+    restockAt: product.restockAt ?? null,
   }
 }
 
@@ -104,46 +115,32 @@ export interface ProductForEdit {
   optionsLoaded: boolean
 }
 
-export async function getPublicProduct(id: string): Promise<PublicProduct> {
-  const response = await client.get<ApiEnvelope<PublicProduct>>(`/catalog/products/${id}`)
-  if (!response.data.data) {
-    throw new ApiError('المنتج غير موجود', 404, 'NOT_FOUND')
-  }
-  return response.data.data
-}
-
+/**
+ * المنتج لصفحة التعديل من مسار الإدارة — الموقوف أيضاً، وخياراته بترجمتها.
+ *
+ * [CRITICAL] كانت الصفحة تقرأ المسار العام (`/catalog/products/:id`): خياراتٌ
+ * محسومة إلى العربية بلا ترجمتها، فكان كل حفظٍ يُعيدها بلا كردية ويمحوها،
+ * والمنتج الموقوف 404 هناك فيُفتح بلا خيارات.
+ *
+ * خادمٌ أقدم من المسار (404): القائمة الإدارية بلا خيارات و`optionsLoaded:
+ * false` — الحفظ لا يرسل الخيارات فلا يمسّها، كما كان للمنتج الموقوف.
+ */
 export async function getProductForEdit(id: string): Promise<ProductForEdit> {
   try {
-    const product = await getPublicProduct(id)
-    return { draft: publicProductToDraft(product), optionsLoaded: true }
+    const response = await client.get<ApiEnvelope<Product>>(`/admin/products/${id}`)
+    const product = response.data.data
+    if (!product) throw new ApiError('المنتج غير موجود', 404, 'NOT_FOUND')
+    return { draft: adminProductToDraft(product, product.options ?? []), optionsLoaded: true }
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) {
       const product = await findProductInAdminList(id)
       if (product) {
-        return { draft: adminProductToDraft(product), optionsLoaded: false }
+        return { draft: adminProductToDraft(product, []), optionsLoaded: false }
       }
-      // إعادة الخطأ الأصلي إذا لم يوجد المنتج حتى في قائمة الإدارة.
       throw error
     }
     throw error
   }
-}
-
-export async function getAdminCategories() {
-  return listAdminCategories()
-}
-
-/** جلب كل المنتجات عبر الصفحات — للإحصاءات المحلية (لا يوفر الخادم فلاتر مخزون). */
-export async function fetchAllProducts(maxPages = 25): Promise<Product[]> {
-  const all: Product[] = []
-  let page = 1
-  while (page <= maxPages) {
-    const list = await listProducts({ page, limit: 50 })
-    all.push(...list.items)
-    if (!list.hasMore) break
-    page += 1
-  }
-  return all
 }
 
 export interface ProductFlags {
@@ -152,33 +149,24 @@ export interface ProductFlags {
 }
 
 /**
- * تبديل علمي (عرض/مختارة) بأمان:
- * خادم الإدارة يملأ الصور والخيارات بـ [] في أي تحديث يُرسل بدونهما (خَلل موثّق)،
- * لذا نجلب الصور والخيارات الكاملة من نقطة المتجر العامة ونعيد إرسالها مع العلم.
- * المنتجات غير النشطة لا تُعرض في النقطة العامة — يرفض التبديل مع رسالة واضحة.
+ * رفع/إنزال علَمَي «عرض» و«مختارة».
+ *
+ * [CRITICAL] تعديلٌ جزئي خالص: الحقل الغائب عن `PATCH` لا يُمسّ على الخادم،
+ * فالصور والخيارات تبقى كما هي بلا إعادة إرسالها.
+ *
+ * كانت هذه الدالة تقرأ المنتج أولاً من `/catalog/products/:id` العام ثم
+ * تُعيد إرسال صوره وخياراته مع العَلَم — التفافٌ حول عيبٍ قديم في مسار
+ * التعديل زال منذ إصلاح حفظ المنتج. وقد بقي يكلّف ثلاثة أشياء: طلبٌ زائد،
+ * وحذفٌ وإعادة إدراج لكل صور المنتج وخياراته عند كل نقرة تبديل، وفشلٌ تامّ
+ * على المنتج المعطّل — لأن المسار العام يعيد له 404، فتحوّل إلى رسالة
+ * «لا يمكن تغيير حالاته» تصف قيداً لا وجود له على الخادم.
  */
 export async function patchProductFlags(
   id: string,
   flags: ProductFlags,
 ): Promise<ProductMutationResult> {
-  try {
-    const publicProduct = await getPublicProduct(id)
-    return updateProduct(id, {
-      images: publicProduct.images,
-      options: publicProduct.options.map((option) => ({
-        name: option.name,
-        values: option.values,
-      })),
-      ...flags,
-    })
-  } catch (error) {
-    if (error instanceof ApiError && error.status === 404) {
-      throw new ApiError(
-        'المنتج غير نشط، ولا يمكن تغيير حالاته دون معرفة خياراته (الخادم لا يوفرها للمنتجات المعطّلة).',
-        409,
-        'INACTIVE_PRODUCT_OPTIONS_UNAVAILABLE',
-      )
-    }
-    throw error
-  }
+  // [SECURITY] STEP 64: مسار «العروض» الضيّق — علَما العرض/الاختيار وحدهما.
+  // صلاحية «العروض» لا تفتح تعديل المنتج الكامل (السعر، المخزون، الصور).
+  const response = await client.patch<ApiEnvelope<Product>>(`/admin/offers/${id}`, flags)
+  return { product: response.data.data!, message: response.data.message ?? '' }
 }

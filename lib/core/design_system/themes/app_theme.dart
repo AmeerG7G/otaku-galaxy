@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../tokens/app_colors.dart';
 import '../tokens/app_dimens.dart';
+import '../tokens/app_fonts.dart';
 import '../tokens/app_theme_colors.dart';
 
 class AppTheme {
@@ -23,7 +24,9 @@ class AppTheme {
       brightness: brightness,
       colorScheme: colors,
       scaffoldBackgroundColor: isLight ? AppColors.background : colors.surface,
-      fontFamily: 'Cairo',
+      // خطّ العلامة واحتياط الكردية المطابق له — زوجٌ واحد من `AppFonts`.
+      fontFamily: AppFonts.body,
+      fontFamilyFallback: AppFonts.bodyFallback,
       textTheme: text,
       extensions: [brand],
       appBarTheme: AppBarTheme(
@@ -66,7 +69,9 @@ class AppTheme {
         suffixIconColor: colors.onSurfaceVariant,
         hintStyle: text.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
         labelStyle: text.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
-        errorStyle: text.bodySmall?.copyWith(color: colors.error),
+        // نصّ خطأ الحقل يقرأه المستخدم — الصيغة النصّية لا المؤشِّرة
+        // (`colors.error` مضبوط للحدود: 3.0:1 على الأبيض).
+        errorStyle: text.bodySmall?.copyWith(color: brand.errorText),
         border: _inputBorder(colors.outline),
         enabledBorder: _inputBorder(colors.outlineVariant),
         focusedBorder: _inputBorder(colors.primary, width: 2),
@@ -144,7 +149,7 @@ class AppTheme {
       navigationBarTheme: NavigationBarThemeData(
         height: AppDimens.bottomNavHeight,
         elevation: 0,
-        backgroundColor: isLight ? colors.surface : const Color(0xFF1A152C),
+        backgroundColor: isLight ? colors.surface : AppColors.surfaceDark,
         surfaceTintColor: Colors.transparent,
         indicatorColor: isLight
             ? colors.primaryContainer
@@ -256,10 +261,17 @@ class AppTheme {
   static TextTheme _textTheme(ColorScheme colors) {
     const base = TextStyle(
       height: AppDimens.lineHeightNormal,
-      fontFamily: 'Cairo',
+      fontFamily: AppFonts.body,
+      fontFamilyFallback: AppFonts.bodyFallback,
     );
     // العناوين تستخدم Tajawal بخط أثقل — تطابق الهوية الجديدة.
-    const heading = TextStyle(fontFamily: 'Tajawal', letterSpacing: -0.3);
+    // [CRITICAL] `merge` يستبدل الاحتياط مع العائلة: عنوانٌ بـTajawal واحتياط
+    // Cairo يعيد فرق ارتفاع السطر الكردي (انظر `AppFonts`).
+    const heading = TextStyle(
+      fontFamily: AppFonts.heading,
+      fontFamilyFallback: AppFonts.headingFallback,
+      letterSpacing: -0.3,
+    );
     return TextTheme(
       headlineLarge: base
           .copyWith(fontSize: 32, fontWeight: AppDimens.weightBlack)
@@ -282,10 +294,7 @@ class AppTheme {
       bodyLarge: base.copyWith(fontSize: 16),
       bodyMedium: base.copyWith(fontSize: 14),
       bodySmall: base.copyWith(fontSize: 12),
-      labelLarge: base.copyWith(
-        fontSize: 14,
-        fontWeight: AppDimens.weightBold,
-      ),
+      labelLarge: base.copyWith(fontSize: 14, fontWeight: AppDimens.weightBold),
       labelMedium: base.copyWith(
         fontSize: 12,
         fontWeight: AppDimens.weightMedium,

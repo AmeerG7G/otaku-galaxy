@@ -22,5 +22,10 @@ catalogRoutes.get('/franchises', publicExtrasController.franchises);
 catalogRoutes.get('/products/:productId/reviews', communityController.listProductReviews);
 catalogRoutes.get('/community/photos', communityController.listCommunityPhotos);
 
+// سلّم مستويات الأوتاكو — يقرؤه التطبيق بلا مصادقة.
+catalogRoutes.get('/loyalty-levels', publicExtrasController.loyaltyLevels);
+
 // إعدادات المتجر العامة (روابط التواصل).
 catalogRoutes.get('/settings', publicExtrasController.settings);
+// نسخة التطبيق: أول ما يقرؤه الإقلاع، وأهمّ ما يحتاجه المحجوب.
+catalogRoutes.get('/app-version', publicExtrasController.appVersion);

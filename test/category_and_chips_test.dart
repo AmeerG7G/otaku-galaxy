@@ -1,4 +1,4 @@
-// انحدارات واجهة: صورة القسم، ثبات لون القسم، وقصّ الرقائق.
+// انحدارات واجهة: بطاقة القسم النصّية، ثبات لون القسم، وقصّ الرقائق.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -20,26 +20,42 @@ Widget _host(Widget child, {ThemeData? theme, Size size = const Size(390, 800)})
     );
 
 void main() {
-  group('صورة القسم', () {
-    testWidgets('تُعرض صورة القسم حين يرفعها المسؤول', (tester) async {
-      await tester.pumpWidget(
-        _host(
-          AnimeCategoryCard(
-            category: _cat('c1', 'قرطاسية', image: 'https://x.test/a.png'),
-          ),
-        ),
-      );
-      expect(find.byType(Image), findsOneWidget);
-      // الحرف المائي لا يُرسم فوق الصورة.
-      expect(find.text('ق'), findsNothing);
+  group('بطاقة القسم الرئيسي — نصّية موسَّطة بلا صورة', () {
+    // [PRODUCT] قرار 2026-09-15: لا صورةَ قسم، ولا حرفاً مائياً، ولا مساحةً
+    // محجوزة لرسم. الاسم وعدد الأقسام الفرعية في منتصف البطاقة.
+    Category cat({int subs = 8, String? image}) => Category(
+      id: 'c1',
+      name: 'الحقائب',
+      imageUrl: image,
+      subcategories: List.generate(subs, (i) => 'فرعي $i'),
+    );
+
+    testWidgets('[CRITICAL] لا صورة ولا حرف مائي — ولو رفع المسؤول صورة', (tester) async {
+      await tester.pumpWidget(_host(AnimeCategoryCard(category: cat(image: 'https://x.test/a.png'))));
+      expect(find.byType(Image), findsNothing);
+      expect(find.text('ا'), findsNothing);
     });
 
-    testWidgets('يبقى الحرف بديلاً حين لا توجد صورة', (tester) async {
-      await tester.pumpWidget(
-        _host(AnimeCategoryCard(category: _cat('c1', 'قرطاسية'))),
-      );
+    testWidgets('[CRITICAL] الاسم والعدد موسَّطان أفقياً وعمودياً داخل البطاقة', (tester) async {
+      await tester.pumpWidget(_host(AnimeCategoryCard(category: cat())));
+      final card = tester.getRect(find.byType(AnimeCategoryCard));
+      final name = tester.getRect(find.text('الحقائب'));
+      final count = tester.getRect(find.text('8 قسم فرعي'));
+      expect((name.center.dx - card.center.dx).abs(), lessThan(1.5));
+      expect((count.center.dx - card.center.dx).abs(), lessThan(1.5));
+      // الكتلة النصّية (الاسم + العدد) في منتصف الارتفاع.
+      final blockCenterY = (name.top + count.bottom) / 2;
+      expect((blockCenterY - card.center.dy).abs(), lessThan(3));
+      // ولا مساحة محجوزة على أي جانب: النصّ ممتدٌّ على عرض البطاقة كلها.
+      expect(tester.widget<Text>(find.text('الحقائب')).textAlign, TextAlign.center);
+      expect(tester.widget<Text>(find.text('8 قسم فرعي')).textAlign, TextAlign.center);
+    });
+
+    testWidgets('التوسيط نفسه في المظهر الداكن', (tester) async {
+      await tester.pumpWidget(_host(AnimeCategoryCard(category: cat()), theme: AppTheme.dark));
+      final card = tester.getRect(find.byType(AnimeCategoryCard));
+      expect((tester.getRect(find.text('الحقائب')).center.dx - card.center.dx).abs(), lessThan(1.5));
       expect(find.byType(Image), findsNothing);
-      expect(find.text('ق'), findsOneWidget);
     });
   });
 

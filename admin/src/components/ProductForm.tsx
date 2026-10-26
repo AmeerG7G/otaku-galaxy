@@ -1,6 +1,7 @@
 import {
   Alert,
   Button,
+  DatePicker,
   Card,
   Divider,
   Form,
@@ -10,22 +11,48 @@ import {
   Space,
   Switch,
   Typography,
+  type FormInstance,
 } from 'antd'
+import dayjs, { type Dayjs } from 'dayjs'
 import { useQuery } from '@tanstack/react-query'
 import { listAdminCategories } from '../api/categoriesApi'
 import { listFranchises } from '../api/communityApi'
 import ImagesEditor from './ImagesEditor'
 import OptionsEditor from './OptionsEditor'
+import { optionsFromFields, optionsToFields, type OptionFields } from './optionFields'
+import type { ProductOptionInput } from '../types/products'
+import { formatCurrency } from '../utils/format'
 
 export interface ProductFormValues {
-  name: string
-  description: string
-  price: number
+  /**
+   * محتوى المنتج بلغتين — أربعة حقول مستقلة يكتبها المسؤول بيده (هجرة ٠٦٦).
+   * لا ترجمة آلية ولا نسخ بين اللغتين.
+   */
+  nameAr: string
+  descriptionAr: string
+  nameCkb: string
+  descriptionCkb: string
+  /**
+   * `null` = «السعر يُعلن لاحقاً» (084) — يُرسَل `null` صريحةً، لا صفراً. مصدره
+   * مفتاح `priceLater` في النموذج (انظر [normalizePricing]).
+   */
+  price: number | null
+  /**
+   * مفتاح النموذج وحده — لا يُرسَل. مُفعَّلاً: المنتج يُعرض في المتجر «قريباً —
+   * السعر يُعلن لاحقاً» ولا يُشترى، ولا يراه التطبيق المثبَّت.
+   */
+  priceLater?: boolean
+  /**
+   * سعر قطعتين من المنتج نفسه وإن اختلف الخيار (085)؛ `null` = لا عرض. يتكرّر:
+   * ٣ قطع = قطعتان + قطعة. بين سعر القطعة وضعفه، والخادم يفرضه أيضاً.
+   */
+  pairPrice?: number | null
   stock: number
   categoryId: string
   subcategoryId?: string | null
   images: string[]
-  options: { name: string; values: string[] }[]
+  /** بلغتيه — `onSubmit` يتلقّى الحقلين الكرديين صريحين دائماً (`optionsFromFields`). */
+  options: ProductOptionInput[]
   isActive: boolean
   isOffer: boolean
   isSelected: boolean
@@ -36,10 +63,67 @@ export interface ProductFormValues {
   hasDeliveryPromo?: boolean
   deliveryPromoAmount?: number
   franchiseIds?: string[]
+  /**
+   * موعد التوفر المتوقَّع — ISO-8601 أو `null` («بلا موعد»).
+   *
+   * [CRITICAL] نفس حقل `products.restock_at` القائم منذ الهجرة ٠٣٤ ونفس
+   * مسار التعديل — لا حقل «قريباً» جديد. الحالة مشتقّة لا مخزَّنة:
+   * مخزون ٠ + موعد ⇒ «قريباً يتوفر»، ومخزون ٠ بلا موعد ⇒ «غير متوفر»،
+   * وأي مخزون موجب ⇒ «متوفر» مهما بقي من مواعيد.
+   */
+  restockAt?: string | null
+}
+
+/**
+ * ما يحمله النموذج فعلاً: كل قيمة خيارٍ صفٌّ بلغتيه (`OptionFields`) — حذفُ
+ * قيمةٍ يحذف ترجمتها معها، فلا تنزاح الكردية إلى قيمةٍ أخرى.
+ */
+export type ProductFormStore = Omit<ProductFormValues, 'options'> & { options: OptionFields[] }
+
+/** حقول المحتوى الأربعة — تُقصّ قبل الإرسال كما يقصّها الخادم. */
+const CONTENT_FIELDS = ['nameAr', 'descriptionAr', 'nameCkb', 'descriptionCkb'] as const
+
+function trimContent(values: ProductFormStore): ProductFormValues {
+  const trimmed: ProductFormValues = { ...values, options: optionsFromFields(values.options ?? []) }
+  for (const field of CONTENT_FIELDS) {
+    trimmed[field] = (values[field] ?? '').trim()
+  }
+  return normalizePricing(trimmed)
+}
+
+/**
+ * «يُعلن لاحقاً» (084) يُفرغ الأسعار الثلاثة صراحةً: لا سعر قطعة، ولا «سعر قبل
+ * الخصم»، ولا عرض قطعتين — القاعدة ترفض الأخيرين بلا سعر. الحقل الفارغ `null`
+ * لا «غائب»، فالتعديل يمسح العرض المحفوظ بدل أن يُبقيه.
+ */
+function normalizePricing({ priceLater, ...values }: ProductFormValues): ProductFormValues {
+  if (priceLater) return { ...values, price: null, previousPrice: null, pairPrice: null }
+  return { ...values, price: values.price ?? null, pairPrice: values.pairPrice ?? null }
+}
+
+/**
+ * قواعد حقل محتوى: `whitespace` تجعل المسافات وحدها «فارغاً»، والحدود حدود
+ * الخادم نفسها (الاسم ٢..١٢٠، الوصف حتى ٣٠٠٠). لا قيد على الحروف.
+ */
+function contentRules(kind: 'name' | 'description', language: string, required: boolean) {
+  const label = kind === 'name' ? 'اسم المنتج' : 'وصف المنتج'
+  return [
+    ...(required
+      ? [{ required: true, whitespace: true, message: `${label} ب${language} مطلوب` }]
+      : []),
+    ...(kind === 'name'
+      ? [
+          { min: 2, message: `${label} ب${language} قصير جداً (حرفان كحد أدنى)` },
+          { max: 120, message: `${label} ب${language} طويل جداً (١٢٠ حرفاً كحد أقصى)` },
+        ]
+      : [{ max: 3000, message: `${label} ب${language} طويل جداً (٣٠٠٠ حرف كحد أقصى)` }]),
+  ]
 }
 
 interface ProductFormProps {
   mode: 'create' | 'edit'
+  /** نسخة النموذج من الصفحة حين تحتاج أن تكتب في حقلٍ بعد التركيب. */
+  form?: FormInstance<ProductFormStore>
   initialValues?: Partial<ProductFormValues>
   optionsAvailable: boolean
   submitting: boolean
@@ -49,13 +133,14 @@ interface ProductFormProps {
 
 export default function ProductForm({
   mode,
+  form: formFromPage,
   initialValues,
   optionsAvailable,
   submitting,
   onSubmit,
   onCancel,
 }: ProductFormProps) {
-  const [form] = Form.useForm<ProductFormValues>()
+  const [form] = Form.useForm<ProductFormStore>(formFromPage)
 
   const categoriesQuery = useQuery({
     queryKey: ['admin-categories'],
@@ -70,6 +155,13 @@ export default function ProductForm({
   const selectedCategoryId = Form.useWatch('categoryId', form)
   const price = Form.useWatch('price', form)
   const previousPrice = Form.useWatch('previousPrice', form)
+  const priceLater = Form.useWatch('priceLater', form) === true
+  const pairPrice = Form.useWatch('pairPrice', form)
+  // ما يدفعه الزبون عن قطعتين — للعرض فقط، والحساب على الخادم (`pairPricedLineTotals`).
+  const pairSaving =
+    !priceLater && typeof price === 'number' && typeof pairPrice === 'number' && pairPrice < 2 * price
+      ? 2 * price - pairPrice
+      : null
 
   // النسبة معروضة فقط — مصدرها الحقيقي هو السعران على الخادم.
   const discountPercent =
@@ -84,18 +176,35 @@ export default function ProductForm({
     (category) => category.id === selectedCategoryId,
   )
 
+  // ═══ الإلزام ═══
+  // الإنشاء: الأربعة إلزامية. التعديل: ما كان مكتوباً يبقى إلزامياً (لا يُفرَّغ
+  // محتوى)، وما كان ناقصاً في منتجٍ قديم اختياريٌّ مع تنبيه — حفظُ سعره أو
+  // مخزونه لا يُحجَب حتى يُكتب له نصّ، ولا يُدفع المسؤول إلى نصٍّ مختلَق.
+  const wasFilled = (field: (typeof CONTENT_FIELDS)[number]) =>
+    Boolean((initialValues?.[field] ?? '').trim())
+  const isRequired = (field: (typeof CONTENT_FIELDS)[number]) =>
+    mode === 'create' || wasFilled(field)
+  const kurdishIncomplete =
+    mode === 'edit' && (!wasFilled('nameCkb') || !wasFilled('descriptionCkb'))
+  const arabicDescriptionEmpty = mode === 'edit' && !wasFilled('descriptionAr')
+
   function changeCategory(categoryId: string) {
     form.setFieldValue('categoryId', categoryId)
     form.setFieldValue('subcategoryId', undefined)
   }
 
   return (
-    <Form<ProductFormValues>
+    <Form<ProductFormStore>
       form={form}
       layout="vertical"
       requiredMark={false}
-      initialValues={initialValues}
-      onFinish={onSubmit}
+      initialValues={{
+        ...initialValues,
+        // منتجٌ محفوظ بلا سعر (084) يُفتح والمفتاح مُفعَّل. الإنشاء يبدأ مسعَّراً.
+        priceLater: mode === 'edit' && initialValues?.price === null,
+        options: optionsToFields(initialValues?.options ?? []),
+      }}
+      onFinish={(values) => onSubmit(trimContent(values))}
       style={{ maxWidth: 760 }}
     >
       {!optionsAvailable && (
@@ -103,35 +212,92 @@ export default function ProductForm({
           type="warning"
           showIcon
           message="خيارات هذا المنتج غير متاحة للمنتجات غير النشطة في الخادم."
-          description="حفظ التعديلات سيُمسح الخيارات المحفوظة نهائياً — سيُطلب منك تأكيد صريح قبل الحفظ. أعد إدخال الخيارات يدوياً إذا أردت الاحتفاظ بها، أو فعّل المنتج أولاً بطريقة أخرى."
+          description="الخيارات المحفوظة تبقى كما هي عند الحفظ ولا تُرسَل مع هذا النموذج. لتعديلها فعّل المنتج أولاً ثم افتحه من جديد."
           style={{ marginBottom: 16 }}
         />
       )}
 
-      <Card title="المعلومات الأساسية" variant="outlined">
+      <Card
+        title="العربية"
+        variant="outlined"
+        data-testid="content-ar"
+        extra={<Typography.Text type="secondary">يظهر للزبون الذي يستعمل التطبيق بالعربية</Typography.Text>}
+      >
+        {arabicDescriptionEmpty && (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="الوصف العربي فارغ لهذا المنتج"
+          />
+        )}
         <Form.Item
-          name="name"
-          label="اسم المنتج"
-          rules={[
-            { required: true, message: 'اسم المنتج مطلوب' },
-            { min: 2, message: 'الاسم قصير جداً (حرفان كحد أدنى)' },
-            { max: 150, message: 'الاسم طويل جداً (150 حرفاً كحد أقصى)' },
-          ]}
+          name="nameAr"
+          label="اسم المنتج بالعربي"
+          rules={contentRules('name', 'العربية', isRequired('nameAr'))}
         >
-          <Input />
+          <Input lang="ar" dir="rtl" />
         </Form.Item>
         <Form.Item
-          name="description"
-          label="الوصف"
-          rules={[{ max: 3000, message: 'الوصف طويل جداً' }]}
+          name="descriptionAr"
+          label="وصف المنتج بالعربي"
+          rules={contentRules('description', 'العربية', isRequired('descriptionAr'))}
+          style={{ marginBottom: 0 }}
         >
-          <Input.TextArea rows={4} />
+          <Input.TextArea lang="ar" dir="rtl" rows={4} />
         </Form.Item>
+      </Card>
+
+      <Card
+        title="الكردية"
+        variant="outlined"
+        data-testid="content-ckb"
+        style={{ marginTop: 16 }}
+        extra={<Typography.Text type="secondary">سوراني — يكتبه المسؤول، لا ترجمة آلية</Typography.Text>}
+      >
+        {kurdishIncomplete && (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="الكردية ناقصة لهذا المنتج"
+            description="الزبون الكردي يراه بالعربية مع تنبيه. اكتب الاسم والوصف بالكردية ليظهر بلغته."
+          />
+        )}
+        <Form.Item
+          name="nameCkb"
+          label="ناوی بەرهەم بە کوردی"
+          tooltip="اسم المنتج بالكردية"
+          rules={contentRules('name', 'الكردية', isRequired('nameCkb'))}
+        >
+          <Input lang="ckb" dir="rtl" />
+        </Form.Item>
+        <Form.Item
+          name="descriptionCkb"
+          label="وەسفی بەرهەم بە کوردی"
+          tooltip="وصف المنتج بالكردية"
+          rules={contentRules('description', 'الكردية', isRequired('descriptionCkb'))}
+          style={{ marginBottom: 0 }}
+        >
+          <Input.TextArea lang="ckb" dir="rtl" rows={4} />
+        </Form.Item>
+      </Card>
+
+      <Card title="السعر والمخزون" variant="outlined" style={{ marginTop: 16 }}>
         <Space size="large" wrap>
+          <Form.Item
+            name="priceLater"
+            label="السعر يُعلن لاحقاً"
+            valuePropName="checked"
+            tooltip="يظهر المنتج في المتجر «قريباً — السعر يُعلن لاحقاً» ولا يُضاف إلى العربة. لا يظهر في التطبيق المثبَّت حتى يُسعَّر."
+          >
+            <Switch />
+          </Form.Item>
           <Form.Item
             name="price"
             label="السعر"
-            rules={[{ required: true, message: 'السعر مطلوب' }]}
+            hidden={priceLater}
+            rules={priceLater ? [] : [{ required: true, message: 'السعر مطلوب' }]}
           >
             <InputNumber
               min={0.01}
@@ -147,7 +313,66 @@ export default function ProductForm({
           >
             <InputNumber min={0} max={100000} style={{ width: 200 }} precision={0} />
           </Form.Item>
+          <Form.Item
+            name="restockAt"
+            label="متوقع التوفر"
+            tooltip="اختياري. يظهر للزبون «قريباً يتوفر» مع هذا التاريخ ما دام المخزون صفراً."
+            getValueProps={(value?: string | null) => ({
+              value: value ? dayjs(value) : null,
+            })}
+            // القيمة تُحفظ ISO-8601 كما يقبلها مسار التعديل؛ المسح يرسل
+            // `null` صراحةً لا حقلاً غائباً — الغائب يعني «لا تغيّر».
+            normalize={(value: Dayjs | null) => value?.toISOString() ?? null}
+          >
+            <DatePicker
+              style={{ width: 200 }}
+              placeholder="بلا موعد"
+              format="YYYY/MM/DD"
+              allowClear
+            />
+          </Form.Item>
         </Space>
+        {priceLater && (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginTop: 12 }}
+            message="قريباً — السعر يُعلن لاحقاً"
+            description="يراه الزبون في المتجر بلا سعر ولا زرّ إضافة. أطفئ المفتاح واكتب السعر حين يُعلن."
+          />
+        )}
+        <Form.Item
+          noStyle
+          shouldUpdate={(prev, next) =>
+            prev.stock !== next.stock || prev.restockAt !== next.restockAt
+          }
+        >
+          {({ getFieldValue }) => {
+            // ما سيراه الزبون فعلاً — مشتقٌّ بنفس قاعدة التطبيق، فلا يخمّن
+            // المسؤول أثر ما أدخله.
+            const stock = Number(getFieldValue('stock') ?? 0)
+            const at = getFieldValue('restockAt') as string | null | undefined
+            const [text, type] =
+              stock > 0
+                ? ['متوفر — يمكن للزبون الشراء الآن', 'success' as const]
+                : at
+                  ? ['قريباً يتوفر — مع عرض التاريخ للزبون', 'warning' as const]
+                  : ['غير متوفر — مع زر «أخبرني عند توفره»', 'info' as const]
+            return (
+              <Alert
+                type={type}
+                showIcon
+                style={{ marginTop: 12 }}
+                message={`حالة الزبون: ${text}`}
+                description={
+                  stock > 0 && at
+                    ? 'المخزون يتقدّم على الموعد: لن يُعرض التاريخ ما دام المنتج متوفراً.'
+                    : undefined
+                }
+              />
+            )
+          }}
+        </Form.Item>
       </Card>
 
       <Card title="التصنيف" variant="outlined" style={{ marginTop: 16 }}>
@@ -184,16 +409,10 @@ export default function ProductForm({
       </Card>
 
       <Card title="الصور" variant="outlined" style={{ marginTop: 16 }}>
-        <Typography.Paragraph type="secondary">
-          ارفع صورة من جهازك أو ألصق رابطاً. الصورة الأولى هي صورة الغلاف.
-        </Typography.Paragraph>
         <ImagesEditor purpose="product" />
       </Card>
 
       <Card title="الأنمي المرتبط" variant="outlined" style={{ marginTop: 16 }}>
-        <Typography.Paragraph type="secondary">
-          بُعد تصنيف مستقل عن الأقسام — يسمح للعميل بتصفّح «ون بيس» عبر كل الأقسام.
-        </Typography.Paragraph>
         <Form.Item name="franchiseIds" style={{ marginBottom: 0 }}>
           <Select
             mode="multiple"
@@ -209,21 +428,18 @@ export default function ProductForm({
       </Card>
 
       <Card title="العرض والخصم" variant="outlined" style={{ marginTop: 16 }}>
-        <Alert
-          type="info"
-          showIcon
-          style={{ marginBottom: 16 }}
-          message="نسبة الخصم تُحسب تلقائياً من السعر السابق — لا تُدخل يدوياً. اترك السعر السابق فارغاً إن لم يكن هناك خصم حقيقي."
-        />
         <Space size="large" wrap align="start">
           <Form.Item
             name="previousPrice"
             label="السعر قبل الخصم"
             tooltip="يجب أن يكون أعلى من السعر الحالي."
+            dependencies={['priceLater']}
             rules={[
               {
                 validator: (_rule, value: number | null) => {
-                  if (value === null || value === undefined) return Promise.resolve()
+                  if (value === null || value === undefined || form.getFieldValue('priceLater') === true) {
+                    return Promise.resolve()
+                  }
                   const current = form.getFieldValue('price') as number
                   return value > current
                     ? Promise.resolve()
@@ -232,13 +448,69 @@ export default function ProductForm({
               },
             ]}
           >
-            <InputNumber min={0} style={{ width: 200 }} addonAfter="د.ع" precision={0} />
+            <InputNumber
+              min={0}
+              style={{ width: 200 }}
+              addonAfter="د.ع"
+              precision={0}
+              disabled={priceLater}
+            />
           </Form.Item>
           <Form.Item label="نسبة الخصم المحسوبة">
             <Typography.Text strong style={{ fontSize: 18 }}>
               {discountPercent === null ? '—' : `${discountPercent}%`}
             </Typography.Text>
           </Form.Item>
+          <Form.Item
+            name="pairPrice"
+            label="سعر قطعتين"
+            tooltip="اختياري. سعر قطعتين من هذا المنتج وإن اختلف الخيار، ويتكرّر: ٣ قطع = قطعتان + قطعة. أقل من ضعف سعر القطعة ولا يقلّ عنه."
+            dependencies={['price', 'priceLater']}
+            rules={[
+              {
+                validator: (_rule, value: number | null | undefined) => {
+                  // «يُعلن لاحقاً» يُفرغ الحقل عند الإرسال (`normalizePricing`) — لا يُحجب الحفظ.
+                  if (value === null || value === undefined || form.getFieldValue('priceLater') === true) {
+                    return Promise.resolve()
+                  }
+                  const current = form.getFieldValue('price') as number | null | undefined
+                  if (typeof current !== 'number') return Promise.resolve()
+                  if (value < current) return Promise.reject(new Error('لا يقلّ عن سعر القطعة الواحدة'))
+                  if (value >= 2 * current) {
+                    return Promise.reject(new Error('يجب أن يكون أقل من ضعف سعر القطعة — وإلا فلا توفير'))
+                  }
+                  return Promise.resolve()
+                },
+              },
+            ]}
+            extra={
+              pairSaving !== null && typeof pairPrice === 'number' && typeof price === 'number'
+                ? `قطعة ${formatCurrency(price)} · قطعتان ${formatCurrency(pairPrice)} (توفير ${formatCurrency(pairSaving)}) · ٣ قطع ${formatCurrency(pairPrice + price)}`
+                : undefined
+            }
+          >
+            <InputNumber
+              min={0}
+              style={{ width: 200 }}
+              addonAfter="د.ع"
+              precision={0}
+              placeholder="بلا عرض"
+              disabled={priceLater}
+            />
+          </Form.Item>
+          {/* [CRITICAL] قرار STEP 70: التطبيقات المثبَّتة قبل إصدار سعر القطعتين تحسب
+              السطر «السعر × الكمية» محلياً، فلا يُضبط عرضٌ في الإنتاج قبل نشر الإصدار
+              الجديد ورفع «أدنى إصدار مدعوم» (deploy/README §14). */}
+          {!priceLater && typeof pairPrice === 'number' ? (
+            <Alert
+              type="warning"
+              showIcon
+              style={{ marginBottom: 16, maxWidth: 560 }}
+              data-testid="pair-price-app-warning"
+              message="تطبيقات أندرويد المثبَّتة قبل إصدار «سعر قطعتين» تعرض السعر × الكمية"
+              description="تعرض ٨٠٠٠ لقطعتين بينما يُحسب الطلب بسعر القطعتين. في الإنتاج: لا تضبطه قبل نشر الإصدار الجديد على Google Play ثم رفع «أدنى إصدار مدعوم» من «تحديث التطبيق»."
+            />
+          ) : null}
           <Form.Item
             name="hasDeliveryPromo"
             label="ترويج توصيل"

@@ -13,11 +13,17 @@ import {
 import { Errors } from '../utils/errors.js';
 import {
   adminBannerIdSchema,
+  adminOfferFlagsSchema,
+  adminRestockScheduleSchema,
   adminBannerSchema,
   adminBannerUpdateSchema,
   adminCategoryIdSchema,
+  adminBirthdayQuerySchema,
   adminCategorySchema,
+  adminCustomerGenderSchema,
   adminCustomerIdSchema,
+  adminCustomerInternalSchema,
+  adminCustomersQuerySchema,
   adminNotificationQuerySchema,
   adminSubcategoryIdSchema,
   adminSubcategoryUpdateSchema,
@@ -25,9 +31,15 @@ import {
   adminGovernorateSchema,
   adminProductCreateSchema,
   adminProductIdSchema,
+  adminProductsQuerySchema,
   adminProductUpdateSchema,
   adminSubcategorySchema,
+  adminUserActiveSchema,
   adminUserIdSchema,
+  adminAccountRequestIdSchema,
+  adminAccountRequestsQuerySchema,
+  adminResolveRequestSchema,
+  adminSetCustomerPasswordSchema,
 } from '../validators/admin.js';
 
 /**
@@ -45,6 +57,18 @@ async function withProductConstraints<T>(run: () => Promise<T>): Promise<T> {
       throw Errors.badRequest(
         'السعر قبل الخصم يجب أن يكون أعلى من السعر الحالي',
         'INVALID_PREVIOUS_PRICE',
+      );
+    }
+    if (code === '23514' && constraint === 'products_previous_price_needs_price') {
+      throw Errors.badRequest(
+        'لا «سعر قبل الخصم» لمنتجٍ لم يُعلن سعره بعد',
+        'INVALID_PREVIOUS_PRICE',
+      );
+    }
+    if (code === '23514' && constraint === 'products_pair_price_offer') {
+      throw Errors.badRequest(
+        'سعر القطعتين يجب ألا يقل عن سعر القطعة وأن يكون أقل من ضعفه — ولا عرض لمنتجٍ لم يُعلن سعره',
+        'INVALID_PAIR_PRICE',
       );
     }
     if (code === '23514') {
@@ -68,9 +92,13 @@ export const adminController = {
   }) as RequestHandler,
 
   listProducts: (async (req, res) => {
-    const { page, limit } = parse(paginationSchema, { page: req.query.page, limit: req.query.limit });
-    const data = await adminService.listProducts(page, limit);
-    return ok(res, data);
+    const query = parse(adminProductsQuerySchema, req.query);
+    return ok(res, await adminService.listProducts(query));
+  }) as RequestHandler,
+
+  getProduct: (async (req, res) => {
+    const id = parse(adminProductIdSchema, req.params).id;
+    return ok(res, await adminService.getProductForEdit(id));
   }) as RequestHandler,
 
   updateProduct: (async (req, res) => {
@@ -80,6 +108,22 @@ export const adminController = {
       adminService.updateProduct(id, input),
     );
     return ok(res, product, 'حُدّث المنتج');
+  }) as RequestHandler,
+
+  /** علَما العرض/الاختيار — مسار «العروض» الضيّق. */
+  updateOfferFlags: (async (req, res) => {
+    const id = parse(adminProductIdSchema, req.params).id;
+    const input = parse(adminOfferFlagsSchema, req.body ?? {});
+    const product = await withProductConstraints(() => adminService.updateProduct(id, input));
+    return ok(res, product, 'حُدّث العرض');
+  }) as RequestHandler,
+
+  /** موعد التوفر — مسار «طلبات التوفر» الضيّق. */
+  scheduleRestock: (async (req, res) => {
+    const id = parse(adminProductIdSchema, req.params).id;
+    const input = parse(adminRestockScheduleSchema, req.body ?? {});
+    const product = await withProductConstraints(() => adminService.updateProduct(id, input));
+    return ok(res, product, 'حُفظ موعد التوفر');
   }) as RequestHandler,
 
   deleteProduct: (async (req, res) => {
@@ -117,6 +161,11 @@ export const adminController = {
   listBanners: (async (_req, res) => {
     const data = await adminService.listBanners();
     return ok(res, { items: data });
+  }) as RequestHandler,
+
+  /** طلبات «أخبرني عند توفره» — المنتجات النافدة وسجل طلباتها. */
+  restockDemand: (async (_req, res) => {
+    return ok(res, await adminService.restockDemand());
   }) as RequestHandler,
 
   createBanner: (async (req, res) => {
@@ -216,9 +265,8 @@ export const adminController = {
 
   // ===== المستخدمون =====
   listUsers: (async (req, res) => {
-    const { page, limit } = parse(paginationSchema, { page: req.query.page, limit: req.query.limit });
-    const data = await adminService.listUsers(page, limit);
-    return ok(res, data);
+    const query = parse(adminCustomersQuerySchema, req.query);
+    return ok(res, await adminService.listUsers(query));
   }) as RequestHandler,
 
   deleteGovernorate: (async (req, res) => {
@@ -248,22 +296,85 @@ export const adminController = {
     return ok(res, await adminService.notificationStats());
   }) as RequestHandler,
 
+  /**
+   * الزبائن حسب حالة عيد الميلاد.
+   *
+   * الافتراضي يبقى المسجَّلين وحدهم حتى لا يتبدّل ما تعرضه الشاشة الحالية
+   * بلا طلب؛ بقية المرشِّحات (اليوم/قريباً/مؤخّراً/غير مسجّل) صريحة.
+   */
   listBirthdayCustomers: (async (req, res) => {
-    const { page, limit } = parse(paginationSchema, {
-      page: req.query.page,
-      limit: req.query.limit,
-    });
-    // `filter=pending` يعرض المؤهَّلين الذين لم يسجّلوا بعد؛ الافتراضي
-    // يبقى المسجَّلين وحدهم حتى لا يتغيّر ما تعرضه اللوحة الحالية بلا طلب.
-    const raw = String(req.query.filter ?? 'registered');
-    const filter = raw === 'all' || raw === 'pending' ? raw : 'registered';
-    const data = await adminService.listBirthdayCustomers(page, limit, filter);
-    return ok(res, data);
+    const query = parse(adminBirthdayQuerySchema, req.query);
+    return ok(res, await adminService.listBirthdayCustomers(query));
   }) as RequestHandler,
 
-  toggleUserActive: (async (req, res) => {
+  setUserActive: (async (req, res) => {
     const { id } = parse(adminUserIdSchema, req.params);
-    const data = await adminService.toggleUserActive(id);
+    // Express 5 يترك `req.body` غير معرَّف لطلبٍ بلا جسم (نسخة لوحة أقدم).
+    const { isActive } = parse(adminUserActiveSchema, req.body ?? {});
+    const data = await adminService.setUserActive(id, isActive);
     return ok(res, data, 'حُدّثت حالة المستخدم');
+  }) as RequestHandler,
+
+  // ===== ملفّ الزبون وطلبات الحساب =====
+
+  customerDetail: (async (req, res) => {
+    const { id } = parse(adminCustomerIdSchema, req.params);
+    return ok(res, await adminService.getCustomerDetail(id));
+  }) as RequestHandler,
+
+  /**
+   * المسؤول يضع كلمة مرور جديدة **دائمة** للزبون بعد تحقّق واتساب.
+   * الردّ لا يحمل كلمة المرور بأي صورة.
+   */
+  setCustomerPassword: (async (req, res) => {
+    const { id } = parse(adminCustomerIdSchema, req.params);
+    const input = parse(adminSetCustomerPasswordSchema, req.body);
+    const auth = req.auth!;
+    const data = await adminService.setCustomerPassword(id, auth.id, input, {
+      requireRequest: !auth.isSuperAdmin && !auth.permissions.includes('customers'),
+    });
+    return ok(res, data, 'وُضعت كلمة المرور الجديدة — بلّغها الزبون عبر واتساب');
+  }) as RequestHandler,
+
+  /** إكمال جنس حسابٍ قديم بعد تحقّق واتساب — السجلّ يُكتب في معاملة الخدمة. */
+  completeCustomerGender: (async (req, res) => {
+    res.locals.auditHandled = true;
+    const { id } = parse(adminCustomerIdSchema, req.params);
+    const { gender } = parse(adminCustomerGenderSchema, req.body ?? {});
+    const data = await adminService.completeCustomerGender(id, req.auth!.id, gender);
+    return ok(res, data, 'أُكمل جنس الحساب');
+  }) as RequestHandler,
+
+  /** تعليم الحساب داخلياً/اختبارياً — للمسؤول الأعلى، بسببٍ مسجَّل. */
+  setCustomerInternal: (async (req, res) => {
+    res.locals.auditHandled = true;
+    const { id } = parse(adminCustomerIdSchema, req.params);
+    const input = parse(adminCustomerInternalSchema, req.body ?? {});
+    const data = await adminService.setCustomerInternal(id, req.auth!.id, input);
+    return ok(res, data, data.isInternalAccount ? 'عُلِّم الحساب داخلياً — خارج التحليلات' : 'أُعيد الحساب إلى التحليلات');
+  }) as RequestHandler,
+
+  listAccountRequests: (async (req, res) => {
+    const query = parse(adminAccountRequestsQuerySchema, req.query);
+    return ok(res, await adminService.listAccountRequests(query));
+  }) as RequestHandler,
+
+  accountRequestDetail: (async (req, res) => {
+    const { id } = parse(adminAccountRequestIdSchema, req.params);
+    return ok(res, await adminService.getAccountRequest(id));
+  }) as RequestHandler,
+
+  approveAccountRequest: (async (req, res) => {
+    const { id } = parse(adminAccountRequestIdSchema, req.params);
+    const { note } = parse(adminResolveRequestSchema, req.body ?? {});
+    const data = await adminService.approveAccountRequest(id, req.auth!.id, note);
+    return ok(res, data, 'تمت الموافقة — الحساب مفعَّل');
+  }) as RequestHandler,
+
+  rejectAccountRequest: (async (req, res) => {
+    const { id } = parse(adminAccountRequestIdSchema, req.params);
+    const { note } = parse(adminResolveRequestSchema, req.body ?? {});
+    const data = await adminService.rejectAccountRequest(id, req.auth!.id, note);
+    return ok(res, data, 'رُفض الطلب وبقي في السجل');
   }) as RequestHandler,
 };

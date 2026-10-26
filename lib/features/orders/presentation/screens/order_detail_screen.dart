@@ -1,8 +1,12 @@
 import 'package:auto_route/auto_route.dart';
+import '../../../../core/l10n/app_strings.dart';
+import '../../../settings/presentation/cubit/locale_cubit.dart';
+import '../../../../core/l10n/locale_refetch.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/design_system/design_system.dart';
+import '../../../../core/l10n/gender.dart';
 import '../../../../core/di/injection_container.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../birthday/data/birthday_storage.dart';
@@ -10,6 +14,7 @@ import '../../../birthday/presentation/birthday_prompt.dart';
 import '../../../points/presentation/cubit/points_cubit.dart';
 import '../../../../core/errors/app_exception.dart';
 import '../../../../core/utils/formatters.dart';
+import '../../../products/domain/entities/product.dart';
 import '../../domain/entities/order.dart';
 import '../../domain/repositories/order_repository.dart';
 import '../../domain/usecases/fetch_order_details_usecase.dart';
@@ -36,7 +41,7 @@ class OrderDetailScreen extends StatefulWidget {
   State<OrderDetailScreen> createState() => _OrderDetailScreenState();
 }
 
-class _OrderDetailScreenState extends State<OrderDetailScreen> {
+class _OrderDetailScreenState extends State<OrderDetailScreen> with LocaleRefetch {
   Order? _order;
   bool _loading = true;
   String? _error;
@@ -46,6 +51,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     super.initState();
     _load();
   }
+
+  /// المحتوى الخادمي يُصرَّف لحظة الجلب — يُعاد جلبه بلغة الواجهة الجديدة.
+  @override
+  void onLanguageChanged() => _load();
 
   /// يمنع ضغطتين متتاليتين على «نعم، استلمت الطلب».
   bool _confirming = false;
@@ -59,13 +68,16 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         widget.orderId,
       );
       if (!mounted) return;
-      setState(() => _order = order);
+      // الشاشة تُرسم بحالتها الحقيقية **قبل** أي تأكيد: كان التأكيد يجري
+      // والهيكل التحميلي ما يزال معروضاً تحت ورقة الميلاد وشاشة التقييم.
+      setState(() {
+        _order = order;
+        _loading = false;
+      });
 
       // التأكيد المطلوب من الورقة يجري بعد أن تُحمَّل الحالة الحقيقية، ولا
       // يُعاد إن كان الطلب قد خرج من «قيد التوصيل» بين الشاشتين.
-      if (_confirmOnOpenPending &&
-          order.status == OrderStatus.delivering &&
-          mounted) {
+      if (_confirmOnOpenPending && order.status == OrderStatus.delivering) {
         _confirmOnOpenPending = false;
         await _confirmReceived(order);
       }
@@ -73,7 +85,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       if (!mounted) return;
       setState(() => _order = null);
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && _loading) setState(() => _loading = false);
     }
   }
 
@@ -82,36 +94,41 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     final order = _order;
 
     return Scaffold(
-      body: Column(
-        children: [
-          // ترويسة v2: تاريخ الطلب عنواناً وكبسولة الحالة في نهاية السطر.
-          OtakuScreenHeader.compact(
-            title: order?.createdAt != null
-                ? _formatDate(order!.createdAt!)
-                : 'تفاصيل الطلب',
-            onBack: () => context.router.maybePop(),
-            trailing: order == null
-                ? null
-                : OtakuStatusPill(
-                    label: orderStatusLabel(order.status),
-                    color: orderStatusColor(order.status),
-                  ),
-          ),
-          Expanded(
-            child: _loading
-                ? _buildLoadingState()
-                : _error != null
-                ? AnimeErrorState(message: _error!, onAction: _load)
-                : order == null
-                ? AnimeErrorState(
-                    title: 'الطلب غير موجود',
-                    message: 'تعذر العثور على تفاصيل هذا الطلب',
-                    actionLabel: 'العودة',
-                    onAction: () => context.router.maybePop(),
-                  )
-                : _buildOrderDetails(order),
-          ),
-        ],
+      // عمودٌ موسَّط بعرض القراءة على اللوح — القائمة الممتدّة بعرض
+      // ١٣٦٦ بكسل تصير صفوفاً فارغة الوسط. لا أثر له على الهاتف.
+      body: ResponsiveContentFrame(
+        maxWidth: kReadingMaxWidth,
+        child: Column(
+          children: [
+            // ترويسة v2: تاريخ الطلب عنواناً وكبسولة الحالة في نهاية السطر.
+            OtakuScreenHeader.compact(
+              title: order?.createdAt != null
+                  ? _formatDate(order!.createdAt!)
+                  : context.strings('orderDetails'),
+              onBack: () => context.router.maybePop(),
+              trailing: order == null
+                  ? null
+                  : OtakuStatusPill(
+                      label: orderStatusLabel(context, order.status),
+                      color: orderStatusColor(order.status),
+                    ),
+            ),
+            Expanded(
+              child: _loading
+                  ? _buildLoadingState()
+                  : _error != null
+                  ? AnimeErrorState(message: _error!, onAction: _load)
+                  : order == null
+                  ? AnimeErrorState(
+                      title: context.strings('orderNotFoundTitle'),
+                      message: context.strings('orderNotFoundBody'),
+                      actionLabel: context.strings('back'),
+                      onAction: () => context.router.maybePop(),
+                    )
+                  : _buildOrderDetails(order),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -121,7 +138,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   /// حالة تحميل تفاصيل الطلب — هياكل متلألئة بإيقاع أقسام الشاشة.
   Widget _buildLoadingState() {
     return ListView(
-      padding: const EdgeInsets.fromLTRB(18, 8, 18, 26),
+      padding: context.scrollPadding(const EdgeInsets.fromLTRB(18, 8, 18, 26)),
       children: const [
         OtakuSkeleton.box(height: 150, radius: AppDimens.radiusXl),
         SizedBox(height: 18),
@@ -133,9 +150,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   Widget _buildOrderDetails(Order order) {
     final rejected = order.status == OrderStatus.rejected;
     final completed = order.status == OrderStatus.completed;
-    final awaitingReceipt =
-        order.status == OrderStatus.delivering ||
-        order.status == OrderStatus.processing;
+    // تأكيد الاستلام مسموح على الخادم بعد خروج الطلب للتوصيل فقط
+    // (`NOT_OUT_FOR_DELIVERY`). كان الشرط يشمل التجهيز أيضاً لأن الشاشة
+    // كانت تعرض المرحلتين معاً، فيظهر زرٌّ يرفضه الخادم إن ضُغط.
+    final awaitingReceipt = order.status == OrderStatus.delivering;
 
     return CustomScrollView(
       slivers: [
@@ -164,13 +182,19 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               child: _buildReceiptPrompt(order),
             ),
           ),
-        if (completed)
+        // الدعوة تختفي حين لا يبقى ما يُقيَّم أو يُصحَّح (العدّ من الخادم) —
+        // لا زرّ تقييم دائماً على طلبٍ قُيّمت منتجاته كلها.
+        if (completed && order.hasReviewableProducts)
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
               child: _ReviewInvite(
                 order: order,
-                onTap: () => context.router.push(RateOrderRoute(order: order)),
+                onTap: () async {
+                  await context.router.push(RateOrderRoute(order: order));
+                  // العودة من التقييم تغيّر ما يُعرض — نُعيد القراءة من الخادم.
+                  if (mounted) await _load();
+                },
               ),
             ),
           ),
@@ -199,7 +223,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           ),
         ),
 
-        const SliverToBoxAdapter(child: SizedBox(height: 40)),
+        // ٤٠ التصميم فوق شريط النظام (إيماءات أو أزرار) لا خلفه.
+        SliverToBoxAdapter(child: SizedBox(height: 40 + context.bottomOverlap)),
       ],
     );
   }
@@ -240,7 +265,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               const SizedBox(width: AppDimens.space3),
               Expanded(
                 child: Text(
-                  'هل استلمت طلبك؟',
+                  context.strings('receivedOrderQuestion'),
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
                     fontSize: 16,
                     fontWeight: AppDimens.weightExtraBold,
@@ -251,7 +276,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           ),
           const SizedBox(height: AppDimens.space3),
           Text(
-            'أكّد الاستلام حتى تقدر تقيّم المنتجات وتكسب نقاط المجرّة.',
+            context.strings('confirmReceiptToReview'),
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
               height: 1.75,
               color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -259,7 +284,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           ),
           const SizedBox(height: AppDimens.space5),
           AnimePrimaryButton(
-            label: 'نعم، استلمت الطلب',
+            label: context.strings('yesIReceived'),
             onPressed: () => _confirmReceived(order),
             loading: _confirming,
             height: AppDimens.buttonHeightXl,
@@ -283,7 +308,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 ),
               ),
               child: Text(
-                'لم أستلمه بعد',
+                context.strings('notReceivedYet'),
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(
                   fontWeight: AppDimens.weightBold,
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -301,8 +326,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: const Text(
-            'خلّينا الطلب فعّال — راح نسألك مرة ثانية لاحقاً.',
+          content: Text(
+            context.strings('orderStaysPending'),
           ),
           behavior: SnackBarBehavior.floating,
           margin: const EdgeInsets.all(AppDimens.screenHorizontalPadding),
@@ -337,12 +362,12 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       await _promptBirthdayIfDue();
       if (!mounted) return;
 
-      // التقييم يُفتح في اللحظة التي قرّرها الخادم (`ratingAvailableAt`)، لا
-      // بعد ٢٤ ساعة من ضغطة الزرّ. إن كانت النافذة ما تزال مغلقة نبقى في
-      // تفاصيل الطلب حيث تعرض بطاقة التقييم الوقت المتبقي الحقيقي، بدل دفع
-      // العميل إلى شاشة كتابة سيرفض الخادمُ إرسالَها.
-      if (updated.ratingAvailable) {
+      // تأكيد الاستلام يفتح التقييم فوراً — لا مهلة بعده. `canReview` يأتي
+      // من الردّ نفسه، فالانتقال مبنيّ على حالة الخادم لا على افتراض محلي.
+      if (updated.canReview) {
         await context.router.push(RateOrderRoute(order: updated));
+        // ما قُيّم هناك يغيّر الدعوة هنا — نُعيد القراءة من الخادم.
+        if (mounted) await _load();
       }
     } catch (e) {
       if (!mounted) return;
@@ -375,9 +400,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     final saved = await showBirthdayPrompt(
       context,
       intro:
-          'هذا أول طلب توصلك — نحب نعرف تاريخ ميلادك حتى نعطيك خصم '
-          '${birthday.discountPercent}٪ على طلب واحد بيوم ميلادك. '
-          'لا يمكن تغيير التاريخ بعد حفظه.',
+          context.strings.p('birthdayPromptBody', {
+            'percent': '${birthday.discountPercent}',
+          }),
     );
     if (!saved || !mounted) return;
 
@@ -385,7 +410,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: const Text('تاريخ ميلادك محفوظ 🎂'),
+          content: Text(context.strings('birthdaySaved')),
           behavior: SnackBarBehavior.floating,
           margin: const EdgeInsets.all(AppDimens.screenHorizontalPadding),
         ),
@@ -396,14 +421,15 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   String _confirmErrorOf(Object e) {
     if (e is AppException) {
       if (e.code == 'ALREADY_CONFIRMED') {
-        return 'تم تأكيد استلام هذا الطلب مسبقاً';
+        return context.strings('receiptAlreadyConfirmed');
       }
       if (e.code == 'NOT_OUT_FOR_DELIVERY') {
-        return 'لا يمكن تأكيد الاستلام قبل خروج الطلب للتوصيل';
+        return context.strings('receiptBeforeDelivering');
       }
-      if (e.message.trim().isNotEmpty) return e.message;
+      final text = e.localizedMessage(context);
+      if (text.trim().isNotEmpty) return text;
     }
-    return 'تعذر تأكيد الاستلام، حاول مرة أخرى';
+    return context.strings('receiptConfirmFailed');
   }
 
   Widget _buildInfoSection(Order order) {
@@ -413,7 +439,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'معلومات الطلب',
+            context.strings('orderInfo'),
             style: Theme.of(
               context,
             ).textTheme.titleMedium?.copyWith(fontWeight: AppDimens.weightBold),
@@ -421,29 +447,29 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           SizedBox(height: AppDimens.space4),
           _buildInfoRow(
             icon: Icons.location_on_outlined,
-            label: 'المحافظة',
+            label: context.strings('province'),
             value: order.province,
           ),
           // منطقة التوصيل تظهر فقط للمحافظات المقسّمة مناطق.
           if (order.zoneName != null && order.zoneName!.trim().isNotEmpty)
             _buildInfoRow(
               icon: Icons.my_location_outlined,
-              label: 'منطقة التوصيل',
+              label: context.strings('deliveryZone'),
               value: order.zoneName!,
             ),
           _buildInfoRow(
             icon: Icons.home_outlined,
-            label: 'العنوان الكامل',
+            label: context.strings('fullAddress'),
             value: order.fullAddress,
           ),
           _buildInfoRow(
             icon: Icons.phone_outlined,
-            label: 'رقم الهاتف',
+            label: context.strings('phoneNumber'),
             value: order.phone,
           ),
           _buildInfoRow(
             icon: Icons.local_shipping_outlined,
-            label: 'تكلفة التوصيل',
+            label: context.strings('deliveryCostLabel'),
             value: formatPrice(order.deliveryCost),
             valueColor: Theme.of(context).colorScheme.primary,
           ),
@@ -503,12 +529,22 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         children: [
           Padding(
             padding: EdgeInsets.all(AppDimens.cardPadding),
+            // [CRITICAL] (البوّابة ٧، 2026-10-10) كان `Text` بلا حدّ في `Row`،
+            // فيتجاوز ٩٫٨ يميناً بالكردية على ٣٢٠×١٫٣. منطقة سطرٍ تُصغَّر
+            // أولاً وتحجز ما تحتاجه أطول ترجماتها.
             child: Row(
               children: [
-                Text(
-                  'منتجات الطلب (${order.items.length})',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: AppDimens.weightBold,
+                Expanded(
+                  child: BoundedText(
+                    context.strings.p('orderItemsCount', {'count': '${order.items.length}'}),
+                    maxLines: 2,
+                    reserveFor: [
+                      for (final l in AppLanguage.values)
+                        AppStrings.of(l).p('orderItemsCount', {'count': '${order.items.length}'}),
+                    ],
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: AppDimens.weightBold,
+                    ),
                   ),
                 ),
               ],
@@ -563,7 +599,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            item.product.name,
+                            // لقطة الطلب باللغتين — تُعرض بلغة الواجهة الآن.
+                            localizedProductName(item.product, context.language),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: Theme.of(context).textTheme.bodyMedium
@@ -571,7 +608,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                           ),
                           SizedBox(height: AppDimens.space1),
                           Text(
-                            'الكمية: ${item.quantity}',
+                            context.strings.p('quantityCount', {'count': '${item.quantity}'}),
                             style: Theme.of(context).textTheme.bodySmall
                                 ?.copyWith(
                                   color: Theme.of(
@@ -621,30 +658,37 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'ملخص الأسعار',
+            context.strings('priceSummaryShort'),
             style: Theme.of(
               context,
             ).textTheme.titleMedium?.copyWith(fontWeight: AppDimens.weightBold),
           ),
           SizedBox(height: AppDimens.space4),
-          _buildPriceRow('سعر المنتجات', formatPrice(subtotal)),
-          _buildPriceRow('تكلفة التوصيل', formatPrice(order.deliveryCost)),
+          _buildPriceRow(context.strings('productsPrice'), formatPrice(subtotal)),
+          _buildPriceRow(context.strings('deliveryCostLabel'), formatPrice(order.deliveryCost)),
           if (order.deliveryDiscount > 0)
             _buildPriceRow(
-              'خصم التوصيل',
+              context.strings('deliveryDiscount'),
               '-${formatPrice(order.deliveryDiscount)}',
               valueColor: context.themeColors.success,
             ),
           if (order.isFreeDelivery)
             _buildPriceRow(
               '',
-              'توصيل مجاني 🎉',
+              context.strings('freeDelivery'),
               valueColor: context.themeColors.success,
             ),
-          if (order.discount > 0)
+          if (order.otherDiscount > 0)
             _buildPriceRow(
-              'الخصم',
-              '-${formatPrice(order.discount)}',
+              context.strings('discount'),
+              '-${formatPrice(order.otherDiscount)}',
+              valueColor: context.themeColors.success,
+            ),
+          // خصم مزيّة المستوى المحفوظ مع الطلب — بسطره واسمه.
+          if (order.loyaltyDiscount > 0)
+            _buildPriceRow(
+              context.strings('loyaltyRewardDiscount'),
+              '-${formatPrice(order.loyaltyDiscount)}',
               valueColor: context.themeColors.success,
             ),
           Divider(
@@ -652,7 +696,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             color: Theme.of(context).colorScheme.outlineVariant,
           ),
           _buildPriceRow(
-            'المجموع النهائي',
+            context.strings('finalTotal'),
             formatPrice(order.total),
             isTotal: true,
             valueColor: Theme.of(context).colorScheme.primary,
@@ -702,7 +746,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   }
 
   String formatPrice(double price) {
-    return '${price.toStringAsFixed(0)} د.ع';
+    return context.strings.p('priceIqd', {'amount': price.toStringAsFixed(0)});
   }
 }
 
@@ -718,39 +762,40 @@ class _OrderStatusCard extends StatelessWidget {
     final colors = context.themeColors;
     final rejected = order.status == OrderStatus.rejected;
 
+    // مفاتيح لا نصوص: النصّ وترجماته كلها من المفتاح (`AppStrings.across`).
     final (
-      String title,
-      String body,
+      String titleKey,
+      String bodyKey,
       IconData icon,
       List<Color> gradient,
     ) = switch (order.status) {
       OrderStatus.pending || OrderStatus.waitingAdmin => (
-        'بانتظار الموافقة',
-        'استلمنا طلبك — سنراجعه ونتواصل معك عبر واتساب لتأكيد التفاصيل.',
+        'statusPendingApproval',
+        'statusPendingApprovalBody',
         Icons.hourglass_top_rounded,
-        [const Color(0xFFFFB02E), const Color(0xFFFF3D8F)],
+        [AppColors.warningLight, AppColors.secondary],
       ),
-      OrderStatus.confirmed => (
-        'تم قبول طلبك 🎉',
-        'طلبك مقبول وقيد التجهيز، وسيبدأ التوصيل قريباً.',
+      OrderStatus.confirmed || OrderStatus.processing => (
+        'statusAcceptedTitle',
+        'statusAcceptedBody',
         Icons.verified_rounded,
-        [const Color(0xFF22B07D), const Color(0xFF4EA8FF)],
+        [AppColors.success, AppColors.accentCyan],
       ),
-      OrderStatus.processing || OrderStatus.delivering => (
-        'قيد التوصيل',
-        'طلبك في الطريق إليك — الدفع عند الاستلام.',
+      OrderStatus.delivering => (
+        'statusDelivering',
+        'statusDeliveringBody',
         Icons.local_shipping_rounded,
-        [const Color(0xFF4EA8FF), const Color(0xFF7C5CFF)],
+        [AppColors.accentCyan, AppColors.primary],
       ),
       OrderStatus.completed => (
-        'تم الاستلام',
-        'نتمنى المنتجات عجبتك — شاركنا رأيك واكسب نقاط المجرّة.',
+        'statusReceived',
+        'statusReceivedBody',
         Icons.check_circle_rounded,
-        [const Color(0xFF22B07D), const Color(0xFF7C5CFF)],
+        [AppColors.success, AppColors.primary],
       ),
       OrderStatus.rejected => (
-        'مرفوض',
-        'ما تم قبول هذا الطلب. تقدر تتواصل معنا أو تسوي طلب جديد.',
+        'statusRejected',
+        'statusRejectedBody',
         Icons.cancel_rounded,
         [colors.error, colors.errorLight],
       ),
@@ -810,8 +855,16 @@ class _OrderStatusCard extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            title,
+                          // [CRITICAL] (البوّابة ٧، 2026-10-10) العنوان سطرٌ
+                          // يُصغَّر أولاً، والتوضيح فقرة — كلاهما يحجز ما تحتاجه
+                          // أطول ترجماته، فالبطاقة بارتفاعٍ واحد في كل لغة (كان
+                          // التوضيح الكردي أطول بسطر: +١٨ إلى +٣٢ وكل ما تحته
+                          // ينزل).
+                          BoundedText(
+                            context.strings(titleKey),
+                            maxLines: 2,
+                            reserveFor: AppStrings.across(titleKey),
+                            alignment: AlignmentDirectional.topStart,
                             style: Theme.of(context).textTheme.titleLarge
                                 ?.copyWith(
                                   fontSize: 20,
@@ -835,8 +888,12 @@ class _OrderStatusCard extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: AppDimens.space4),
-                Text(
-                  body,
+                BoundedText(
+                  context.strings(bodyKey),
+                  maxLines: 12,
+                  minScale: 1,
+                  reserveFor: AppStrings.across(bodyKey),
+                  alignment: AlignmentDirectional.topStart,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     height: 1.75,
                     color: Colors.white.withValues(alpha: 0.95),
@@ -858,7 +915,7 @@ class _OrderStatusCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'سبب الرفض',
+                          context.strings('rejectionReason'),
                           style: Theme.of(context).textTheme.labelSmall
                               ?.copyWith(
                                 fontWeight: AppDimens.weightExtraBold,
@@ -890,18 +947,24 @@ class _OrderJourney extends StatelessWidget {
 
   final Order order;
 
-  static const _steps = [
-    ('بانتظار الموافقة', 'راجعنا الطلب وتأكيده عبر واتساب'),
-    ('تم قبول الطلب', 'الطلب مقبول وقيد التجهيز'),
-    ('قيد التوصيل', 'الطلب في الطريق إليك'),
-    ('تم الاستلام', 'وصل الطلب — يمكنك تقييم المنتجات'),
+  /// مفاتيحُ لا نصوص: القائمة ثابتة على مستوى الصنف فلا سياق لها،
+  /// وتُصرَّف عند البناء.
+  static const _stepKeys = [
+    ('statusPendingApproval', 'journeyPendingBody'),
+    ('statusProcessing', 'journeyProcessingBody'),
+    ('statusDelivering', 'journeyDeliveringBody'),
+    ('statusReceived', 'journeyReceivedBody'),
   ];
 
   /// الحالات التي تُغذّي كل خطوة معروضة.
+  ///
+  /// «تم تأكيده» تُغذّي خطوة التجهيز لا خطوةً خاصة بها: بعد دمج المرحلتين
+  /// على الخادم لم يعد لها معنى مستقل، وطلبٌ قديم واقفٌ عندها هو عملياً
+  /// طلب مقبول قيد التجهيز.
   static const _stepStatuses = <List<OrderStatus>>[
     [OrderStatus.pending, OrderStatus.waitingAdmin],
-    [OrderStatus.confirmed],
-    [OrderStatus.processing, OrderStatus.delivering],
+    [OrderStatus.confirmed, OrderStatus.processing],
+    [OrderStatus.delivering],
     [OrderStatus.completed],
   ];
 
@@ -916,8 +979,8 @@ class _OrderJourney extends StatelessWidget {
 
   int get _currentIndex => switch (order.status) {
     OrderStatus.pending || OrderStatus.waitingAdmin => 0,
-    OrderStatus.confirmed => 1,
-    OrderStatus.processing || OrderStatus.delivering => 2,
+    OrderStatus.confirmed || OrderStatus.processing => 1,
+    OrderStatus.delivering => 2,
     OrderStatus.completed => 3,
     OrderStatus.rejected => -1,
   };
@@ -939,20 +1002,20 @@ class _OrderJourney extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'مسار الطلب',
+            context.strings('orderJourney'),
             style: Theme.of(context).textTheme.titleSmall?.copyWith(
               fontSize: 16,
               fontWeight: AppDimens.weightExtraBold,
             ),
           ),
           const SizedBox(height: AppDimens.space4),
-          for (var i = 0; i < _steps.length; i++)
+          for (var i = 0; i < _stepKeys.length; i++)
             _JourneyStep(
-              title: _steps[i].$1,
-              body: _steps[i].$2,
+              titleKey: _stepKeys[i].$1,
+              bodyKey: _stepKeys[i].$2,
               done: i < current,
               active: i == current,
-              isLast: i == _steps.length - 1,
+              isLast: i == _stepKeys.length - 1,
               occurredAt: _timeFor(i),
             ),
           // موعد الوصول المتوقع بعد القبول.
@@ -978,12 +1041,12 @@ class _OrderJourney extends StatelessWidget {
                       // وقت الوصول الذي تدخله الإدارة يسبق النص العام.
                       order.deliveryNote?.trim().isNotEmpty == true
                           ? order.deliveryNote!
-                          : 'موعد الوصول المتوقع خلال ٢–٤ أيام حسب المحافظة.',
+                          : context.strings('etaTwoToFourDays'),
                       style: Theme.of(context).textTheme.labelMedium?.copyWith(
                         fontSize: 12,
                         height: 1.6,
                         fontWeight: AppDimens.weightBold,
-                        color: colors.success,
+                        color: colors.successText,
                       ),
                     ),
                   ),
@@ -999,16 +1062,21 @@ class _OrderJourney extends StatelessWidget {
 
 class _JourneyStep extends StatelessWidget {
   const _JourneyStep({
-    required this.title,
-    required this.body,
+    required this.titleKey,
+    required this.bodyKey,
     required this.done,
     required this.active,
     required this.isLast,
     this.occurredAt,
   });
 
-  final String title;
-  final String body;
+  /// مفتاحا العنوان والتوضيح — منهما النصّ وترجماته كلها.
+  ///
+  /// [CRITICAL] (البوّابة ٧، 2026-10-10) العنوان سطرٌ يُصغَّر أولاً، والتوضيح
+  /// فقرة؛ كلاهما يحجز ما تحتاجه أطول ترجماته — التوضيح الكردي كان أطول بسطر
+  /// فتطول المحطة ويطول خطّها وتنزل المحطات بعدها.
+  final String titleKey;
+  final String bodyKey;
   final bool done;
   final bool active;
   final bool isLast;
@@ -1079,8 +1147,11 @@ class _JourneyStep extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    title,
+                  BoundedText(
+                    context.strings(titleKey),
+                    maxLines: 2,
+                    reserveFor: AppStrings.across(titleKey),
+                    alignment: AlignmentDirectional.topStart,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       fontSize: 14,
                       fontWeight: reached
@@ -1092,8 +1163,12 @@ class _JourneyStep extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 3),
-                  Text(
-                    body,
+                  BoundedText(
+                    context.strings(bodyKey),
+                    maxLines: 8,
+                    minScale: 1,
+                    reserveFor: AppStrings.across(bodyKey),
+                    alignment: AlignmentDirectional.topStart,
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
                       fontSize: 11.5,
                       height: 1.6,
@@ -1110,7 +1185,7 @@ class _JourneyStep extends StatelessWidget {
                       style: Theme.of(context).textTheme.labelSmall?.copyWith(
                         fontSize: 10.5,
                         fontWeight: AppDimens.weightBold,
-                        color: Theme.of(context).colorScheme.outline,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ],
@@ -1124,12 +1199,14 @@ class _JourneyStep extends StatelessWidget {
   }
 }
 
-/// دعوة تقييم المنتجات بعد الاستلام.
-/// دعوة التقييم بعد الاستلام.
+/// دعوة تقييم منتجات هذا الطلب — تظهر بعد تأكيد الاستلام.
 ///
-/// التقييم يُفتح بعد مهلة من الاستلام، والقرار يأتي من الخادم في
-/// [Order.ratingAvailable] — لا من ساعة الجهاز ولا من مؤقّت في الواجهة،
-/// فتغيير وقت الهاتف لا يفتح التقييم مبكراً.
+/// [CRITICAL] الشرط [Order.canReview] القادم من الخادم، لا ساعةُ الجهاز ولا
+/// حالةٌ محلية. والبطاقة تخصّ هذا الطلب وحده: لا زرّ تقييم عام في التطبيق،
+/// ولا مسار يفتح التقييم بمعزل عن طلبٍ مؤهَّل.
+///
+/// لم يعد هناك «الوقت المتبقي»: التقييم يُفتح بالاستلام، فإمّا أن يكون
+/// متاحاً أو لم يُستلم الطلب بعد.
 class _ReviewInvite extends StatelessWidget {
   const _ReviewInvite({required this.order, required this.onTap});
 
@@ -1139,8 +1216,7 @@ class _ReviewInvite extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.themeColors;
-    final available = order.ratingAvailable;
-    final remaining = order.timeUntilRating;
+    final available = order.canReview;
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -1156,9 +1232,19 @@ class _ReviewInvite extends StatelessWidget {
             children: [
               Icon(Icons.star_rounded, color: colors.warning, size: 22),
               const SizedBox(width: AppDimens.space2),
+              // [CRITICAL] (البوّابة ٧، 2026-10-10) العنوان سطرٌ يُصغَّر أولاً
+              // والتوضيح فقرة، وكلاهما يحجز أطول ترجماته — البطاقة وزرّها في
+              // الموضع نفسه بكل لغة.
               Expanded(
-                child: Text(
-                  available ? 'قيّم منتجات طلبك' : 'التقييم يُفتح قريباً',
+                child: BoundedText(
+                  available
+                      ? context.g(GenderedStrings.rateOrderProducts)
+                      : context.strings('reviewOpensAfterReceipt'),
+                  maxLines: 2,
+                  reserveFor: available
+                      ? context.gAcross(GenderedStrings.rateOrderProducts)
+                      : AppStrings.across('reviewOpensAfterReceipt'),
+                  alignment: AlignmentDirectional.topStart,
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
                     fontSize: 16,
                     fontWeight: AppDimens.weightExtraBold,
@@ -1168,14 +1254,16 @@ class _ReviewInvite extends StatelessWidget {
             ],
           ),
           const SizedBox(height: AppDimens.space2),
-          Text(
+          BoundedText(
             available
-                ? 'رأيك يساعد بقية العملاء — والتقييم المصوّر يعطيك ٥ نقاط مجرّة.'
-                : remaining == null
-                // لا نذكر مدّة لا نعرفها: الخادم لم يرسل موعداً بعد.
-                ? 'نفتح التقييم بعد استلام الطلب بمدّة قصيرة، وراح يوصلك تنبيه.'
-                : 'التقييم متاح بعد ${formatRemaining(remaining)} — '
-                      'راح يوصلك تنبيه وقتها.',
+                ? context.strings('reviewInviteBody')
+                : context.strings('confirmReceiptToOpenReview'),
+            maxLines: 12,
+            minScale: 1,
+            reserveFor: AppStrings.across(
+              available ? 'reviewInviteBody' : 'confirmReceiptToOpenReview',
+            ),
+            alignment: AlignmentDirectional.topStart,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
               height: 1.7,
               color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -1183,7 +1271,9 @@ class _ReviewInvite extends StatelessWidget {
           ),
           const SizedBox(height: AppDimens.space4),
           AnimePrimaryButton(
-            label: available ? 'قيّم المنتجات' : 'لسه ما فتح التقييم',
+            label: available
+                ? context.g(GenderedStrings.rateProductsShort)
+                : context.strings('receiptNotConfirmedYet'),
             // زرّ معطّل بدل شاشة ترفض الإرسال بعد ملء التقييم كاملاً.
             onPressed: available ? onTap : null,
             height: AppDimens.buttonHeightXl,
