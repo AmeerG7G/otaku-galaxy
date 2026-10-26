@@ -40,7 +40,7 @@ final _anchors = <String, Finder Function()>{
       .first,
   'search-icon': () => find.byIcon(AppIcons.search),
   'hero-card': () => find.byType(HomeHeroCard),
-  'hero-character': () => _art(VisualSlots.homeHero),
+  'hero-art-box': () => find.byKey(HomeHeroCard.artBoxKey),
   'delivery-strip': () => find.byType(DeliveryAssuranceStrip),
   'character-11': () => _art(VisualSlots.homeDelivery),
   'character-11-overlay': () => find.byKey(deliveryOverlayKey),

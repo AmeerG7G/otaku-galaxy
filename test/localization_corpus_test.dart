@@ -362,7 +362,6 @@ void main() {
       'loading': 'جاري التحميل…',
       'searchingInGalaxy': 'نبحث في المجرّة…',
       'noCategoriesBody': 'لا توجد أقسام متاحة حالياً — عد لاحقاً.',
-      'heroNewSeason': 'موسم جديد من\nعالم الأنمي',
       'promoUpToDiscount': 'حتى {percent}٪',
       'deliveryCodWhatsapp':
           'الدفع عند الاستلام، وتأكيد الطلب عبر واتساب قبل الإرسال.',

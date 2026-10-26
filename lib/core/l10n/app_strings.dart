@@ -96,8 +96,6 @@ class AppStrings {
 
     // ═══ الدفعة ٢ — تركيبات الرئيسية ═══
     'seeAll': 'عرض الكل',
-    'heroNewCollection': 'تشكيلة جديدة',
-    'heroNewSeason': 'موسم جديد من\nعالم الأنمي',
     'shopNow': 'تسوّق الآن',
     'promoBadge': 'عرض',
     'promoActiveDiscounts': 'خصومات فعّالة',
@@ -645,8 +643,6 @@ class AppStrings {
     'brandName': 'گەلاکسی ئۆتاکو',
     'homeSearchHint': 'بەدوای بەرهەمە دڵخوازەکەتدا بگەڕێ…',
     'seeAll': 'هەموویان ببینە',
-    'heroNewCollection': 'کۆکراوەیەکی نوێ',
-    'heroNewSeason': 'وەرزێکی نوێ لە\nجیهانی ئەنیمە',
     'shopNow': 'ئێستا بکڕە',
     'promoBadge': 'داشکاندن',
     'promoActiveDiscounts': 'داشکاندنی چالاک',

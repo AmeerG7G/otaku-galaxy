@@ -57,8 +57,8 @@ class VisualSlots {
   // ── الرئيسية ──
   //
   // `home_promo_primary_character` أُزيل مع الصورة 4 (2026-09-28): البنر
-  // الترويجي الأول بلا صورةٍ مرفوعة لا يعرض شخصية.
-  static const String homeHero = 'home_hero_character';
+  // الترويجي الأول بلا صورةٍ مرفوعة لا يعرض شخصية. و`home_hero_character`
+  // أُزيل (2026-10-26): لا بطل مضمَّن، البطاقة لبنرٍ نشط بصورته وحدها.
   static const String homePromoSecondary = 'home_promo_secondary_character';
   static const String homeDelivery = 'home_delivery_character';
 
@@ -122,7 +122,6 @@ class VisualSlots {
     registerPending,
     forgotPasswordHeader,
     forgotPasswordPending,
-    homeHero,
     homePromoSecondary,
     homeDelivery,
     emptyCart,
@@ -173,7 +172,6 @@ class CharacterArt {
     VisualSlots.registerPending: 'assets/art/characters/5.png', // إنشاء الحساب — «بانتظار الموافقة»
     VisualSlots.forgotPasswordHeader: 'assets/art/characters/6.png', // استعادة كلمة المرور — الترويسة
     VisualSlots.forgotPasswordPending: 'assets/art/characters/8.png', // استعادة كلمة المرور — «بانتظار الموافقة»
-    VisualSlots.homeHero: 'assets/art/characters/29.png', // الرئيسية — البنر الرئيسي (كانت 9)
     VisualSlots.homePromoSecondary: 'assets/art/characters/29.png', // الرئيسية — بطاقات الترويج التالية (كانت 10)
     VisualSlots.homeDelivery: 'assets/art/characters/11.png', // الرئيسية — بطاقة التوصيل
     VisualSlots.emptyCart: 'assets/art/characters/12.png', // السلة — فارغة

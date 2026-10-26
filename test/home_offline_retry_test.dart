@@ -122,7 +122,8 @@ model.Banner _hero(String id, String title) => model.Banner.fromJson({
 HomeData _home(String hero, {List<Product> discover = const []}) =>
     HomeData(heroBanner: _hero(hero, 'بطل $hero'), discover: discover);
 
-final Finder _defaultHeroCopy = find.text(AppStrings.arabic('heroNewSeason'));
+// نصّ البطل المضمَّن السابق — أُزيل من التطبيق (2026-10-26) ويجب ألّا يعود.
+final Finder _defaultHeroCopy = find.text('موسم جديد من\nعالم الأنمي');
 
 Finder get _retryButton => find.descendant(
   of: find.byType(AnimeErrorState),

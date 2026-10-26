@@ -36,6 +36,8 @@ import 'package:otaku_galaxy/features/notifications/domain/entities/app_notifica
 import 'package:otaku_galaxy/features/notifications/domain/repositories/notification_repository.dart';
 import 'package:otaku_galaxy/features/notifications/presentation/cubit/notifications_cubit.dart';
 import 'package:otaku_galaxy/features/onboarding/data/onboarding_storage.dart';
+import 'package:otaku_galaxy/features/products/domain/entities/banner.dart'
+    as model;
 import 'package:otaku_galaxy/features/orders/domain/entities/order.dart';
 import 'package:otaku_galaxy/features/orders/domain/repositories/order_repository.dart';
 import 'package:otaku_galaxy/features/orders/domain/entities/order_data.dart';
@@ -220,7 +222,21 @@ Order fixtureOrder(OrderStatus status, {String id = 'o1'}) => Order(
   createdAt: DateTime(2026, 9, 1),
 );
 
+/// بنر بطلٍ نشط بلغتين. منذ 2026-10-26 لا بطل بلا بنر، فاختبارات هندسة
+/// الرئيسية تحتاج بنراً. النصوص هي ما كان البطل يعرضه (بطولها المقيس)، ورابط
+/// الصورة لا يُحمَّل في الاختبار إلا عبر `serveNetworkImages`.
+const fixtureHeroBanner = model.Banner(
+  id: 'fixture-hero',
+  imageUrl: 'https://fixture.test/uploads/banner/hero.png',
+  titleAr: 'موسم جديد من\nعالم الأنمي',
+  subtitleAr: 'تشكيلة جديدة',
+  titleCkb: 'وەرزێکی نوێ لە\nجیهانی ئەنیمە',
+  subtitleCkb: 'کۆکراوەیەکی نوێ',
+  placement: 'hero',
+);
+
 HomeData fixtureHome() => HomeData(
+  heroBanner: fixtureHeroBanner,
   categories: fixtureCategories(6),
   offers: [for (var i = 0; i < 4; i++) fixtureProduct(i)],
   selectedProducts: [for (var i = 4; i < 8; i++) fixtureProduct(i)],
@@ -421,6 +437,7 @@ Future<void> pumpFixtureApp(
   bool loggedIn = true,
   List<Review> photos = const [],
   List<CartItem>? cartItems,
+  HomeData? homeData,
 }) async {
   SharedPreferences.setMockInitialValues({});
   final prefs = await SharedPreferences.getInstance();
@@ -442,7 +459,7 @@ Future<void> pumpFixtureApp(
   sl.registerSingleton<RestockRepository>(_NoRestock());
   addTearDown(sl.reset);
 
-  final products = FixtureCatalog();
+  final products = FixtureCatalog(home: homeData);
   final reviews = FixtureReviews(photos);
   final auth = stubAuthCubit();
   if (loggedIn) await auth.loadSession();
@@ -514,6 +531,7 @@ Future<void> pumpFixtureShell(
   required AppLanguage language,
   required double textScale,
   bool loggedIn = true,
+  HomeData? homeData,
 }) async {
   mainNavIndex.value = MainTab.home;
   await pumpFixtureApp(
@@ -522,6 +540,7 @@ Future<void> pumpFixtureShell(
     language: language,
     textScale: textScale,
     loggedIn: loggedIn,
+    homeData: homeData,
     photos: [for (var i = 0; i < 4; i++) fixturePhoto(i)],
   );
   // الغلاف يستمع لتغيّر المؤشّر بعد تركيبه، لا لقيمته قبل ذلك.
