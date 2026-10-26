@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { AddToCart } from '@/components/AddToCart';
 import { ApiError } from '@/lib/api';
 import { getProduct, isUuid } from '@/lib/catalog';
-import { formatIqd, pairOfferLabel, PRICE_COMING_SOON } from '@/lib/format';
+import { COMING_SOON, displayRestockAt, formatIqd, formatShortStoreDate, pairOfferLabel, PRICE_COMING_SOON } from '@/lib/format';
 import { readSession } from '@/lib/server-session';
 import type { Product } from '@/lib/types';
 
@@ -36,6 +36,8 @@ export default async function ProductPage({ params }: Props) {
   if (!product) notFound();
   const session = await readSession();
   const [main, ...rest] = product.images;
+  // The app's `displayRestockAt` rule — see `lib/format.ts`.
+  const restockOn = displayRestockAt(product);
 
   return (
     <article className="product-layout">
@@ -63,6 +65,7 @@ export default async function ProductPage({ params }: Props) {
           // no stock state. The API refuses it at cart, quote and order anyway.
           <>
             <p className="price-soon price-soon--detail">{PRICE_COMING_SOON}</p>
+            {restockOn ? <p className="pill pill-low">متوقع التوفر: {formatShortStoreDate(restockOn)}</p> : null}
             {product.description ? <p>{product.description}</p> : null}
             <p className="hint">يُتاح الطلب حين يُعلن السعر.</p>
           </>
@@ -82,6 +85,11 @@ export default async function ProductPage({ params }: Props) {
               <p className="pill pill-promo">خصم {formatIqd(product.deliveryPromoAmount)} من التوصيل</p>
             ) : null}
             {product.stock > 0 && product.stock <= 3 ? <p className="pill pill-low">متبقٍّ {product.stock} فقط</p> : null}
+            {restockOn ? (
+              <p className="pill pill-low">
+                {COMING_SOON} — متوقع التوفر: {formatShortStoreDate(restockOn)}
+              </p>
+            ) : null}
             {product.description ? <p>{product.description}</p> : null}
             <AddToCart productId={product.id} stock={product.stock} options={product.options ?? []} signedIn={Boolean(session)} />
             <p className="hint">الدفع عند الاستلام — تتواصل معك الإدارة لتأكيد الطلب.</p>

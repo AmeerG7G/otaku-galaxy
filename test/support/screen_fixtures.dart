@@ -157,6 +157,21 @@ Product fixtureOutOfStockProduct() => Product(
   categoryId: 'c1',
 );
 
+const fixtureUnpricedId = 'p-unpriced';
+
+/// «السعر يُعلن لاحقاً» (084) — بقطعٍ في المخزن وموعدٍ قادم.
+Product fixtureUnpricedProduct() => Product(
+  id: fixtureUnpricedId,
+  nameAr: 'منتج قادم',
+  descriptionAr: 'وصف المنتج القادم',
+  price: 0,
+  priceAnnounced: false,
+  images: const [],
+  stock: 2,
+  categoryId: 'c1',
+  restockAt: DateTime.utc(2099, 3, 1, 21),
+);
+
 /// بيانات طلبٍ جاهزة لشاشة المراجعة.
 OrderData fixtureOrderData() => OrderData(
   governorateId: 'g1',
@@ -273,6 +288,8 @@ class FixtureCatalog implements ProductRepository {
   Future<Product> fetchProductDetails(String id) async =>
       id == fixtureOutOfStockId
       ? fixtureOutOfStockProduct()
+      : id == fixtureUnpricedId
+      ? fixtureUnpricedProduct()
       : fixtureProduct(int.tryParse(id.substring(1)) ?? 1);
   @override
   dynamic noSuchMethod(Invocation invocation) => Completer<Object?>().future;

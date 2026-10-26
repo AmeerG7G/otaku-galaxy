@@ -10821,6 +10821,27 @@
   "human_reviewer": "",
   "human_notes": ""
  },
+ "priceNotAnnounced": {
+  "ar": "السعر لم يُعلن بعد",
+  "ckb": "نرخ هێشتا ڕانەگەیەنراوە",
+  "feature": "catalog",
+  "context": "anime_product_card / anime_product_row / product_detail_screen / product_stock_pill — مكان السعر والشارة وزرّ الإضافة المعطَّل لمنتجٍ «السعر يُعلن لاحقاً» (084)",
+  "risk": "HIGH",
+  "placeholders": [],
+  "gender": "n/a",
+  "glossary": [],
+  "self_review": "SELF_REVIEWED",
+  "native_review": "NEEDS_NATIVE_REVIEW",
+  "notes": "مأخوذة من مسوّدة الخادم القائمة لرسالة الخطأ نفسها (errorMessages.ts: «سعر هذا المنتج لم يُعلن بعد» ← «نرخی ئەم بەرهەمە هێشتا ڕانەگەیەنراوە») بحذف «ئەم بەرهەمە» (هذا المنتج) فقط — لا صياغة جديدة. تنتظر مراجعة ناطق كالمسوّدة الأصل.",
+  "issues": "",
+  "ai_pre_review": "NOT_REVIEWED",
+  "ai_issue": "",
+  "proposed_ckb": "",
+  "ai_explanation": "",
+  "human_decision": "PENDING",
+  "human_reviewer": "",
+  "human_notes": ""
+ },
  "expectedRestockOn": {
   "ar": "متوقع التوفر: {date}",
   "ckb": "چاوەڕوانی بەردەستبوون: {date}",
