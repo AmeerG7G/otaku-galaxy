@@ -1,0 +1,30 @@
+# What never enters the image's build context.
+#
+# [CRITICAL] Environment files first: a secret copied into a layer stays in the
+# image history even if a later layer deletes it. Values are passed at run time
+# (compose `env_file`), never at build time.
+.env
+.env.*
+!.env.example
+
+node_modules
+.next
+out
+*.tsbuildinfo
+next-env.d.ts
+
+# Tests and their tooling have no place in the runtime image.
+e2e
+test-results
+playwright-report
+playwright.config.ts
+vitest.config.mts
+
+.git
+.gitignore
+*.log
+npm-debug.log*
+.DS_Store
+README.md
+Dockerfile
+.dockerignore

@@ -159,6 +159,8 @@ clears that app's data on the device only). It installs beside dev/prod builds (
 deploy §13 stays «لا تُشغَّل» (owner decision 2026-10-25): no host, `BFF_SHARED_SECRET`, PM2 or nginx
 site exist for it. The build is verified and archived (`web-store-next-build-253c14a.tar.gz`), but the
 server must build from its own checkout (`npm ci && npm run build`) when §13 is done.
+Superseded 2026-10-26: the store runs as the Docker service `web` — see
+`docs/staging/staging-store-deploy-plan.md`.
 
 ## 5. Acceptance tests on staging
 
