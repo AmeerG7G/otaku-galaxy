@@ -637,10 +637,42 @@ textarea {
 }
 
 .gallery__main {
+  position: relative;
   aspect-ratio: 1 / 1;
   border-radius: var(--radius-lg);
   overflow: hidden;
   background: var(--surface-variant);
+}
+
+/* Previous / next over the main image — logical sides, so the store's RTL puts
+   "previous" on the right and "next" on the left. */
+.gallery__nav {
+  position: absolute;
+  top: 50%;
+  translate: 0 -50%;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--on-surface-variant);
+  box-shadow: var(--shadow);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.gallery__nav--prev {
+  inset-inline-start: var(--space-2);
+}
+
+.gallery__nav--next {
+  inset-inline-end: var(--space-2);
+}
+
+.gallery__nav:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .gallery__main img {
@@ -655,13 +687,26 @@ textarea {
   overflow-x: auto;
 }
 
-.gallery__thumbs img {
+.gallery__thumb {
   width: 64px;
   height: 64px;
-  object-fit: cover;
+  padding: 0;
+  overflow: hidden;
   border-radius: var(--radius-sm);
   border: 1px solid var(--outline);
+  background: var(--surface-variant);
   flex: 0 0 auto;
+  cursor: pointer;
+}
+
+.gallery__thumb[aria-current='true'] {
+  border: 2px solid var(--secondary);
+}
+
+.gallery__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .stepper {

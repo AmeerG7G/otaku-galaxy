@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { AddToCart } from '@/components/AddToCart';
-import { GalleryMain, VariantSelectionProvider } from '@/components/VariantSelection';
+import { ProductGallery } from '@/components/ProductGallery';
+import { VariantSelectionProvider } from '@/components/VariantSelection';
 import { ApiError } from '@/lib/api';
 import { getProduct, isUuid } from '@/lib/catalog';
 import { COMING_SOON, displayRestockAt, formatIqd, formatShortStoreDate, pairOfferLabel, PRICE_COMING_SOON } from '@/lib/format';
@@ -37,7 +38,6 @@ export default async function ProductPage({ params }: Props) {
   const product = await load((await params).id);
   if (!product) notFound();
   const session = await readSession();
-  const [main, ...rest] = product.images;
   // The app's `displayRestockAt` rule — see `lib/format.ts`.
   const restockOn = displayRestockAt(product);
   // Colours (STEP 74): inactive ones are never shown; the chosen colour's image
@@ -47,24 +47,7 @@ export default async function ProductPage({ params }: Props) {
 
   const article = (
     <article className="product-layout">
-      <div className="gallery">
-        <div className="gallery__main">
-          {hasColors ? (
-            <GalleryMain fallback={main} alt={product.name} />
-          ) : main ? (
-            // eslint-disable-next-line @next/next/no-img-element -- media origin is the API's, served as-is
-            <img src={main} alt={product.name} width={600} height={600} fetchPriority="high" />
-          ) : null}
-        </div>
-        {rest.length > 0 ? (
-          <div className="gallery__thumbs">
-            {rest.map((url, index) => (
-              // eslint-disable-next-line @next/next/no-img-element -- see above
-              <img key={url} src={url} alt={`${product.name} — صورة ${index + 2}`} width={64} height={64} loading="lazy" />
-            ))}
-          </div>
-        ) : null}
-      </div>
+      <ProductGallery images={product.images} alt={product.name} />
 
       <div>
         <h1>{product.name}</h1>

@@ -31,16 +31,6 @@ export function useVariantSelection(): VariantSelectionValue | null {
   return useContext(VariantSelectionContext);
 }
 
-/** The main gallery image: the chosen colour's image, else the product's first image. */
-export function GalleryMain({ fallback, alt }: { fallback: string | undefined; alt: string }) {
-  const selection = useVariantSelection();
-  const src = selection?.selected?.imageUrl || fallback;
-  if (!src) return null;
-  const label = selection?.selected ? `${alt} — ${selection.selected.colorName}` : alt;
-  // eslint-disable-next-line @next/next/no-img-element -- media origin is the API's, served as-is
-  return <img key={src} src={src} alt={label} width={600} height={600} fetchPriority="high" />;
-}
-
 export function Swatch({ hex }: { hex: string | null | undefined }) {
   const color = safeHex(hex);
   if (!color) return null;
