@@ -12154,3 +12154,66 @@ server `FCM_*` empty, Staging APK built without `FIREBASE_*` dart-defines, dashb
   art box, its vertical centring (STEP 64 §17), the text-clear rule (2026-10-12) and the card size
   are unchanged; whatever passes the card's bottom edge is clipped by the card. Promo cards and
   character fallbacks are unchanged.
+
+# STEP 74 — PRODUCT COLOUR VARIANTS: OWN IMAGE AND OWN STOCK PER COLOUR (2026-10-27)
+
+Branch `feat/product-color-variants` from `origin/dev` `1572255` (tree = `origin/staging` `8001fc6`).
+Owner request 2026-10-27: a product can have several colours; each colour has its own image and its
+own stock, tracked independently, and the chosen colour survives cart, checkout and order history.
+The binding contract is `docs/staging/color-variants-contract.md`; this section records the
+decisions and the evidence.
+
+## 74.1 Decisions
+
+| Topic | Decision |
+|---|---|
+| Model | New table `product_variants` (migration 087): stable UUID per colour, Arabic name (required, unique per product, case-insensitive), optional Kurdish name, optional `#RRGGBB`, required image, own stock, active flag, sort order. Not a mutable array index. |
+| Legacy products | A product is "coloured" iff it has ≥1 variant row. Products without colours behave exactly as before. The migration creates **no** variant and changes **no** stock. |
+| Product stock | For a coloured product `products.stock` is derived = Σ stock of its active colours, kept by a trigger in the same transaction, so every existing reader (catalog, stats, restock, inventory snapshot 080, older apps) stays correct. A direct `UPDATE products SET stock` on a coloured product is refused by the database (`products_stock_from_variants`). |
+| Stock pool | Variant line → the colour; legacy line → the product. Same rule in cart add, quantity change, cart sync, checkout quote, order create gate, approval deduction and post-approval rejection restore. Buying red never touches blue. |
+| Stock lifecycle | Unchanged (2026-09-14): nothing deducted at submit; deducted once at admin approval under row locks (products `ORDER BY id`, then colours `ORDER BY id`); pending rejection no-op; post-approval rejection restores to the same colour once. |
+| No substitution | A coloured product without `variantId` → `400 VARIANT_REQUIRED`; a colour of another product → `400 INVALID_VARIANT`; inactive → `409 VARIANT_UNAVAILABLE`; colour stock 0 → `409 VARIANT_OUT_OF_STOCK`. A colour deactivated after it was added, or a colourless line of a product that later got colours, is removed by cart sync and rejects the submit (`VARIANT_UNAVAILABLE`). Older app builds can never be sold a colour they did not choose. |
+| Order history | Order items snapshot `variant_id`, colour name (ar/ckb), hex and the colour image in `image_url`. Editing or removing a colour later never changes an order. |
+| Dashboard | `variants` on create/edit; edit sends the complete ordered list only when colours changed, each existing colour with `id` + `expectedStock` (`409 STOCK_CHANGED` per colour). With colours, product-level `stock` is refused (`400 STOCK_PER_VARIANT`). A colour left out is deleted if never ordered, else deactivated. First colours on a product held by an open order → `409 PRODUCT_HAS_OPEN_ORDERS`. |
+| Price | Unchanged: product-level, server-computed; pair price (085) still counts pieces of the product across colours. |
+| Restock notices | Product-level, as before: fire when the product total goes 0 → n (also via a colour). A colour returning while another colour is in stock notifies nobody. |
+| Kurdish | Four new server error texts in `errorMessages.ts` are drafts awaiting a native speaker, like the rest of that file. |
+
+## 74.2 Correction recorded (from the 2026-10-27 audit)
+
+§73.4 says deleting/replacing an older upload "may still fail" on month directories before 2026/10.
+The code shows otherwise: `storage.remove` is only called by `mediaService` to roll back a file just
+written in the current month, and no route deletes stored media. The older `1001:1001` month
+directories are therefore harmless; no permission change is needed.
+
+## 74.3 Implementation
+
+| Layer | Where |
+|---|---|
+| Schema | `backend/src/database/migrations/087_product_variants.sql` (table, derived-stock trigger, direct-write guard, cart key `(cart, product, variant, option)`, order-item colour snapshot); rollback `backend/scripts/rollback/087_product_variants.down.sql` refuses once any colour or coloured order item exists |
+| API | `catalogRepo.mapProduct` (`variants` on every product), `cartRepo`/`cartSync.stockPoolKey`, `cartService.addItem`, `orderService` (create gate, quote, `consumeStockOnApproval`, `releaseStockOnRejection`), `adminService.writeProductVariants`, `validators/admin.ts` `variantInput`, `mediaRepo.MEDIA_REFERENCE_COLUMNS` |
+| Dashboard | `admin/src/components/VariantsEditor.tsx`, `ProductForm`, `ProductEditPage` (sends colours only when changed, `expectedStock` per colour), `OrderDetailPage` (colour column) |
+| Web store | `web-store/src/components/VariantSelection.tsx`, `lib/variants.ts`, BFF cart route forwards `variantId` |
+| App | `ProductVariant` entity, `product_color_selector.dart`, `line_color_label.dart`, cart cubit addressed by line id, review screen one card per product; strings `productColor`, `chooseColorFirst`, `colorValue` (Sorani drafts, review queue updated by its generator) |
+
+Review findings fixed before merge: a two-colour name swap (or a rename plus a new colour under the
+old name) collided with the unique-name index mid-write — names change in two phases now; checkout
+takes `FOR SHARE` on its products so an order cannot slip in while the first colours are added; the
+media orphan registry did not know the colour image column; the rate-order screen showed one card
+per order line instead of per product.
+
+Known limits: restock notices stay product-level (§74.1); removing the last colour and setting the
+product stock are two saves; Kurdish texts are drafts.
+
+## 74.4 Verification (observed 2026-10-27, local, before any merge)
+
+| Suite | Command | Result |
+|---|---|---|
+| Backend, fresh empty PostgreSQL 16 (CI-like) | `npx vitest run` | 127 files, **2115/2115** (2088 before + 27 in `product-variants.test.ts`) |
+| Backend types | `npx tsc --noEmit` | clean |
+| Two server processes, shared DB | `ROUNDS=5 CONTENTION=6 npx tsx scripts/oversell-multi-instance.ts` | 0 failures; colour round: 3/6 approvals, red 0, blue 3 untouched, product 3 |
+| Dashboard | `npx tsc -b`, `npx vite build --mode staging`, `npx vitest run` | clean, built, 51 files **445/445** |
+| Web store | `tsc --noEmit`, `eslint .`, `vitest run`, `next build` | clean, clean, **63/63**, built |
+| App | `flutter analyze`; `flutter test --exclude-tags integration` | no issues; **2559/2559** (+ review dedupe test, 7/7 in its file) |
+
+Not verified: a real device or browser session against a running API, and Staging (not deployed).
