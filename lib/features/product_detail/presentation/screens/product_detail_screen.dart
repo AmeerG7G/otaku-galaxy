@@ -27,6 +27,7 @@ import '../../../restock/presentation/restock_notify_button.dart';
 import '../../../settings/data/store_settings_repository.dart';
 import '../utils/product_share.dart';
 import '../widgets/product_color_selector.dart';
+import '../widgets/product_image_gallery.dart';
 
 /// تفاصيل المنتج بتصميم Otaku Galaxy v2.
 ///
@@ -177,6 +178,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
   /// فتحة صورة المنتج الكبيرة مع أزرار عائمة — الفتحة تبقى محايدة تماماً.
   Widget _buildHero(Product product, bool isFavorite) {
     final theme = Theme.of(context);
+    final images = productGalleryImages(
+      product.images,
+      leading: _selectedVariantOf(product)?.imageUrl,
+    );
 
     return SizedBox(
       height: 330,
@@ -189,13 +194,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                 bottom: BorderSide(color: theme.colorScheme.outlineVariant),
               ),
             ),
-            // اللون المختار يُبدّل الصورة إلى صورته (STEP 74).
-            child: ProductPhotoSlot(
-              key: const Key('product_hero_image'),
-              imageUrl:
-                  _selectedVariantOf(product)?.imageUrl ??
-                  (product.images.isNotEmpty ? product.images.first : null),
-              iconSize: 70,
+            // اللون المختار يتقدّم المعرض بصورته (STEP 74) وصور المنتج بعده؛
+            // مفتاحه أوّل صورة فيبدأ اختيارٌ جديد من صورة اللون.
+            child: ProductImageGallery(
+              key: ValueKey(images.isEmpty ? null : images.first),
+              images: images,
             ),
           ),
           SafeArea(
@@ -228,33 +231,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
               ),
             ),
           ),
-          // مؤشّرات الصور أسفل الفتحة.
-          if (product.images.length > 1)
-            PositionedDirectional(
-              start: 0,
-              end: 0,
-              bottom: 18,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  for (var i = 0; i < product.images.length; i++) ...[
-                    if (i > 0) const SizedBox(width: 6),
-                    Container(
-                      width: i == 0 ? 18 : 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: i == 0
-                            ? AppColors.secondary
-                            : theme.colorScheme.outline,
-                        borderRadius: BorderRadius.circular(
-                          AppDimens.radiusFull,
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
           if (!product.inStock && product.priceAnnounced)
             PositionedDirectional(
               start: 0,
