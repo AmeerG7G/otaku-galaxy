@@ -4,6 +4,7 @@ import {
   categoryRepo,
   productRepo,
   subcategoryRepo,
+  type ProductVariant,
 } from '../repositories/catalogRepo.js';
 import { notificationRepo } from '../repositories/notificationsRepo.js';
 import { orderRepo } from '../repositories/orderRepo.js';
@@ -236,6 +237,134 @@ async function insertProductOptions(
   }
 }
 
+/** لونٌ كما تكتبه اللوحة (087) — `validators/admin.ts` `variantInput`. */
+interface ProductVariantInput {
+  id?: string;
+  colorName: string;
+  colorNameCkb?: string | null;
+  colorHex?: string | null;
+  imageUrl: string;
+  stock: number;
+  expectedStock?: number;
+  isActive?: boolean;
+}
+
+/** حالات الطلب التي لم تُحسم بعد — طلبٌ فيها قد يُقبل أو يُرفض فيمسّ المخزون. */
+const OPEN_ORDER_STATUSES = ['PENDING_ADMIN_CONFIRMATION', 'CONFIRMED', 'PREPARING', 'OUT_FOR_DELIVERY'];
+
+const variantNameKey = (name: string) => name.trim().toLowerCase();
+
+/**
+ * يكتب ألوان المنتج (087) — داخل معاملة المسؤول وبعد قفل صفّ المنتج.
+ *
+ * `variants` القائمةُ الكاملة بترتيبها. لونٌ قائم يُحدَّث بمعرّفه، والجديد
+ * يُدرج، والغائب يُحذف إن لم يرد في أي طلب وإلا يُوقف — لقطات الطلبات لا تحتاجه،
+ * لكن إرجاع مخزون طلبٍ مقبولٍ يُرفض يحتاج لونه حيّاً.
+ *
+ * [CRITICAL] كل رفضٍ هنا يسبق أي كتابة على الألوان، فلا يُحفظ لونٌ دون آخر.
+ */
+async function writeProductVariants(
+  tx: pg.PoolClient,
+  productId: string,
+  existing: readonly ProductVariant[],
+  variants: readonly ProductVariantInput[],
+) {
+  const byId = new Map(existing.map((variant) => [variant.id, variant]));
+  for (const variant of variants) {
+    if (variant.id === undefined) continue;
+    const current = byId.get(variant.id);
+    if (!current) throw Errors.badRequest('اللون المختار غير موجود لهذا المنتج', 'INVALID_VARIANT');
+    // [CRITICAL] مقارنةٌ ثم كتابة لكل لون — القاعدة نفسها لمخزون المنتج
+    // (`STOCK_CHANGED`): قبولٌ نزّل اللون بين فتح الصفحة وحفظها لا يُمحى.
+    if (variant.expectedStock !== undefined && variant.expectedStock !== current.stock) {
+      throw Errors.conflict(
+        `مخزون لون «${current.colorNameAr}» تغيّر منذ فتح الصفحة (الحالي: ${current.stock}) — راجع القيمة ثم احفظ`,
+        'STOCK_CHANGED',
+      );
+    }
+  }
+  const kept = new Set(variants.flatMap((variant) => (variant.id ? [variant.id] : [])));
+  if (kept.size !== variants.filter((variant) => variant.id).length) {
+    throw Errors.badRequest('اللون نفسه مكرَّر في القائمة', 'INVALID_VARIANT');
+  }
+  const omitted = existing.filter((variant) => !kept.has(variant.id));
+  const { rows: referenced } = await tx.query<{ variant_id: string }>(
+    'SELECT DISTINCT variant_id FROM order_items WHERE variant_id = ANY($1::uuid[])',
+    [omitted.map((variant) => variant.id)],
+  );
+  const sold = new Set(referenced.map((row) => row.variant_id));
+  // لونان باسمٍ واحد لا يُفرَّق بينهما — والموقوف الباقي لطلباته يحجز اسمه.
+  const names = [
+    ...variants.map((variant) => variant.colorName),
+    ...omitted.filter((variant) => sold.has(variant.id)).map((variant) => variant.colorNameAr),
+  ].map(variantNameKey);
+  if (new Set(names).size !== names.length) {
+    throw Errors.badRequest(
+      'لونان بالاسم نفسه في المنتج — اللون الموقوف يُعاد تفعيله بدل إضافته من جديد',
+      'DUPLICATE_VARIANT_COLOR',
+    );
+  }
+
+  for (const variant of omitted) {
+    if (sold.has(variant.id)) {
+      await tx.query('UPDATE product_variants SET is_active = FALSE WHERE id = $1 AND is_active', [variant.id]);
+    } else {
+      await tx.query('DELETE FROM product_variants WHERE id = $1', [variant.id]);
+    }
+  }
+  // [CRITICAL] إعادة التسمية على مرحلتين: الفهرس الفريد على الاسم يُفحص لكل جملة،
+  // فتبديل «أحمر»/«أزرق» — أو تسمية «أحمر» «أحمر غامق» وإضافة «أحمر» جديد — كان
+  // يصطدم بصفٍّ لم يُعَد تسميته بعد، والقائمة النهائية سليمة (فُحصت أعلاه). كل لونٍ
+  // يتغيّر اسمه يأخذ معرّفه اسماً مؤقتاً (٣٦ حرفاً لا يشبه اسماً حقيقياً) أولاً.
+  const renamed = variants.flatMap((variant) => {
+    const current = variant.id ? byId.get(variant.id) : undefined;
+    return current && variantNameKey(current.colorNameAr) !== variantNameKey(variant.colorName) ? [current.id] : [];
+  });
+  if (renamed.length > 0) {
+    await tx.query('UPDATE product_variants SET color_name = id::text WHERE id = ANY($1::uuid[])', [renamed]);
+  }
+  for (const [index, variant] of variants.entries()) {
+    const values = [
+      variant.colorName,
+      variant.colorNameCkb ?? null,
+      variant.colorHex ?? null,
+      variant.imageUrl,
+      variant.stock,
+      variant.isActive ?? true,
+      index,
+    ];
+    if (variant.id) {
+      // [CRITICAL] اللون الغائب في الطلب (`colorNameCkb`/`colorHex`) يبقى كما
+      // حُفظ؛ `null` الصريح يمسحه — قاعدة الحقل الغائب في هذه الصفحة.
+      await tx.query(
+        `UPDATE product_variants
+            SET color_name = $2,
+                color_name_ckb = CASE WHEN $9::boolean THEN $3 ELSE color_name_ckb END,
+                color_hex = CASE WHEN $10::boolean THEN $4 ELSE color_hex END,
+                image_url = $5, stock = $6,
+                is_active = CASE WHEN $11::boolean THEN $7 ELSE is_active END,
+                sort_order = $8
+          WHERE id = $1 AND product_id = $12`,
+        [
+          variant.id,
+          ...values,
+          variant.colorNameCkb !== undefined,
+          variant.colorHex !== undefined,
+          variant.isActive !== undefined,
+          productId,
+        ],
+      );
+    } else {
+      await tx.query(
+        `INSERT INTO product_variants
+           (product_id, color_name, color_name_ckb, color_hex, image_url, stock, is_active, sort_order)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [productId, ...values],
+      );
+    }
+  }
+}
+
 export const adminService = {
   // ===== المنتجات =====
   async createProduct(input: {
@@ -250,9 +379,12 @@ export const adminService = {
     pairPrice?: number | null;
     categoryId: string;
     subcategoryId?: string | null;
-    stock: number;
+    /** لمنتجٍ بلا ألوان؛ مع ألوانٍ يُرفض (`STOCK_PER_VARIANT`). */
+    stock?: number;
     images: string[];
     options: ProductOptionInput[];
+    /** ألوان المنتج (087) — لكلٍّ صورته ومخزونه. */
+    variants?: ProductVariantInput[];
     isOffer?: boolean;
     isSelected?: boolean;
     previousPrice?: number | null;
@@ -261,6 +393,12 @@ export const adminService = {
     franchiseIds?: string[];
     restockAt?: string | null;
   }) {
+    const variants = input.variants ?? [];
+    // [CRITICAL] منتجٌ بألوان مخزونه مجموع ألوانه (زناد 087): مخزونٌ للمنتج معها
+    // كان سيُكتب ثم يُمحى بصمت. يُرفض ويُسمّى السبب.
+    if (variants.length > 0 && input.stock !== undefined) {
+      throw Errors.badRequest('المخزون يُحدَّد لكل لون في منتجٍ بألوان', 'STOCK_PER_VARIANT');
+    }
     return withTransaction(async (tx) => {
       await assertSubcategoryBelongs(tx, input.categoryId, input.subcategoryId ?? null);
       const { rows } = await tx.query(
@@ -278,7 +416,7 @@ export const adminService = {
           input.price,
           input.categoryId,
           input.subcategoryId ?? null,
-          input.stock,
+          input.stock ?? 0,
           input.isOffer ?? false,
           input.isSelected ?? false,
           input.previousPrice ?? null,
@@ -304,6 +442,7 @@ export const adminService = {
       }
       // منتجٌ جديد لا ترجمة محفوظة له: الغائب = لا ترجمة.
       await insertProductOptions(tx, product.id, resolveOptionTranslations([], input.options));
+      if (variants.length > 0) await writeProductVariants(tx, product.id, [], variants);
       return (await productRepo.findById(tx, product.id))!;
     });
   },
@@ -378,6 +517,8 @@ export const adminService = {
       isSelected?: boolean;
       images?: string[];
       options?: ProductOptionInput[];
+      /** ألوان المنتج (087): الغائب لا يُمسّ، والحاضر القائمة كاملة. */
+      variants?: ProductVariantInput[];
       previousPrice?: number | null;
       hasDeliveryPromo?: boolean;
       deliveryPromoAmount?: number;
@@ -416,6 +557,27 @@ export const adminService = {
           `المخزون تغيّر منذ فتح الصفحة (الحالي: ${previousStock}) — راجع القيمة ثم احفظ`,
           'STOCK_CHANGED',
         );
+      }
+
+      // ═══ الألوان (087) ═══ — كل رفضٍ قبل أي كتابة.
+      const hasVariants = existing.variants.length > 0 || (input.variants?.length ?? 0) > 0;
+      if (hasVariants && input.stock !== undefined) {
+        throw Errors.badRequest('المخزون يُحدَّد لكل لون في منتجٍ بألوان', 'STOCK_PER_VARIANT');
+      }
+      // [CRITICAL] أول ألوانٍ لمنتجٍ في طلبٍ مفتوح: بند ذلك الطلب بلا لون، فلا
+      // يُعرف عند قبوله (أو رفضه بعد القبول) من أي لونٍ يُنزَّل أو إلى أيٍّ يُرجَع.
+      if (existing.variants.length === 0 && (input.variants?.length ?? 0) > 0) {
+        const { rows: open } = await tx.query(
+          `SELECT 1 FROM order_items oi JOIN orders o ON o.id = oi.order_id
+            WHERE oi.product_id = $1 AND o.status = ANY($2::text[]) LIMIT 1`,
+          [id, OPEN_ORDER_STATUSES],
+        );
+        if (open.length > 0) {
+          throw Errors.conflict(
+            'للمنتج طلبات مفتوحة — احسمها قبل إضافة الألوان',
+            'PRODUCT_HAS_OPEN_ORDERS',
+          );
+        }
       }
 
       await assertSubcategoryBelongs(
@@ -477,6 +639,9 @@ export const adminService = {
       if (sets.length > 0) {
         await tx.query(`UPDATE products SET ${sets.join(', ')} WHERE id = $1`, values);
       }
+      if (input.variants !== undefined) {
+        await writeProductVariants(tx, id, existing.variants, input.variants);
+      }
 
       // اسم المنتج بلغتيه **بعد** هذا الحفظ — الإشعار يصل كل مشترك بلغته
       // (`restockService`)، والاسم الذي عدّله المسؤول للتوّ هو الصحيح.
@@ -488,11 +653,17 @@ export const adminService = {
 
       // عودة المخزون من صفر إلى ما فوق: إشعارات المشتركين وفراغ اشتراكاتهم
       // داخل معاملة التحديث نفسها — إمّا كاملة أو لا شيء.
-      const cameBackInStock =
-        input.stock !== undefined && previousStock === 0 && Number(input.stock) > 0;
+      //
+      // المخزون بعد الحفظ من القاعدة: لمنتجٍ بألوان هو مجموع ألوانه الفعّالة
+      // (زناد 087) — لونٌ عاد من صفر والمنتج كله كان صفراً عودةٌ للتوفر.
+      const { rows: saved } = await tx.query<{ stock: number }>(
+        'SELECT stock FROM products WHERE id = $1',
+        [id],
+      );
+      const stockAfter = Number(saved[0]!.stock);
+      const cameBackInStock = previousStock === 0 && stockAfter > 0;
       // «قريباً» (084) أُعلن سعره ومخزونه موجود: صار قابلاً للشراء الآن، والمنتظرون
       // الذين أُجِّل تبليغهم ما دام بلا سعر (`stockReturned`) يُبلَّغون الآن.
-      const stockAfter = input.stock !== undefined ? Number(input.stock) : previousStock;
       const priceAnnounced =
         existing.price === null && input.price !== undefined && input.price !== null && stockAfter > 0;
 

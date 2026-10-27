@@ -178,7 +178,7 @@ class _Cart implements CartRepository {
   @override
   Future<CartSnapshot> syncCart() async => CartSnapshot(items: items);
   @override
-  Future<List<CartItem>> addToCart(String productId, {int quantity = 1, String? optionValue}) async => items;
+  Future<List<CartItem>> addToCart(String productId, {int quantity = 1, String? optionValue, String? variantId}) async => items;
   @override
   Future<List<CartItem>> updateQuantity(String lineId, int quantity) async => items;
   @override

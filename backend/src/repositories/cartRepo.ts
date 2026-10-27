@@ -12,7 +12,17 @@ export interface CartLine {
   /** الاسم باللغتين صراحةً (066) — التطبيق يختار بلغة واجهته، `null` = ناقص. */
   productNameAr: string;
   productNameCkb: string | null;
+  /** صورة اللون لسطرٍ بلون (087)، وإلا أولى صور المنتج. */
   productImage: string | null;
+  /**
+   * لون السطر (087) — `null` لمنتجٍ بلا ألوان. الاسم بالعربية في الحقل القديم
+   * كاسم المنتج، واللغتان صريحتان يختار العميل منهما بلغة واجهته.
+   */
+  variantId: string | null;
+  variantColorName: string | null;
+  variantColorNameAr: string | null;
+  variantColorNameCkb: string | null;
+  variantColorHex: string | null;
   optionValue: string | null;
   quantity: number;
   /**
@@ -28,6 +38,7 @@ export interface CartLine {
    * كما هو ولا يحسبه.
    */
   lineTotal: number | null;
+  /** مخزون اللون لسطرٍ بلون، وإلا مخزون المنتج. */
   stock: number;
   /**
    * ترويج التوصيل على المنتج — تحتاجه السلة والدفع لعرض «خصم التوصيل»
@@ -50,17 +61,29 @@ const LINE_FROM = `
   SELECT ci.id, ci.product_id AS "productId", ci.option_value AS "optionValue",
          ci.quantity, ci.created_at AS "createdAt",
          p.name AS "productName", p.name_ckb AS "productNameCkb",
-         p.stock, p.price AS "unitPrice", p.pair_price AS "pairPrice",
+         COALESCE(pv.stock, p.stock) AS stock,
+         p.price AS "unitPrice", p.pair_price AS "pairPrice",
          p.has_delivery_promo AS "hasDeliveryPromo",
          p.delivery_promo_amount AS "deliveryPromoAmount",
-         (SELECT pi.url FROM product_images pi
-          WHERE pi.product_id = p.id ORDER BY pi.sort_order LIMIT 1) AS "productImage"
+         ci.variant_id AS "variantId", pv.color_name AS "variantColorName",
+         pv.color_name_ckb AS "variantColorNameCkb", pv.color_hex AS "variantColorHex",
+         COALESCE(pv.image_url,
+           (SELECT pi.url FROM product_images pi
+            WHERE pi.product_id = p.id ORDER BY pi.sort_order LIMIT 1)) AS "productImage"
   FROM cart_items ci
   JOIN products p ON p.id = ci.product_id
+  LEFT JOIN product_variants pv ON pv.id = ci.variant_id
   WHERE ci.cart_id = $1`;
 
-// العربة المعروضة: لا معطَّل ولا بلا سعر (084). الإرسال يرى الكل فيرفض بالسبب.
-const LINE_SELECT = `${LINE_FROM} AND p.is_active = TRUE AND p.price IS NOT NULL`;
+/**
+ * العربة المعروضة: لا معطَّل ولا بلا سعر (084)، ولا لونٌ موقوف، ولا سطرٌ بلا
+ * لون لمنتجٍ صار بألوان (087) — ما ستُزيله المزامنة لا يُعرض. الإرسال يرى الكل
+ * فيرفض بالسبب.
+ */
+const LINE_SELECT = `${LINE_FROM} AND p.is_active = TRUE AND p.price IS NOT NULL
+  AND (ci.variant_id IS NULL OR pv.is_active)
+  AND (ci.variant_id IS NOT NULL
+       OR NOT EXISTS (SELECT 1 FROM product_variants x WHERE x.product_id = p.id))`;
 
 function mapLine(row: Record<string, unknown>): CartLine {
   return {
@@ -70,6 +93,11 @@ function mapLine(row: Record<string, unknown>): CartLine {
     productNameAr: row.productName as string,
     productNameCkb: kurdishOrNull(row.productNameCkb as string | null),
     productImage: (row.productImage as string | null) ?? null,
+    variantId: (row.variantId as string | null) ?? null,
+    variantColorName: (row.variantColorName as string | null) ?? null,
+    variantColorNameAr: (row.variantColorName as string | null) ?? null,
+    variantColorNameCkb: kurdishOrNull(row.variantColorNameCkb as string | null),
+    variantColorHex: (row.variantColorHex as string | null) ?? null,
     optionValue: (row.optionValue as string | null) ?? null,
     quantity: Number(row.quantity),
     // `Number(null)` صفر — والصفر سعرٌ لا «بلا سعر».
@@ -172,11 +200,19 @@ export const cartRepo = {
       stock: number;
       is_active: boolean;
       priced: boolean;
+      variant_id: string | null;
+      color_name: string | null;
+      color_name_ckb: string | null;
+      variant_active: boolean | null;
+      has_variants: boolean;
     }>(
       `SELECT ci.id, ci.product_id, p.name, p.name_ckb, ci.option_value, ci.quantity,
-              p.stock, p.is_active, p.price IS NOT NULL AS priced
+              COALESCE(pv.stock, p.stock) AS stock, p.is_active, p.price IS NOT NULL AS priced,
+              ci.variant_id, pv.color_name, pv.color_name_ckb, pv.is_active AS variant_active,
+              EXISTS (SELECT 1 FROM product_variants x WHERE x.product_id = p.id) AS has_variants
          FROM cart_items ci
          JOIN products p ON p.id = ci.product_id
+         LEFT JOIN product_variants pv ON pv.id = ci.variant_id
         WHERE ci.cart_id = $1
         ORDER BY ci.created_at, ci.id`,
       [cartId],
@@ -191,6 +227,11 @@ export const cartRepo = {
       stock: Number(row.stock),
       isActive: row.is_active,
       priced: row.priced,
+      variantId: row.variant_id,
+      variantColorName: row.color_name,
+      variantColorNameCkb: kurdishOrNull(row.color_name_ckb),
+      // سطرٌ بلونٍ موقوف، أو بلا لون لمنتجٍ صار بألوان: لا يُشترى كما هو.
+      variantSellable: row.variant_id !== null ? row.variant_active === true : !row.has_variants,
     }));
   },
 
@@ -225,17 +266,17 @@ export const cartRepo = {
   async upsertItem(
     db: pg.Pool | pg.PoolClient,
     userId: string,
-    input: { productId: string; optionValue: string | null; quantity: number },
+    input: { productId: string; variantId: string | null; optionValue: string | null; quantity: number },
   ): Promise<CartLine> {
     const cartId = await ensureCart(db, userId);
     const { rows } = await db.query(
       `WITH locked AS (SELECT id FROM carts WHERE id = $1 FOR KEY SHARE)
-       INSERT INTO cart_items (cart_id, product_id, option_value, quantity)
-       SELECT locked.id, $2::uuid, $3::text, $4::int FROM locked
-       ON CONFLICT (cart_id, product_id, option_value)
+       INSERT INTO cart_items (cart_id, product_id, variant_id, option_value, quantity)
+       SELECT locked.id, $2::uuid, $5::uuid, $3::text, $4::int FROM locked
+       ON CONFLICT (cart_id, product_id, variant_id, option_value)
        DO UPDATE SET quantity = cart_items.quantity + EXCLUDED.quantity
        RETURNING *`,
-      [cartId, input.productId, input.optionValue, input.quantity],
+      [cartId, input.productId, input.optionValue, input.quantity, input.variantId],
     );
     const row = rows[0]!;
     // إعادة جلب السطر الكامل.

@@ -28,12 +28,22 @@ export function localizeProduct<
     descriptionAr: string;
     nameCkb: string | null;
     descriptionCkb: string | null;
+    variants?: ReadonlyArray<{ colorName: string; colorNameAr: string; colorNameCkb: string | null }>;
   },
 >(product: T, locale: AppLocale): T {
   return {
     ...product,
     name: pickLocalized(product.nameAr, product.nameCkb, locale),
     description: pickLocalized(product.descriptionAr, product.descriptionCkb, locale),
+    // اسم اللون (087) بالقاعدة نفسها: الكردي الحاضر وإلا العربي، واللغتان تبقيان.
+    ...(product.variants
+      ? {
+          variants: product.variants.map((variant) => ({
+            ...variant,
+            colorName: pickLocalized(variant.colorNameAr, variant.colorNameCkb, locale),
+          })),
+        }
+      : {}),
   };
 }
 

@@ -20,6 +20,9 @@ function withMedia(product: Product): Product {
   return {
     ...product,
     images: product.images.map((ref) => resolveMediaUrl(ref, origin)).filter((url): url is string => Boolean(url)),
+    ...(product.variants
+      ? { variants: product.variants.map((variant) => ({ ...variant, imageUrl: resolveMediaUrl(variant.imageUrl, origin) ?? '' })) }
+      : {}),
   };
 }
 

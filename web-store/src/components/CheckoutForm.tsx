@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { formatIqd } from '@/lib/format';
 import type { CheckoutQuote, Governorate, QuoteIssue, Zone } from '@/lib/types';
+import { lineColorName } from '@/lib/variants';
 import { bff } from './client-api';
 
 const CART_CONFLICTS = new Set([
@@ -13,6 +14,8 @@ const CART_CONFLICTS = new Set([
   'PRODUCT_UNAVAILABLE',
   'PRODUCT_NOT_PRICED',
   'QUOTE_CHANGED',
+  'VARIANT_UNAVAILABLE',
+  'VARIANT_OUT_OF_STOCK',
 ]);
 
 function issueText(issue: QuoteIssue, name: string): string {
@@ -34,6 +37,7 @@ export function CheckoutForm({
   governorates,
   expectedPrices,
   productNames,
+  colorNames = {},
   defaultPhone,
   idempotencyKey,
 }: {
@@ -41,6 +45,8 @@ export function CheckoutForm({
   expectedPrices: Array<{ productId: string; unitPrice: number }>;
   /** productId → display name, for the reviewed lines (the quote carries ids only). */
   productNames: Record<string, string>;
+  /** variantId → Arabic colour name, so an issue on one colour names it («المنتج — اللون»). */
+  colorNames?: Record<string, string>;
   defaultPhone: string;
   idempotencyKey: string;
 }) {
@@ -213,9 +219,10 @@ export function CheckoutForm({
           <>
             <ul className="review-lines">
               {quote.lines.map((line) => (
-                <li key={`${line.productId}:${line.optionValue ?? ''}`} className="summary-row">
+                <li key={`${line.productId}:${line.variantId ?? ''}:${line.optionValue ?? ''}`} className="summary-row">
                   <span>
                     {nameOf(line.productId)}
+                    {lineColorName(line) ? ` — ${lineColorName(line)}` : ''}
                     {line.optionValue ? ` (${line.optionValue})` : ''} × {line.quantity}
                   </span>
                   <span>{formatIqd(line.lineTotal)}</span>
@@ -227,7 +234,14 @@ export function CheckoutForm({
                 <p>عدّل سلتك قبل التأكيد:</p>
                 <ul>
                   {quote.issues.map((issue) => (
-                    <li key={`${issue.code}:${issue.productId}`}>{issueText(issue, nameOf(issue.productId))}</li>
+                    <li key={`${issue.code}:${issue.productId}:${issue.variantId ?? ''}`}>
+                      {issueText(
+                        issue,
+                        issue.variantId && colorNames[issue.variantId]
+                          ? `${nameOf(issue.productId)} — ${colorNames[issue.variantId]}`
+                          : nameOf(issue.productId),
+                      )}
+                    </li>
                   ))}
                 </ul>
                 <Link href="/cart">الرجوع إلى السلة</Link>

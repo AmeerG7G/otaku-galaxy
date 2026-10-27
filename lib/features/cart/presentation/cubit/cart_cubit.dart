@@ -73,11 +73,13 @@ class CartCubit extends Cubit<CartState> {
     Product product, {
     int quantity = 1,
     String? selectedOption,
+    String? variantId,
   }) async {
     try {
       _items = await _repository.addToCart(
         product.id,
         optionValue: selectedOption,
+        variantId: variantId,
         quantity: quantity,
       );
       _emit();
@@ -88,19 +90,30 @@ class CartCubit extends Cubit<CartState> {
   }
 
   /// زيادة كمية منتج حتى حدود المخزون المتاح.
-  Future<void> increase(String productId, {String? selectedOption}) async {
-    final item = _itemByProduct(productId, selectedOption);
+  ///
+  /// [lineId] يعيّن السطر بعينه — المنتج نفسه بلونين سطران (STEP 74)،
+  /// فالمنتج والخيار وحدهما لا يميّزان بينهما.
+  Future<void> increase(
+    String productId, {
+    String? selectedOption,
+    String? lineId,
+  }) async {
+    final item = _find(productId, selectedOption, lineId);
     if (item == null || item.lineId == null) return;
     if (item.quantity >= item.product.stock) return;
     await _updateQuantity(item.lineId!, item.quantity + 1);
   }
 
   /// إنقاص كمية منتج؛ تُحذف الكمية الأخيرة من السلة.
-  Future<void> decrease(String productId, {String? selectedOption}) async {
-    final item = _itemByProduct(productId, selectedOption);
+  Future<void> decrease(
+    String productId, {
+    String? selectedOption,
+    String? lineId,
+  }) async {
+    final item = _find(productId, selectedOption, lineId);
     if (item == null) return;
     if (item.quantity <= 1) {
-      await remove(productId, selectedOption: selectedOption);
+      await remove(productId, selectedOption: selectedOption, lineId: lineId);
       return;
     }
     if (item.lineId == null) return;
@@ -108,8 +121,12 @@ class CartCubit extends Cubit<CartState> {
   }
 
   /// إزالة منتج من السلة نهائياً.
-  Future<void> remove(String productId, {String? selectedOption}) async {
-    final item = _itemByProduct(productId, selectedOption);
+  Future<void> remove(
+    String productId, {
+    String? selectedOption,
+    String? lineId,
+  }) async {
+    final item = _find(productId, selectedOption, lineId);
     if (item == null) return;
     if (item.lineId == null) {
       _items = _items.where((it) => it.product.id != productId).toList();
@@ -141,6 +158,16 @@ class CartCubit extends Cubit<CartState> {
 
   /// مزامنة مع الخادم لتصحيح أي اختلاف بعد تعديلٍ فشل.
   Future<void> _sync() => sync();
+
+  CartItem? _find(String productId, String? selectedOption, String? lineId) {
+    if (lineId != null) {
+      for (final item in _items) {
+        if (item.lineId == lineId) return item;
+      }
+      return null;
+    }
+    return _itemByProduct(productId, selectedOption);
+  }
 
   CartItem? _itemByProduct(String productId, String? selectedOption) {
     for (final item in _items) {

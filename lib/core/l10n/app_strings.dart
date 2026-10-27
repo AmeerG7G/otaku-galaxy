@@ -140,6 +140,10 @@ class AppStrings {
     'cashOnDelivery': 'الدفع عند الاستلام',
     'cashOnDeliveryNote': 'تدفع بعد وصول الطلب — دون أي دفع مسبق.',
     'chooseOptionsFirst': 'اختر الخيارات أولاً',
+    // ═══ STEP 74 — ألوان المنتج ═══
+    'productColor': 'اللون',
+    'chooseColorFirst': 'اختر اللون أولاً',
+    'colorValue': 'اللون: {color}',
     'product': 'المنتج',
     'productLoadFailed': 'تعذّر تحميل هذا المنتج. تأكد من اتصالك وحاول مرة أخرى.',
     'shareProductText': '{name}\n{url}',
@@ -801,6 +805,10 @@ class AppStrings {
     'cashOnDelivery': 'پارەدان لە کاتی وەرگرتن',
     'cashOnDeliveryNote': 'دوای گەیشتنی داواکارییەکە پارە دەدەیت — بێ هیچ پارەدانێکی پێشوەخت.',
     'chooseOptionsFirst': 'سەرەتا هەڵبژاردنەکان دیاری بکە',
+    // ═══ STEP 74 — ألوان المنتج (مسوّدة تنتظر ناطقاً) ═══
+    'productColor': 'ڕەنگ',
+    'chooseColorFirst': 'سەرەتا ڕەنگەکە دیاری بکە',
+    'colorValue': 'ڕەنگ: {color}',
     'product': 'بەرهەم',
     'productLoadFailed': 'بارکردنی ئەم بەرهەمە سەرکەوتوو نەبوو. لە پەیوەندییەکەت دڵنیابەرەوە و دووبارە هەوڵ بدەوە.',
     'shareProductText': '{name}\n{url}',

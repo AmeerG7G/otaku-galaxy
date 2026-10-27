@@ -45,6 +45,7 @@ const draft = {
   subcategoryId: null,
   images: [],
   options: [] as Array<{ name: string; values: string[] }>,
+  variants: [],
   isActive: false,
   isOffer: false,
   isSelected: false,

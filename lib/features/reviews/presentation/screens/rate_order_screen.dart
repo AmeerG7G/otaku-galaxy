@@ -7,6 +7,7 @@ import '../../../../core/design_system/design_system.dart';
 import '../../../../core/l10n/gender.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../orders/domain/entities/order.dart';
+import '../../../cart/domain/entities/cart_item.dart';
 import '../../../products/domain/entities/product.dart';
 import '../../domain/entities/review.dart';
 import '../cubit/reviews_cubit.dart';
@@ -68,6 +69,15 @@ class _RateOrderScreenState extends State<RateOrderScreen> {
     return null;
   }
 
+  /// أول بندٍ لكل منتج — التقييم لكل (زبون، منتج) لا لكل بند.
+  static List<CartItem> _oneItemPerProduct(List<CartItem> items) {
+    final seen = <String>{};
+    return [
+      for (final item in items)
+        if (seen.add(item.product.id)) item,
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -107,7 +117,9 @@ class _RateOrderScreenState extends State<RateOrderScreen> {
                           const EdgeInsets.fromLTRB(18, 12, 18, 26),
                         ),
                         children: [
-                          for (final item in widget.order.items) ...[
+                          // تقييمٌ واحد لكل منتج: المنتج نفسه بلونين (STEP 74)
+                          // أو بخيارين بندان في الطلب وبطاقةٌ واحدة هنا.
+                          for (final item in _oneItemPerProduct(widget.order.items)) ...[
                             _ProductReviewCard(
                               product: item.product,
                               review: _reviewOf(state, item.product.id),

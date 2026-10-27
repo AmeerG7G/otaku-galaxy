@@ -11,9 +11,13 @@ abstract class CartRepository {
   Future<CartSnapshot> syncCart();
 
   /// إضافة منتج/دمج الكمية (يترك الخادم التحقق من المخزون).
+  ///
+  /// [variantId] لون المنتج (STEP 74) — إلزاميٌّ لمنتجٍ بألوان (الخادم يرفض
+  /// غيابه بـ`VARIANT_REQUIRED`)، و`null` لمنتجٍ بلا ألوان.
   Future<List<CartItem>> addToCart(
     String productId, {
     String? optionValue,
+    String? variantId,
     int quantity = 1,
   });
 
