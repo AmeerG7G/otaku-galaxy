@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from '@/components/Link';
 import { notFound } from 'next/navigation';
 import { ConfirmReceiptButton } from '@/components/ConfirmReceiptButton';
+import { Swatch } from '@/components/VariantSelection';
 import { ApiError } from '@/lib/api';
 import { isUuid } from '@/lib/catalog';
 import { mediaOrigin } from '@/lib/config';
@@ -9,6 +10,7 @@ import { formatDateTime, formatIqd, localPhone, orderStatusLabel } from '@/lib/f
 import { resolveMediaUrl } from '@/lib/media';
 import { requireSession, sessionRead } from '@/lib/page-session';
 import type { Order } from '@/lib/types';
+import { lineColorName } from '@/lib/variants';
 
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = { title: 'تفاصيل الطلب', robots: { index: false } };
@@ -56,7 +58,7 @@ export default async function OrderPage({ params, searchParams }: Props) {
             {order.items.map((item, index) => {
               const image = resolveMediaUrl(item.imageUrl, origin);
               return (
-                <li key={`${item.productId ?? 'gone'}:${item.optionValue ?? ''}:${index}`} className="card cart-line">
+                <li key={`${item.productId ?? 'gone'}:${item.variantId ?? ''}:${item.optionValue ?? ''}:${index}`} className="card cart-line">
                   {image ? (
                     // eslint-disable-next-line @next/next/no-img-element -- API media origin
                     <img src={image} alt="" width={72} height={72} loading="lazy" />
@@ -71,6 +73,13 @@ export default async function OrderPage({ params, searchParams }: Props) {
                     ) : (
                       <strong>{item.productName}</strong>
                     )}
+                    {lineColorName(item) ? (
+                      // The colour as it was at order time — the image is that colour's snapshot.
+                      <div className="hint line-color">
+                        <Swatch hex={item.variantColorHex} />
+                        اللون: {lineColorName(item)}
+                      </div>
+                    ) : null}
                     {item.optionValue ? <div className="hint">{item.optionValue}</div> : null}
                     <div className="hint">
                       {formatIqd(item.price)} × {item.quantity}

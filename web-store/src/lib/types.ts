@@ -35,6 +35,38 @@ export interface ProductOption {
   values: string[];
 }
 
+/**
+ * A colour of a product (STEP 74, migration 087) — its own image and its own
+ * stock. Customers never see an inactive colour; a colour with stock 0 is shown
+ * as unavailable and cannot be chosen.
+ */
+export interface ProductVariant {
+  id: string;
+  /** Resolved for the request language (the store asks for Arabic). */
+  colorName: string;
+  colorNameAr: string;
+  colorNameCkb: string | null;
+  /** `#RRGGBB` or `null`. */
+  colorHex: string | null;
+  imageUrl: string;
+  stock: number;
+  isActive: boolean;
+  sortOrder: number;
+}
+
+/**
+ * The colour snapshot on a cart line, a quote line and an order item — all
+ * `null` (or absent from an older API) for a line without a colour.
+ * `variantColorName` is Arabic, like `productName`.
+ */
+export interface LineVariant {
+  variantId?: string | null;
+  variantColorName?: string | null;
+  variantColorNameAr?: string | null;
+  variantColorNameCkb?: string | null;
+  variantColorHex?: string | null;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -54,6 +86,8 @@ export interface Product {
   deliveryPromoAmount: number;
   restockAt: string | null;
   options?: ProductOption[];
+  /** Ordered colours; `[]`/absent = no colours (the product's own stock is sold). */
+  variants?: ProductVariant[];
 }
 
 export const PRODUCT_SORTS = ['newest', 'price_asc', 'price_desc', 'rating'] as const;
@@ -73,7 +107,7 @@ export interface Zone {
   deliveryFee: number;
 }
 
-export interface CartLine {
+export interface CartLine extends LineVariant {
   id: string;
   productId: string;
   productName: string;
@@ -84,6 +118,7 @@ export interface CartLine {
   pairPrice?: number | null;
   /** From the server, after the two-piece offer across this product's lines — never computed here. */
   lineTotal: number;
+  /** The colour's stock for a colour line, else the product's. */
   stock: number;
   hasDeliveryPromo: boolean;
   deliveryPromoAmount: number;
@@ -121,7 +156,7 @@ export interface CheckoutQuote {
   fingerprint: string | null;
 }
 
-export interface QuoteLine {
+export interface QuoteLine extends LineVariant {
   productId: string;
   optionValue: string | null;
   quantity: number;
@@ -130,12 +165,14 @@ export interface QuoteLine {
   lineTotal: number;
 }
 
-export type QuoteIssue =
+export type QuoteIssue = (
   | { code: 'PRODUCT_UNAVAILABLE'; productId: string }
   | { code: 'PRODUCT_NOT_PRICED'; productId: string }
-  | { code: 'INSUFFICIENT_STOCK'; productId: string; available: number };
+  | { code: 'INSUFFICIENT_STOCK'; productId: string; available: number }
+  | { code: 'VARIANT_UNAVAILABLE'; productId: string }
+) & { variantId?: string | null };
 
-export interface OrderItem {
+export interface OrderItem extends LineVariant {
   productId: string | null;
   productName: string;
   imageUrl: string | null;
