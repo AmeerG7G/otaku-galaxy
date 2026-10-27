@@ -12214,6 +12214,6 @@ product stock are two saves; Kurdish texts are drafts.
 | Two server processes, shared DB | `ROUNDS=5 CONTENTION=6 npx tsx scripts/oversell-multi-instance.ts` | 0 failures; colour round: 3/6 approvals, red 0, blue 3 untouched, product 3 |
 | Dashboard | `npx tsc -b`, `npx vite build --mode staging`, `npx vitest run` | clean, built, 51 files **445/445** |
 | Web store | `tsc --noEmit`, `eslint .`, `vitest run`, `next build` | clean, clean, **63/63**, built |
-| App | `flutter analyze`; `flutter test --exclude-tags integration` | no issues; **2559/2559** (+ review dedupe test, 7/7 in its file) |
+| App | `flutter analyze`; `flutter test --exclude-tags integration` | no issues; **2560/2560** on the final tree |
 
 Not verified: a real device or browser session against a running API, and Staging (not deployed).
