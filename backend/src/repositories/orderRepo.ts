@@ -16,7 +16,17 @@ export interface OrderItemSnapshot {
    * طلبٌ أقدم من 066 (لا تُختلق لقطةٌ لتاريخٍ مضى). التطبيق يختار بلغة واجهته.
    */
   productNameCkb: string | null;
+  /** صورة المنتج وقت الطلب — ولبندٍ بلون صورةُ اللون (087). */
   imageUrl: string | null;
+  /**
+   * لقطة اللون وقت الطلب (087) — `null` كلها لبندٍ بلا لون. الاسم العربي في
+   * `variantColorName` كاسم المنتج، و`variantColorNameAr`/`Ckb` صريحان.
+   */
+  variantId: string | null;
+  variantColorName: string | null;
+  variantColorNameAr?: string | null;
+  variantColorNameCkb: string | null;
+  variantColorHex: string | null;
   optionValue: string | null;
   price: number;
   /**
@@ -130,6 +140,11 @@ const ORDER_WITH_CUSTOMER = `
               'productNameAr', oi.product_name,
               'productNameCkb', oi.product_name_ckb,
               'imageUrl', oi.image_url,
+              'variantId', oi.variant_id,
+              'variantColorName', oi.variant_color_name,
+              'variantColorNameAr', oi.variant_color_name,
+              'variantColorNameCkb', oi.variant_color_name_ckb,
+              'variantColorHex', oi.variant_color_hex,
               'optionValue', oi.option_value,
               'price', oi.price,
               'pairPrice', oi.pair_price,
@@ -239,6 +254,8 @@ function mapOrder(row: Record<string, unknown>): OrderWithItems {
 function mapAdminOrder(
   row: Record<string, unknown>,
   stockById: ReadonlyMap<string, number>,
+  /** مخزون كل لونٍ في الطلب (087) — مخزون البند بلونٍ هو مخزون لونه. */
+  stockByVariant: ReadonlyMap<string, number> = new Map(),
 ): AdminOrderWithItems {
   const order = mapOrder(row);
   return {
@@ -246,7 +263,11 @@ function mapAdminOrder(
     deliveryDiscountExcess: Number(row.delivery_discount_excess ?? 0),
     items: order.items.map((item) => ({
       ...item,
-      currentStock: item.productId ? (stockById.get(item.productId) ?? null) : null,
+      currentStock: item.variantId
+        ? (stockByVariant.get(item.variantId) ?? null)
+        : item.productId
+          ? (stockById.get(item.productId) ?? null)
+          : null,
     })),
   };
 }
@@ -393,8 +414,9 @@ export const orderRepo = {
       await db.query(
         `INSERT INTO order_items (
            order_id, product_id, product_name, product_name_ckb, image_url, option_value,
-           price, quantity, line_total, pair_price
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+           price, quantity, line_total, pair_price,
+           variant_id, variant_color_name, variant_color_name_ckb, variant_color_hex
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
         [
           order.id,
           item.productId,
@@ -406,6 +428,10 @@ export const orderRepo = {
           item.quantity,
           item.lineTotal,
           item.pairPrice,
+          item.variantId,
+          item.variantColorName,
+          item.variantColorNameCkb,
+          item.variantColorHex,
         ],
       );
     }
@@ -450,11 +476,28 @@ export const orderRepo = {
           .filter((productId): productId is string => Boolean(productId)),
       ),
     ];
-    const { rows: stock } = await db.query<{ id: string; stock: number }>(
-      'SELECT id, stock FROM products WHERE id = ANY($1::uuid[])',
-      [productIds],
+    const variantIds = [
+      ...new Set(
+        ((rows[0].items as OrderItemSnapshot[]) ?? [])
+          .map((item) => item.variantId)
+          .filter((variantId): variantId is string => Boolean(variantId)),
+      ),
+    ];
+    const [{ rows: stock }, { rows: variantStock }] = await Promise.all([
+      db.query<{ id: string; stock: number }>(
+        'SELECT id, stock FROM products WHERE id = ANY($1::uuid[])',
+        [productIds],
+      ),
+      db.query<{ id: string; stock: number }>(
+        'SELECT id, stock FROM product_variants WHERE id = ANY($1::uuid[])',
+        [variantIds],
+      ),
+    ]);
+    return mapAdminOrder(
+      rows[0],
+      new Map(stock.map((p) => [p.id, Number(p.stock)])),
+      new Map(variantStock.map((v) => [v.id, Number(v.stock)])),
     );
-    return mapAdminOrder(rows[0], new Map(stock.map((p) => [p.id, Number(p.stock)])));
   },
 
   async findById(db: pg.Pool | pg.PoolClient, id: string): Promise<OrderWithItems | null> {

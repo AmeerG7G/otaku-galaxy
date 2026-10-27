@@ -141,6 +141,8 @@ export function priceOrder(input: OrderPricingInput): OrderPricing {
 /** سطرٌ مسعَّر كما يراه الزبون في المراجعة ويُنشأ منه الطلب. */
 export interface QuotedLine {
   productId: string;
+  /** لون السطر (087)؛ `null`/غائب = بلا لون — البصمة كما كانت حرفاً بحرف. */
+  variantId?: string | null;
   optionValue: string | null;
   quantity: number;
   unitPrice: number;
@@ -167,10 +169,18 @@ export interface QuoteFingerprintInput {
  * يدفعه الزبون ولا يراه. الترتيب ثابت فلا تختلف بصمتان لترتيب الأسطر.
  */
 export function quoteFingerprint(input: QuoteFingerprintInput): string {
+  // اللون (087) يدخل السطر حين يوجد وحده، فبصمة عربةٍ بلا ألوان لا تتغيّر.
   const lines = input.lines
-    .map((line) => [line.productId, line.optionValue, line.quantity, line.unitPrice] as const)
+    .map((line) =>
+      line.variantId
+        ? ([line.productId, line.optionValue, line.quantity, line.unitPrice, line.variantId] as const)
+        : ([line.productId, line.optionValue, line.quantity, line.unitPrice] as const),
+    )
     .sort((a, b) => {
       if (a[0] !== b[0]) return a[0] < b[0] ? -1 : 1;
+      const variantA = a[4] ?? '';
+      const variantB = b[4] ?? '';
+      if (variantA !== variantB) return variantA < variantB ? -1 : 1;
       const optionA = a[1] ?? '';
       const optionB = b[1] ?? '';
       if (optionA !== optionB) return optionA < optionB ? -1 : 1;

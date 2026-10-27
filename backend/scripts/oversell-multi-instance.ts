@@ -24,6 +24,8 @@
  *   ٤. يطلق قبولَي الطلبين إلى المنفذين المختلفين عند طابعٍ زمني واحد.
  *   ٥. يتحقّق: ٢٠٠ واحد، ٤٠٩ `INSUFFICIENT_STOCK` واحد، مبيعٌ ٣، مخزونٌ ٠،
  *      ولا مخزون سالب، والخاسر باقٍ في الانتظار لا مقبولاً بلا بضاعة.
+ *   ٦. ألوان المنتج (087): قبولاتٌ متزامنة على لونٍ واحد — يُباع مخزونه وحده،
+ *      واللون الآخر لا يُمسّ.
  *
  * التشغيل:
  *   cd backend && npx tsx scripts/oversell-multi-instance.ts
@@ -387,6 +389,62 @@ async function main() {
   if (created !== STOCK) fail(`ضغط: ${created} قبولاً نجح — المتوقَّع ${STOCK}`);
   else ok(`ضغط: ${created} قبولاً نجح و${rejected} رُفض · مبيع ${c.sold} · مخزون ${c.stock}`);
 
+  // ═════════ الجزء ٣: ألوان المنتج (087) — قبولاتٌ على لونٍ واحد عبر الخادمين ═════════
+  // كل لونٍ مخزونٌ مستقل: الأحمر يُباع حتى ينفد ولا قطعة فوقه، والأزرق لا يُمسّ،
+  // ومخزون المنتج (المشتقّ) = ما بقي في اللونين.
+  log(`\nألوان: ${CONTENTION} طلباً بقطعةٍ حمراء على أحمر ${STOCK} وأزرق ${STOCK}، القبولات على الخادمين`);
+  const variantProduct = await scalar<string>(
+    `INSERT INTO products (name, description, price, category_id, stock, is_active)
+     VALUES ($1, 'منتج تزامن', 1000, $2, 0, TRUE) RETURNING id`,
+    [`MULTIINST V-${Date.now()}`, categoryId],
+  );
+  const redId = await scalar<string>(
+    `INSERT INTO product_variants (product_id, color_name, image_url, stock, sort_order)
+     VALUES ($1, 'أحمر', '/uploads/product/red.png', $2, 0) RETURNING id`,
+    [variantProduct, STOCK],
+  );
+  const blueId = await scalar<string>(
+    `INSERT INTO product_variants (product_id, color_name, image_url, stock, sort_order)
+     VALUES ($1, 'أزرق', '/uploads/product/blue.png', $2, 1) RETURNING id`,
+    [variantProduct, STOCK],
+  );
+  const vBuyers = await Promise.all(
+    Array.from({ length: CONTENTION }, (_, i) => customer(PORTS[i % 2]!, ADMIN_TOKENS[i % 2]!)),
+  );
+  await Promise.all(
+    vBuyers.map((b, i) =>
+      api(PORTS[i % 2]!, 'POST', '/cart', { productId: variantProduct, variantId: redId, quantity: 1 }, b.token),
+    ),
+  );
+  const vSubmitted = await Promise.all(
+    vBuyers.map((b, i) => api(PORTS[i % 2]!, 'POST', '/orders', ORDER(governorateId), b.token)),
+  );
+  const vPending = vSubmitted.filter((r) => r.status === 201).map((r) => r.body.data.id as string);
+  if (vPending.length !== CONTENTION) fail(`ألوان: ${vPending.length}/${CONTENTION} طلباً أُنشئ`);
+  const vStart = Date.now() + 400;
+  const vResults = await Promise.all(
+    vPending.map((id, i) => atBarrier(vStart, () => approve(PORTS[i % 2]!, id, ADMIN_TOKENS[i % 2]!))),
+  );
+  const vAccepted = vResults.filter((r) => r.status === 200).length;
+  const red = Number(await scalar<number>('SELECT stock FROM product_variants WHERE id = $1', [redId]));
+  const blue = Number(await scalar<number>('SELECT stock FROM product_variants WHERE id = $1', [blueId]));
+  const vTotal = Number(await scalar<number>('SELECT stock FROM products WHERE id = $1', [variantProduct]));
+  const vSold = Number(
+    await scalar<string>(
+      `SELECT COALESCE(SUM(oi.quantity),0)::text
+         FROM order_items oi JOIN orders o ON o.id = oi.order_id
+        WHERE oi.variant_id = $1 AND o.status NOT IN ('PENDING_ADMIN_CONFIRMATION', 'REJECTED')`,
+      [redId],
+    ),
+  );
+  if (vAccepted !== STOCK || vSold !== STOCK) fail(`ألوان: ${vAccepted} قبولاً و${vSold} مبيعاً — المتوقَّع ${STOCK}`);
+  if (red !== 0) fail(`ألوان: مخزون الأحمر ${red} ≠ 0`);
+  if (blue !== STOCK) fail(`ألوان: الأزرق مُسّ (${blue} ≠ ${STOCK})`);
+  if (vTotal !== STOCK) fail(`ألوان: مخزون المنتج ${vTotal} ≠ ${STOCK}`);
+  if (vAccepted === STOCK && red === 0 && blue === STOCK && vTotal === STOCK) {
+    ok(`ألوان: ${vAccepted} قبولاً نجح · أحمر ${red} · أزرق ${blue} · منتج ${vTotal}`);
+  }
+
   // ═════════ تنظيف ═════════
   await db.query(
     `DELETE FROM order_status_history WHERE order_id IN (
@@ -412,7 +470,7 @@ async function main() {
 
   log(
     `\nالحصيلة: ${ROUNDS} جولة قبولين · نجاح ${successes} · رفض ${conflicts} · ` +
-      `ضغط ${created}/${CONTENTION} · أعطال ${failures}`,
+      `ضغط ${created}/${CONTENTION} · ألوان ${vAccepted}/${CONTENTION} · أعطال ${failures}`,
   );
   if (failures > 0) {
     console.error('\n✗ فشل: الحماية لا تصمد عبر العمليات المستقلّة');

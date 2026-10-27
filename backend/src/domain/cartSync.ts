@@ -8,9 +8,10 @@
  * دالةٌ صافية: تقرّر فقط، والتنفيذ في `cartService.sync` داخل معاملةٍ تقفل
  * العربة.
  *
- * [CRITICAL] القياس على **المنتج** لا على السطر — `products.stock` عمودٌ واحد
- * للمنتج، وسطران بخيارين يتقاسمانه (القاعدة نفسها في `addItem` و`create`).
- * الأسبق إضافةً يحتفظ بقطعه أولاً؛ الأحدث يُخفَّض أو يُزال.
+ * [CRITICAL] القياس على **مخزون السطر** لا على السطر — اللون لسطرٍ بلون (087)،
+ * وإلا `products.stock` عمودٌ واحد للمنتج يتقاسمه سطران بخيارين ([stockPoolKey]،
+ * القاعدة نفسها في `addItem` و`create`). الأسبق إضافةً يحتفظ بقطعه أولاً؛
+ * الأحدث يُخفَّض أو يُزال.
  *
  * زيادة المخزون لا ترفع كمية أحد: المزامنة تُصلح عربةً صارت غير صالحة، ولا
  * تقرّر عن الزبون أن يشتري أكثر.
@@ -29,6 +30,15 @@ export interface CartSyncLine {
   isActive: boolean;
   /** للمنتج سعرٌ معلن؟ (084) — بلا سعر يُعامَل كالمعطَّل: يُزال السطر. */
   priced: boolean;
+  /** لون السطر (087)؛ `null` لمنتجٍ بلا ألوان. `stock` حينها مخزون اللون. */
+  variantId: string | null;
+  variantColorName: string | null;
+  variantColorNameCkb: string | null;
+  /**
+   * `false`: اللون موقوف، أو السطر بلا لون ومنتجه صار بألوان — لا يُعرف أيّ
+   * لونٍ أراد الزبون، فلا يُختار عنه: يُزال السطر.
+   */
+  variantSellable: boolean;
 }
 
 export type CartAdjustmentReason = 'unavailable' | 'reduced';
@@ -42,11 +52,24 @@ export interface CartAdjustment {
   productNameAr: string;
   productNameCkb: string | null;
   optionValue: string | null;
+  /** لون السطر (087) — الاسم العربي في الحقل القديم واللغتان صريحتان. */
+  variantId: string | null;
+  variantColorName: string | null;
+  variantColorNameAr: string | null;
+  variantColorNameCkb: string | null;
   /** `unavailable`: المنتج معطَّل أو نفد أو بلا سعرٍ معلن — أُزيل السطر. `reduced`: خُفِّضت الكمية (إلى صفر = أُزيل). */
   reason: CartAdjustmentReason;
   previousQuantity: number;
   /** الكمية بعد المزامنة؛ صفرٌ يعني أن السطر أُزيل. */
   quantity: number;
+}
+
+/**
+ * مفتاح المخزون الذي يُقاس عليه السطر: اللون لسطرٍ بلون (087) — كل لونٍ مخزونٌ
+ * مستقل — وإلا المنتج. القاعدة نفسها في العربة والطلب والقبول.
+ */
+export function stockPoolKey(line: { productId: string; variantId: string | null }): string {
+  return line.variantId !== null ? `v:${line.variantId}` : `p:${line.productId}`;
 }
 
 /**
@@ -64,17 +87,23 @@ export function planCartSync(lines: readonly CartSyncLine[]): CartAdjustment[] {
       productNameAr: line.productName,
       productNameCkb: line.productNameCkb,
       optionValue: line.optionValue,
+      variantId: line.variantId,
+      variantColorName: line.variantColorName,
+      variantColorNameAr: line.variantColorName,
+      variantColorNameCkb: line.variantColorNameCkb,
       previousQuantity: line.quantity,
     };
 
-    if (!line.isActive || !line.priced || line.stock <= 0) {
+    if (!line.isActive || !line.priced || !line.variantSellable || line.stock <= 0) {
       adjustments.push({ ...base, reason: 'unavailable', quantity: 0 });
       continue;
     }
 
-    const left = remaining.get(line.productId) ?? line.stock;
+    // المخزون الذي يتقاسمه السطر: اللون لسطرٍ بلون (087)، وإلا المنتج.
+    const pool = stockPoolKey(line);
+    const left = remaining.get(pool) ?? line.stock;
     const kept = Math.min(line.quantity, left);
-    remaining.set(line.productId, left - kept);
+    remaining.set(pool, left - kept);
     if (kept < line.quantity) {
       adjustments.push({ ...base, reason: 'reduced', quantity: kept });
     }
