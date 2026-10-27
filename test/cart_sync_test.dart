@@ -93,6 +93,7 @@ class _ScriptedCart implements CartRepository {
   Future<List<CartItem>> addToCart(
     String productId, {
     String? optionValue,
+    String? variantId,
     int quantity = 1,
   }) async => mutationResult;
 

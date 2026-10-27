@@ -17,6 +17,7 @@ class CartAdjustment {
     required this.reason,
     required this.previousQuantity,
     required this.quantity,
+    this.color,
   });
 
   factory CartAdjustment.fromJson(Map<String, dynamic> json) => CartAdjustment(
@@ -27,6 +28,7 @@ class CartAdjustment {
         : CartAdjustmentReason.unavailable,
     previousQuantity: (json['previousQuantity'] as num?)?.toInt() ?? 0,
     quantity: (json['quantity'] as num?)?.toInt() ?? 0,
+    color: LineColor.fromLineJson(json),
   );
 
   final String lineId;
@@ -36,6 +38,9 @@ class CartAdjustment {
 
   /// الكمية بعد المزامنة؛ صفرٌ يعني أن السطر أُزيل.
   final int quantity;
+
+  /// لون السطر المعدَّل (STEP 74)؛ `null` لسطرٍ بلا لون.
+  final LineColor? color;
 }
 
 /// العربة كما هي على الخادم الآن، وما عدّله الخادم فيها لتبقى صالحة.

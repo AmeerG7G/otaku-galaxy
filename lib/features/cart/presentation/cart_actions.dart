@@ -18,6 +18,8 @@ Future<bool> addToCartGuarded(
   required Product product,
   int quantity = 1,
   String? selectedOption,
+  String? variantId,
+  void Function(Object error)? onError,
 }) async {
   // «السعر يُعلن لاحقاً» (084) لا يُضاف أبداً — الخادم يرفضه أيضاً
   // (`PRODUCT_NOT_PRICED`)؛ هذا الحارس يمنع أي شاشةٍ قادمة من محاولته.
@@ -34,9 +36,13 @@ Future<bool> addToCartGuarded(
       product,
       quantity: quantity,
       selectedOption: selectedOption,
+      variantId: variantId,
     );
     return true;
-  } catch (_) {
+  } catch (error) {
+    // العربة تُزامَن أصلاً عند الفشل ([CartCubit.add])؛ [onError] لشاشةٍ تحتاج السبب
+    // (رفض لونٍ نفد أو عُطِّل، STEP 74).
+    onError?.call(error);
     return false;
   }
 }

@@ -198,6 +198,8 @@ class Order {
       // ما دفعه الزبون عن السطر — لقطةٌ محفوظة، قد تقلّ عن السعر × الكمية
       // بعرض القطعتين (085).
       serverLineTotal: (json['lineTotal'] as num?)?.toDouble(),
+      // لقطة اللون وقت الطلب (STEP 74)؛ `imageUrl` أعلاه صورة اللون المحفوظة.
+      color: LineColor.fromLineJson(json),
     );
   }
 }

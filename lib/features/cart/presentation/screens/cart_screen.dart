@@ -15,6 +15,7 @@ import '../../../products/domain/entities/product.dart';
 import '../../domain/entities/cart_item.dart';
 import '../cubit/cart_cubit.dart';
 import '../cubit/cart_state.dart';
+import '../widgets/line_color_label.dart';
 import '../../../settings/presentation/cubit/locale_cubit.dart';
 import '../../../visuals/domain/visual_slot.dart';
 
@@ -385,6 +386,11 @@ class _CartItemCard extends StatelessWidget {
                     ),
                   ],
                 ),
+                // لون السطر (STEP 74) — الصورة أعلاه صورة اللون نفسه.
+                if (item.color case final color?) ...[
+                  const SizedBox(height: 6),
+                  LineColorLabel(color: color, fontSize: 11),
+                ],
                 if (option != null && option.trim().isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Container(
@@ -428,10 +434,12 @@ class _CartItemCard extends StatelessWidget {
                       onIncrease: () => cart.increase(
                         item.product.id,
                         selectedOption: item.selectedOption,
+                        lineId: item.lineId,
                       ),
                       onDecrease: () => cart.decrease(
                         item.product.id,
                         selectedOption: item.selectedOption,
+                        lineId: item.lineId,
                       ),
                     ),
                   ],
@@ -449,7 +457,7 @@ class _CartItemCard extends StatelessWidget {
     final confirmed = await showOtakuConfirm(
       context: context,
       title: context.strings('removeProduct'),
-      message: context.strings.p('removeProductConfirm', {'name': localizedProductName(item.product, context.language)}),
+      message: context.strings.p('removeProductConfirm', {'name': lineDisplayName(item, context.language)}),
       confirmLabel: context.strings('remove'),
       cancelLabel: context.strings('cancel'),
       destructive: true,
@@ -457,11 +465,15 @@ class _CartItemCard extends StatelessWidget {
       messageTranslations: [
         for (final l in AppLanguage.values)
           AppStrings.of(l).p('removeProductConfirm', {
-            'name': localizedProductName(item.product, l),
+            'name': lineDisplayName(item, l),
           }),
       ],
     );
     if (confirmed != true) return;
-    await cart.remove(item.product.id, selectedOption: item.selectedOption);
+    await cart.remove(
+      item.product.id,
+      selectedOption: item.selectedOption,
+      lineId: item.lineId,
+    );
   }
 }

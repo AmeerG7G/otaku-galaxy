@@ -119,6 +119,7 @@ Future<void> _pump(
   _StubReviews repo, {
   String runId = 'run',
   String gender = 'male',
+  Order? order,
 }) async {
   // `AuthCubit` موفَّر كما في جذر التطبيق: نصّ الزرّ يُصرَّف بجنس صاحب
   // الجلسة («قيّم» / «قيّمي»)، فبناءُ الشاشة بلا جلسة كان سيقيس صيغةً محايدة
@@ -141,7 +142,7 @@ Future<void> _pump(
           GlobalWidgetsLocalizations.delegate,
           GlobalCupertinoLocalizations.delegate,
         ],
-        home: RateOrderScreen(key: ValueKey(runId), order: _order),
+        home: RateOrderScreen(key: ValueKey(runId), order: order ?? _order),
       ),
     ),
   );
@@ -149,6 +150,30 @@ Future<void> _pump(
 }
 
 void main() {
+  testWidgets('المنتج نفسه بلونين في الطلب ← بطاقة تقييمٍ واحدة (STEP 74)', (
+    tester,
+  ) async {
+    final twoColours = Order(
+      id: 'o2',
+      number: '1002',
+      province: 'بغداد',
+      deliveryCost: 5000,
+      fullAddress: 'الكرادة',
+      phone: '+9647701234567',
+      total: 55000,
+      status: OrderStatus.completed,
+      items: const [
+        CartItem(product: _product, lineId: 'red'),
+        CartItem(product: _product, lineId: 'blue'),
+      ],
+      canReview: true,
+      reviewableProductCount: 1,
+    );
+    await _pump(tester, _StubReviews(null), order: twoColours);
+
+    expect(find.text('قيّم المنتج'), findsOneWidget);
+  });
+
   testWidgets('لا تقييم بعد ← الزرّ مفتوح', (tester) async {
     await _pump(tester, _StubReviews(null));
 

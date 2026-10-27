@@ -19,6 +19,7 @@ import '../../domain/entities/order.dart';
 import '../../domain/repositories/order_repository.dart';
 import '../../domain/usecases/fetch_order_details_usecase.dart';
 import '../widgets/order_status_utils.dart';
+import '../../../cart/presentation/widgets/line_color_label.dart';
 
 @RoutePage()
 class OrderDetailScreen extends StatefulWidget {
@@ -606,6 +607,11 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with LocaleRefetc
                             style: Theme.of(context).textTheme.bodyMedium
                                 ?.copyWith(fontWeight: AppDimens.weightMedium),
                           ),
+                          // لقطة لون السطر وقت الطلب (STEP 74).
+                          if (item.color case final color?) ...[
+                            SizedBox(height: AppDimens.space1),
+                            LineColorLabel(color: color, fontSize: 11.5),
+                          ],
                           SizedBox(height: AppDimens.space1),
                           Text(
                             context.strings.p('quantityCount', {'count': '${item.quantity}'}),

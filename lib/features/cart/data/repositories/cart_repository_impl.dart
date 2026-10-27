@@ -38,11 +38,14 @@ class CartRepositoryImpl implements CartRepository {
   Future<List<CartItem>> addToCart(
     String productId, {
     String? optionValue,
+    String? variantId,
     int quantity = 1,
   }) async {
     final data = await _api.post(ApiEndpoints.cart, body: {
       'productId': productId,
       'optionValue': optionValue,
+      // يُرسَل للمنتج ذي الألوان وحده — جسم المنتج القديم كما كان حرفياً.
+      'variantId': ?variantId,
       'quantity': quantity,
     }) as Map<String, dynamic>;
     // الخادم يعيد { item, cart } حيث cart قائمة خطوط.
@@ -108,6 +111,9 @@ class CartRepositoryImpl implements CartRepository {
       lineId: line['id']?.toString(),
       // بعد عرض القطعتين (085) — يُعرض كما هو ولا يُحسب هنا.
       serverLineTotal: (line['lineTotal'] as num?)?.toDouble(),
+      // لون السطر (STEP 74) — `productImage` أعلاه صورة اللون أصلاً، و`stock`
+      // مخزون اللون.
+      color: LineColor.fromLineJson(line),
     );
   }
 }
