@@ -24,7 +24,17 @@ export interface OrderItem {
   /** ما دفعه الزبون عن السطر — قد يقلّ عن `price × quantity` بعرض القطعتين. */
   lineTotal: number
   /**
-   * مخزون المنتج **الآن** — يرسله `GET /admin/orders/:id` وحده، مقروءاً عند فتح
+   * لون السطر (STEP 74) — لقطة وقت الطلب؛ كلّها `null` لسطرٍ بلا لون أو طلبٍ
+   * أقدم (وغائبة من خادمٍ أقدم). `variantColorName` بالعربية كـ`productName`،
+   * و`imageUrl` صورة اللون كما كانت وقت الطلب.
+   */
+  variantId?: string | null
+  variantColorName?: string | null
+  variantColorNameAr?: string | null
+  variantColorNameCkb?: string | null
+  variantColorHex?: string | null
+  /**
+   * مخزون اللون الآن لسطرٍ ملوَّن، وإلا مخزون المنتج **الآن** — يرسله `GET /admin/orders/:id` وحده، مقروءاً عند فتح
    * الطلب. `null` لمنتجٍ حُذف؛ غائبٌ في القوائم التي لا تحمله.
    */
   currentStock?: number | null

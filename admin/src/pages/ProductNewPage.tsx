@@ -1,11 +1,13 @@
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { App, Breadcrumb, Button, Flex, Typography } from 'antd'
+import { Alert, App, Breadcrumb, Button, Flex, Typography } from 'antd'
 import { ArrowRightOutlined } from '@ant-design/icons'
 import ProductForm, { type ProductFormValues } from '../components/ProductForm'
 import { createProduct } from '../api/productsApi'
 import { listAdminCategories } from '../api/categoriesApi'
 import { ApiError } from '../api/client'
+import { variantErrorHint, variantsCreate } from '../components/variantFields'
 
 /**
  * إضافة منتج.
@@ -20,6 +22,7 @@ export default function ProductNewPage() {
   const [searchParams] = useSearchParams()
   const { message } = App.useApp()
   const queryClient = useQueryClient()
+  const [submitError, setSubmitError] = useState<{ message: string; hint: string } | null>(null)
 
   const presetCategoryId = searchParams.get('categoryId') ?? undefined
   const presetSubcategoryId = searchParams.get('subcategoryId') ?? undefined
@@ -46,10 +49,14 @@ export default function ProductNewPage() {
     },
     onError: (error) => {
       message.error(error instanceof ApiError ? error.message : 'حدث خطأ غير متوقع')
+      const hint = error instanceof ApiError ? variantErrorHint(error.code) : null
+      setSubmitError(hint ? { message: (error as ApiError).message, hint } : null)
     },
   })
 
   function handleSubmit(values: ProductFormValues) {
+    setSubmitError(null)
+    const hasVariants = values.variants.length > 0
     createMutation.mutate({
       // المحتوى باللغتين — العربية إلزامية؛ الكردية الفارغة `null` (لا ترجمة،
       // الزبون الكردي يرى العربية). النموذج يقصّ الأربعة.
@@ -62,7 +69,9 @@ export default function ProductNewPage() {
       pairPrice: values.pairPrice ?? null,
       categoryId: values.categoryId,
       subcategoryId: values.subcategoryId ?? null,
-      stock: values.stock,
+      // [CRITICAL] منتجٌ ملوَّن: مخزونه مجموع ألوانه — `stock` معه يُرفض
+      // (`STOCK_PER_VARIANT`)، فلا يُرسَل أصلاً.
+      ...(hasVariants ? { variants: variantsCreate(values.variants) } : { stock: values.stock }),
       // `null` صريحة تمسح الموعد؛ الحقل الغائب يعني «لا تغيّر».
       restockAt: values.restockAt ?? null,
       images: values.images,
@@ -114,6 +123,7 @@ export default function ProductNewPage() {
           subcategoryId: presetSubcategoryId ?? null,
           images: [],
           options: [],
+          variants: [],
           isOffer: false,
           isSelected: false,
           hasDeliveryPromo: false,
@@ -123,6 +133,18 @@ export default function ProductNewPage() {
           franchiseIds: [],
         }}
         submitting={createMutation.isPending}
+        submitError={
+          submitError && (
+            <Alert
+              type="error"
+              showIcon
+              style={{ marginBottom: 16 }}
+              data-testid="product-submit-error"
+              message={submitError.message}
+              description={submitError.hint}
+            />
+          )
+        }
         onSubmit={handleSubmit}
         onCancel={() => navigate('/products')}
       />

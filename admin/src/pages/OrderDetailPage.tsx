@@ -27,6 +27,12 @@ import { ProductLink } from '../components/ui/ProductLink'
 import { WhatsAppButton } from '../components/ui/WhatsAppButton'
 import { ReminderControls } from '../components/ui/ReminderControls'
 import { LoadingState, ErrorState } from '../components/ui/States'
+import { ColorSwatch } from '../components/ui/ColorSwatch'
+
+/** مفتاح السطر — المنتج نفسه بلونين (أو خيارين) سطران مختلفان. */
+function itemKey(item: OrderItem): string {
+  return `${item.productId}:${item.variantId ?? ''}:${item.optionValue ?? ''}`
+}
 
 export default function OrderDetailPage() {
   const { id = '' } = useParams()
@@ -83,6 +89,21 @@ export default function OrderDetailPage() {
       ),
     },
     {
+      // اللون كما حُفظ مع الطلب — والصورة في عمود المنتج صورة هذا اللون.
+      title: 'اللون',
+      key: 'variant',
+      render: (_: unknown, item: OrderItem) => {
+        const name = item.variantColorName ?? item.variantColorNameAr
+        if (!name) return '—'
+        return (
+          <Space size={6} data-testid="order-item-color">
+            <ColorSwatch hex={item.variantColorHex} />
+            <span>{name}</span>
+          </Space>
+        )
+      },
+    },
+    {
       title: 'الخيار',
       dataIndex: 'optionValue',
       key: 'optionValue',
@@ -92,6 +113,7 @@ export default function OrderDetailPage() {
     {
       // المخزون **الآن** كما قرأه الخادم عند فتح الطلب — لا لقطة الإنشاء. معلومةٌ
       // للمسؤول لا قرار: القبول يعيد الفحص تحت القفل على الخادم (§47.1).
+      // لسطرٍ ملوَّن: مخزون اللون نفسه (§4) — لا مجموع المنتج.
       title: 'المخزون الحالي',
       dataIndex: 'currentStock',
       key: 'currentStock',
@@ -220,11 +242,11 @@ export default function OrderDetailPage() {
 
       <Card title="المنتجات">
         <Table
-          rowKey="productId"
+          rowKey={itemKey}
           columns={itemColumns}
           dataSource={order.items}
           pagination={false}
-          scroll={{ x: 640 }}
+          scroll={{ x: 740 }}
           size="small"
         />
       </Card>

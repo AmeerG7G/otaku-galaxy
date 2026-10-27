@@ -191,12 +191,19 @@ export default function ProductsPage() {
       title: 'المخزون',
       dataIndex: 'stock',
       key: 'stock',
-      render: (value: number) =>
-        value === 0 ? (
-          <Tag color="red">نفدت الكمية</Tag>
-        ) : (
-          <Tag color="green">متوفر ({value})</Tag>
-        ),
+      render: (value: number, product: Product) => (
+        <Space size={4} wrap>
+          {value === 0 ? (
+            <Tag color="red">نفدت الكمية</Tag>
+          ) : (
+            <Tag color="green">متوفر ({value})</Tag>
+          )}
+          {/* المنتج الملوَّن: المخزون مجموع ألوانه النشطة (STEP 74). */}
+          {(product.variants?.length ?? 0) > 0 && (
+            <Tag color="purple">{`${product.variants!.length} ألوان`}</Tag>
+          )}
+        </Space>
+      ),
     },
     {
       title: 'التقييم',
