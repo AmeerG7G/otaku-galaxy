@@ -9,6 +9,8 @@ import type {
   ProductOption,
   ProductOptionInput,
   ProductUpdatePayload,
+  ProductVariant,
+  ProductVariantDraft,
 } from '../types/products'
 import { ApiError } from './client'
 
@@ -84,6 +86,22 @@ function optionToDraft(option: ProductOption): ProductOptionInput {
   }
 }
 
+/**
+ * اللون بلغتيه من الحقول **الصريحة** (`colorNameAr`/`colorNameCkb`) — لا
+ * `colorName` المحسوم بلغة الطلب، للسبب نفسه في `contentDraft`.
+ */
+export function variantToDraft(variant: ProductVariant): ProductVariantDraft {
+  return {
+    id: variant.id,
+    colorName: variant.colorNameAr ?? variant.colorName,
+    colorNameCkb: variant.colorNameCkb ?? null,
+    colorHex: variant.colorHex ?? null,
+    imageUrl: variant.imageUrl,
+    stock: variant.stock,
+    isActive: variant.isActive,
+  }
+}
+
 function adminProductToDraft(product: Product, options: ProductOption[]): ProductFormDraft {
   return {
     ...contentDraft(product),
@@ -95,6 +113,10 @@ function adminProductToDraft(product: Product, options: ProductOption[]): Produc
     subcategoryId: product.subcategoryId,
     images: product.images,
     options: options.map(optionToDraft),
+    // خادمٌ أقدم من ٠٨٧ لا يرسل الحقل: لا ألوان. الترتيب `sortOrder` كما في العقد.
+    variants: [...(product.variants ?? [])]
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map(variantToDraft),
     isActive: product.isActive,
     isOffer: product.isOffer,
     isSelected: product.isSelected,

@@ -1,5 +1,5 @@
 import { db, withTransaction } from '../database/pool.js';
-import { planCartSync } from '../domain/cartSync.js';
+import { planCartSync, stockPoolKey } from '../domain/cartSync.js';
 import { checkOptionValue } from '../domain/productOptions.js';
 import { cartRepo } from '../repositories/cartRepo.js';
 import { productRepo } from '../repositories/catalogRepo.js';
@@ -28,7 +28,10 @@ export const cartService = {
     });
   },
 
-  async addItem(userId: string, input: { productId: string; optionValue: string | null; quantity: number }) {
+  async addItem(
+    userId: string,
+    input: { productId: string; variantId: string | null; optionValue: string | null; quantity: number },
+  ) {
     const product = await productRepo.findById(db, input.productId);
     if (!product || !product.isActive) throw Errors.notFound('المنتج غير موجود');
     // «قريباً — السعر يُعلن لاحقاً» (084): يُعرض ولا يُشترى، مهما طلب العميل.
@@ -54,6 +57,21 @@ export const cartService = {
       throw Errors.badRequest('اختر قيمة صالحة لكل خيار من خيارات المنتج', 'INVALID_PRODUCT_OPTION');
     }
 
+    // [CRITICAL] اللون (087): منتجٌ بألوان لا يُضاف إلا بلونٍ من ألوانه الفعّالة،
+    // ومنتجٌ بلا ألوان لا يقبل لوناً. لا لون يُختار عن الزبون ولا يُستبدل —
+    // تطبيقٌ أقدم لا يعرف الألوان يُرفض بدل أن يُباع لونٌ لم يختره.
+    let variant: (typeof product.variants)[number] | null = null;
+    if (product.variants.length > 0) {
+      if (input.variantId === null) throw Errors.badRequest('اختر لون المنتج', 'VARIANT_REQUIRED');
+      variant = product.variants.find((entry) => entry.id === input.variantId) ?? null;
+      if (!variant) {
+        throw Errors.badRequest('اللون المختار غير موجود لهذا المنتج', 'INVALID_VARIANT');
+      }
+      if (!variant.isActive) throw Errors.conflict('هذا اللون غير متاح حالياً', 'VARIANT_UNAVAILABLE');
+    } else if (input.variantId !== null) {
+      throw Errors.badRequest('اللون المختار غير موجود لهذا المنتج', 'INVALID_VARIANT');
+    }
+
     // تحقق من المخزون بعد الدمج مع ما هو موجود فعلاً.
     //
     // [CRITICAL] المجموع على **كل** الأسطر المطابقة لا أوّلِها. كانت
@@ -68,13 +86,19 @@ export const cartService = {
     // «أزرق ٢» = ٤ في العربة. مسار الطلب يجمع على المنتج فيرفضها بـ409،
     // فيكتشف الزبون المشكلة عند الدفع لا عند الإضافة. الحدّان الآن يقيسان
     // الشيء نفسه.
+    //
+    // [CRITICAL] اللون مخزونٌ مستقل (087): الجمع على أسطر **اللون نفسه**
+    // (`stockPoolKey`)، فالأحمر لا يستهلك حصة الأزرق ولا العكس. منتجٌ بلا ألوان
+    // يبقى على المنتج كما سبق.
+    const pool = stockPoolKey(input);
     const existing = await cartRepo.listItems(db, userId);
     const alreadyInCart = existing
-      .filter((line) => line.productId === input.productId)
+      .filter((line) => stockPoolKey(line) === pool)
       .reduce((sum, line) => sum + line.quantity, 0);
     const requestedTotal = alreadyInCart + input.quantity;
 
-    const maxQty = Number(product.stock);
+    const maxQty = Number(variant ? variant.stock : product.stock);
+    if (maxQty === 0 && variant) throw Errors.conflict('هذا اللون نفد من المخزون', 'VARIANT_OUT_OF_STOCK');
     if (maxQty === 0) throw Errors.conflict('هذا المنتج نفد من المخزون');
     if (requestedTotal > maxQty) {
       throw Errors.conflict(`الكمية المطلوبة تتجاوز المخزون المتاح (${maxQty})`);
@@ -93,8 +117,9 @@ export const cartService = {
     // [CRITICAL] المقارنة على مجموع المنتج في العربة لا على هذا السطر وحده.
     // سطران لمنتجٍ واحد بخيارين، ورفعُ أحدهما إلى كامل المخزون، كان يمرّ
     // لأن الشرط لا يرى السطر الآخر — نفس عيب `addItem` من الجهة الأخرى.
+    // ولسطرٍ بلون (087) على أسطر اللون نفسه — مخزون اللون (`line.stock`).
     const others = (await cartRepo.listItems(db, userId))
-      .filter((row) => row.productId === line.productId && row.id !== line.id)
+      .filter((row) => stockPoolKey(row) === stockPoolKey(line) && row.id !== line.id)
       .reduce((sum, row) => sum + row.quantity, 0);
     if (others + quantity > line.stock) {
       throw Errors.conflict(`الكمية المطلوبة تتجاوز المخزون المتاح (${line.stock})`);

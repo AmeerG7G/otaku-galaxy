@@ -8,6 +8,45 @@ export interface ProductOption {
   valuesCkb?: string[]
 }
 
+/**
+ * لون منتج (STEP 74، هجرة ٠٨٧) — صورته ومخزونه مستقلّان.
+ *
+ * [CRITICAL] `id` هو الهوية الثابتة لا موضع اللون في القائمة. منتجٌ له لونٌ
+ * واحد على الأقل (نشط أو لا) مخزونه **مشتق**: مجموع مخزون ألوانه النشطة.
+ */
+export interface ProductVariant {
+  id: string
+  /** محسوم بلغة الطلب — اللوحة تقرأ `colorNameAr` صراحةً. */
+  colorName: string
+  colorNameAr: string
+  /** `null` = لا ترجمة كردية. */
+  colorNameCkb: string | null
+  /** `#RRGGBB` أو `null`. */
+  colorHex: string | null
+  imageUrl: string
+  stock: number
+  isActive: boolean
+  sortOrder: number
+}
+
+/**
+ * لونٌ كما يُرسَل في `POST`/`PATCH /admin/products` (§5 من العقد).
+ *
+ * في `PATCH` القائمة **كاملة ومرتّبة** (الترتيب = `sortOrder`)، واللون القائم
+ * يحمل `id` و`expectedStock` (مخزونه عند فتح الصفحة) فيرفض الخادم بـ409
+ * `STOCK_CHANGED` إن تغيّر منذئذٍ (قبول طلب) بدل أن يكتب قيمةً قديمة.
+ */
+export interface ProductVariantInput {
+  id?: string
+  colorName: string
+  colorNameCkb?: string | null
+  colorHex?: string | null
+  imageUrl: string
+  stock: number
+  expectedStock?: number
+  isActive?: boolean
+}
+
 export interface Product {
   id: string
   /** العربية على مسارات الإدارة — حقلٌ قديم؛ النموذج يقرأ `nameAr` صراحةً. */
@@ -42,6 +81,8 @@ export interface Product {
   subcategoryId: string | null
   images: string[]
   options: ProductOption[]
+  /** ألوان المنتج مرتّبةً؛ `[]` = منتجٌ بلا ألوان. خادمٌ أقدم من ٠٨٧ لا يرسله. */
+  variants?: ProductVariant[]
   isActive: boolean
   isOffer: boolean
   isSelected: boolean
@@ -112,7 +153,8 @@ export interface ProductCreatePayload {
   pairPrice?: number | null
   categoryId: string
   subcategoryId?: string | null
-  stock: number
+  /** يُحذف مع `variants` غير فارغة — الخادم يرفضه بـ`STOCK_PER_VARIANT`. */
+  stock?: number
   /**
    * موعد التوفر المتوقَّع — ISO-8601 أو `null` («بلا موعد»).
    *
@@ -122,6 +164,8 @@ export interface ProductCreatePayload {
   restockAt?: string | null
   images?: string[]
   options?: ProductOptionInput[]
+  /** حتى ٢٠ لوناً؛ الغائب = `[]`. */
+  variants?: ProductVariantInput[]
   isOffer?: boolean
   isSelected?: boolean
   previousPrice?: number | null
@@ -163,6 +207,11 @@ export interface ProductUpdatePayload {
   restockAt?: string | null
   images?: string[]
   options?: ProductOptionInput[]
+  /**
+   * الغائب = الألوان لا تُمسّ. الحاضر = القائمة الكاملة المرتّبة: لونٌ قائم
+   * غاب عنها يُحذف إن لم يُطلب قط، وإلا يُعطَّل (يبقى لسجل الطلبات).
+   */
+  variants?: ProductVariantInput[]
   isOffer?: boolean
   isSelected?: boolean
   isActive?: boolean
@@ -244,6 +293,8 @@ export interface ProductFormDraft {
   subcategoryId: string | null
   images: string[]
   options: ProductOptionInput[]
+  /** الألوان كما حُمِّلت (`[]` = بلا ألوان) — أساس المقارنة و`expectedStock`. */
+  variants: ProductVariantDraft[]
   isActive: boolean
   isOffer: boolean
   isSelected: boolean
@@ -253,4 +304,17 @@ export interface ProductFormDraft {
   hasDeliveryPromo: boolean
   deliveryPromoAmount: number
   franchiseIds: string[]
+}
+
+/** لونٌ في النموذج بعد القصّ — ما يخرج من `ProductForm` (`id` غائب = لونٌ جديد). */
+export interface ProductVariantDraft {
+  id?: string
+  colorName: string
+  /** `null` = لا ترجمة. */
+  colorNameCkb: string | null
+  /** `#RRGGBB` بأحرف كبيرة أو `null`. */
+  colorHex: string | null
+  imageUrl: string
+  stock: number
+  isActive: boolean
 }

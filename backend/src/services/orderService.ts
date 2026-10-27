@@ -28,7 +28,8 @@ import {
 } from '../domain/galaxyPoints.js';
 import { birthdayRepo } from '../repositories/birthdayRepo.js';
 import { cartRepo } from '../repositories/cartRepo.js';
-import { productRepo } from '../repositories/catalogRepo.js';
+import { productRepo, type ProductVariant } from '../repositories/catalogRepo.js';
+import { stockPoolKey } from '../domain/cartSync.js';
 import { governorateRepo } from '../repositories/storefrontRepo.js';
 import { notificationRepo } from '../repositories/notificationsRepo.js';
 import { orderRepo, type OrderItemSnapshot, type OrderWithItems } from '../repositories/orderRepo.js';
@@ -65,27 +66,58 @@ import { restockService } from './restockService.js';
  * جزئي، ولا يتحرّك الطلب من الانتظار.
  */
 async function consumeStockOnApproval(tx: pg.PoolClient, order: OrderWithItems) {
-  const wanted = new Map<string, { name: string; quantity: number }>();
+  // مخزون كل بند (087): اللون لبندٍ بلون — كل لونٍ مخزونٌ مستقل — وإلا المنتج.
+  const wantedProducts = new Map<string, { name: string; quantity: number }>();
+  const wantedVariants = new Map<string, { name: string; quantity: number }>();
   for (const item of order.items) {
-    const current = wanted.get(item.productId);
-    wanted.set(item.productId, {
+    if (item.variantId) {
+      const current = wantedVariants.get(item.variantId);
+      wantedVariants.set(item.variantId, {
+        name: `${item.productName} — ${item.variantColorName}`,
+        quantity: (current?.quantity ?? 0) + item.quantity,
+      });
+      continue;
+    }
+    const current = wantedProducts.get(item.productId);
+    wantedProducts.set(item.productId, {
       name: item.productName,
       quantity: (current?.quantity ?? 0) + item.quantity,
     });
   }
-  const ids = [...wanted.keys()].sort();
-  if (ids.length === 0) return;
+  // [CRITICAL] ترتيب الأقفال واحد في كل مسار يكتب مخزوناً: صفوف المنتجات بترتيب
+  // المعرّف — منتجات بنود الألوان أيضاً، لأن زناد 087 يكتب مخزون المنتج — ثم صفوف
+  // الألوان بترتيب المعرّف. قبولان (أو قبولٌ وحفظُ المسؤول) لا يتقاطعان.
+  const ids = [
+    ...new Set(order.items.map((item) => item.productId).filter((id): id is string => Boolean(id))),
+  ].sort();
+  if (ids.length === 0 && wantedVariants.size === 0) return;
 
-  const { rows } = await tx.query<{ id: string; name: string; stock: string }>(
-    `SELECT id, name, stock FROM products WHERE id = ANY($1::uuid[]) ORDER BY id FOR UPDATE`,
+  const { rows } = await tx.query<{ id: string; name: string; stock: string; has_variants: boolean }>(
+    `SELECT p.id, p.name, p.stock,
+            EXISTS (SELECT 1 FROM product_variants v WHERE v.product_id = p.id) AS has_variants
+       FROM products p WHERE p.id = ANY($1::uuid[]) ORDER BY p.id FOR UPDATE OF p`,
     [ids],
   );
   const locked = new Map(rows.map((row) => [row.id, row]));
+  const variantIds = [...wantedVariants.keys()].sort();
+  const { rows: variantRows } = await tx.query<{ id: string; stock: string }>(
+    'SELECT id, stock FROM product_variants WHERE id = ANY($1::uuid[]) ORDER BY id FOR UPDATE',
+    [variantIds],
+  );
+  const lockedVariants = new Map(variantRows.map((row) => [row.id, row]));
 
-  for (const [productId, line] of wanted) {
+  for (const [productId, line] of wantedProducts) {
     const product = locked.get(productId);
     if (!product) {
       throw Errors.conflict(`«${line.name}» لم يعد موجوداً في الكتالوج`, 'PRODUCT_UNAVAILABLE');
+    }
+    // بندٌ بلا لون لمنتجٍ صار بألوان: لا يُعرف من أي لونٍ يُنزَّل. تحويل منتجٍ
+    // له طلبٌ مفتوح إلى الألوان ممنوعٌ أصلاً (`PRODUCT_HAS_OPEN_ORDERS`) — حارسٌ ثانٍ.
+    if (product.has_variants) {
+      throw Errors.conflict(
+        `«${line.name}» صار بألوان بعد هذا الطلب — لا يُعرف لون البند`,
+        'VARIANT_REQUIRED',
+      );
     }
     const available = Number(product.stock);
     if (available < line.quantity) {
@@ -95,8 +127,18 @@ async function consumeStockOnApproval(tx: pg.PoolClient, order: OrderWithItems) 
       );
     }
   }
+  for (const [variantId, line] of wantedVariants) {
+    const variant = lockedVariants.get(variantId);
+    if (!variant) {
+      throw Errors.conflict(`«${line.name}» لم يعد موجوداً في الكتالوج`, 'PRODUCT_UNAVAILABLE');
+    }
+    const available = Number(variant.stock);
+    if (available < line.quantity) {
+      throw Errors.conflict(`مخزون «${line.name}» غير كافٍ (المتاح: ${available})`, 'INSUFFICIENT_STOCK');
+    }
+  }
 
-  for (const [productId, line] of wanted) {
+  for (const [productId, line] of wantedProducts) {
     const { rowCount } = await tx.query(
       'UPDATE products SET stock = stock - $2 WHERE id = $1 AND stock >= $2',
       [productId, line.quantity],
@@ -107,6 +149,17 @@ async function consumeStockOnApproval(tx: pg.PoolClient, order: OrderWithItems) 
         `مخزون «${line.name}» غير كافٍ (المتاح: ${available})`,
         'INSUFFICIENT_STOCK',
       );
+    }
+  }
+  for (const variantId of variantIds) {
+    const line = wantedVariants.get(variantId)!;
+    const { rowCount } = await tx.query(
+      'UPDATE product_variants SET stock = stock - $2 WHERE id = $1 AND stock >= $2',
+      [variantId, line.quantity],
+    );
+    if ((rowCount ?? 0) === 0) {
+      const available = Number(lockedVariants.get(variantId)?.stock ?? 0);
+      throw Errors.conflict(`مخزون «${line.name}» غير كافٍ (المتاح: ${available})`, 'INSUFFICIENT_STOCK');
     }
   }
 
@@ -134,20 +187,59 @@ async function consumeStockOnApproval(tx: pg.PoolClient, order: OrderWithItems) 
  * الرفض «حالةٌ نفسها» لا يمرّ من هنا.
  */
 async function releaseStockOnRejection(tx: pg.PoolClient, order: OrderWithItems) {
-  const released = new Map<string, number>();
+  const releasedProducts = new Map<string, number>();
+  const releasedVariants = new Map<string, number>();
   for (const item of order.items) {
     if (!item.productId) continue;
-    released.set(item.productId, (released.get(item.productId) ?? 0) + item.quantity);
+    // بندٌ بلون (087) يعود إلى لونه وحده — لا إلى لونٍ آخر ولا إلى المنتج.
+    if (item.variantId) {
+      releasedVariants.set(item.variantId, (releasedVariants.get(item.variantId) ?? 0) + item.quantity);
+    } else {
+      releasedProducts.set(item.productId, (releasedProducts.get(item.productId) ?? 0) + item.quantity);
+    }
   }
-  for (const productId of [...released.keys()].sort()) {
-    const { rows } = await tx.query<{ name: string; name_ckb: string | null; previous: number }>(
-      `UPDATE products SET stock = stock + $2 WHERE id = $1
-       RETURNING name, name_ckb, stock - $2 AS previous`,
-      [productId, released.get(productId)],
-    );
-    const product = rows[0];
-    if (product && Number(product.previous) === 0) {
-      await restockService.stockReturned(tx, productId, {
+  const productIds = [
+    ...new Set(order.items.map((item) => item.productId).filter((id): id is string => Boolean(id))),
+  ].sort();
+  if (productIds.length === 0) return;
+  // ترتيب الأقفال نفسه الذي يقبل به القبول: المنتجات ثم الألوان، كلٌّ بالمعرّف.
+  // مخزون المنتج قبل الإرجاع وبعده هو ما يقرّر «عاد للتوفر» — لمنتجٍ بألوان هو
+  // مجموع ألوانه الفعّالة (زناد 087).
+  const { rows: before } = await tx.query<{ id: string; stock: number; has_variants: boolean }>(
+    `SELECT p.id, p.stock,
+            EXISTS (SELECT 1 FROM product_variants v WHERE v.product_id = p.id) AS has_variants
+       FROM products p WHERE p.id = ANY($1::uuid[]) ORDER BY p.id FOR UPDATE OF p`,
+    [productIds],
+  );
+  const previous = new Map(before.map((row) => [row.id, Number(row.stock)]));
+  const hasVariants = new Map(before.map((row) => [row.id, row.has_variants]));
+
+  for (const productId of [...releasedProducts.keys()].sort()) {
+    // [CRITICAL] بندٌ بلا لون لمنتجٍ صار بألوان لا يُعرف لونه: لا يُكتب مخزون
+    // المنتج (المشتقّ من ألوانه، والقاعدة ترفضه). التحويل إلى الألوان ممنوعٌ متى
+    // وُجد طلبٌ مفتوح، فلا يقع هذا لطلبٍ يُرفض بعد القبول.
+    if (hasVariants.get(productId)) continue;
+    await tx.query('UPDATE products SET stock = stock + $2 WHERE id = $1', [
+      productId,
+      releasedProducts.get(productId),
+    ]);
+  }
+  for (const variantId of [...releasedVariants.keys()].sort()) {
+    // لونٌ حُذف لا يُرجَع إليه (لا يُحذف لونٌ له طلبات — يُوقف بدل ذلك).
+    await tx.query('UPDATE product_variants SET stock = stock + $2 WHERE id = $1', [
+      variantId,
+      releasedVariants.get(variantId),
+    ]);
+  }
+
+  // [CRITICAL] إرجاعٌ يُعيد منتجاً من صفر هو «عودة التوفر» بعينها (§42.5).
+  const { rows: after } = await tx.query<{ id: string; stock: number; name: string; name_ckb: string | null }>(
+    'SELECT id, stock, name, name_ckb FROM products WHERE id = ANY($1::uuid[]) ORDER BY id',
+    [productIds],
+  );
+  for (const product of after) {
+    if (previous.get(product.id) === 0 && Number(product.stock) > 0) {
+      await restockService.stockReturned(tx, product.id, {
         ar: product.name,
         ckb: kurdishOrNull(product.name_ckb),
       });
@@ -282,6 +374,37 @@ async function replayIfSubmitted(
   return { order: await orderRepo.findById(client, previous.id), replayed: true };
 }
 
+/**
+ * لون سطر العربة على المنتج كما هو الآن (087):
+ * - `null`: منتجٌ بلا ألوان وسطرٌ بلا لون — يُطلب كما كان.
+ * - اللون: فعّالٌ ومن ألوان المنتج نفسه.
+ * - `'unavailable'`: لونٌ أُوقف أو حُذف، أو سطرٌ بلا لون لمنتجٍ صار بألوان.
+ */
+function resolveLineVariant(
+  product: { variants: readonly ProductVariant[] },
+  line: { variantId: string | null },
+): ProductVariant | null | 'unavailable' {
+  if (line.variantId === null) return product.variants.length === 0 ? null : 'unavailable';
+  const variant = product.variants.find((entry) => entry.id === line.variantId);
+  return variant && variant.isActive ? variant : 'unavailable';
+}
+
+/** اسم السطر في رسائل الرفض بلغة الزبون: «المنتج — اللون» لسطرٍ بلون. */
+function lineDisplayName(
+  line: {
+    productNameAr: string;
+    productNameCkb: string | null;
+    variantColorNameAr: string | null;
+    variantColorNameCkb: string | null;
+  },
+  locale: AppLocale,
+): string {
+  const name = pickLocalized(line.productNameAr, line.productNameCkb, locale);
+  return line.variantColorNameAr === null
+    ? name
+    : `${name} — ${pickLocalized(line.variantColorNameAr, line.variantColorNameCkb, locale)}`;
+}
+
 export const orderService = {
   /**
    * إنشاء طلب: معاملة واحدة — بوّابة الطلب، لقطات، إنشاء، تفريغ العربة.
@@ -394,27 +517,42 @@ export const orderService = {
         item: (typeof cartItems)[number];
         product: NonNullable<ReturnType<typeof products.get>>;
         unitPrice: number;
+        variant: ProductVariant | null;
       }> = [];
       // خصم التوصيل: مجموع مبالغ الترويج عن الكميات المطلوبة. يُحتسب على
       // الخادم من بيانات المنتج وقت الطلب — لا يُقرأ أي مبلغ من العميل.
       let deliveryPromoTotal = 0;
+      // [CRITICAL] `FOR SHARE` على منتجات العربة (087): حفظ المسؤول يقفلها
+      // `FOR UPDATE`، فلا يتداخل إنشاءٌ قرأ منتجاً بلا ألوان مع أول ألوانٍ تُضاف إليه
+      // (فحص `PRODUCT_HAS_OPEN_ORDERS` يرى الطلب، أو يرى الطلبُ الألوان). أقفال
+      // المشاركة لا تتعارض فيما بينها: طلباتٌ متزامنة للمنتج نفسه لا تنتظر بعضها.
+      const productIds = [...new Set(cartItems.map((line) => line.productId))].sort();
+      await tx.query('SELECT id FROM products WHERE id = ANY($1::uuid[]) ORDER BY id FOR SHARE', [productIds]);
       // قراءةٌ واحدة لكل منتجات العربة لا قراءةٌ لكل سطر.
-      const products = await productRepo.findByIds(
-        tx,
-        [...new Set(cartItems.map((line) => line.productId))],
-      );
+      const products = await productRepo.findByIds(tx, productIds);
       for (const item of cartItems) {
         const product = products.get(item.productId);
         // [CRITICAL] شبكة الأمان (CA-14): سطرٌ عُطِّل منتجه بعد آخر مزامنة يرفض
         // الإرسال كله. كان يُسقط من الطلب بصمت فيخرج طلبٌ غير الذي رآه الزبون.
         // الاسم في رسائل الرفض بلغة الزبون — سطر العربة يحمل اللغتين.
-        const shownName = pickLocalized(item.productNameAr, item.productNameCkb, locale);
+        const productName = pickLocalized(item.productNameAr, item.productNameCkb, locale);
         if (!product || !product.isActive) {
           throw Errors.conflict(
-            `«${shownName}» لم يعد متاحاً — أزله من العربة`,
+            `«${productName}» لم يعد متاحاً — أزله من العربة`,
             'PRODUCT_UNAVAILABLE',
           );
         }
+        // [CRITICAL] اللون (087): السطر يُطلب بلونه وحده. لونٌ أُوقف أو حُذف بعد
+        // الإضافة، أو سطرٌ بلا لون لمنتجٍ صار بألوان، يرفض الإرسال كله — لا لونٌ
+        // بديل يُختار عن الزبون. الاسم في الرسائل «المنتج — اللون».
+        const variant = resolveLineVariant(product, item);
+        if (variant === 'unavailable') {
+          throw Errors.conflict(
+            `«${lineDisplayName(item, locale)}» لم يعد متاحاً — أزله من العربة`,
+            'VARIANT_UNAVAILABLE',
+          );
+        }
+        const shownName = lineDisplayName(item, locale);
         // [CRITICAL] «قريباً — السعر يُعلن لاحقاً» (084): سعرٌ أُزيل بعد الإضافة
         // إلى العربة. لا يُحسب صفراً ولا يُسقط السطر: الإرسال كله يُرفض قبل
         // حجز أي خصم أو كتابة، كما يُرفض المعطَّل.
@@ -453,9 +591,11 @@ export const orderService = {
         // بوّابةُ طلبٍ لا استهلاك: قراءةٌ بلا قفل تكفي لأن لا شيء يُكتب
         // في المنتج هنا. الحكم النهائي عند القبول بالرمز نفسه
         // (`INSUFFICIENT_STOCK`) بعد قفلٍ وقراءةٍ للمخزون الحالي.
-        const maxQty = Number(product.stock);
+        //
+        // ولسطرٍ بلون (087) على **اللون**: مخزونه ومجموع أسطره وحدها.
+        const maxQty = Number(variant ? variant.stock : product.stock);
         const orderedFromProduct = cartItems
-          .filter((line) => line.productId === item.productId)
+          .filter((line) => stockPoolKey(line) === stockPoolKey(item))
           .reduce((sum, line) => sum + line.quantity, 0);
         if (maxQty < orderedFromProduct) {
           throw Errors.conflict(
@@ -466,7 +606,7 @@ export const orderService = {
         if (product.hasDeliveryPromo && product.deliveryPromoAmount > 0) {
           deliveryPromoTotal += product.deliveryPromoAmount * item.quantity;
         }
-        accepted.push({ item, product, unitPrice });
+        accepted.push({ item, product, unitPrice, variant });
       }
 
       // [CRITICAL] «قطعتان بسعر» (085): مبلغ كل سطر من الدالة نفسها التي تعاين
@@ -482,14 +622,19 @@ export const orderService = {
           createdAt: item.createdAt,
         })),
       );
-      const snapshots: OrderItemSnapshot[] = accepted.map(({ item, product, unitPrice }) => ({
+      const snapshots: OrderItemSnapshot[] = accepted.map(({ item, product, unitPrice, variant }) => ({
         productId: product.id,
         // اللقطة باللغتين تُجمَّد الآن (066): تعديل اسم المنتج لاحقاً لا يغيّر
         // طلباً قائماً، والزبون يرى طلبه بلغة واجهته.
         productName: product.nameAr,
         productNameAr: product.nameAr,
         productNameCkb: product.nameCkb,
-        imageUrl: product.images[0] ?? null,
+        // صورة اللون ولقطته (087): ما اختاره الزبون يبقى في طلبه ولو عُدِّل اللون.
+        imageUrl: variant?.imageUrl ?? product.images[0] ?? null,
+        variantId: variant?.id ?? null,
+        variantColorName: variant?.colorNameAr ?? null,
+        variantColorNameCkb: variant?.colorNameCkb ?? null,
+        variantColorHex: variant?.colorHex ?? null,
         optionValue: item.optionValue,
         price: unitPrice,
         pairPrice: product.pairPrice,
@@ -520,6 +665,7 @@ export const orderService = {
         const reviewed = quoteFingerprint({
           lines: snapshots.map((item) => ({
             productId: item.productId,
+            variantId: item.variantId,
             optionValue: item.optionValue,
             quantity: item.quantity,
             unitPrice: item.price,
@@ -624,14 +770,19 @@ export const orderService = {
     const products = await productRepo.findByIds(db, [...new Set(lines.map((l) => l.productId))]);
 
     let deliveryPromoRaw = 0;
-    const pricedLines: Array<PairPricedLine & { optionValue: string | null }> = [];
+    const pricedLines: Array<PairPricedLine & { optionValue: string | null; variantId: string | null }> = [];
     // ما سيرفض الإنشاءُ به الطلبَ كله — يُعرض قبل التأكيد لا بعده.
     const issues: Array<
       | { code: 'PRODUCT_UNAVAILABLE'; productId: string }
       | { code: 'PRODUCT_NOT_PRICED'; productId: string }
-      | { code: 'INSUFFICIENT_STOCK'; productId: string; available: number }
+      | { code: 'INSUFFICIENT_STOCK'; productId: string; available: number; variantId?: string }
+      | { code: 'VARIANT_UNAVAILABLE'; productId: string; variantId: string | null }
     > = [];
-    const orderedByProduct = new Map<string, number>();
+    // المجموع على مخزون السطر (087): اللون لسطرٍ بلون، وإلا المنتج.
+    const orderedByPool = new Map<
+      string,
+      { productId: string; variantId: string | null; available: number; ordered: number }
+    >();
     for (const line of lines) {
       const product = products.get(line.productId);
       // سطرٌ عُطِّل منتجه سيرفضه الإنشاء كله (`PRODUCT_UNAVAILABLE`)؛ لا يُحسب هنا.
@@ -645,13 +796,26 @@ export const orderService = {
         issues.push({ code: 'PRODUCT_NOT_PRICED', productId: line.productId });
         continue;
       }
+      const variant = resolveLineVariant(product, line);
+      if (variant === 'unavailable') {
+        issues.push({ code: 'VARIANT_UNAVAILABLE', productId: line.productId, variantId: line.variantId });
+        continue;
+      }
       if (product.hasDeliveryPromo && product.deliveryPromoAmount > 0) {
         deliveryPromoRaw += product.deliveryPromoAmount * line.quantity;
       }
-      orderedByProduct.set(product.id, (orderedByProduct.get(product.id) ?? 0) + line.quantity);
+      const pool = stockPoolKey(line);
+      const counted = orderedByPool.get(pool);
+      orderedByPool.set(pool, {
+        productId: product.id,
+        variantId: variant?.id ?? null,
+        available: Number(variant ? variant.stock : product.stock),
+        ordered: (counted?.ordered ?? 0) + line.quantity,
+      });
       pricedLines.push({
         id: line.id,
         productId: product.id,
+        variantId: line.variantId,
         optionValue: line.optionValue,
         quantity: line.quantity,
         unitPrice,
@@ -664,6 +828,8 @@ export const orderService = {
     const quotedLines: Array<QuotedLine & { pairPrice: number | null; lineTotal: number }> =
       pricedLines.map((line) => ({
         productId: line.productId,
+        // اللون (087) لسطرٍ بلون وحده — سطرٌ بلا لون بشكله القديم حرفاً بحرف.
+        ...(line.variantId !== null ? { variantId: line.variantId } : {}),
         optionValue: line.optionValue,
         quantity: line.quantity,
         unitPrice: line.unitPrice,
@@ -672,9 +838,16 @@ export const orderService = {
       }));
     const productsTotal = quotedLines.reduce((sum, line) => sum + line.lineTotal, 0);
     // البوّابة نفسها التي يطبّقها الإنشاء: مجموع المنتج لا كمية السطر.
-    for (const [productId, ordered] of orderedByProduct) {
-      const available = Number(products.get(productId)!.stock);
-      if (available < ordered) issues.push({ code: 'INSUFFICIENT_STOCK', productId, available });
+    for (const { productId, variantId, available, ordered } of orderedByPool.values()) {
+      if (available < ordered) {
+        issues.push({
+          code: 'INSUFFICIENT_STOCK',
+          productId,
+          available,
+          // `variantId` يُضاف لسطرٍ بلون وحده — شكل المشكلة القديم كما هو لغيره.
+          ...(variantId !== null ? { variantId } : {}),
+        });
+      }
     }
 
     let deliveryFee: number | null = null;

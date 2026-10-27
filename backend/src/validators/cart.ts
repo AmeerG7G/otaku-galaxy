@@ -14,6 +14,13 @@ export const favoriteParamSchema = z.object({
 
 export const addCartItemSchema = z.object({
   productId: z.string().uuid('معرّف منتج غير صالح'),
+  /** لون المنتج (087) — إلزاميٌّ لمنتجٍ بألوان، ممنوعٌ لغيره (`cartService.addItem`). */
+  variantId: z
+    .string()
+    .uuid('اللون المختار غير موجود لهذا المنتج')
+    .nullable()
+    .optional()
+    .transform((v) => v ?? null),
   quantity: z.number().int().min(1).max(100).default(1),
   // السقف أطول تركيبةٍ صالحة لا طولُ قيمةٍ واحدة — انظر `MAX_OPTION_VALUE_TEXT_LENGTH`.
   optionValue: z

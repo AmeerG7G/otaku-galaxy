@@ -13,6 +13,7 @@ import '../../../../core/router/app_router.dart';
 import '../../../birthday/presentation/widgets/birthday_discount_card.dart';
 import '../../../cart/presentation/cubit/cart_cubit.dart';
 import '../../../cart/presentation/cubit/cart_state.dart';
+import '../../../cart/presentation/widgets/line_color_label.dart';
 import '../../../orders/domain/entities/checkout_quote.dart';
 import '../../../orders/domain/entities/order_data.dart';
 import '../../../orders/domain/usecases/fetch_checkout_quote_usecase.dart';
@@ -675,6 +676,8 @@ class _OrderDataScreenState extends State<OrderDataScreen> with LocaleRefetch {
                                     fontWeight: AppDimens.weightSemiBold,
                                   ),
                             ),
+                            if (item.color case final color?)
+                              LineColorLabel(color: color, fontSize: 11),
                             Text(
                               context.strings.p('quantityCount', {
                                 'count': '${item.quantity}',

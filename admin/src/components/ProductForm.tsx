@@ -16,9 +16,12 @@ import { useQuery } from '@tanstack/react-query'
 import { listAdminCategories } from '../api/categoriesApi'
 import { listFranchises } from '../api/communityApi'
 import ImagesEditor from './ImagesEditor'
+import type { ReactNode } from 'react'
 import OptionsEditor from './OptionsEditor'
+import VariantsEditor from './VariantsEditor'
 import { optionsFromFields, optionsToFields, type OptionFields } from './optionFields'
-import type { ProductOptionInput } from '../types/products'
+import { derivedStock, variantsFromFields, variantsToFields, type VariantFields } from './variantFields'
+import type { ProductOptionInput, ProductVariantDraft } from '../types/products'
 import { formatCurrency } from '../utils/format'
 import { StoreDateInput } from './ui/StoreDateInput'
 import { DATE_FORMAT_HINT, isIsoInstant, parseDateText, storeDateFieldToIso } from '../utils/storeDate'
@@ -53,6 +56,11 @@ export interface ProductFormValues {
   images: string[]
   /** بلغتيه — `onSubmit` يتلقّى الحقلين الكرديين صريحين دائماً (`optionsFromFields`). */
   options: ProductOptionInput[]
+  /**
+   * الألوان مقصوصةً بالترتيب الظاهر (STEP 74). غير فارغة ⇒ `stock` لا يُرسَل:
+   * مخزون المنتج مشتقٌّ من ألوانه (`STOCK_PER_VARIANT`).
+   */
+  variants: ProductVariantDraft[]
   isActive: boolean
   isOffer: boolean
   isSelected: boolean
@@ -78,13 +86,20 @@ export interface ProductFormValues {
  * ما يحمله النموذج فعلاً: كل قيمة خيارٍ صفٌّ بلغتيه (`OptionFields`) — حذفُ
  * قيمةٍ يحذف ترجمتها معها، فلا تنزاح الكردية إلى قيمةٍ أخرى.
  */
-export type ProductFormStore = Omit<ProductFormValues, 'options'> & { options: OptionFields[] }
+export type ProductFormStore = Omit<ProductFormValues, 'options' | 'variants'> & {
+  options: OptionFields[]
+  variants: VariantFields[]
+}
 
 /** حقول المحتوى الأربعة — تُقصّ قبل الإرسال كما يقصّها الخادم. */
 const CONTENT_FIELDS = ['nameAr', 'descriptionAr', 'nameCkb', 'descriptionCkb'] as const
 
 function trimContent(values: ProductFormStore): ProductFormValues {
-  const trimmed: ProductFormValues = { ...values, options: optionsFromFields(values.options ?? []) }
+  const trimmed: ProductFormValues = {
+    ...values,
+    options: optionsFromFields(values.options ?? []),
+    variants: variantsFromFields(values.variants ?? []),
+  }
   for (const field of CONTENT_FIELDS) {
     trimmed[field] = (values[field] ?? '').trim()
   }
@@ -129,6 +144,10 @@ interface ProductFormProps {
   submitting: boolean
   onSubmit: (values: ProductFormValues) => void
   onCancel: () => void
+  /** مخزون كل لونٍ قائم كما فُتحت عليه الصفحة — للعرض («المخزون الحالي»). */
+  variantStockBase?: Readonly<Record<string, number>>
+  /** خطأٌ من آخر حفظ يبقى ظاهراً فوق الزرّ (شرح رموز الألوان). */
+  submitError?: ReactNode
 }
 
 export default function ProductForm({
@@ -139,6 +158,8 @@ export default function ProductForm({
   submitting,
   onSubmit,
   onCancel,
+  variantStockBase,
+  submitError,
 }: ProductFormProps) {
   const [form] = Form.useForm<ProductFormStore>(formFromPage)
 
@@ -157,6 +178,12 @@ export default function ProductForm({
   const previousPrice = Form.useWatch('previousPrice', form)
   const priceLater = Form.useWatch('priceLater', form) === true
   const pairPrice = Form.useWatch('pairPrice', form)
+  const variantRows = (Form.useWatch('variants', form) ?? []) as VariantFields[]
+  const hasVariants = variantRows.length > 0
+  // فُتح ملوَّناً وأُزيلت ألوانه كلها: الخادم يعيده بلا ألوان بمخزون ٠ (أو يُبقيه
+  // ملوَّناً إن عُطّل لونٌ سبق طلبه) — فلا يُرسَل مخزونٌ في هذا الحفظ.
+  const loadedWithVariants = mode === 'edit' && (initialValues?.variants?.length ?? 0) > 0
+  const productStockEditable = !hasVariants && !loadedWithVariants
   // ما يدفعه الزبون عن قطعتين — للعرض فقط، والحساب على الخادم (`pairPricedLineTotals`).
   const pairSaving =
     !priceLater && typeof price === 'number' && typeof pairPrice === 'number' && pairPrice < 2 * price
@@ -204,6 +231,7 @@ export default function ProductForm({
         // منتجٌ محفوظ بلا سعر (084) يُفتح والمفتاح مُفعَّل. الإنشاء يبدأ مسعَّراً.
         priceLater: mode === 'edit' && initialValues?.price === null,
         options: optionsToFields(initialValues?.options ?? []),
+        variants: variantsToFields(initialValues?.variants ?? []),
       }}
       onFinish={(values) =>
         onSubmit({
@@ -319,10 +347,35 @@ export default function ProductForm({
           <Form.Item
             name="stock"
             label="المخزون"
-            rules={[{ required: true, message: 'المخزون مطلوب' }]}
+            hidden={hasVariants}
+            rules={productStockEditable ? [{ required: true, message: 'المخزون مطلوب' }] : []}
+            extra={
+              !hasVariants && loadedWithVariants
+                ? 'أُزيلت الألوان كلها: يصبح المخزون ٠ بعد الحفظ — عدّله بعد ذلك.'
+                : undefined
+            }
           >
-            <InputNumber min={0} max={100000} style={{ width: 200 }} precision={0} />
+            <InputNumber
+              min={0}
+              max={100000}
+              style={{ width: 200 }}
+              precision={0}
+              disabled={!productStockEditable}
+            />
           </Form.Item>
+          {hasVariants && (
+            <Form.Item
+              label="المخزون الكلّي"
+              tooltip="مجموع مخزون الألوان النشطة — يُعدَّل من بطاقة «الألوان» لكل لونٍ على حدة."
+            >
+              <InputNumber
+                aria-label="المخزون الكلّي"
+                value={derivedStock(variantRows)}
+                disabled
+                style={{ width: 200 }}
+              />
+            </Form.Item>
+          )}
           <Form.Item
             name="restockAt"
             label="متوقع التوفر"
@@ -359,13 +412,16 @@ export default function ProductForm({
         <Form.Item
           noStyle
           shouldUpdate={(prev, next) =>
-            prev.stock !== next.stock || prev.restockAt !== next.restockAt
+            prev.stock !== next.stock ||
+            prev.restockAt !== next.restockAt ||
+            prev.variants !== next.variants
           }
         >
           {({ getFieldValue }) => {
             // ما سيراه الزبون فعلاً — مشتقٌّ بنفس قاعدة التطبيق، فلا يخمّن
-            // المسؤول أثر ما أدخله.
-            const stock = Number(getFieldValue('stock') ?? 0)
+            // المسؤول أثر ما أدخله. المنتج الملوَّن: مجموع ألوانه النشطة.
+            const rows = (getFieldValue('variants') ?? []) as VariantFields[]
+            const stock = rows.length > 0 ? derivedStock(rows) : Number(getFieldValue('stock') ?? 0)
             const at = getFieldValue('restockAt') as string | null | undefined
             const [text, type] =
               stock > 0
@@ -425,6 +481,16 @@ export default function ProductForm({
 
       <Card title="الصور" variant="outlined" style={{ marginTop: 16 }}>
         <ImagesEditor purpose="product" />
+      </Card>
+
+      <Card
+        title="الألوان"
+        variant="outlined"
+        style={{ marginTop: 16 }}
+        data-testid="variants-card"
+        extra={<Typography.Text type="secondary">اختياري — حتى ٢٠ لوناً</Typography.Text>}
+      >
+        <VariantsEditor stockBase={variantStockBase} />
       </Card>
 
       <Card title="الأنمي المرتبط" variant="outlined" style={{ marginTop: 16 }}>
@@ -625,6 +691,7 @@ export default function ProductForm({
       </Card>
 
       <Divider style={{ margin: '16px 0' }} />
+      {submitError}
       <Space>
         <Button type="primary" htmlType="submit" loading={submitting}>
           {mode === 'create' ? 'إضافة المنتج' : 'حفظ التعديلات'}

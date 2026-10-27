@@ -10,6 +10,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../../../core/auth/require_auth.dart';
 import '../../../../core/design_system/design_system.dart';
+import '../../../../core/errors/app_exception.dart';
 import '../../../../core/di/injection_container.dart' show sl;
 import '../../../../core/l10n/gender.dart';
 import '../../../../core/tracking/tracking_signals.dart';
@@ -25,6 +26,7 @@ import '../../../visuals/presentation/character_artwork.dart';
 import '../../../restock/presentation/restock_notify_button.dart';
 import '../../../settings/data/store_settings_repository.dart';
 import '../utils/product_share.dart';
+import '../widgets/product_color_selector.dart';
 
 /// تفاصيل المنتج بتصميم Otaku Galaxy v2.
 ///
@@ -61,6 +63,37 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
   int _quantity = 1;
   final Map<String, String> _selectedOptions = {};
 
+  /// اللون المختار (STEP 74) — `null` حتى يختار الزبون، كالخيارات تماماً:
+  /// لا اختيار افتراضي، فلا يُضاف لونٌ لم يختره.
+  String? _selectedVariantId;
+
+  /// اللون المختار إن بقي فعّالاً ومتوفراً في آخر نسخةٍ من المنتج.
+  ProductVariant? _selectedVariantOf(Product product) {
+    final variant = product.activeVariantById(_selectedVariantId);
+    return variant != null && variant.inStock ? variant : null;
+  }
+
+  /// المخزون الذي تُقاس عليه الكمية: مخزون اللون المختار، أو — قبل الاختيار —
+  /// أكبر مخزونٍ بين الألوان المتاحة (يُقصّ عند الاختيار). منتجٌ بلا ألوان:
+  /// مخزونه كما كان.
+  int _stockFor(Product product) {
+    if (!product.hasVariants) return product.stock;
+    final selected = _selectedVariantOf(product);
+    if (selected != null) return selected.stock;
+    var best = 0;
+    for (final v in product.activeVariants) {
+      if (v.stock > best) best = v.stock;
+    }
+    return best;
+  }
+
+  void _selectVariant(ProductVariant variant) {
+    setState(() {
+      _selectedVariantId = variant.id;
+      if (_quantity > variant.stock) _quantity = variant.stock;
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -84,7 +117,18 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
         track: openedNow ? _tracking?.headerFor(TrackKind.view) : null,
       );
       if (!mounted) return;
-      setState(() => _product = product);
+      setState(() {
+        _product = product;
+        // لونٌ عُطِّل أو نفد منذ الاختيار يسقط — لا يبقى مختاراً بصمت.
+        if (_selectedVariantId != null &&
+            _selectedVariantOf(product) == null) {
+          _selectedVariantId = null;
+        }
+        final stock = _stockFor(product);
+        if (product.hasVariants && stock > 0 && _quantity > stock) {
+          _quantity = stock;
+        }
+      });
     } catch (_) {
       if (!mounted) return;
       setState(() => _product = null);
@@ -145,8 +189,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                 bottom: BorderSide(color: theme.colorScheme.outlineVariant),
               ),
             ),
+            // اللون المختار يُبدّل الصورة إلى صورته (STEP 74).
             child: ProductPhotoSlot(
-              imageUrl: product.images.isNotEmpty ? product.images.first : null,
+              key: const Key('product_hero_image'),
+              imageUrl:
+                  _selectedVariantOf(product)?.imageUrl ??
+                  (product.images.isNotEmpty ? product.images.first : null),
               iconSize: 70,
             ),
           ),
@@ -431,7 +479,18 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
               ],
 
               const SizedBox(height: 14),
-              ProductStockPill.forProduct(product),
+              // اللون المختار يقول توفّره هو، لا مجموع الألوان.
+              if (_selectedVariantOf(product) case final variant?)
+                ProductStockPill(
+                  key: const Key('product_stock_pill'),
+                  stock: variant.stock,
+                  availability: product.availability,
+                )
+              else
+                ProductStockPill.forProduct(
+                  product,
+                  key: const Key('product_stock_pill'),
+                ),
 
               // الموعد المتوقَّع — يُعرض مع حالة «قريباً يتوفر» وحدها.
               //
@@ -539,6 +598,41 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                 const _KurdishMissingNote(),
               ],
 
+              // الألوان (STEP 74) — الفعّالة وحدها؛ غير الفعّال مخفيّ.
+              if (product.activeVariants.isNotEmpty) ...[
+                const SizedBox(height: 22),
+                Row(
+                  children: [
+                    Text(
+                      context.strings('productColor'),
+                      style: _sectionStyle(theme),
+                    ),
+                    if (_selectedVariantOf(product) case final variant?) ...[
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          variant.nameIn(context.language),
+                          key: const Key('product_selected_color_name'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontSize: 13,
+                            fontWeight: AppDimens.weightBold,
+                            color: AppColors.secondary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 11),
+                ProductColorSelector(
+                  variants: product.activeVariants,
+                  selectedId: _selectedVariantOf(product)?.id,
+                  onSelected: _selectVariant,
+                ),
+              ],
+
               // الخيارات.
               if (product.options != null && product.options!.isNotEmpty) ...[
                 const SizedBox(height: 22),
@@ -561,9 +655,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                 children: [
                   Expanded(child: Text(context.strings('quantity'), style: _sectionStyle(theme))),
                   // الكمية لا تظهر للزبون إلا عند انخفاض المخزون.
-                  if (product.lowStock) ...[
+                  if (_showsLowStock(product)) ...[
                     Text(
-                      context.strings.p('availableStockCount', {'count': '${product.stock}'}),
+                      context.strings.p('availableStockCount', {'count': '${_stockFor(product)}'}),
                       style: theme.textTheme.bodySmall?.copyWith(
                         fontSize: 11.5,
                         color: theme.colorScheme.onSurfaceVariant,
@@ -573,7 +667,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                   ],
                   OtakuQuantityStepper(
                     quantity: _quantity,
-                    canIncrease: _quantity < product.stock,
+                    canIncrease: _quantity < _stockFor(product),
                     onIncrease: () => setState(() => _quantity++),
                     onDecrease: () {
                       if (_quantity > 1) setState(() => _quantity--);
@@ -668,6 +762,17 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     );
   }
 
+  /// «المتبقي N» — للّون المختار بمخزونه، ولا شيء قبل اختيار اللون.
+  bool _showsLowStock(Product product) {
+    if (!product.hasVariants) return product.lowStock;
+    final variant = _selectedVariantOf(product);
+    return variant != null && variant.stock <= 3;
+  }
+
+  /// منتجٌ بألوان لم يُختر لونه بعد.
+  bool _missingColor(Product product) =>
+      product.activeVariants.isNotEmpty && _selectedVariantOf(product) == null;
+
   TextStyle? _sectionStyle(ThemeData theme) =>
       theme.textTheme.titleMedium?.copyWith(
         fontFamily: AppFonts.heading,
@@ -728,10 +833,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                 RestockNotifyButton(productId: product.id)
               else
                 AnimePrimaryButton(
-                  label: missingOption
+                  key: const Key('product_add_to_cart'),
+                  label: _missingColor(product)
+                      ? context.strings('chooseColorFirst')
+                      : missingOption
                       ? context.strings('chooseOptionsFirst')
                       : context.g(GenderedStrings.addToCart),
-                  onPressed: missingOption
+                  onPressed: _missingColor(product) || missingOption
                       ? null
                       : () => _addToCart(context, product),
                   height: AppDimens.buttonHeightXl,
@@ -837,6 +945,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
   /// إضافة إلى السلة: تبقي المستخدم في شاشة تفاصيل المنتج، وتُظهر تأكيداً
   /// خفيفاً بدل نافذة حاجزة. الزائر يُدعى لتسجيل الدخول أولاً.
   Future<void> _addToCart(BuildContext context, Product product) async {
+    final variant = _selectedVariantOf(product);
+    // حارسٌ ثانٍ خلف الزرّ المعطَّل: منتجٌ بألوان لا يُرسَل بلا لون.
+    if (product.hasVariants && variant == null) return;
+    Object? failure;
     final added = await addToCartGuarded(
       context,
       product: product,
@@ -844,11 +956,35 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
       selectedOption: _selectedOptions.isEmpty
           ? null
           : _selectedOptions.values.join(context.strings('listSeparator')),
+      variantId: variant?.id,
+      onError: (error) => failure = error,
     );
-    if (!added || !context.mounted) return;
+    if (!context.mounted) return;
+    if (!added) {
+      _onAddFailed(context, failure);
+      return;
+    }
 
     showAddedToCartSnack(context);
   }
+
+  /// رفضُ لونٍ (STEP 74): لونٌ عُطِّل أو نفد أو لم يعد للمنتج منذ فُتحت
+  /// الصفحة. العربة تُزامَن عند الفشل في `CartCubit.add`؛ هنا تُبلَّغ رسالة الخادم
+  /// (مصرَّفة بلغة الطلب) ويُعاد جلب المنتج فتظهر الألوان بحالتها الآن.
+  void _onAddFailed(BuildContext context, Object? error) {
+    if (error is! AppException || !_variantErrorCodes.contains(error.code)) {
+      return;
+    }
+    showOtakuSnack(context, message: error.message, tone: OtakuSnackTone.error);
+    _load();
+  }
+
+  static const _variantErrorCodes = {
+    'VARIANT_REQUIRED',
+    'INVALID_VARIANT',
+    'VARIANT_UNAVAILABLE',
+    'VARIANT_OUT_OF_STOCK',
+  };
 }
 
 /// إعلان أن المنتج معروضٌ بالعربية لأن كرديته ناقصة (منتج أقدم من إلزام

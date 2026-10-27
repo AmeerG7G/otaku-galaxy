@@ -6,6 +6,7 @@ import { listGovernorates } from '@/lib/catalog';
 import { localPhone } from '@/lib/format';
 import { requireSession, sessionRead } from '@/lib/page-session';
 import type { Cart } from '@/lib/types';
+import { lineColorName } from '@/lib/variants';
 
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = { title: 'الدفع', robots: { index: false } };
@@ -39,6 +40,12 @@ export default async function CheckoutPage() {
         governorates={governorates}
         expectedPrices={expectedPrices}
         productNames={Object.fromEntries(cart.items.map((line) => [line.productId, line.productName]))}
+        colorNames={Object.fromEntries(
+          cart.items.flatMap((line) => {
+            const name = lineColorName(line);
+            return line.variantId && name ? [[line.variantId, name]] : [];
+          }),
+        )}
         defaultPhone={localPhone(session.user.phone)}
         idempotencyKey={randomUUID()}
       />

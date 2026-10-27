@@ -1,6 +1,9 @@
 import '../../../../core/l10n/bilingual_text.dart';
 import '../../../../core/network/media_url.dart';
 import '../../../settings/presentation/cubit/locale_cubit.dart';
+import 'product_variant.dart';
+
+export 'product_variant.dart';
 
 /// حالة توفّر المنتج كما يراها الزبون.
 ///
@@ -59,6 +62,7 @@ class Product {
     this.franchiseIds = const [],
     this.restockAt,
     this.pairPrice,
+    this.variants = const [],
   });
 
   final String id;
@@ -134,6 +138,29 @@ class Product {
   /// الأنمي/الامتيازات المرتبطة بالمنتج.
   final List<String> franchiseIds;
 
+  /// ألوان المنتج (STEP 74) بترتيب `sortOrder`، الفعّالة وغير الفعّالة كما
+  /// أرسلها الخادم. `[]` = منتجٌ قديم بلا ألوان.
+  final List<ProductVariant> variants;
+
+  /// هل هذا منتجٌ بألوان؟ — يكفي لونٌ واحد ولو غير فعّال (قاعدة العقد).
+  bool get hasVariants => variants.isNotEmpty;
+
+  /// الألوان التي يراها الزبون: الفعّالة وحدها، بترتيبها.
+  List<ProductVariant> get activeVariants {
+    final active = [for (final v in variants) if (v.isActive) v];
+    active.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    return active;
+  }
+
+  /// اللون [id] إن كان فعّالاً، وإلا `null`.
+  ProductVariant? activeVariantById(String? id) {
+    if (id == null) return null;
+    for (final v in variants) {
+      if (v.id == id && v.isActive) return v;
+    }
+    return null;
+  }
+
   /// الموعد المتوقَّع لعودة التوفر — يضبطه المسؤول، و`null` يعني «بلا موعد».
   ///
   /// إرشاديٌّ محض: لا يُغيّر المخزون ولا يفتح الشراء ولا يُشغّل إشعاراً.
@@ -158,7 +185,9 @@ class Product {
 
   double get discountedPrice => price;
 
-  bool get inStock => stock > 0;
+  /// منتجٌ بألوانٍ كلّها غير فعّالة غير متوفر مهما قال المخزون (العقد §2).
+  bool get inStock =>
+      stock > 0 && (variants.isEmpty || activeVariants.isNotEmpty);
 
   /// الكمية المخفية عن الزبون؛ لا تظهر إلا عند انخفاض المخزون إلى 3 قطع أو أقل.
   bool get lowStock => inStock && stock <= 3;
@@ -244,6 +273,13 @@ class Product {
       // موعدٌ إرشادي لا يستحق إسقاط صفحة المنتج.
       restockAt: DateTime.tryParse(json['restockAt']?.toString() ?? '')?.toLocal(),
       pairPrice: (json['pairPrice'] as num?)?.toDouble(),
+      // غيابُ الحقل (خادمٌ أقدم) أو `[]` = منتجٌ قديم.
+      variants:
+          (json['variants'] as List?)
+              ?.whereType<Map<String, dynamic>>()
+              .map(ProductVariant.fromJson)
+              .toList() ??
+          const [],
     );
   }
 
@@ -275,6 +311,7 @@ class Product {
       restockAt: restockAt,
       franchiseIds: franchiseIds,
       pairPrice: pairPrice,
+      variants: variants,
     );
   }
 }

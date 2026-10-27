@@ -49,7 +49,7 @@ function toNumber(v: string | number | null | undefined): number | null {
  * ثانية في مكان ثانٍ.
  */
 export function mapProduct(
-  row: ProductRow & { images?: unknown; franchise_ids?: unknown },
+  row: ProductRow & { images?: unknown; franchise_ids?: unknown; variants?: unknown },
 ) {
   // [CRITICAL] `toNumber` لا `Number`: `Number(null)` صفرٌ، أي منتجٌ مجاني.
   const price = toNumber(row.price);
@@ -102,9 +102,45 @@ export function mapProduct(
     // موعد التوفر القادم (إن حدّده المسؤول) — عرض إرشادي على صفحة المنتج.
     restockAt: row.restock_at ? new Date(row.restock_at).toISOString() : null,
     franchiseIds: (row.franchise_ids as string[]) ?? [],
+    /**
+     * ألوان المنتج (087) بترتيب العرض — `[]` = منتجٌ بلا ألوان يبقى على مخزونه.
+     * الموقوف يخرج بـ`isActive: false` (للوحة والطلبات القديمة)، والعميل يخفيه؛
+     * الخادم يرفضه في العربة مهما أرسل العميل. `colorName` عربيٌّ هنا وتحسمه
+     * طبقة الخدمة بلغة الزبون (`localizeProduct`) كاسم المنتج.
+     */
+    variants: mapVariants(row.variants),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+export interface ProductVariant {
+  id: string;
+  colorName: string;
+  colorNameAr: string;
+  /** `null` = لا ترجمة كردية — يُعرض العربي مكانها. */
+  colorNameCkb: string | null;
+  /** `#RRGGBB` أو `null`. */
+  colorHex: string | null;
+  imageUrl: string;
+  stock: number;
+  isActive: boolean;
+  sortOrder: number;
+}
+
+function mapVariants(raw: unknown): ProductVariant[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((v: Record<string, unknown>) => ({
+    id: v.id as string,
+    colorName: v.colorName as string,
+    colorNameAr: v.colorName as string,
+    colorNameCkb: kurdishOrNull(v.colorNameCkb as string | null),
+    colorHex: (v.colorHex as string | null) ?? null,
+    imageUrl: v.imageUrl as string,
+    stock: Number(v.stock),
+    isActive: v.isActive === true,
+    sortOrder: Number(v.sortOrder),
+  }));
 }
 
 /**
@@ -123,7 +159,21 @@ export const PRODUCT_RELATION_COLUMNS = (prefix: string) => `
            (SELECT json_agg(pf.franchise_id)
             FROM product_franchises pf WHERE pf.product_id = ${prefix}.id),
            '[]'::json
-         ) AS franchise_ids`;
+         ) AS franchise_ids,
+         COALESCE(
+           (SELECT json_agg(json_build_object(
+                     'id', pv.id,
+                     'colorName', pv.color_name,
+                     'colorNameCkb', pv.color_name_ckb,
+                     'colorHex', pv.color_hex,
+                     'imageUrl', pv.image_url,
+                     'stock', pv.stock,
+                     'isActive', pv.is_active,
+                     'sortOrder', pv.sort_order)
+                   ORDER BY pv.sort_order, pv.created_at, pv.id)
+            FROM product_variants pv WHERE pv.product_id = ${prefix}.id),
+           '[]'::json
+         ) AS variants`;
 
 /** جليب منتجات مع صورها (شكل واحد لجميع قوائم الكتالوج). */
 export const SELECT_WITH_IMAGES = (prefix: string) => `

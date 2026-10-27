@@ -338,6 +338,71 @@ textarea {
   resize: vertical;
 }
 
+/* Colour choices (STEP 74) — a radio per colour; an unavailable colour is shown, disabled. */
+.color-choices {
+  border: 0;
+  padding: 0;
+  margin-inline: 0;
+}
+
+.color-choices legend {
+  font-weight: 700;
+  margin-block-end: var(--space-1);
+}
+
+.color-choices__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.field .color-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--tap);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-weight: 400;
+  cursor: pointer;
+}
+
+.field .color-choice input {
+  width: auto;
+  min-height: 0;
+  margin: 0;
+}
+
+.field .color-choice:has(input:checked) {
+  border-color: var(--primary);
+  background: var(--primary-pale);
+  font-weight: 700;
+}
+
+.field .color-choice--out {
+  opacity: 0.55;
+  cursor: not-allowed;
+  text-decoration: line-through;
+}
+
+.swatch {
+  display: inline-block;
+  inline-size: 16px;
+  block-size: 16px;
+  border-radius: 4px;
+  border: 1px solid var(--outline);
+  flex: none;
+  vertical-align: middle;
+}
+
+.line-color {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
 .ltr {
   direction: ltr;
   text-align: end;

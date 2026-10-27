@@ -1,11 +1,13 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { AddToCart } from '@/components/AddToCart';
+import { GalleryMain, VariantSelectionProvider } from '@/components/VariantSelection';
 import { ApiError } from '@/lib/api';
 import { getProduct, isUuid } from '@/lib/catalog';
 import { COMING_SOON, displayRestockAt, formatIqd, formatShortStoreDate, pairOfferLabel, PRICE_COMING_SOON } from '@/lib/format';
 import { readSession } from '@/lib/server-session';
 import type { Product } from '@/lib/types';
+import { customerVariants } from '@/lib/variants';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,12 +40,18 @@ export default async function ProductPage({ params }: Props) {
   const [main, ...rest] = product.images;
   // The app's `displayRestockAt` rule — see `lib/format.ts`.
   const restockOn = displayRestockAt(product);
+  // Colours (STEP 74): inactive ones are never shown; the chosen colour's image
+  // leads the gallery and its stock bounds the cart.
+  const variants = customerVariants(product);
+  const hasColors = variants.length > 0;
 
-  return (
+  const article = (
     <article className="product-layout">
       <div className="gallery">
         <div className="gallery__main">
-          {main ? (
+          {hasColors ? (
+            <GalleryMain fallback={main} alt={product.name} />
+          ) : main ? (
             // eslint-disable-next-line @next/next/no-img-element -- media origin is the API's, served as-is
             <img src={main} alt={product.name} width={600} height={600} fetchPriority="high" />
           ) : null}
@@ -84,7 +92,7 @@ export default async function ProductPage({ params }: Props) {
             {product.hasDeliveryPromo && product.deliveryPromoAmount > 0 ? (
               <p className="pill pill-promo">خصم {formatIqd(product.deliveryPromoAmount)} من التوصيل</p>
             ) : null}
-            {product.stock > 0 && product.stock <= 3 ? <p className="pill pill-low">متبقٍّ {product.stock} فقط</p> : null}
+            {!hasColors && product.stock > 0 && product.stock <= 3 ? <p className="pill pill-low">متبقٍّ {product.stock} فقط</p> : null}
             {restockOn ? (
               <p className="pill pill-low">
                 {COMING_SOON} — متوقع التوفر: {formatShortStoreDate(restockOn)}
@@ -98,4 +106,5 @@ export default async function ProductPage({ params }: Props) {
       </div>
     </article>
   );
+  return hasColors ? <VariantSelectionProvider variants={variants}>{article}</VariantSelectionProvider> : article;
 }

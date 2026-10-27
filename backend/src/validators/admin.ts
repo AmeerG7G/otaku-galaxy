@@ -238,6 +238,42 @@ const productOptions = z
   )
   .max(MAX_PRODUCT_OPTIONS, `${MAX_PRODUCT_OPTIONS} خيارات كحد أقصى للمنتج`);
 
+/** حدّ ألوان المنتج (087). */
+export const MAX_PRODUCT_VARIANTS = 20;
+
+/**
+ * لونٌ من ألوان المنتج (087) — كما تكتبه اللوحة. العقد:
+ * docs/staging/color-variants-contract.md §5.
+ *
+ * الاسم العربي إلزامي والكردي اختياري (قاعدة 2026-10-26)؛ لون العيّنة اختياري
+ * بصيغة `#RRGGBB` ويُحفظ بحروفٍ كبيرة؛ الصورة إلزامية بقاعدة صور المنتج نفسها.
+ */
+const variantInput = z.object({
+  id: z.string().uuid('معرّف لون غير صالح').optional(),
+  colorName: z
+    .string({ error: 'اسم اللون مطلوب' })
+    .trim()
+    .min(1, 'اسم اللون مطلوب')
+    .max(40, 'اسم اللون طويل جداً (40 حرفاً كحد أقصى)'),
+  colorNameCkb: optionalKurdish('اسم اللون', { max: 40 }),
+  colorHex: z
+    .string()
+    .trim()
+    .transform((value) => value.toUpperCase())
+    .refine((value) => /^#[0-9A-F]{6}$/.test(value), 'لون العيّنة يجب أن يكون بصيغة #RRGGBB')
+    .nullable()
+    .optional(),
+  imageUrl,
+  stock: z.number().int().min(0).max(100000),
+  /** مخزون اللون الذي فُتحت عليه الصفحة — فحصٌ تحت القفل (`STOCK_CHANGED`) لا قيمة تُكتب. */
+  expectedStock: z.number().int().min(0).max(100000).optional(),
+  isActive: z.boolean().optional(),
+});
+
+const productVariants = z
+  .array(variantInput)
+  .max(MAX_PRODUCT_VARIANTS, `${MAX_PRODUCT_VARIANTS} لوناً كحد أقصى للمنتج`);
+
 export const adminProductCreateSchema = z.object({
   nameAr: contentName('العربية'),
   descriptionAr: contentDescription('العربية'),
@@ -258,9 +294,14 @@ export const adminProductCreateSchema = z.object({
   pairPrice: price.nullable().optional(),
   categoryId: z.string().uuid('معرّف قسم غير صالح'),
   subcategoryId: z.string().uuid('معرّف قسم فرعي غير صالح').nullable().optional(),
-  stock: z.number().int().min(0).max(100000),
+  /** إلزامي لمنتجٍ بلا ألوان؛ لمنتجٍ بألوان يُرفض (`STOCK_PER_VARIANT`) — المخزون لكل لون. */
+  stock: z.number().int().min(0).max(100000).optional(),
   images: z.array(imageUrl).max(10).default([]),
   options: productOptions.default([]),
+  /** ألوان المنتج (087) — لا `id` ولا `expectedStock` لمنتجٍ جديد. */
+  variants: z.array(variantInput.omit({ id: true, expectedStock: true }))
+    .max(MAX_PRODUCT_VARIANTS, `${MAX_PRODUCT_VARIANTS} لوناً كحد أقصى للمنتج`)
+    .default([]),
   isOffer: z.boolean().default(false),
   isSelected: z.boolean().default(false),
   /** السعر قبل الخصم — يجب أن يكون أعلى من السعر الحالي (تتحقق القاعدة أيضاً). */
@@ -270,7 +311,12 @@ export const adminProductCreateSchema = z.object({
   deliveryPromoAmount: deliveryPromoAmount.default(0),
   franchiseIds: z.array(z.string().uuid('معرّف أنمي غير صالح')).max(20).default([]),
   restockAt,
-}).superRefine(assertDeliveryPromoCoherent);
+})
+  .superRefine(assertDeliveryPromoCoherent)
+  .refine((value) => value.variants.length > 0 || value.stock !== undefined, {
+    message: 'المخزون مطلوب',
+    path: ['stock'],
+  });
 
 /**
  * شكل التحديث يختلف عن الإنشاء:
@@ -307,6 +353,11 @@ export const adminProductUpdateSchema = z.object({
   expectedStock: z.number().int().min(0).max(100000).optional(),
   images: z.array(imageUrl).max(10).optional(),
   options: productOptions.optional(),
+  /**
+   * ألوان المنتج (087): الغائب لا يُمسّ؛ الحاضر القائمةُ **كاملة** بترتيبها.
+   * لونٌ قائم يُرسل بمعرّفه، ولونٌ غاب عنها يُحذف إن لم يُطلب قط وإلا يُوقف.
+   */
+  variants: productVariants.optional(),
   isOffer: z.boolean().optional(),
   isSelected: z.boolean().optional(),
   isActive: z.boolean().optional(),

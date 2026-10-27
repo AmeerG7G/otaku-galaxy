@@ -146,6 +146,7 @@ class _StubCart implements CartRepository {
     String productId, {
     int quantity = 1,
     String? optionValue,
+    String? variantId,
   }) async => [_item()];
   @override
   Future<List<CartItem>> updateQuantity(String lineId, int quantity) async => [

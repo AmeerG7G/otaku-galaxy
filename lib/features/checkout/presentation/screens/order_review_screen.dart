@@ -8,6 +8,7 @@ import '../../../../core/l10n/gender.dart';
 import '../../../../core/errors/app_exception.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../cart/presentation/cubit/cart_cubit.dart';
+import '../../../cart/presentation/widgets/line_color_label.dart';
 import '../../../main_navigation/presentation/screens/main_navigation_screen.dart';
 import '../../../orders/domain/entities/order_data.dart';
 import '../../../orders/domain/usecases/place_order_usecase.dart';
@@ -137,6 +138,10 @@ class _OrderReviewScreenState extends State<OrderReviewScreen>
       error.statusCode == 409 &&
       (error.code == 'INSUFFICIENT_STOCK' ||
           error.code == 'PRODUCT_UNAVAILABLE' ||
+          // لونٌ عُطِّل أو نفد بعد المراجعة (STEP 74): العربة المُزامَنة تُسقط
+          // السطر أو تخفّضه وتبلّغ.
+          error.code == 'VARIANT_UNAVAILABLE' ||
+          error.code == 'VARIANT_OUT_OF_STOCK' ||
           error.code == 'PRODUCT_PRICE_CHANGED' ||
           // سعرٌ سُحب بعد الإضافة (084): السلة المُزامَنة تُسقط السطر وتبلّغ.
           error.code == 'PRODUCT_NOT_PRICED');
@@ -357,6 +362,11 @@ class _OrderReviewScreenState extends State<OrderReviewScreen>
                         fontWeight: AppDimens.weightSemiBold,
                       ),
                     ),
+                    // لون السطر (STEP 74).
+                    if (data.items[i].color case final color?) ...[
+                      const SizedBox(height: 3),
+                      LineColorLabel(color: color, fontSize: 11.5),
+                    ],
                     const SizedBox(height: 3),
                     Text(
                       context.strings.p('quantityValue', {
