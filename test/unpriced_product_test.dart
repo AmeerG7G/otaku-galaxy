@@ -153,10 +153,12 @@ void main() {
         expect(button.onPressed, isNull);
         expect(find.textContaining('د.ع'), findsNothing);
         expect(find.text(AppStrings.of(language)('outOfStock')), findsNothing);
-        // الموعد القادم يُعرض: 2099-03-01T21:00Z = منتصف ليل ٢ آذار ببغداد.
+        // الموعد القادم يُعرض رقمياً (STEP 77): 2099-03-01T21:00Z = منتصف ليل
+        // ٢ آذار ببغداد ← «2099-03-02» في اللغتين، بلا اسم شهر.
+        expect(find.textContaining('2099-03-02'), findsOneWidget);
         expect(
           find.textContaining(AppStrings.of(language)('monthMarch')),
-          findsOneWidget,
+          findsNothing,
         );
         expect(tester.takeException(), isNull);
       });

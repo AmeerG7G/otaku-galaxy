@@ -270,6 +270,12 @@ const variantInput = z.object({
   isActive: z.boolean().optional(),
 });
 
+/**
+ * ما تمثّله خيارات المنتج (090): لون أو تصميم أو مقاس — يسمّي محدّد الخيار
+ * للزبون. الغائب عند الإنشاء = `color`، وعند التعديل لا يُمسّ.
+ */
+const variantKind = z.enum(['color', 'design', 'size'], { message: 'نوع الخيارات غير معروف' });
+
 const productVariants = z
   .array(variantInput)
   .max(MAX_PRODUCT_VARIANTS, `${MAX_PRODUCT_VARIANTS} لوناً كحد أقصى للمنتج`);
@@ -292,6 +298,7 @@ export const adminProductCreateSchema = z.object({
    * (بين سعر القطعة وضعفه، ولا عرض بلا سعر) تفرضه القاعدة: `INVALID_PAIR_PRICE`.
    */
   pairPrice: price.nullable().optional(),
+  variantKind: variantKind.optional(),
   categoryId: z.string().uuid('معرّف قسم غير صالح'),
   subcategoryId: z.string().uuid('معرّف قسم فرعي غير صالح').nullable().optional(),
   /** إلزامي لمنتجٍ بلا ألوان؛ لمنتجٍ بألوان يُرفض (`STOCK_PER_VARIANT`) — المخزون لكل لون. */
@@ -339,6 +346,7 @@ export const adminProductUpdateSchema = z.object({
   price: price.nullable().optional(),
   /** `null` يزيل عرض القطعتين (085)؛ الغائب لا يُمسّ. */
   pairPrice: price.nullable().optional(),
+  variantKind: variantKind.optional(),
   categoryId: z.string().uuid('معرّف قسم غير صالح').optional(),
   subcategoryId: z.string().uuid('معرّف قسم فرعي غير صالح').nullable().optional(),
   stock: z.number().int().min(0).max(100000).optional(),

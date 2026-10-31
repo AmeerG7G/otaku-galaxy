@@ -61,9 +61,18 @@ const SEP_15 = '2026-09-15T09:00:00.000Z';
 const SEP_20 = '2026-09-20T09:00:00.000Z';
 
 describe('صياغة التاريخ', () => {
-  it('يوم وشهر بالعربية', () => {
-    expect(formatExpectedRestockDate(SEP_15)).toBe('15 سبتمبر');
-    expect(formatExpectedRestockDate('2026-01-03T09:00:00.000Z')).toBe('3 يناير');
+  // STEP 77: رقمياً `YYYY-MM-DD`، الشهر واليوم محشوّان بصفر، بلا اسم شهر.
+  it('تاريخ رقمي YYYY-MM-DD', () => {
+    expect(formatExpectedRestockDate(SEP_15)).toBe('2026-09-15');
+    expect(formatExpectedRestockDate('2026-01-03T09:00:00.000Z')).toBe('2026-01-03');
+  });
+
+  it('حدود الشهر والسنة بمنطقة المتجر', () => {
+    // منتصف ليل بغداد = 21:00Z من اليوم السابق.
+    expect(formatExpectedRestockDate('2026-07-02T21:00:00.000Z')).toBe('2026-07-03');
+    expect(formatExpectedRestockDate('2026-01-31T21:00:00.000Z')).toBe('2026-02-01');
+    expect(formatExpectedRestockDate('2026-12-31T21:00:00.000Z')).toBe('2027-01-01');
+    expect(formatExpectedRestockDate('2026-12-31T20:59:59.000Z')).toBe('2026-12-31');
   });
 
   /**
@@ -73,7 +82,7 @@ describe('صياغة التاريخ', () => {
    * الموعد يقصد اليوم الذي يراه هو.
    */
   it('[CRITICAL] يُحسب بمنطقة المتجر الزمنية', () => {
-    expect(formatExpectedRestockDate('2026-09-14T22:00:00.000Z')).toBe('15 سبتمبر');
+    expect(formatExpectedRestockDate('2026-09-14T22:00:00.000Z')).toBe('2026-09-15');
   });
 });
 
@@ -93,7 +102,7 @@ describe('ضبط الموعد بعد اشتراك الزبائن (الحالة �
     for (const user of [a, b]) {
       const notices = await scheduleNotices(user.userId, productId);
       expect(notices).toHaveLength(1);
-      expect(notices[0]!.body).toContain('15 سبتمبر');
+      expect(notices[0]!.body).toContain('2026-09-15');
       expect(notices[0]!.body).toContain('متوقّع توفره');
     }
   });
@@ -134,7 +143,7 @@ describe('ضبط الموعد بعد اشتراك الزبائن (الحالة �
 
     const notices = await scheduleNotices(user.userId, productId);
     expect(notices).toHaveLength(2);
-    expect(notices[1]!.body).toContain('20 سبتمبر');
+    expect(notices[1]!.body).toContain('2026-09-20');
     expect(notices[1]!.body).toContain('تم تحديث');
   });
 
@@ -180,7 +189,7 @@ describe('الاشتراك بعد ضبط الموعد (الحالة ب)', () => 
 
     const notices = await scheduleNotices(user.userId, productId);
     expect(notices).toHaveLength(1);
-    expect(notices[0]!.body).toContain('15 سبتمبر');
+    expect(notices[0]!.body).toContain('2026-09-15');
   });
 
   it('[CRITICAL] الاشتراك المتكرّر لا يُكرّر الإشعار', async () => {
@@ -352,7 +361,7 @@ describe('التوفر الفعلي يتقدّم على الموعد المتو�
     await setRestockAt(productId, SEP_20).expect(200);
     const notices = await scheduleNotices(user.userId, productId);
     expect(notices).toHaveLength(1);
-    expect(notices[0]!.body).toContain('20 سبتمبر');
+    expect(notices[0]!.body).toContain('2026-09-20');
   });
 });
 

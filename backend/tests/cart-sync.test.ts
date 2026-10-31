@@ -548,12 +548,12 @@ describe('CA-14 — active cart synchronization and the checkout safety net', ()
       expect(await redemptionOpen(c.userId)).toBe(1);
       expect(await birthdayUsages(c.userId)).toBe(0);
 
-      // يعيد المزامنة فيرى 25,000 ويعيد الإرسال: الخصمان يُطبَّقان الآن.
+      // يعيد المزامنة فيرى 25,000 ويعيد الإرسال. يوم الميلاد (STEP 77): خصم
+      // الميلاد 5% = 1 250 وحده، والمستكشف لا يجتمع معه فيبقى مفتوحاً.
       const retried = await submit(c.token, { expectedPrices: expectedFrom(await sync(c.token)) });
       expect(retried.status).toBe(201);
-      // ميلاد 5% = 1 250، مستكشف 3% = 750.
-      expect(retried.body.data).toMatchObject({ discount: 2_000, loyaltyDiscount: 750 });
-      expect(await redemptionOpen(c.userId)).toBe(0);
+      expect(retried.body.data).toMatchObject({ discount: 1_250, loyaltyDiscount: 0 });
+      expect(await redemptionOpen(c.userId)).toBe(1);
       expect(await birthdayUsages(c.userId)).toBe(1);
     });
 

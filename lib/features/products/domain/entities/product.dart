@@ -63,6 +63,7 @@ class Product {
     this.restockAt,
     this.pairPrice,
     this.variants = const [],
+    this.variantKind = VariantKind.color,
   });
 
   final String id;
@@ -141,6 +142,9 @@ class Product {
   /// ألوان المنتج (STEP 74) بترتيب `sortOrder`، الفعّالة وغير الفعّالة كما
   /// أرسلها الخادم. `[]` = منتجٌ قديم بلا ألوان.
   final List<ProductVariant> variants;
+
+  /// ما تمثّله [variants] للزبون (090) — يسمّي المحدّد لا غير.
+  final VariantKind variantKind;
 
   /// صورة المنتج في البطاقات والقوائم: أولى صوره العامة كما كانت، وإن لم
   /// تكن له صورٌ عامة فصورة أول لونٍ فعّال (STEP 74) — فلا يُضطرّ المسؤول إلى
@@ -294,6 +298,7 @@ class Product {
               .map(ProductVariant.fromJson)
               .toList() ??
           const [],
+      variantKind: VariantKind.parse(json['variantKind']),
     );
   }
 
@@ -326,6 +331,7 @@ class Product {
       franchiseIds: franchiseIds,
       pairPrice: pairPrice,
       variants: variants,
+      variantKind: variantKind,
     );
   }
 }

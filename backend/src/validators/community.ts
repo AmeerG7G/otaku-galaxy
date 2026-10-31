@@ -119,7 +119,7 @@ export const rewardLevelParamSchema = z.object({
 });
 
 export const redemptionIdParamSchema = z.object({
-  id: z.string().uuid('معرّف مزيّة غير صالح'),
+  id: z.string().uuid('معرّف ميزة غير صالح'),
 });
 
 /** تفضيل واحد (زر مبدل) — المفتاح محصَّن بالتعداد، والقيمة منطقية صراحةً. */

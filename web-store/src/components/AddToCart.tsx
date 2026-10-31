@@ -7,6 +7,7 @@ import type { ProductOption } from '@/lib/types';
 import { bff } from './client-api';
 import { useHydrated } from './use-hydrated';
 import { ColorChoices, useVariantSelection } from './VariantSelection';
+import { variantKindText } from '@/lib/variants';
 
 /**
  * Add to the server cart. Options are required when the product has them;
@@ -62,7 +63,7 @@ export function AddToCart({
 
   async function add() {
     if (hasColors && !color) {
-      setState({ kind: 'error', message: 'اختر لون المنتج' });
+      setState({ kind: 'error', message: variantKindText(selection?.kind).chooseFirst });
       return;
     }
     if (missingOption) {
@@ -90,7 +91,7 @@ export function AddToCart({
   return (
     <div>
       <ColorChoices />
-      {hasColors && color && color.stock <= 3 ? <p className="pill pill-low">متبقٍّ {color.stock} فقط من هذا اللون</p> : null}
+      {hasColors && color && color.stock <= 3 ? <p className="pill pill-low">متبقٍّ {color.stock} فقط {variantKindText(selection?.kind).ofThis}</p> : null}
       {options.map((option) => (
         <div className="field" key={option.name}>
           <label htmlFor={`opt-${option.name}`}>{option.name}</label>

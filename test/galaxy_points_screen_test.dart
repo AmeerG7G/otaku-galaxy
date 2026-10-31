@@ -7,6 +7,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:otaku_galaxy/core/l10n/app_strings.dart';
 import 'package:otaku_galaxy/features/auth/presentation/cubit/auth_cubit.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otaku_galaxy/features/points/domain/entities/level_reward.dart';
@@ -59,6 +60,7 @@ LevelReward _reward(
   bool unlocked = false,
   bool claimed = false,
   bool consumed = false,
+  bool inOrder = false,
 }) => LevelReward(
   levelKey: key,
   requiredPoints: key == 'explorer' ? 100 : 600,
@@ -66,6 +68,7 @@ LevelReward _reward(
   unlocked: unlocked,
   claimed: claimed,
   consumed: consumed,
+  inOrder: inOrder,
   claimable: unlocked && !claimed,
 );
 
@@ -309,6 +312,40 @@ void main() {
       expect(find.textContaining('مستوى البطولة'), findsOneWidget);
       // ولا يُخاطَب بالمذكّر لمجرّد أنه لم يُسأل.
       expect(find.textContaining('مستكشف المجرة'), findsNothing);
+    });
+  });
+
+  // STEP 77: هديةٌ رُبطت بطلبٍ أُنشئ ليست «جاهزة» لطلبٍ آخر.
+  group('هدية في طلب', () {
+    test('inOrder يُقرأ من الخادم، والغائب (خادمٌ أقدم) false', () {
+      final base = {
+        'levelKey': 'champion',
+        'requiredPoints': 600,
+        'kind': 'gift',
+        'unlocked': true,
+        'claimed': true,
+        'consumed': false,
+        'claimable': false,
+      };
+      expect(LevelReward.fromJson(base).inOrder, isFalse);
+      expect(LevelReward.fromJson(base).isReady, isTrue);
+      final inOrder = LevelReward.fromJson({...base, 'inOrder': true});
+      expect(inOrder.inOrder, isTrue);
+      expect(inOrder.isReady, isFalse);
+    });
+
+    testWidgets('[CRITICAL] الهدية المربوطة بطلب تُعرض «ستصل مع طلبك» لا «جاهزة»', (tester) async {
+      await _pumpScreen(
+        tester,
+        size: const Size(390, 2600),
+        _summary(
+          rewards: [
+            _reward('champion', kind: 'gift', unlocked: true, claimed: true, inOrder: true),
+          ],
+        ),
+      );
+      expect(find.text(AppStrings.arabic('levelGiftActivatedInOrder')), findsOneWidget);
+      expect(find.text(AppStrings.arabic('giftReady')), findsNothing);
     });
   });
 

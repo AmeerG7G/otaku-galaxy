@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProductVariant } from './types';
 import type { SessionData } from './session';
-import { cartAddBody, customerVariants, initialVariantId, lineColorName, safeHex, variantAvailable } from './variants';
+import { cartAddBody, customerVariants, initialVariantId, lineColorName, safeHex, variantAvailable, variantKindText } from './variants';
 
 /** Product colours on the storefront (STEP 74, contract §2–§4). */
 
@@ -52,6 +52,18 @@ describe('customer colours', () => {
     expect(lineColorName({ ...line, variantColorNameCkb: null }, 'ckb')).toBe('أحمر');
     expect(lineColorName({ variantColorName: null })).toBeNull();
     expect(lineColorName({})).toBeNull();
+  });
+});
+
+describe('variantKindText — what the options are (090)', () => {
+  it('names the picker and the line by kind', () => {
+    expect(variantKindText('design').label).toBe('التصميم');
+    expect(variantKindText('size').chooseFirst).toBe('اختر مقاس المنتج');
+  });
+  it('an absent or unknown kind (older API, older order line) is a colour, wording unchanged', () => {
+    expect(variantKindText(undefined)).toEqual({ label: 'اللون', chooseFirst: 'اختر لون المنتج', ofThis: 'من هذا اللون' });
+    expect(variantKindText(null).label).toBe('اللون');
+    expect(variantKindText('flavour' as never).label).toBe('اللون');
   });
 });
 

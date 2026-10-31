@@ -1,3 +1,6 @@
+/** ما تمثّله خيارات المنتج (090، STEP 77) — يسمّي محدّد الخيار للزبون. */
+export type VariantKind = 'color' | 'design' | 'size'
+
 export interface ProductOption {
   id: string
   name: string
@@ -69,6 +72,8 @@ export interface Product {
   price: number | null
   /** سعر قطعتين من المنتج نفسه (085)؛ `null` = لا عرض. */
   pairPrice: number | null
+  /** ما تمثّله خيارات المنتج (090)؛ غيابه (خادمٌ أقدم) = لون. */
+  variantKind?: VariantKind
   stock: number
   /**
    * موعد التوفر المتوقَّع — ISO-8601 أو `null` («بلا موعد»).
@@ -151,6 +156,7 @@ export interface ProductCreatePayload {
   price: number | null
   /** سعر قطعتين (085) — بين سعر القطعة وضعفه؛ الخادم يفرضه (`INVALID_PAIR_PRICE`). */
   pairPrice?: number | null
+  variantKind?: VariantKind
   categoryId: string
   subcategoryId?: string | null
   /** يُحذف مع `variants` غير فارغة — الخادم يرفضه بـ`STOCK_PER_VARIANT`. */
@@ -187,6 +193,7 @@ export interface ProductUpdatePayload {
   price?: number | null
   /** `null` يزيل عرض القطعتين (085). */
   pairPrice?: number | null
+  variantKind?: VariantKind
   categoryId?: string
   subcategoryId?: string | null
   stock?: number
@@ -247,6 +254,8 @@ export interface PublicProduct {
   price: number | null
   /** سعر قطعتين من المنتج نفسه (085)؛ `null` = لا عرض. */
   pairPrice: number | null
+  /** ما تمثّله خيارات المنتج (090)؛ غيابه (خادمٌ أقدم) = لون. */
+  variantKind?: VariantKind
   stock: number
   /**
    * موعد التوفر المتوقَّع — ISO-8601 أو `null` («بلا موعد»).
@@ -281,6 +290,8 @@ export interface ProductFormDraft {
   descriptionCkb: string
   price: number | null
   pairPrice: number | null
+  /** ما تمثّله الخيارات (090)؛ خادمٌ أقدم = لون. */
+  variantKind?: VariantKind
   stock: number
   /**
    * موعد التوفر المتوقَّع — ISO-8601 أو `null` («بلا موعد»).

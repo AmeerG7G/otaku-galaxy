@@ -2,7 +2,6 @@ import { readdir, readFile } from 'node:fs/promises';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../src/database/pool.js';
 import {
-  MONTH_NAMES,
   NOTIFICATION_TEMPLATES,
   PARAM_TEMPLATES,
   renderNotification,
@@ -445,26 +444,11 @@ describe('[CRITICAL] الإشعار الجماعي لا يخلط اللغات', 
 });
 
 describe('[CRITICAL] الأرقام تبقى غربية في اللغتين', () => {
-  it('تاريخ التوفر المتوقَّع يحمل أرقاماً غربية والاسم وحده يُترجَم', () => {
-    const iso = new Date('2026-09-15T10:00:00Z').toISOString();
-    const ar = formatExpectedRestockDate(iso, 'ar');
-    const ckb = formatExpectedRestockDate(iso, 'ckb');
-
-    // أرقام غربية في الاثنين — لا ٠١٢٣٤٥٦٧٨٩.
-    expect(ar).toMatch(/\d/);
-    expect(ckb).toMatch(/\d/);
-    expect(ar).not.toMatch(/[٠-٩]/);
-    expect(ckb).not.toMatch(/[٠-٩]/);
-    // واسم الشهر مترجَم فعلاً.
-    expect(ar).not.toBe(ckb);
-  });
-
-  it('أسماء الشهور كاملة في اللغتين — اثنا عشر لكلٍّ', () => {
-    for (const locale of APP_LOCALES) {
-      expect(MONTH_NAMES[locale]).toHaveLength(12);
-      expect(MONTH_NAMES[locale].every((m) => m.trim() !== '')).toBe(true);
-    }
-    expect(MONTH_NAMES.ar).not.toEqual(MONTH_NAMES.ckb);
+  it('تاريخ التوفر المتوقَّع رقميّ بأرقام غربية — واحدٌ في اللغتين (STEP 77)', () => {
+    const date = formatExpectedRestockDate(new Date('2026-09-15T10:00:00Z').toISOString());
+    // لا ٠١٢٣٤٥٦٧٨٩ ولا اسم شهر: الصيغة نفسها تدخل القالب العربي والكردي.
+    expect(date).toBe('2026-09-15');
+    expect(date).not.toMatch(/[٠-٩]/);
   });
 
   it('كل قالبٍ ذي معاملات موجود باللغتين ولا يكرّر العربية', () => {

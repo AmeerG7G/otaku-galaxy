@@ -4,8 +4,8 @@
  "production_status": "PROVISIONALLY_ACCEPTED_FOR_PRODUCTION",
  "native_review_status": "PENDING_NO_HUMAN_NATIVE_REVIEW_PERFORMED",
  "native_approved_count": 0,
- "needs_native_review_count": 538,
- "total_strings": 538,
+ "needs_native_review_count": 544,
+ "total_strings": 544,
  "accepted_on": "2026-09-08",
  "accepted_by": "product decision — not a linguistic decision",
  "reason": "Current Kurdish user base is small; localization is being shipped provisionally and will be refined through future native review and user feedback.",
@@ -16,7 +16,7 @@
  ],
  "what_this_status_does_NOT_mean": [
   "It is NOT native approval.",
-  "No Sorani speaker has read any of these 538 strings.",
+  "No Sorani speaker has read any of these 544 strings.",
   "native_approved_count is 0 and must stay 0 until a named human reviewer approves keys individually in review-queue.json."
  ],
  "review_queue": "docs/localization/review-queue.json",

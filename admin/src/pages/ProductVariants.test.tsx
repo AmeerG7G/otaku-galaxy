@@ -126,6 +126,25 @@ describe('ProductNewPage — إنشاء منتجٍ بألوان', () => {
     ])
   })
 
+  it('نوع الخيارات (090): الافتراضي لون، و«تصميم» يُرسَل ويسمّي البطاقة', async () => {
+    const user = userEvent.setup()
+    renderNew()
+    await fillBasics(user)
+    expect(within(screen.getByTestId('variants-card')).getByText('الألوان')).toBeTruthy()
+
+    await user.click(screen.getByLabelText('ماذا تمثّل هذه الخيارات للزبون؟'))
+    await user.click(await screen.findByTitle('تصميم'))
+    await waitFor(() =>
+      expect(within(screen.getByTestId('variants-card')).getByText('التصميمات')).toBeTruthy(),
+    )
+
+    await user.click(screen.getByRole('button', { name: /إضافة لون/ }))
+    await fillColor(user, 0, { name: 'سوكونا', image: '/uploads/product/2026/10/sukuna.png', stock: '2' })
+    await user.click(screen.getByRole('button', { name: 'إضافة المنتج' }))
+    await waitFor(() => expect(createProduct).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(createProduct).mock.calls[0]![0]).toMatchObject({ variantKind: 'design' })
+  })
+
   it('منتجٌ بلا ألوان يرسل `stock` كما كان ولا يرسل `variants`', async () => {
     const user = userEvent.setup()
     renderNew()
@@ -134,7 +153,7 @@ describe('ProductNewPage — إنشاء منتجٍ بألوان', () => {
     await user.click(screen.getByRole('button', { name: 'إضافة المنتج' }))
     await waitFor(() => expect(createProduct).toHaveBeenCalledTimes(1))
     const payload = vi.mocked(createProduct).mock.calls[0]![0]
-    expect(payload).toMatchObject({ stock: 5 })
+    expect(payload).toMatchObject({ stock: 5, variantKind: 'color' })
     expect(payload).not.toHaveProperty('variants')
   })
 
