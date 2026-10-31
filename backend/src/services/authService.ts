@@ -267,7 +267,7 @@ export const authService = {
     },
   ) {
     const user = await userRepo.findById(db, auth.id);
-    if (!user) throw Errors.unauthorized('الحساب غير موجود');
+    if (!user || user.role === 'deleted') throw Errors.unauthorized('الحساب غير موجود');
     const avatarUrl = await assertOwnedAvatar(user, input.avatarUrl);
     const updated = await userRepo.update(db, auth.id, {
       username: input.username,
@@ -281,7 +281,7 @@ export const authService = {
   /** تغيير كلمة المرور من الإعدادات — يتحقق من الحالية دون رمز تحقق (مسجَّل دخوله بالفعل). */
   async changePassword(auth: AuthUser, currentPassword: string, newPassword: string): Promise<AuthResult> {
     const user = await userRepo.findById(db, auth.id);
-    if (!user) throw Errors.unauthorized('الحساب غير موجود');
+    if (!user || user.role === 'deleted') throw Errors.unauthorized('الحساب غير موجود');
     const ok = await bcrypt.compare(currentPassword, user.password_hash);
     // [CRITICAL] 400 لا 401. كلمة حالية خاطئة خطأُ إدخالٍ لا رفضُ توكن: التطبيق
     // يُنهي الجلسة عند 401 لأن 401 يعني «التوكن مرفوض»، فكان خطأٌ مطبعي في

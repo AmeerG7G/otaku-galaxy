@@ -90,7 +90,9 @@ export const notificationsService = {
     if (!input.title.trim()) throw Errors.badRequest('العنوان مطلوب');
     // المستهدَف يُتحقَّق منه قبل الكتابة: معرّفٌ لا يقابله صفّ كان يصطدم
     // بالمفتاح الأجنبي فيخرج ٥٠٠ بدل «غير موجود».
-    if (!(await userRepo.findById(db, input.userId))) {
+    // [STEP 78] شاهد الحساب المحذوف (معرّفه ظاهرٌ على طلباته الباقية) ليس مستهدَفاً.
+    const target = await userRepo.findById(db, input.userId);
+    if (!target || target.role === 'deleted') {
       throw Errors.notFound('الحساب غير موجود');
     }
     const idempotencyKey = input.idempotencyKey ?? randomUUID();

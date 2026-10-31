@@ -32,6 +32,8 @@
   --warning-pale: #fff3dd;
   --error-text: #c42544;
   --error-pale: #ffe9ed;
+  /* Destructive buttons: one deep red in both themes (dark --error-text is a light pink). */
+  --danger-fill: #c42544;
   --info-text: #1c63a3;
   --info-pale: #e7f2ff;
   --surface: #ffffff;
@@ -1448,4 +1450,97 @@ textarea {
 .h3 {
   font-size: 1rem;
   margin: 0;
+}
+
+/* ── Privacy policy & account deletion (STEP 78) ── */
+
+.legal-page {
+  max-width: 760px;
+  margin-inline: auto;
+}
+
+.legal {
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+
+.legal h1 {
+  margin-block: 0 var(--space-1);
+}
+
+.legal h2 {
+  font-size: 1.15rem;
+  margin-block: var(--space-5) var(--space-2);
+}
+
+.legal ul {
+  margin: 0;
+  padding-inline-start: var(--space-5);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.legal__head {
+  margin-block-end: var(--space-3);
+}
+
+.legal__link {
+  margin-block: var(--space-5) 0;
+}
+
+.legal-lang {
+  justify-content: flex-end;
+}
+
+.btn-danger {
+  background: var(--danger-fill);
+  color: var(--on-brand);
+  border: 0;
+}
+
+.consent {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-height: var(--tap);
+}
+
+.consent input {
+  inline-size: 22px;
+  block-size: 22px;
+  margin-block-start: 3px;
+  flex: none;
+  accent-color: var(--error-text);
+}
+
+.delete-confirm {
+  border: 2px solid var(--error-text);
+  border-radius: var(--radius-sm);
+  padding: var(--space-4);
+  background: var(--error-pale);
+}
+
+.delete-confirm h3 {
+  margin: 0;
+  color: var(--error-text);
+}
+
+.deletion-reference {
+  font-weight: 700;
+  font-family: ui-monospace, monospace;
+  letter-spacing: 0.04em;
+}
+
+.footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2) var(--space-4);
+}
+
+.footer-links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap);
+  color: var(--on-surface-variant);
 }

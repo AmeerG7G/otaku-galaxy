@@ -273,6 +273,22 @@ export function uploadRateLimiter(options: { limit: number }) {
 }
 
 /**
+ * محاولات حذف الحساب — بالحساب، في ساعة.
+ *
+ * المسار يقارن كلمة المرور، فبلا سقفٍ يصير بابَ تخمين لمن وضع يده على
+ * جلسةٍ مفتوحة. المفتاح هو الحساب (المسار محميّ أصلاً) لا العنوان.
+ */
+export function accountDeletionRateLimiter() {
+  return limiter({
+    limit: config.rateLimit.accountDeletionMaxPerHour,
+    windowMs: 60 * 60 * 1000,
+    keyGenerator: (req) => req.auth?.id ?? clientRateLimitKey(req),
+    message: 'محاولات كثيرة لحذف الحساب — حاول بعد ساعة',
+    code: 'ACCOUNT_DELETION_RATE_LIMITED',
+  });
+}
+
+/**
  * سقف البثّ — بالمسؤول، في ساعة (عمليةٌ واحدة: انظر ذاكرة المحدِّد في العملية).
  */
 export function broadcastRateLimiter() {

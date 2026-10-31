@@ -4,6 +4,7 @@ import { normalizePermissions, type AdminSection } from '../domain/adminPermissi
 import { DEFAULT_LOCALE, isAppLocale, type AppLocale } from '../utils/locale.js';
 import type { Gender, PublicUser, Role } from '../types/index.js';
 import { phoneSearchFragment } from '../utils/phone.js';
+import { Errors } from '../utils/errors.js';
 
 export interface UserRow {
   /** لغة المخاطبة المختارة (هجرة ٠٤٦) — `ar` افتراضاً لكل حساب قائم. */
@@ -13,7 +14,8 @@ export interface UserRow {
   phone: string;
   password_hash: string;
   avatar_url: string | null;
-  role: Role;
+  /** `deleted` = شاهد حسابٍ حُذف بطلب صاحبه (٠٩١) — لا يصل إلى أي جلسة. */
+  role: Role | 'deleted';
   /** `null` = لم يُسأل بعد. لا يُخمَّن أبداً. */
   gender: Gender | null;
   is_active: boolean;
@@ -27,6 +29,8 @@ export interface UserRow {
 }
 
 export function toPublicUser(row: UserRow): PublicUser {
+  // شاهد الحساب المحذوف لا يُعرض لأحد — وصولُه هنا خللٌ لا حالة.
+  if (row.role === 'deleted') throw new Error('deleted account row reached toPublicUser');
   return {
     id: row.id,
     username: row.username,
@@ -235,7 +239,7 @@ export const userRepo = {
       // الدخول التالي (وبعد تغيير كلمة المرور مباشرةً).
       const { rows } = await db.query<UserRow>(
         `WITH updated AS (
-           UPDATE users SET ${sets.join(', ')} WHERE id = $1 RETURNING *
+           UPDATE users SET ${sets.join(', ')} WHERE id = $1 AND role <> 'deleted' RETURNING *
          ), revoked AS (
            UPDATE device_tokens SET is_active = FALSE
             WHERE user_id = $1 AND is_active AND EXISTS (SELECT 1 FROM updated)
@@ -243,13 +247,17 @@ export const userRepo = {
          SELECT * FROM updated`,
         values,
       );
-      return rows[0]!;
+      if (!rows[0]) throw Errors.unauthorized('الحساب غير موجود');
+      return rows[0];
     }
+    // [STEP 78] شاهد الحساب المحذوف لا يُكتب عليه: طلبٌ صودق قبل الحذف بلحظة
+    // (تعديل الملف مثلاً) كان سيعيد اسماً أو جنساً أو صورة إلى صفٍّ ممحو.
     const { rows } = await db.query<UserRow>(
-      `UPDATE users SET ${sets.join(', ')} WHERE id = $1 RETURNING *`,
+      `UPDATE users SET ${sets.join(', ')} WHERE id = $1 AND role <> 'deleted' RETURNING *`,
       values,
     );
-    return rows[0]!;
+    if (!rows[0]) throw Errors.unauthorized('الحساب غير موجود');
+    return rows[0];
   },
 
   /**
@@ -318,7 +326,7 @@ export const userRepo = {
   } | null> {
     const { rows } = await db.query<{
       id: string;
-      role: Role;
+      role: Role | 'deleted';
       phone: string;
       is_active: boolean;
       token_version: number;
@@ -332,7 +340,9 @@ export const userRepo = {
       [id],
     );
     const row = rows[0];
-    if (!row) return null;
+    // [STEP 78] الحساب المحذوف كالغائب: توكنه يُرفض بـ`UNAUTHORIZED` (رمزٌ
+    // يُنهي الجلسة في التطبيق والموقع) لا بـ«موقوف».
+    if (!row || row.role === 'deleted') return null;
     // [SECURITY] الصلاحيات للمسؤول وحده. القيدان في الهجرة ٠٦٨ يمنعان زبوناً
     // يحمل صفةً إدارية، وهذا حزامٌ ثانٍ لا يعتمد على القاعدة وحدها.
     const isAdmin = row.role === 'admin';

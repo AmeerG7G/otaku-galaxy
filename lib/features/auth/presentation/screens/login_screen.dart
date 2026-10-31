@@ -3,6 +3,7 @@ import '../../../../core/l10n/app_strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../../core/config/public_pages.dart';
 import '../../../../core/design_system/design_system.dart';
 import '../../../../core/l10n/gender.dart';
 import '../../../../core/errors/app_exception.dart';
@@ -254,6 +255,12 @@ class _LoginScreenState extends State<LoginScreen>
                 ),
                 icon: Icons.arrow_back_ios,
                 iconPosition: IconPosition.end,
+              ),
+              // [STEP 78] سياسة الخصوصية — صفحة الموقع العامّة، بلا جلسة.
+              AnimeTextButton(
+                label: context.strings('privacyPolicy'),
+                onPressed: () =>
+                    PublicPages.open(context, PublicPages.privacyPolicy),
               ),
             ],
           ),

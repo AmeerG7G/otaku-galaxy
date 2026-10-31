@@ -26,6 +26,7 @@ const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src')
 const CUSTOMER_FACING = [
   'services/orderService.ts',
   'services/authService.ts',
+  'services/accountDeletionService.ts',
   'services/reviewsService.ts',
   'services/collectionsService.ts',
   'services/loyaltyRewardsService.ts',
