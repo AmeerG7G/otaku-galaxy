@@ -461,10 +461,17 @@ describe('Domain integrity audit (#6)', () => {
       const small = await product('ca12-small', 5, 20_000);
       const discounted = await placeOrder(c.token, [{ productId: small, quantity: 1 }]);
       const order = (await api.get(`/api/orders/${discounted}`).set(bearer(c.token)).expect(200)).body.data;
-      // ميلاد 5% = 1 000، مستكشف 3% = 600 ← 500 (أقرب ٢٥٠).
-      expect(order).toMatchObject({ discount: 1_500, loyaltyDiscount: 500 });
+      // ميلاد 5% = 1 000 وحده — خصم المستوى لا يجتمع معه (STEP 77).
+      expect(order).toMatchObject({ discount: 1_000, loyaltyDiscount: 0 });
 
       expect((await setStatus(discounted, 'REJECTED', 'نفد المخزون')).status).toBe(200);
+      expect(await count('birthday_discount_usage WHERE order_id = $1', [discounted])).toBe(1);
+
+      // الطلب التالي يأخذ المستكشف (الميلاد مستهلَك): 3% = 600 ← 500. ورفضه لا يُرجعه.
+      const second = await placeOrder(c.token, [{ productId: small, quantity: 1 }]);
+      const secondOrder = (await api.get(`/api/orders/${second}`).set(bearer(c.token)).expect(200)).body.data;
+      expect(secondOrder).toMatchObject({ discount: 500, loyaltyDiscount: 500 });
+      expect((await setStatus(second, 'REJECTED', 'نفد المخزون')).status).toBe(200);
 
       const redemption = await one<{ consumed_at: Date | null; consumed_order_id: string | null }>(
         `SELECT consumed_at, consumed_order_id FROM loyalty_reward_redemptions
@@ -472,8 +479,7 @@ describe('Domain integrity audit (#6)', () => {
         [c.userId],
       );
       expect(redemption.consumed_at).not.toBeNull();
-      expect(redemption.consumed_order_id).toBe(discounted);
-      expect(await count('birthday_discount_usage WHERE order_id = $1', [discounted])).toBe(1);
+      expect(redemption.consumed_order_id).toBe(second);
 
       const retry = await placeOrder(c.token, [{ productId: small, quantity: 1 }]);
       const retried = (await api.get(`/api/orders/${retry}`).set(bearer(c.token)).expect(200)).body.data;

@@ -9,7 +9,12 @@ import '../../../settings/presentation/cubit/locale_cubit.dart';
 /// الآن ([nameIn]) — الكردية الناقصة تسقط إلى العربية. في الطلب هو **لقطة**
 /// وقت الطلب: تعديل اللون أو حذفه لاحقاً لا يغيّره.
 class LineColor {
-  const LineColor({required this.variantId, required this.names, this.colorHex});
+  const LineColor({
+    required this.variantId,
+    required this.names,
+    this.colorHex,
+    this.kind = VariantKind.color,
+  });
 
   /// `null` حين لا يحمل السطر لوناً (سطرٌ قديم، أو ردٌّ أقدم من 087).
   static LineColor? fromLineJson(Map<String, dynamic> json) {
@@ -25,12 +30,17 @@ class LineColor {
         legacyKey: 'variantColorName',
       ),
       colorHex: hex == null || hex.isEmpty ? null : hex,
+      // لقطة الطلب أو المنتج الحالي للعربة (090)؛ الغائب لون.
+      kind: VariantKind.parse(json['variantKind']),
     );
   }
 
   final String variantId;
   final BilingualText names;
   final String? colorHex;
+
+  /// ما يمثّله الخيار — يسمّي السطر «اللون:» أو «التصميم:» أو «المقاس:».
+  final VariantKind kind;
 
   String nameIn(AppLanguage language) => names.of(language);
 }

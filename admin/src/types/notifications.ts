@@ -24,7 +24,7 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
   reviewRejected: 'رفض تقييم',
   backInStock: 'عاد للمخزون',
   promotion: 'إعلان',
-  rewardClaimed: 'مزيّة مستوى',
+  rewardClaimed: 'ميزة مستوى',
   restockScheduled: 'موعد توفر',
 }
 

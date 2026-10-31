@@ -115,7 +115,7 @@ describe('[CRITICAL] رسائل الخطأ التي يراها الزبون مت
   it('القوالب تُعيد المتغيّرات في موضعها', () => {
     expect(localizeErrorMessage('الكمية المطلوبة تتجاوز المخزون المتاح (3)', 'ckb')).toContain('(3)');
     expect(localizeErrorMessage('مخزون «قبعة لوفي» غير كافٍ (المتاح: 2)', 'ckb')).toContain('«قبعة لوفي»');
-    expect(localizeErrorMessage('تحتاج 100 نقطة لفتح هذه المزيّة', 'ckb')).toContain('100');
+    expect(localizeErrorMessage('تحتاج 100 نقطة لفتح هذه الميزة', 'ckb')).toContain('100');
   });
 
   it('العربية تعود كما هي، وما لا يُعرف يعود عربياً لا فارغاً', () => {

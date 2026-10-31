@@ -1,4 +1,21 @@
-import type { LineVariant, Product, ProductVariant } from './types';
+import type { LineVariant, Product, ProductVariant, VariantKind } from './types';
+
+/**
+ * The words for each option kind (090, STEP 77). The labels are the app's
+ * `productColor`/`productDesign`/`productSize`; the colour sentences are this
+ * store's existing ones, and the other kinds follow them. One option system
+ * (an image and a stock per option); only the words change.
+ */
+export const VARIANT_KIND_TEXT: Record<VariantKind, { label: string; chooseFirst: string; ofThis: string }> = {
+  color: { label: 'اللون', chooseFirst: 'اختر لون المنتج', ofThis: 'من هذا اللون' },
+  design: { label: 'التصميم', chooseFirst: 'اختر تصميم المنتج', ofThis: 'من هذا التصميم' },
+  size: { label: 'المقاس', chooseFirst: 'اختر مقاس المنتج', ofThis: 'من هذا المقاس' },
+};
+
+/** An unknown or absent kind (an older API, an older order line) is a colour. */
+export function variantKindText(kind: VariantKind | null | undefined) {
+  return VARIANT_KIND_TEXT[kind === 'design' || kind === 'size' ? kind : 'color'];
+}
 
 const HEX = /^#[0-9A-Fa-f]{6}$/;
 

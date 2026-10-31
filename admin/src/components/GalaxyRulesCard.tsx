@@ -52,7 +52,7 @@ export default function GalaxyRulesCard() {
       render: (value: number) => <Typography.Text strong>{value}</Typography.Text>,
     },
     {
-      title: 'المزيّة',
+      title: 'الميزة',
       key: 'reward',
       render: (_: unknown, row: GalaxyLevelRule) => {
         if (row.rewardKind === 'none') {

@@ -22,6 +22,18 @@ DateTime storeCalendarDate(DateTime instant) {
   return DateTime(store.year, store.month, store.day);
 }
 
+/// تاريخٌ تقويميّ رقمي `YYYY-MM-DD` بتوقيت المتجر — «٢٠٢٦-٠٧-٠٣» بأرقام غربية.
+///
+/// [CRITICAL] (STEP 77، طلب المالك 2026-10-31) موعد التوفر المتوقَّع يُعرض
+/// رقمياً لا باسم الشهر، في كل لغة. اليوم من [storeCalendarDate] لا من توقيت
+/// الجهاز: المسؤول يختار «٣ تموز» فيُخزَّن منتصف ليل بغداد (`21:00Z` من اليوم
+/// السابق)، وهاتفٌ خارج العراق كان سيقرأ اليوم السابق.
+String formatStoreIsoDate(DateTime instant) {
+  final day = storeCalendarDate(instant);
+  String two(int v) => v.toString().padLeft(2, '0');
+  return '${day.year.toString().padLeft(4, '0')}-${two(day.month)}-${two(day.day)}';
+}
+
 void showSnackBar(BuildContext context, String message) {
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()

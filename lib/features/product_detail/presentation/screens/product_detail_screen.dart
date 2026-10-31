@@ -493,9 +493,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                     Flexible(
                       child: Text(
                         context.strings.p('expectedRestockOn', {
-                          'date': formatShortArabicDate(
-                            context,
-                            product.displayRestockAt!,
+                          'date': formatStoreIsoDate(product.displayRestockAt!,
                           ),
                         }),
                         style: theme.textTheme.bodySmall?.copyWith(
@@ -586,7 +584,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                 Row(
                   children: [
                     Text(
-                      context.strings('productColor'),
+                      context.strings(product.variantKind.headingKey),
                       style: _sectionStyle(theme),
                     ),
                     if (_selectedVariantOf(product) case final variant?) ...[
@@ -817,7 +815,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                 AnimePrimaryButton(
                   key: const Key('product_add_to_cart'),
                   label: _missingColor(product)
-                      ? context.strings('chooseColorFirst')
+                      ? context.strings(product.variantKind.chooseFirstKey)
                       : missingOption
                       ? context.strings('chooseOptionsFirst')
                       : context.g(GenderedStrings.addToCart),

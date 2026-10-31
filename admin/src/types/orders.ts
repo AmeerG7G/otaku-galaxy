@@ -32,6 +32,8 @@ export interface OrderItem {
   variantColorName?: string | null
   variantColorNameAr?: string | null
   variantColorNameCkb?: string | null
+  /** ما يمثّله الخيار لحظة الطلب (090) — لون أو تصميم أو مقاس؛ الغائب = لون. */
+  variantKind?: 'color' | 'design' | 'size' | null
   variantColorHex?: string | null
   /**
    * مخزون اللون الآن لسطرٍ ملوَّن، وإلا مخزون المنتج **الآن** — يرسله `GET /admin/orders/:id` وحده، مقروءاً عند فتح

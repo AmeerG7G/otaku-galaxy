@@ -22,8 +22,15 @@ import OptionsEditor from './OptionsEditor'
 import VariantsEditor from './VariantsEditor'
 import { optionsFromFields, optionsToFields, type OptionFields } from './optionFields'
 import { derivedStock, variantsFromFields, variantsToFields, type VariantFields } from './variantFields'
-import type { ProductOptionInput, ProductVariantDraft } from '../types/products'
+import type { ProductOptionInput, ProductVariantDraft, VariantKind } from '../types/products'
 import { formatCurrency } from '../utils/format'
+
+/** عنوان بطاقة الخيارات بنوعها (090) — الحقول داخلها واحدة لكل الأنواع. */
+const VARIANT_CARD_TITLE: Record<VariantKind, string> = {
+  color: 'الألوان',
+  design: 'التصميمات',
+  size: 'المقاسات',
+}
 import { StoreDateInput } from './ui/StoreDateInput'
 import { DATE_FORMAT_HINT, isIsoInstant, parseDateText, storeDateFieldToIso } from '../utils/storeDate'
 
@@ -51,6 +58,8 @@ export interface ProductFormValues {
    * ٣ قطع = قطعتان + قطعة. بين سعر القطعة وضعفه، والخادم يفرضه أيضاً.
    */
   pairPrice?: number | null
+  /** ما تمثّله الخيارات أدناه (090): لون أو تصميم أو مقاس. */
+  variantKind?: VariantKind
   stock: number
   categoryId: string
   subcategoryId?: string | null
@@ -175,6 +184,7 @@ export default function ProductForm({
   })
 
   const selectedCategoryId = Form.useWatch('categoryId', form)
+  const variantKind = (Form.useWatch('variantKind', form) as VariantKind | undefined) ?? 'color'
   const price = Form.useWatch('price', form)
   const previousPrice = Form.useWatch('previousPrice', form)
   const priceLater = Form.useWatch('priceLater', form) === true
@@ -490,12 +500,29 @@ export default function ProductForm({
       </Card>
 
       <Card
-        title="الألوان"
+        title={VARIANT_CARD_TITLE[variantKind]}
         variant="outlined"
         style={{ marginTop: 16 }}
         data-testid="variants-card"
-        extra={<Typography.Text type="secondary">اختياري — حتى ٢٠ لوناً</Typography.Text>}
+        extra={<Typography.Text type="secondary">اختياري — حتى ٢٠ خياراً، لكلٍّ صورته ومخزونه</Typography.Text>}
       >
+        {/* نظام الخيارات نفسه (صورةٌ ومخزونٌ لكل خيار) يمثّل تصميماً أو مقاساً
+            أيضاً (090) — النوع يسمّي المحدّد للزبون، فلا يُقال «اللون» لتصميم. */}
+        <Form.Item
+          name="variantKind"
+          label="ماذا تمثّل هذه الخيارات للزبون؟"
+          initialValue="color"
+          extra="يظهر للزبون فوق الخيارات: «اللون» أو «التصميم» أو «المقاس»"
+        >
+          <Select
+            data-testid="variant-kind"
+            options={[
+              { value: 'color', label: 'لون' },
+              { value: 'design', label: 'تصميم' },
+              { value: 'size', label: 'مقاس' },
+            ]}
+          />
+        </Form.Item>
         <VariantsEditor stockBase={variantStockBase} />
       </Card>
 

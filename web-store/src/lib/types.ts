@@ -65,7 +65,12 @@ export interface LineVariant {
   variantColorNameAr?: string | null;
   variantColorNameCkb?: string | null;
   variantColorHex?: string | null;
+  /** What the option is (090): colour, design or size; absent/null = colour. */
+  variantKind?: VariantKind | null;
 }
+
+/** What a product's options represent (090, STEP 77) — names the picker, nothing else. */
+export type VariantKind = 'color' | 'design' | 'size';
 
 export interface Product {
   id: string;
@@ -88,6 +93,8 @@ export interface Product {
   options?: ProductOption[];
   /** Ordered colours; `[]`/absent = no colours (the product's own stock is sold). */
   variants?: ProductVariant[];
+  /** What `variants` represent (090); absent (older API) = colour. */
+  variantKind?: VariantKind;
   /** Average of approved reviews; `null`/absent = none yet. */
   rating?: number | null;
   reviewCount?: number;
@@ -156,6 +163,8 @@ export interface CheckoutQuote {
   productsTotal: number;
   birthdayDiscount: number;
   loyaltyDiscount: number;
+  /** A level gift rides with this order (one level reward per order — STEP 77). */
+  loyaltyGiftActivated?: boolean;
   discount: number;
   deliveryFee: number | null;
   deliveryDiscount: number;
@@ -224,6 +233,8 @@ export interface Order {
   productsTotal: number;
   discount: number;
   loyaltyDiscount: number;
+  /** A level gift is attached to this order and arrives with it. */
+  loyaltyGiftActivated?: boolean;
   total: number;
   createdAt: string;
   items: OrderItem[];

@@ -51,7 +51,7 @@ export default async function PointsPage() {
             </p>
           </>
         ) : null}
-        <p className="hint">كل نقطة تقربك لمستوى أعلى. تفعيل مزيّة المستوى لا يُنقص رصيد نقاطك.</p>
+        <p className="hint">كل نقطة تقربك لمستوى أعلى. تفعيل ميزة المستوى لا يُنقص رصيد نقاطك.</p>
       </section>
 
       <section className="stack" aria-labelledby="levels-title">

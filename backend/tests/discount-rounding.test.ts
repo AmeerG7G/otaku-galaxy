@@ -431,18 +431,40 @@ describe('[CRITICAL] checkout quote and order creation apply the same rounded di
     await purgeTestUsers();
   });
 
+  // STEP 77: خصم المستوى لا يجتمع مع خصم الميلاد — يوم الميلاد يُطبَّق الميلاد
+  // وحده والمستكشف يبقى مفتوحاً. التقريب نفسه يُقاس لكلٍّ منهما على حدة.
   it.each([
-    // السعر     الميلاد ٥٪          المستكشف ٣٪
-    [7_480, 250, 250], //  374    → 250 ·  224.4  → 250
-    [7_495, 250, 250], //  374.75 → 250 ·  224.85 → 250
-    [7_500, 500, 250], //  375    → 500 ·  225    → 250
-    [12_480, 500, 250], // 624    → 500 ·  374.4  → 250
-    [12_500, 750, 500], // 625    → 750 ·  375    → 500
-    [17_520, 1_000, 500], // 876  → 1000 · 525.6  → 500
-  ])('birthday + explorer on %d → birthday %d, reward %d', async (price, birthday, loyalty) => {
+    // السعر     الميلاد ٥٪
+    [7_480, 250], //  374    → 250
+    [7_495, 250], //  374.75 → 250
+    [7_500, 500], //  375    → 500
+    [12_480, 500], // 624    → 500
+    [12_500, 750], // 625    → 750
+    [17_520, 1_000], // 876  → 1000
+  ])('birthday + explorer on %d → birthday %d, the explorer is not used and stays open', async (price, birthday) => {
     const user = await discountCustomer({ birthday: true, explorer: true });
     await addToCart(user.token, await productAt(price));
-    const orderId = await quoteThenCreate(user, { birthday, loyalty });
+    const orderId = await quoteThenCreate(user, { birthday, loyalty: 0 });
+    expect(await explorerOpen(user.userId)).toBe(true);
+    const { rows } = await db.query(
+      'SELECT 1 FROM loyalty_reward_redemptions WHERE user_id = $1 AND consumed_order_id = $2',
+      [user.userId, orderId],
+    );
+    expect(rows).toHaveLength(0);
+  });
+
+  it.each([
+    // السعر     المستكشف ٣٪
+    [7_480, 250], //  224.4  → 250
+    [7_495, 250], //  224.85 → 250
+    [7_500, 250], //  225    → 250
+    [12_480, 250], // 374.4  → 250
+    [12_500, 500], // 375    → 500
+    [17_520, 500], // 525.6  → 500
+  ])('explorer only on %d → reward %d, consumed by that order', async (price, loyalty) => {
+    const user = await discountCustomer({ birthday: false, explorer: true });
+    await addToCart(user.token, await productAt(price));
+    const orderId = await quoteThenCreate(user, { birthday: 0, loyalty });
     expect(await explorerOpen(user.userId)).toBe(false);
     const { rows } = await db.query(
       'SELECT 1 FROM loyalty_reward_redemptions WHERE user_id = $1 AND consumed_order_id = $2',
@@ -494,14 +516,16 @@ describe('[CRITICAL] checkout quote and order creation apply the same rounded di
 
     await db.query('UPDATE products SET stock = 50 WHERE id = $1', [productId]);
     expect(await quote(user.token)).toEqual(before);
-    await quoteThenCreate(user, { birthday: 750, loyalty: 500 });
+    // STEP 77: يوم الميلاد الميلاد وحده؛ المستكشف لا يُستعمل.
+    await quoteThenCreate(user, { birthday: 750, loyalty: 0 });
+    expect(await explorerOpen(user.userId)).toBe(true);
   });
 
   it('[CA-14] a changed price is refused with 409 before any discount is reserved; the retry is rounded on the new price', async () => {
     const user = await discountCustomer({ birthday: true, explorer: true });
     const productId = await productAt(7_480);
     await addToCart(user.token, productId);
-    expect((await quote(user.token)).discount).toBe(500); // 250 + 250
+    expect((await quote(user.token)).discount).toBe(250); // الميلاد وحده (STEP 77)
 
     await api.patch(`/api/admin/products/${productId}`).set(bearer(adminToken)).send({ price: 12_500 }).expect(200);
     const refused = await placeOrder(user.token, { expectedPrices: [{ productId, unitPrice: 7_480 }] });
@@ -511,7 +535,7 @@ describe('[CRITICAL] checkout quote and order creation apply the same rounded di
     expect(await birthdayUsage(user.userId)).toEqual([]);
 
     const shown = await quote(user.token);
-    expect({ birthday: shown.birthdayDiscount, loyalty: shown.loyaltyDiscount }).toEqual({ birthday: 750, loyalty: 500 });
+    expect({ birthday: shown.birthdayDiscount, loyalty: shown.loyaltyDiscount }).toEqual({ birthday: 750, loyalty: 0 });
     const created = await placeOrder(user.token, { expectedPrices: [{ productId, unitPrice: 12_500 }] });
     expect(created.status, JSON.stringify(created.body)).toBe(201);
     expect(Number(created.body.data.discount)).toBe(shown.discount);

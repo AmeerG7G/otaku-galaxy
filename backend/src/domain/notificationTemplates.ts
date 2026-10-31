@@ -37,22 +37,6 @@ export const GLOSSARY = {
   notification: { ar: 'إشعار', ckb: 'ئاگادارکردنەوە' },
 } as const;
 
-/**
- * أسماء الشهور — الأرقام تبقى غربية دوماً (متطلَّب منتج صريح)، والمتغيّر
- * الاسمُ وحده. `Intl` بلغة `en-US` هو ما يولّد اليوم والشهر رقمياً في
- * `formatExpectedRestockDate`، فلا يمرّ رقمٌ عربيّ-هنديّ من هذا الطريق.
- */
-export const MONTH_NAMES: Record<AppLocale, readonly string[]> = {
-  ar: [
-    'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
-    'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر',
-  ],
-  ckb: [
-    'کانوونی دووەم', 'شوبات', 'ئازار', 'نیسان', 'ئایار', 'حوزەیران',
-    'تەمووز', 'ئاب', 'ئەیلوول', 'تشرینی یەکەم', 'تشرینی دووەم', 'کانوونی یەکەم',
-  ],
-};
-
 export interface NotificationText {
   title: string;
   body: string;
@@ -136,7 +120,7 @@ export const PARAM_TEMPLATES = {
   },
   rewardClaimedDiscount: {
     ar: (label: string) => ({
-      title: 'مزيّتك جاهزة 🎉',
+      title: 'ميزتك جاهزة 🎉',
       body: `${label}. سيُطبَّق تلقائياً على طلبك القادم.`,
     }),
     ckb: (label: string) => ({

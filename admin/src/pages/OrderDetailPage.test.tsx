@@ -201,8 +201,8 @@ describe('خصم مزيّة المستوى في تفاصيل الطلب', () => 
       order({ productsTotal: 100000, discount: 8000, loyaltyDiscount: 3000, total: 97000 }),
     )
     renderPage()
-    await waitFor(() => expect(screen.getByText('منه خصم مزيّة المستوى')).toBeTruthy())
-    const loyaltyRow = screen.getByText('منه خصم مزيّة المستوى').closest('tr')!
+    await waitFor(() => expect(screen.getByText('منه خصم ميزة المستوى')).toBeTruthy())
+    const loyaltyRow = screen.getByText('منه خصم ميزة المستوى').closest('tr')!
     expect(loyaltyRow.textContent).toContain('3,000')
     const birthdayRow = screen.getByText('منه خصم عيد الميلاد').closest('tr')!
     expect(birthdayRow.textContent).toContain('5,000')
@@ -212,7 +212,7 @@ describe('خصم مزيّة المستوى في تفاصيل الطلب', () => 
     vi.mocked(getOrder).mockResolvedValue(order({ discount: 5000 }))
     renderPage()
     await waitFor(() => expect(screen.getByText('الإجماليات')).toBeTruthy())
-    expect(screen.queryByText('منه خصم مزيّة المستوى')).toBeNull()
+    expect(screen.queryByText('منه خصم ميزة المستوى')).toBeNull()
     expect(screen.queryByText('منه خصم عيد الميلاد')).toBeNull()
   })
 })

@@ -185,7 +185,7 @@ describe('points page', () => {
     const html = renderToStaticMarkup(await PointsPage());
     expect(html).toContain((120).toLocaleString('ar-IQ'));
     expect(html).toContain('أنثى explorer');
-    expect(html).toContain('تفعيل مزيّة المستوى لا يُنقص رصيد نقاطك');
+    expect(html).toContain('تفعيل ميزة المستوى لا يُنقص رصيد نقاطك');
     expect(html.match(/تفعيل الخصم|تفعيل الهدية/g)).toEqual(['تفعيل الخصم']);
     expect(html).toContain('طلب مستلم');
   });
