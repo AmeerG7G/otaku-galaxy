@@ -92,3 +92,38 @@ export const getPlayStoreLink = cache(async (): Promise<string | null> => {
 export function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
+
+/** A store social link the shopper may open — `https://` only, never a script or a relative path. */
+function safeSocialUrl(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === 'https:' ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+export interface SocialLinks {
+  tiktok: string | null;
+  instagram: string | null;
+  whatsapp: string | null;
+}
+
+/**
+ * The store's social links from the admin settings (`/catalog/settings`), the
+ * same the app's account screen shows. Only the configured ones are returned;
+ * a failure here never breaks a page — the links are simply left out.
+ */
+export const getSocialLinks = cache(async (): Promise<SocialLinks> => {
+  try {
+    const { data } = await apiFetch<{ social?: Record<string, unknown> }>('/catalog/settings');
+    return {
+      tiktok: safeSocialUrl(data.social?.tiktok),
+      instagram: safeSocialUrl(data.social?.instagram),
+      whatsapp: safeSocialUrl(data.social?.whatsapp),
+    };
+  } catch {
+    return { tiktok: null, instagram: null, whatsapp: null };
+  }
+});

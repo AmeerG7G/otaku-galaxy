@@ -15,7 +15,8 @@ describe('orderStatusLabel', () => {
     for (const status of ['PENDING_ADMIN_CONFIRMATION', 'CONFIRMED', 'PREPARING', 'OUT_FOR_DELIVERY', 'COMPLETED', 'REJECTED']) {
       expect(orderStatusLabel(status)).not.toBe(status);
     }
-    expect(orderStatusLabel('SOMETHING_NEW')).toBe('SOMETHING_NEW');
+    // A status a later API adds never shows its raw English code to an Arabic shopper.
+    expect(orderStatusLabel('SOMETHING_NEW')).toBe('قيد المعالجة');
   });
 });
 
