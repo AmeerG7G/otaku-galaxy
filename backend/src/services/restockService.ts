@@ -116,11 +116,11 @@ export const restockService = {
       const variant = rows[0];
       // لونٌ من منتجٍ آخر يُعامل كلونٍ غير موجود — لا يُكشف لمن هو.
       if (!variant || variant.product_id !== productId || !variant.product_active) {
-        throw Errors.notFound('اللون غير موجود لهذا المنتج');
+        throw Errors.notFound('اللون المختار غير موجود لهذا المنتج');
       }
       // لونٌ موقوف لا يُعرض للزبون ولا يُنتظر.
       if (!variant.variant_active) {
-        throw Errors.notFound('اللون غير موجود لهذا المنتج');
+        throw Errors.notFound('اللون المختار غير موجود لهذا المنتج');
       }
       if (Number(variant.stock) > 0) {
         throw Errors.conflict('هذا اللون متوفر حالياً — لا حاجة لإشعار عند توفره', 'VARIANT_IN_STOCK');

@@ -8,8 +8,9 @@
 -- • الاشتراك يُستهلك بإشعارٍ واحد حين يصير **هذا اللون** متاحاً (فعّالاً
 --   بمخزونٍ موجب، والمنتج فعّالاً ومُسعَّراً) — لا حين يعود مجموع المنتج.
 --
--- الرجوع: `DROP TABLE restock_variant_subscriptions;` — لا جدول آخر يشير إليه،
--- والإصدار السابق لا يقرؤه.
+-- الرجوع: `scripts/rollback/088_restock_variant_subscriptions.down.sql` — يُسقط
+-- الجدول وحده (لا جدول آخر يشير إليه، والإصدار السابق لا يقرؤه)، ويرفض متى
+-- وُجد اشتراكٌ بلون كي لا تُمحى طلبات زبائن بصمت.
 
 CREATE TABLE restock_variant_subscriptions (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),

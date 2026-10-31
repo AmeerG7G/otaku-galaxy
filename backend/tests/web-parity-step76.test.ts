@@ -1,3 +1,6 @@
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type pg from 'pg';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../src/database/pool.js';
@@ -359,6 +362,30 @@ describe('STEP 76 — web store parity backend', () => {
       expect(own.body.data).toMatchObject({ subscribed: false, wasSubscribed: true, variantId: red.id });
       const view = await api.get(`/api/catalog/products/${product.id}`).set(bearer(a.token)).expect(200);
       expect(view.body.data.viewer).toMatchObject({ restockSubscribed: true, restockVariantIds: [] });
+    });
+
+    it('the 088 rollback refuses while a colour subscription exists and changes nothing', async () => {
+      const { product, red } = await colouredProduct({ red: 0, blue: 0 });
+      const a = await registerAndLogin();
+      await subscribe(a.token, { productId: product.id, variantId: red.id }).expect(200);
+      const script = await readFile(
+        path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../scripts/rollback/088_restock_variant_subscriptions.down.sql'),
+        'utf8',
+      );
+      const client = await db.connect();
+      try {
+        await expect(client.query(script)).rejects.toThrow(/088 rollback refused/);
+        await client.query('ROLLBACK');
+      } finally {
+        client.release();
+      }
+      const { rows } = await db.query<{ n: number }>(
+        `SELECT COUNT(*)::int AS n FROM restock_variant_subscriptions WHERE variant_id = $1`,
+        [red.id],
+      );
+      expect(rows[0]!.n).toBe(1);
+      const applied = await db.query(`SELECT 1 FROM schema_migrations WHERE name = '088_restock_variant_subscriptions.sql'`);
+      expect(applied.rowCount).toBe(1);
     });
 
     it('[RACE] a subscription waiting on a colour restock sees the returned stock and is refused', async () => {
