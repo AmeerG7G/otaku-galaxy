@@ -39,6 +39,7 @@ describe('whatsappHref', () => {
     expect(whatsappHref('https://api.whatsapp.com/send?phone=9647701234567')).toBe(
       'https://api.whatsapp.com/send?phone=9647701234567',
     );
+    expect(whatsappHref('https://wa.me/message/ABCDEF123')).toBe('https://wa.me/message/ABCDEF123');
   });
 
   it('refuses empty, unsafe and malformed values', () => {

@@ -39,8 +39,9 @@ function internationalDigits(raw: string): string | null {
 /**
  * The admin may save WhatsApp as a number (`+9647701234567`, as the dashboard
  * suggests) or as a link. A number becomes `https://wa.me/<digits>`, the same
- * as the app's account screen does; a `wa.me` link is normalised the same way;
- * any other `https://` link (an `api.whatsapp.com` or group link) is kept.
+ * as the app's account screen does; a `wa.me/<number>` link is normalised the
+ * same way; any other `https://` link (`wa.me/message/…`, `api.whatsapp.com`
+ * or a group link) is kept.
  */
 export function whatsappHref(value: unknown): string | null {
   if (typeof value !== 'string' || value.trim() === '') return null;
@@ -53,7 +54,10 @@ export function whatsappHref(value: unknown): string | null {
   if (!safe) return null;
   const url = new URL(safe);
   if (url.hostname !== 'wa.me') return safe;
-  const digits = internationalDigits(decodeURIComponent(url.pathname.slice(1)));
+  const path = decodeURIComponent(url.pathname.slice(1));
+  // `wa.me/message/…` (a business short link) is not a number: keep it.
+  if (!/^[\d\s\-().+]*$/.test(path)) return safe;
+  const digits = internationalDigits(path);
   return digits ? `https://wa.me/${digits}${url.search}` : null;
 }
 
