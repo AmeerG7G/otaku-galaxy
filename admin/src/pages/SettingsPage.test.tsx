@@ -54,4 +54,33 @@ describe('إعدادات المتجر', () => {
     await user.click(within(card('رابط المتجر للمشاركة')).getByText('حفظ'))
     await waitFor(() => expect(updateSettings).toHaveBeenCalledWith({ store_share_url: 'https://otakugalaxystore.com/app' }))
   })
+  it('روابط تيك توك وإنستغرام وواتساب تُحرَّر وتُحفظ من النموذج نفسه', async () => {
+    vi.mocked(fetchSettings).mockResolvedValue({
+      social_tiktok: 'https://www.tiktok.com/@old',
+      social_instagram: 'https://www.instagram.com/old',
+      social_whatsapp: '',
+      social_description: '',
+      store_share_url: '',
+    })
+    const user = userEvent.setup()
+    renderPage()
+    const tiktok = await screen.findByDisplayValue('https://www.tiktok.com/@old')
+    const form = tiktok.closest('form') as HTMLElement
+    const instagram = within(form).getByDisplayValue('https://www.instagram.com/old')
+    const whatsapp = within(form).getByPlaceholderText('+9647701234567')
+
+    await user.clear(tiktok)
+    await user.type(tiktok, 'https://www.tiktok.com/@otakugalaxy')
+    await user.clear(instagram)
+    await user.type(instagram, 'https://www.instagram.com/otakugalaxy')
+    await user.type(whatsapp, '+9647701234567')
+    await user.click(within(form).getByRole('button', { name: /حفظ/ }))
+
+    await waitFor(() => expect(updateSettings).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(updateSettings).mock.calls[0][0]).toMatchObject({
+      social_tiktok: 'https://www.tiktok.com/@otakugalaxy',
+      social_instagram: 'https://www.instagram.com/otakugalaxy',
+      social_whatsapp: '+9647701234567',
+    })
+  })
 })

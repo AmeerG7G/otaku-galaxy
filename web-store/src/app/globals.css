@@ -1206,6 +1206,13 @@ textarea {
 
 .social-links .chip {
   min-height: var(--tap);
+  gap: var(--space-2);
+}
+
+.social-links .chip svg {
+  inline-size: 1.15em;
+  block-size: 1.15em;
+  flex: none;
 }
 
 /* ═══ STEP 76 — reviews, favourites, alerts, account ═══ */
