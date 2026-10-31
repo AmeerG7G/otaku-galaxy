@@ -15,6 +15,7 @@ const state = vi.hoisted(() => ({ product: null as unknown }));
 vi.mock('@/lib/catalog', () => ({
   isUuid: () => true,
   getProduct: async () => state.product,
+  listProductReviews: async () => [],
 }));
 vi.mock('@/lib/server-session', () => ({ readSession: async () => null }));
 vi.mock('@/components/AddToCart', () => ({ AddToCart: () => createElement('button', { 'data-add-to-cart': '' }, 'add') }));
@@ -43,7 +44,7 @@ const base: Product = {
 
 async function page(product: Product): Promise<string> {
   state.product = product;
-  return renderToStaticMarkup(await ProductPage({ params: Promise.resolve({ id: product.id }) }));
+  return renderToStaticMarkup(await ProductPage({ params: Promise.resolve({ id: product.id }), searchParams: Promise.resolve({}) }));
 }
 const card = (product: Product) => renderToStaticMarkup(createElement(ProductCard, { product }));
 

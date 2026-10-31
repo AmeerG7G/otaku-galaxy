@@ -2,14 +2,16 @@ import type { Metadata } from 'next';
 import Link from '@/components/Link';
 import { notFound } from 'next/navigation';
 import { ConfirmReceiptButton } from '@/components/ConfirmReceiptButton';
+import { ReviewForm } from '@/components/ReviewForm';
 import { Swatch } from '@/components/VariantSelection';
 import { ApiError } from '@/lib/api';
 import { isUuid } from '@/lib/catalog';
 import { mediaOrigin } from '@/lib/config';
 import { formatDateTime, formatIqd, localPhone, orderStatusLabel } from '@/lib/format';
 import { resolveMediaUrl } from '@/lib/media';
+import { reviewSlots } from '@/lib/order-reviews';
 import { requireSession, sessionRead } from '@/lib/page-session';
-import type { Order } from '@/lib/types';
+import type { Order, Review } from '@/lib/types';
 import { lineColorName, variantKindText } from '@/lib/variants';
 
 export const dynamic = 'force-dynamic';
@@ -33,6 +35,8 @@ export default async function OrderPage({ params, searchParams }: Props) {
   }
   const placed = (await searchParams).placed === '1';
   const origin = mediaOrigin();
+  // The customer's reviews are read only once the order may be reviewed.
+  const slots = order.canReview ? reviewSlots(order, await sessionRead<Review[]>(session, '/reviews', returnTo)) : [];
 
   return (
     <>
@@ -154,6 +158,34 @@ export default async function OrderPage({ params, searchParams }: Props) {
           ) : null}
         </aside>
       </div>
+
+      {slots.length > 0 ? (
+        <section className="stack" aria-labelledby="order-reviews">
+          <h2 id="order-reviews">قيّم منتجات طلبك</h2>
+          <p className="hint">رأيك يساعد بقية العملاء — والتقييم المصوّر يمنحك نقاط مجرّة أكثر.</p>
+          <ul className="review-slots">
+            {slots.map((slot) => (
+              <li key={slot.productId} className="card stack">
+                <strong>{slot.productName}</strong>
+                {slot.state === 'open' ? <ReviewForm orderId={order.id} productId={slot.productId} mediaOrigin={origin} /> : null}
+                {slot.state === 'pending' ? <p className="pill">⏳ تقييمك قيد المراجعة</p> : null}
+                {slot.state === 'approved' ? <p className="pill pill-promo">✓ تم نشر تقييمك</p> : null}
+                {slot.state === 'rejected' ? (
+                  <>
+                    <p className="alert alert-error">
+                      ❌ لم يتم قبول تقييمك
+                      {slot.review.rejectionReason ? ` — السبب: ${slot.review.rejectionReason}` : ''}
+                    </p>
+                    <ReviewForm orderId={order.id} productId={slot.productId} existing={slot.review} mediaOrigin={origin} />
+                  </>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : order.status === 'OUT_FOR_DELIVERY' ? (
+        <p className="hint">أكّد استلام طلبك ليُفتح التقييم مباشرةً.</p>
+      ) : null}
 
       <p>
         <Link href="/orders">كل طلباتي</Link>

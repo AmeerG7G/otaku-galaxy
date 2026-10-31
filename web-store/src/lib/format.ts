@@ -63,8 +63,9 @@ const STATUS_LABELS: Record<string, string> = {
   REJECTED: 'مرفوض',
 };
 
+/** An unknown status (a later API) reads as «قيد المعالجة», never as a raw English code. */
 export function orderStatusLabel(status: string): string {
-  return STATUS_LABELS[status] ?? status;
+  return STATUS_LABELS[status] ?? 'قيد المعالجة';
 }
 
 /** "2026/10/17 14:30" in the store's timezone (Baghdad), as the app shows it. */

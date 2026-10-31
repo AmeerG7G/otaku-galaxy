@@ -244,6 +244,13 @@ async function releaseStockOnRejection(tx: pg.PoolClient, order: OrderWithItems)
         ckb: kurdishOrNull(product.name_ckb),
       });
     }
+    // لونٌ عاد من صفر بهذا الإرجاع — مشتركو اللون نفسه (088)، ولو بقي المنتج متوفراً.
+    if (hasVariants.get(product.id)) {
+      await restockService.variantsReturned(tx, product.id, {
+        ar: product.name,
+        ckb: kurdishOrNull(product.name_ckb),
+      });
+    }
   }
 }
 

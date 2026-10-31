@@ -1,3 +1,5 @@
+import { favoriteRepo } from '../repositories/favoritesRepo.js';
+import { restockRepo } from '../repositories/restockRepo.js';
 import { db } from '../database/pool.js';
 import { categoryRepo, productRepo } from '../repositories/catalogRepo.js';
 import { bannerRepo, governorateRepo } from '../repositories/storefrontRepo.js';
@@ -113,6 +115,22 @@ export const catalogService = {
     return {
       ...localized,
       options: options.map((o) => localizeOption(o as never, locale)),
+    };
+  },
+
+  /**
+   * ما يخصّ الزبون صاحب الجلسة في صفحة منتج: هل هو في مفضلته، وبماذا اشترك
+   * من تنبيهات التوفر (المنتج كله، والألوان). قراءة واحدة لكلٍّ، بلا أثر جانبي.
+   */
+  async viewerState(userId: string, productId: string) {
+    const [isFavorite, restock] = await Promise.all([
+      favoriteRepo.isFavorite(db, userId, productId),
+      restockRepo.viewerState(db, userId, productId),
+    ]);
+    return {
+      isFavorite,
+      restockSubscribed: restock.product,
+      restockVariantIds: restock.variantIds,
     };
   },
 

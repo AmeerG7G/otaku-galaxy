@@ -21,6 +21,7 @@ import {
   adminBirthdayQuerySchema,
   adminCategorySchema,
   adminCustomerGenderSchema,
+  adminCustomerBirthdaySchema,
   adminCustomerIdSchema,
   adminCustomerInternalSchema,
   adminCustomersQuerySchema,
@@ -166,6 +167,11 @@ export const adminController = {
   /** طلبات «أخبرني عند توفره» — المنتجات النافدة وسجل طلباتها. */
   restockDemand: (async (_req, res) => {
     return ok(res, await adminService.restockDemand());
+  }) as RequestHandler,
+
+  /** طلب التوفر بالألوان (088): الألوان غير المتاحة ومن ينتظرها. */
+  restockVariantDemand: (async (_req, res) => {
+    return ok(res, await adminService.restockVariantDemand());
   }) as RequestHandler,
 
   createBanner: (async (req, res) => {
@@ -343,6 +349,15 @@ export const adminController = {
     const { gender } = parse(adminCustomerGenderSchema, req.body ?? {});
     const data = await adminService.completeCustomerGender(id, req.auth!.id, gender);
     return ok(res, data, 'أُكمل جنس الحساب');
+  }) as RequestHandler,
+
+  /** تصحيح تاريخ ميلادٍ محفوظ (STEP 76 D1) — بسببٍ مسجَّل في سجلّ التدقيق. */
+  correctCustomerBirthday: (async (req, res) => {
+    res.locals.auditHandled = true;
+    const { id } = parse(adminCustomerIdSchema, req.params);
+    const input = parse(adminCustomerBirthdaySchema, req.body ?? {});
+    const data = await adminService.correctCustomerBirthday(id, req.auth!.id, input);
+    return ok(res, data, data.changed ? 'صُحِّح تاريخ الميلاد' : 'التاريخ نفسه محفوظ — لا تغيير');
   }) as RequestHandler,
 
   /** تعليم الحساب داخلياً/اختبارياً — للمسؤول الأعلى، بسببٍ مسجَّل. */

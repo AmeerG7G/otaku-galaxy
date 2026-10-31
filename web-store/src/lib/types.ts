@@ -95,6 +95,22 @@ export interface Product {
   variants?: ProductVariant[];
   /** What `variants` represent (090); absent (older API) = colour. */
   variantKind?: VariantKind;
+  /** Average of approved reviews; `null`/absent = none yet. */
+  rating?: number | null;
+  reviewCount?: number;
+  /**
+   * The signed-in customer's own state (STEP 76 B1) — only on a product read
+   * made with a customer token; absent for visitors and from an older API.
+   */
+  viewer?: ProductViewer;
+}
+
+export interface ProductViewer {
+  isFavorite: boolean;
+  /** Subscribed to the whole product («أعلمني عند توفره»). */
+  restockSubscribed: boolean;
+  /** The colours this customer waits for (migration 088). */
+  restockVariantIds: string[];
 }
 
 export const PRODUCT_SORTS = ['newest', 'price_asc', 'price_desc', 'rating'] as const;
@@ -225,6 +241,10 @@ export interface Order {
   rejectionReason: string | null;
   deliveryNote: string | null;
   statusHistory: OrderStatusEvent[];
+  /** Receipt confirmed: the order's products may be reviewed. The API decides, never this site. */
+  canReview?: boolean;
+  /** Products still waiting for a review (none yet, or a rejected one to correct). */
+  reviewableProductCount?: number;
 }
 
 export interface PublicUser {
@@ -233,10 +253,110 @@ export interface PublicUser {
   phone: string;
   role: 'customer' | 'admin';
   gender: 'male' | 'female' | null;
+  avatarUrl?: string | null;
 }
 
 export interface LoyaltyLevel {
   key: string;
   number: number;
   nameNeutral: string;
+}
+
+// ═══ STEP 76 — the customer's own records, as the API returns them to the app ═══
+
+export type ReviewStatus = 'pending' | 'approved' | 'rejected';
+
+export interface Review {
+  id: string;
+  productId: string;
+  productName: string;
+  rating: number;
+  comment: string;
+  photoUrls: string[];
+  status: ReviewStatus;
+  rejectionReason: string | null;
+  customerName: string;
+  createdAt: string;
+}
+
+export interface Level {
+  key: string;
+  number: number;
+  requiredPoints: number;
+  nameMale: string;
+  nameFemale: string;
+  nameNeutral: string;
+  rewardKind: 'none' | 'discount' | 'gift';
+  /** The reward in words, from the API's own ladder. */
+  reward: string;
+}
+
+export interface RewardState {
+  levelKey: string;
+  requiredPoints: number;
+  kind: 'discount' | 'gift';
+  unlocked: boolean;
+  claimed: boolean;
+  consumed: boolean;
+  claimedAt: string | null;
+  consumedAt: string | null;
+  fulfilledAt: string | null;
+  /** Show the claim button now — decided by the API. */
+  claimable: boolean;
+}
+
+export interface PointsActivity {
+  id: string;
+  label: string;
+  amount: number;
+  occurredAt: string;
+}
+
+export interface PointsSummary {
+  balance: number;
+  activity: PointsActivity[];
+  levels: Level[];
+  level: Level;
+  nextLevel: Level | null;
+  pointsToNextLevel: number;
+  levelProgress: number;
+  rewards: RewardState[];
+}
+
+export interface AppNotification {
+  id: string;
+  type: string;
+  title: string;
+  body: string;
+  read: boolean;
+  createdAt: string;
+  orderId: string | null;
+  reviewId: string | null;
+  productId: string | null;
+}
+
+export interface BirthdayStatus {
+  unlocked: boolean;
+  day: number | null;
+  month: number | null;
+  hasBirthday: boolean;
+  isBirthdayToday: boolean;
+  rewardAvailable: boolean;
+  discountPercent: number;
+}
+
+export interface ProductAlert {
+  productId: string;
+  name: string;
+  restockAt: string | null;
+  inStock: boolean;
+}
+
+export interface ColorAlert {
+  productId: string;
+  variantId: string;
+  nameAr: string;
+  colorNameAr: string;
+  colorHex: string | null;
+  inStock: boolean;
 }

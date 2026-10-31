@@ -15,7 +15,7 @@ import {
   Tag,
   Typography,
 } from 'antd'
-import { ReloadOutlined, SendOutlined } from '@ant-design/icons'
+import { EditOutlined, ReloadOutlined, SendOutlined } from '@ant-design/icons'
 import { listBirthdayCustomers } from '../api/customersApi'
 import {
   BIRTHDAY_FILTER_LABELS,
@@ -24,6 +24,7 @@ import {
 } from '../types/birthdays'
 import type { BroadcastAudience } from '../types/notifications'
 import BroadcastComposer from '../components/BroadcastComposer'
+import BirthdayCorrectionModal from '../components/BirthdayCorrectionModal'
 import EmptyState from '../components/EmptyState'
 import { resolveMediaUrl } from '../utils/media'
 import { formatDateTime } from '../utils/format'
@@ -93,6 +94,8 @@ export default function BirthdaysPage() {
   const windowDays = readWindow(table.value('window'))
   const page = table.page
   const [composer, setComposer] = useState<BroadcastAudience | null>(null)
+  // تصحيح تاريخٍ محفوظ (STEP 76 D1) — لمن سجّل تاريخه فقط.
+  const [correcting, setCorrecting] = useState<BirthdayCustomer | null>(null)
   const screens = Grid.useBreakpoint()
   const canNotify = useCan('notifications')
 
@@ -157,6 +160,12 @@ export default function BirthdaysPage() {
     if (customer.daysUntilBirthday === 0) return <Tag color="gold">اليوم 🎂</Tag>
     return `${customer.daysUntilBirthday} يوم`
   }
+  const renderCorrect = (customer: BirthdayCustomer) =>
+    customer.birthDay !== null && customer.birthMonth !== null ? (
+      <Button size="small" icon={<EditOutlined />} onClick={() => setCorrecting(customer)}>
+        تصحيح
+      </Button>
+    ) : null
   const renderDiscount = (used: boolean) =>
     used ? <Tag color="default">مستهلَك</Tag> : <Tag color="green">متاح</Tag>
 
@@ -199,6 +208,12 @@ export default function BirthdaysPage() {
       width: 190,
       render: (value: string | null) => (value ? formatDateTime(value) : '—'),
     },
+    {
+      title: 'تصحيح',
+      key: 'correct',
+      width: 110,
+      render: (_: unknown, customer: BirthdayCustomer) => renderCorrect(customer),
+    },
   ]
 
   /** بطاقة الهاتف — كل أعمدة الجدول، بلا عرضٍ ثابت ولا تمرير جانبي. */
@@ -218,6 +233,7 @@ export default function BirthdaysPage() {
           طلبات مكتملة: {customer.completedOrders} · سجّل في:{' '}
           {customer.birthdaySetAt ? formatDateTime(customer.birthdaySetAt) : '—'}
         </Typography.Text>
+        {renderCorrect(customer)}
       </Space>
     )
   }
@@ -348,6 +364,17 @@ export default function BirthdaysPage() {
           />
         )}
       </Card>
+
+      {correcting && correcting.birthDay !== null && correcting.birthMonth !== null && (
+        <BirthdayCorrectionModal
+          open
+          customerId={correcting.id}
+          customerName={correcting.username}
+          day={correcting.birthDay}
+          month={correcting.birthMonth}
+          onClose={() => setCorrecting(null)}
+        />
+      )}
 
       <BroadcastComposer
         open={composer !== null}
