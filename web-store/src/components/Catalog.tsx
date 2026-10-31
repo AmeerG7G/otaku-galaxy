@@ -54,7 +54,7 @@ export function Pagination({ page, hasMore, basePath, extra = {} }: { page: numb
           السابق
         </Link>
       ) : null}
-      <span className="btn" aria-current="page">
+      <span className="pagination__current" aria-current="page">
         صفحة {page}
       </span>
       {hasMore ? (
