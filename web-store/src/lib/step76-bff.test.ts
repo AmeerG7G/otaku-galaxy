@@ -208,6 +208,14 @@ describe('[CRITICAL] password change re-seals this browser\'s session', () => {
     expect(state.cleared).toBe(0);
   });
 
+  it('a new token it cannot read ends the session instead of keeping the revoked one', async () => {
+    state.respond = () => Promise.resolve({ data: { token: 'not-a-jwt', user: { id: 'u1', username: 'زبون', phone: '+9647700000000', role: 'customer' } }, message: null });
+    const response = await routes.password.PATCH(req('/bff/account/password', { method: 'PATCH', body: { currentPassword: 'a', newPassword: 'new-pass-1' } }));
+    expect(response.status).toBe(502);
+    expect(state.written).toEqual([]);
+    expect(state.cleared).toBe(1);
+  });
+
   it('missing fields never reach the API', async () => {
     expect((await routes.password.PATCH(req('/bff/account/password', { method: 'PATCH', body: { newPassword: 'x' } }))).status).toBe(400);
     expect(state.calls).toEqual([]);

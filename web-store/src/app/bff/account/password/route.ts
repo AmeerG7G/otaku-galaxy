@@ -1,7 +1,7 @@
 import { apiFetch } from '@/lib/api';
 import { bffError, bffJson, handleBff, readJsonBody } from '@/lib/bff';
 import { jwtExpiry } from '@/lib/session';
-import { writeSession } from '@/lib/server-session';
+import { clearSession, writeSession } from '@/lib/server-session';
 import type { PublicUser } from '@/lib/types';
 
 /**
@@ -23,7 +23,11 @@ export async function PATCH(request: Request) {
       token: session!.token,
     });
     const exp = jwtExpiry(data.token);
-    if (!exp || data.user.role !== 'customer') return bffError(502, 'UPSTREAM_ERROR', 'تغيّرت كلمة المرور — سجّل الدخول من جديد');
+    if (!exp || data.user.role !== 'customer') {
+      // The API already revoked the old token; keeping it in the cookie would only fail later.
+      await clearSession();
+      return bffError(502, 'UPSTREAM_ERROR', 'تغيّرت كلمة المرور — سجّل الدخول من جديد');
+    }
     await writeSession({ token: data.token, exp, user: { id: data.user.id, username: data.user.username, phone: data.user.phone } });
     return bffJson(200, { data: { changed: true }, message });
   });
