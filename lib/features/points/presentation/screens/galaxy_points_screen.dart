@@ -364,6 +364,16 @@ class _RewardRow extends StatelessWidget {
       );
     }
 
+    // هديةٌ رُبطت بطلبٍ أُنشئ: ليست «جاهزة» لطلبٍ آخر، بل في طريقها مع طلبها.
+    if (reward.isGift && reward.inOrder) {
+      return _statusPill(
+        context,
+        icon: Icons.local_shipping_outlined,
+        color: colors.infoText,
+        label: context.strings('levelGiftActivatedInOrder'),
+      );
+    }
+
     if (reward.claimed) {
       return _statusPill(
         context,

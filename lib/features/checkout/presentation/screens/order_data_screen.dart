@@ -749,6 +749,13 @@ class _OrderDataScreenState extends State<OrderDataScreen> with LocaleRefetch {
                   '-${formatPrice(_quote!.loyaltyDiscount)}',
                   valueColor: colors.success,
                 ),
+              // هدية المستوى التي سيحملها هذا الطلب — من الخادم، لا مبلغ لها.
+              if (_quote?.loyaltyGiftActivated ?? false)
+                _buildPriceRow(
+                  context.strings('loyaltyGiftLabel'),
+                  context.strings('levelGiftActivatedInOrder'),
+                  valueColor: colors.success,
+                ),
               Divider(color: Theme.of(context).colorScheme.outlineVariant),
               _buildPriceRow(
                 context.strings('finalTotal'),

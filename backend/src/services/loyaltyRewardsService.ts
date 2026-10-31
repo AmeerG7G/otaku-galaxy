@@ -18,6 +18,7 @@ import {
   type RedemptionDto,
 } from '../repositories/rewardRedemptionRepo.js';
 import { Errors } from '../utils/errors.js';
+import { discountCeilingIqd } from '../domain/discountRounding.js';
 
 /**
  * مزايا مستويات نقاط المجرّة: الأهلية، المطالبة، الاستهلاك، التسليم.
@@ -30,7 +31,13 @@ import { Errors } from '../utils/errors.js';
  *   • مفتوحة (`unlocked`) — بلغ العتبة ولم يطالب بعد.
  *   • مطالَب بها (`claimed`) — محجوزة له: الخصم ينتظر طلبه القادم، والهدية
  *     تنتظر تسليم المسؤول.
+ *   • في طلب (`inOrder`) — هديةٌ رُبطت بطلبٍ أُنشئ وتنتظر تسليمها معه.
  *   • مستهلَكة/مسلَّمة — انتهت.
+ *
+ * دورة الاستعمال (STEP 77): المطالبة تُتيحها؛ إنشاءُ الطلب يحجزها ويستهلكها
+ * في معاملة واحدة تحت قفل صفّها، فسقوطُ الإنشاء لأي سبب يُحرّرها كما كانت؛
+ * والطلب المُنشأ يُبقيها مستعمَلة ولو رُفض لاحقاً (CA-12، BR-32). لا دفع
+ * إلكتروني في المتجر (الدفع عند الاستلام)، فلا حدث دفعٍ يُنتظر.
  */
 
 export interface RewardView {
@@ -45,6 +52,13 @@ export interface RewardView {
   claimed: boolean;
   /** خصمٌ استُهلك في طلب، أو هدية سُلّمت. */
   consumed: boolean;
+  /** استُعملت في طلبٍ أُنشئ — خصمٌ استُهلك فيه، أو هديةٌ رُبطت به. */
+  inOrder: boolean;
+  /**
+   * الحالة في كلمة — مشتقّة مما سبق:
+   * `locked` → `available` → `claimed` → `inOrder` (هدية) → `completed`.
+   */
+  status: 'locked' | 'available' | 'claimed' | 'inOrder' | 'completed';
   claimedAt: string | null;
   consumedAt: string | null;
   fulfilledAt: string | null;
@@ -81,6 +95,16 @@ function toView(
   const unlocked = balance >= level.requiredPoints;
   const claimed = Boolean(redemption);
   const consumed = Boolean(redemption?.consumedAt ?? redemption?.fulfilledAt);
+  const inOrder = Boolean(redemption?.orderId);
+  const status: RewardView['status'] = consumed
+    ? 'completed'
+    : inOrder
+      ? 'inOrder'
+      : claimed
+        ? 'claimed'
+        : unlocked
+          ? 'available'
+          : 'locked';
   return {
     levelKey: level.key,
     requiredPoints: level.requiredPoints,
@@ -88,6 +112,8 @@ function toView(
     unlocked,
     claimed,
     consumed,
+    inOrder,
+    status,
     claimedAt: redemption?.claimedAt ?? null,
     consumedAt: redemption?.consumedAt ?? null,
     fulfilledAt: redemption?.fulfilledAt ?? null,
@@ -102,6 +128,49 @@ export interface ReservedLoyaltyDiscount {
   percent: number;
   capAmount: number;
   amount: number;
+}
+
+/** هدية مستوى تُربط بطلبٍ يُنشأ الآن — لا مبلغ لها على الطلب. */
+export interface ReservedLevelGift {
+  redemptionId: string;
+  levelKey: GalaxyLevelKey;
+}
+
+/** مزيّة المستوى الواحدة لطلب — خصمٌ أو هدية، أو لا شيء. */
+export type LevelRewardForOrder =
+  | ({ kind: 'discount' } & ReservedLoyaltyDiscount)
+  | ({ kind: 'gift' } & ReservedLevelGift);
+
+/**
+ * اختيار مزيّة المستوى لطلب من المزايا المفتوحة — قاعدة واحدة للإنشاء والمعاينة.
+ *
+ * [CRITICAL] قرار STEP 77 (طلب المالك 2026-10-31):
+ *   • مزيّة مستوى **واحدة** لكل طلب، هديةً كانت أو خصماً. فتحُ مزايا كثيرة
+ *     لا يعني إنفاقها كلّها في طلب واحد؛ الباقية تبقى مفتوحة للطلبات التالية.
+ *   • خصم المستوى لا يجتمع مع خصم الميلاد. الميلاد يتقدّم لأنه ينقضي بانقضاء
+ *     يومه، والمزيّة لا تسقط (§40.9) — فتبقى مفتوحة ولا يُخسر استحقاقٌ.
+ *     هدية المستوى ليست خصماً، فتجتمع مع خصم الميلاد.
+ *
+ * الترتيب ترتيبُ المطالبة (الأقدم أولاً). خصمٌ لا يُطبَّق على هذا الطلب (يوم
+ * ميلاد، أو قيمةٌ صفرية) يُتخطّى إلى التالي ولا يُستهلك.
+ */
+function pickLevelReward(
+  open: readonly RedemptionDto[],
+  productsTotal: number,
+  birthdayApplies: boolean,
+): LevelRewardForOrder | null {
+  for (const reward of open) {
+    if (reward.kind === 'gift') {
+      return { kind: 'gift', redemptionId: reward.id, levelKey: reward.levelKey };
+    }
+    if (birthdayApplies) continue;
+    const discount = discountFromOpen(reward, productsTotal);
+    // يتّسع في مجموع المنتجات كما سيُحفظ (`fitProductDiscounts`): سلّةٌ دون
+    // أدنى خصمٍ مقرَّب لا تتّسع له، فيُتخطّى إلى التالي ولا يُستهلك.
+    const fitted = discount ? Math.min(discount.amount, discountCeilingIqd(productsTotal)) : 0;
+    if (discount && fitted > 0) return { kind: 'discount', ...discount, amount: fitted };
+  }
+  return null;
 }
 
 /**
@@ -158,13 +227,13 @@ export const loyaltyRewardsService = {
   async claim(userId: string, levelKey: string) {
     const level = findLevel(levelKey);
     if (!level || level.reward.kind === 'none') {
-      throw Errors.notFound('لا توجد مزيّة بهذا المستوى');
+      throw Errors.notFound('لا توجد ميزة بهذا المستوى');
     }
 
     const balance = await pointsRepo.balance(db, userId);
     if (balance < level.requiredPoints) {
       throw Errors.conflict(
-        `تحتاج ${level.requiredPoints} نقطة لفتح هذه المزيّة`,
+        `تحتاج ${level.requiredPoints} نقطة لفتح هذه الميزة`,
         'REWARD_LOCKED',
       );
     }
@@ -210,87 +279,44 @@ export const loyaltyRewardsService = {
   },
 
   /**
-   * حجز خصم المزيّة لطلبٍ يُنشأ الآن — الخطوة الأولى من خطوتين.
+   * مزيّة المستوى لهذا الطلب ([pickLevelReward]) — `reserve` لإنشاء الطلب،
+   * `preview` لمعاينة شاشة الدفع.
    *
-   * [CRITICAL] يُستدعى **داخل** معاملة إنشاء الطلب. الصفّ يُقرأ بـ`FOR UPDATE`
-   * فيُقفل حتى نهاية المعاملة، فلا يستطيع طلبٌ متزامن من نفس الزبون أن يختار
-   * المزيّة نفسها. وسقوطُ الطلب لأي سبب لاحق (مخزون نفد، خصم ميلاد مستهلك)
-   * يُحرّر القفل ويُرجع المزيّة كاملةً — لا خصم يُحرق على طلب لم يُنشأ.
+   * [CRITICAL] `reserve` يُستدعى **داخل** معاملة إنشاء الطلب ويقرأ المزايا
+   * المفتوحة بـ`FOR UPDATE`، فلا يختار طلبٌ متزامن من نفس الزبون المزيّة
+   * نفسها، وسقوطُ الطلب لأي سبب لاحق يُحرّر القفل ويُرجعها كاملة. `preview`
+   * يقرأ المرشّحات نفسها بلا قفل ولا استهلاك.
    *
-   * الخطوتان منفصلتان لأن الربط يحتاج معرّف الطلب، والطلب يحتاج قيمة الخصم:
-   * نحجز أولاً (فنعرف القيمة)، ثم نُنشئ الطلب، ثم نُثبّت الربط بـ[consumeReserved].
-   *
-   * القيمة تُحسب على الخادم من مجموع المنتجات الفعلي — لا يُقرأ أي مبلغ من
-   * العميل — ولا تتجاوز سقفها المالي مهما كبر الطلب.
-   *
-   * الهدايا لا تمرّ من هنا إطلاقاً: التزامٌ يسلّمه المسؤول، لا خصمٌ على الطلب.
+   * لا يُقرأ أي مبلغ من العميل: قيمة الخصم من صفّ المزيّة ومجموع المنتجات.
    */
-  async reserveDiscountForOrder(
-    client: pg.PoolClient,
+  async levelRewardForOrder(
+    client: pg.Pool | pg.PoolClient,
     userId: string,
     productsTotal: number,
-  ): Promise<ReservedLoyaltyDiscount | null> {
-    const open = await rewardRedemptionRepo.findOpenDiscount(client, userId);
-    return discountFromOpen(open, productsTotal);
+    options: { birthdayApplies: boolean; mode: 'reserve' | 'preview' },
+  ): Promise<LevelRewardForOrder | null> {
+    const open = await rewardRedemptionRepo.openRewards(client, userId, {
+      lock: options.mode === 'reserve',
+    });
+    return pickLevelReward(open, productsTotal, options.birthdayApplies);
   },
 
   /**
-   * ما سيحجزه [reserveDiscountForOrder] لهذه العربة الآن — **بلا حجز**.
+   * ربط هدية المستوى المحجوزة بالطلب المُنشأ — داخل معاملة إنشائه.
    *
-   * لمعاينة شاشة الدفع (`orderService.checkoutQuote`): الزبون يرى خصم
-   * مزيّته قبل التأكيد. الحساب والمرشّح واحد مع الحجز (`discountFromOpen`
-   * و`OPEN_DISCOUNT_SQL`)، لكن لا قفل ولا استهلاك — المزيّة تبقى مفتوحة حتى
-   * يُنشأ الطلب فعلاً، وفشلُ الإنشاء لا يمسّها.
+   * الصفّ مقفول منذ [levelRewardForOrder]. المؤشر الفريد الجزئي على
+   * `orders.loyalty_gift_redemption_id` هو الحارس النهائي ضد أي سباق.
+   * الهدية لا تُكتَب `consumed_at` — تلك دلالةٌ للخصومات وحدها (042).
    */
-  async previewDiscountForOrder(
-    db: pg.Pool | pg.PoolClient,
-    userId: string,
-    productsTotal: number,
-  ): Promise<ReservedLoyaltyDiscount | null> {
-    const open = await rewardRedemptionRepo.peekOpenDiscount(db, userId);
-    return discountFromOpen(open, productsTotal);
-  },
-
-  /**
-   * هدية مستوى مفعَّلة لم تُربط بعد بطلب — للمعاينة (بلا قفل).
-   *
-   * يُعيد `true` إن كان الزبون يملك هدية نشطة لم تُربط بأي طلب، فيُعرض
-   * للزبون في شاشة المراجعة قبل التأكيد. الحكم النهائي يبقى لإنشاء الطلب.
-   */
-  async previewGiftForOrder(
-    db: pg.Pool | pg.PoolClient,
-    userId: string,
-  ): Promise<boolean> {
-    const open = await rewardRedemptionRepo.peekOpenGift(db, userId);
-    return open !== null;
-  },
-
-  /**
-   * ربط هدية مستوى نشطة بطلب جديد — داخل معاملة إنشاء الطلب.
-   *
-   * [CRITICAL] يُستدعى بعد إنشاء الطلب وبمعرّفه. يُقفل صفّ الهدية بـ`FOR
-   * UPDATE` ثم يُحدّث الطلب. المؤشر الفريد الجزئي على
-   * `orders.loyalty_gift_redemption_id` هو الحارس النهائي ضد السباق.
-   *
-   * الهدية لا تُكتَب consumed_at — تلك دلالةٌ للخصومات وحدها. الربط هنا يمنع
-   * استعمالها في طلبٍ آخر، وfulfilled_at يبقى علامةَ التسليم الفعلي.
-   *
-   * @returns معرّف الاسترداد إن نجح الربط، `null` إن لم تكن هدية نشطة.
-   */
-  async reserveGiftForOrder(
+  async linkGiftToOrder(
     client: pg.PoolClient,
-    userId: string,
+    redemptionId: string,
     orderId: string,
-  ): Promise<string | null> {
-    const open = await rewardRedemptionRepo.findOpenGift(client, userId);
-    if (!open) return null;
-
-    const linked = await rewardRedemptionRepo.linkGiftToOrder(client, orderId, open.id);
+  ): Promise<void> {
+    const linked = await rewardRedemptionRepo.linkGiftToOrder(client, orderId, redemptionId);
     if (!linked) {
-      // المؤشر الفريد أو شرط IS NULL أخفق — هدية مستخدمة في سباق.
       throw Errors.conflict('هدية المستوى مرتبطة بطلب آخر', 'REWARD_ALREADY_USED');
     }
-    return open.id;
   },
 
   /**
@@ -340,9 +366,9 @@ export const loyaltyRewardsService = {
   async fulfilGift(adminId: string, redemptionId: string) {
     return withTransaction(async (client) => {
       const row = await rewardRedemptionRepo.findById(client, redemptionId);
-      if (!row) throw Errors.notFound('المزيّة غير موجودة');
+      if (!row) throw Errors.notFound('الميزة غير موجودة');
       if (row.kind !== 'gift') {
-        throw Errors.badRequest('هذه المزيّة خصم لا هدية', 'NOT_A_GIFT');
+        throw Errors.badRequest('هذه الميزة خصم لا هدية', 'NOT_A_GIFT');
       }
       if (row.fulfilled_at) {
         throw Errors.conflict('سُلّمت هذه الهدية مسبقاً', 'ALREADY_FULFILLED');

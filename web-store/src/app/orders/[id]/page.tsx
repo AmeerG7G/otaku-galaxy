@@ -12,7 +12,7 @@ import { resolveMediaUrl } from '@/lib/media';
 import { reviewSlots } from '@/lib/order-reviews';
 import { requireSession, sessionRead } from '@/lib/page-session';
 import type { Order, Review } from '@/lib/types';
-import { lineColorName } from '@/lib/variants';
+import { lineColorName, variantKindText } from '@/lib/variants';
 
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = { title: 'تفاصيل الطلب', robots: { index: false } };
@@ -81,7 +81,7 @@ export default async function OrderPage({ params, searchParams }: Props) {
                       // The colour as it was at order time — the image is that colour's snapshot.
                       <div className="hint line-color">
                         <Swatch hex={item.variantColorHex} />
-                        اللون: {lineColorName(item)}
+                        {variantKindText(item.variantKind).label}: {lineColorName(item)}
                       </div>
                     ) : null}
                     {item.optionValue ? <div className="hint">{item.optionValue}</div> : null}
@@ -107,6 +107,12 @@ export default async function OrderPage({ params, searchParams }: Props) {
               <div className="summary-row">
                 <span>الخصم</span>
                 <span>−{formatIqd(order.discount)}</span>
+              </div>
+            ) : null}
+            {order.loyaltyGiftActivated ? (
+              <div className="summary-row">
+                <span>هدية المستوى</span>
+                <span>مفعلة وستصل مع طلبك</span>
               </div>
             ) : null}
             <div className="summary-row">

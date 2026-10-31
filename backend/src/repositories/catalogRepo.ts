@@ -109,6 +109,8 @@ export function mapProduct(
      * طبقة الخدمة بلغة الزبون (`localizeProduct`) كاسم المنتج.
      */
     variants: mapVariants(row.variants),
+    // ما تمثّله الخيارات (090) — الغائب (صفٌّ أقدم من العمود) لون كما كان.
+    variantKind: row.variant_kind ?? 'color',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

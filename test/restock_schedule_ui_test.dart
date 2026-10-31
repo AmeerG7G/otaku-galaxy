@@ -109,6 +109,33 @@ void main() {
     });
   });
 
+  // [CRITICAL] (STEP 77) موعد التوفر رقمياً `YYYY-MM-DD` بتقويم المتجر (بغداد،
+  // UTC+3) — مستقلاً عن منطقة الجهاز. المسؤول يحفظ اليوم منتصف ليل بغداد،
+  // أي `21:00Z` من اليوم السابق.
+  group('موعد التوفر الرقمي', () {
+    test('منتصف ليل بغداد يبقى اليوم الذي اختاره المسؤول', () {
+      expect(formatStoreIsoDate(DateTime.utc(2026, 7, 2, 21)), '2026-07-03');
+      expect(formatStoreIsoDate(DateTime.utc(2026, 7, 3, 20, 59)), '2026-07-03');
+    });
+
+    test('الشهر واليوم من رقم واحد يُحشوان بصفر', () {
+      expect(formatStoreIsoDate(DateTime.utc(2026, 3, 4, 21)), '2026-03-05');
+    });
+
+    test('حدود الشهر والسنة والسنة الكبيسة', () {
+      expect(formatStoreIsoDate(DateTime.utc(2026, 1, 31, 20, 59)), '2026-01-31');
+      expect(formatStoreIsoDate(DateTime.utc(2026, 1, 31, 21)), '2026-02-01');
+      expect(formatStoreIsoDate(DateTime.utc(2026, 12, 31, 21)), '2027-01-01');
+      expect(formatStoreIsoDate(DateTime.utc(2028, 2, 28, 21)), '2028-02-29');
+    });
+
+    test('النتيجة واحدة لأي منطقة زمنية للجهاز (اللحظة نفسها)', () {
+      final instant = DateTime.utc(2026, 11, 2, 21);
+      expect(formatStoreIsoDate(instant), '2026-11-03');
+      expect(formatStoreIsoDate(instant.toLocal()), '2026-11-03');
+    });
+  });
+
   group('الحالات الثلاث', () {
     testWidgets('غير مشترك → دعوة الاشتراك قابلة للضغط', (tester) async {
       await pumpButton(tester);
@@ -133,7 +160,7 @@ void main() {
           restockAt: DateTime(2026, 9, 15),
         ),
       );
-      expect(find.text('بانتظار توفيره بتاريخ 15 سبتمبر'), findsOneWidget);
+      expect(find.text('بانتظار توفيره بتاريخ 2026-09-15'), findsOneWidget);
       expect(find.text('أعلمني عند توفر المنتج'), findsNothing);
       expect(find.text('بانتظار التوفر — إلغاء التنبيه'), findsNothing);
     });
@@ -160,12 +187,12 @@ void main() {
       expect(find.byType(ElevatedButton), findsNothing);
 
       // الضغط على النصّ لا يُنتج شيئاً.
-      await tester.tap(find.text('بانتظار توفيره بتاريخ 15 سبتمبر'));
+      await tester.tap(find.text('بانتظار توفيره بتاريخ 2026-09-15'));
       await tester.pumpAndSettle();
 
       expect(repo.subscribeCalls, 0);
       expect(repo.unsubscribeCalls, 0);
-      expect(find.text('بانتظار توفيره بتاريخ 15 سبتمبر'), findsOneWidget);
+      expect(find.text('بانتظار توفيره بتاريخ 2026-09-15'), findsOneWidget);
     });
 
     testWidgets('الضغط المتكرّر لا يُنشئ اشتراكاً ولا يلغيه', (tester) async {
@@ -221,7 +248,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(repo.subscribeCalls, 1);
-      expect(find.text('بانتظار توفيره بتاريخ 15 سبتمبر'), findsOneWidget);
+      expect(find.text('بانتظار توفيره بتاريخ 2026-09-15'), findsOneWidget);
       expect(find.text('أعلمني عند توفر المنتج'), findsNothing);
     });
 
@@ -248,7 +275,7 @@ void main() {
           restockAt: DateTime(2026, 9, 15),
         ),
       );
-      expect(find.text('بانتظار توفيره بتاريخ 15 سبتمبر'), findsOneWidget);
+      expect(find.text('بانتظار توفيره بتاريخ 2026-09-15'), findsOneWidget);
 
       // الزبون يغادر الشاشة ثم يعود بعد أن عدّل المسؤول الموعد. التفكيك
       // ضروري: إعادة البناء بنفس النوع تُبقي الحالة فلا يُعاد النداء، وهو
@@ -263,8 +290,8 @@ void main() {
           restockAt: DateTime(2026, 9, 20),
         ),
       );
-      expect(find.text('بانتظار توفيره بتاريخ 20 سبتمبر'), findsOneWidget);
-      expect(find.text('بانتظار توفيره بتاريخ 15 سبتمبر'), findsNothing);
+      expect(find.text('بانتظار توفيره بتاريخ 2026-09-20'), findsOneWidget);
+      expect(find.text('بانتظار توفيره بتاريخ 2026-09-15'), findsNothing);
     });
 
     /**

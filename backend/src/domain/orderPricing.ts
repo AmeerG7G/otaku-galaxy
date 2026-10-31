@@ -153,6 +153,8 @@ export interface QuoteFingerprintInput {
   governorateId: string;
   zoneId: string | null;
   deliveryFee: number;
+  /** هدية المستوى المربوطة بالطلب (STEP 77) — `null`/غيابها = لا هدية. */
+  levelGiftId?: string | null;
   pricing: OrderPricing;
 }
 
@@ -197,6 +199,9 @@ export function quoteFingerprint(input: QuoteFingerprintInput): string {
     loyaltyDiscount: input.pricing.loyaltyDiscount,
     deliveryDiscount: input.pricing.deliveryDiscount,
     total: input.pricing.total,
+    // هدية المستوى (STEP 77) حين تُربط وحدها، فبصمة طلبٍ بلا هدية لا تتغيّر:
+    // هديةٌ أخرى (أو خصمٌ بدلها) بعد المراجعة تُرفض كأي تغيّر في الملخّص.
+    ...(input.levelGiftId ? { levelGiftId: input.levelGiftId } : {}),
   });
   return `q1:${createHash('sha256').update(canonical).digest('hex')}`;
 }

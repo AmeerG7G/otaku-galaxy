@@ -162,6 +162,8 @@ export type ProductRow = {
   price: string | number | null;
   /** سعر قطعتين من المنتج نفسه (085)؛ `null` = لا عرض. */
   pair_price: string | number | null;
+  /** ما تمثّله خيارات المنتج (090). */
+  variant_kind?: 'color' | 'design' | 'size';
   stock: number;
   is_active: boolean;
   is_offer: boolean;

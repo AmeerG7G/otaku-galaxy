@@ -1,7 +1,7 @@
 import type pg from 'pg';
 import { pickProductName, type AppLocale, type ProductNames } from '../utils/locale.js';
 import { userRepo } from '../repositories/userRepo.js';
-import { MONTH_NAMES, PARAM_TEMPLATES } from '../domain/notificationTemplates.js';
+import { PARAM_TEMPLATES } from '../domain/notificationTemplates.js';
 import { db, withTransaction } from '../database/pool.js';
 import { adminEvents } from './adminEvents.js';
 import { productRepo } from '../repositories/catalogRepo.js';
@@ -290,37 +290,23 @@ export const restockService = {
 };
 
 /**
- * صياغة موعد التوفر بالعربية — «١٥ سبتمبر».
+ * صياغة موعد التوفر رقمياً `YYYY-MM-DD` — «2026-09-15» في اللغتين.
  *
- * التاريخ يُعرض بمنطقة المتجر الزمنية لا بـUTC: موعدٌ ضُبط في العاشرة مساءً
- * ببغداد يقع في اليوم التالي بتوقيت UTC، فيقرأ الزبون يوماً غير الذي قصده
- * المسؤول.
+ * [CRITICAL] (STEP 77، طلب المالك 2026-10-31) بلا اسم شهر، ونفس صياغة
+ * التطبيق والمتجر. اليوم بمنطقة المتجر الزمنية لا بـUTC: موعدٌ ضُبط في
+ * العاشرة مساءً ببغداد يقع في اليوم التالي بتوقيت UTC، فيقرأ الزبون يوماً
+ * غير الذي قصده المسؤول. `en-US` يولّد الأرقام غربيةً دائماً.
  */
-const ARABIC_MONTHS = [
-  'يناير',
-  'فبراير',
-  'مارس',
-  'أبريل',
-  'مايو',
-  'يونيو',
-  'يوليو',
-  'أغسطس',
-  'سبتمبر',
-  'أكتوبر',
-  'نوفمبر',
-  'ديسمبر',
-] as const;
-
-export function formatExpectedRestockDate(iso: string, locale: AppLocale = 'ar'): string {
+export function formatExpectedRestockDate(iso: string): string {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: config.storeTimezone,
-    day: 'numeric',
-    month: 'numeric',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
   }).formatToParts(new Date(iso));
-  const day = parts.find((p) => p.type === 'day')?.value ?? '';
-  const monthIndex = Number(parts.find((p) => p.type === 'month')?.value ?? '1') - 1;
-  // اليوم والشهر رقمياً من `en-US` — أرقام غربية دائماً. الاسم وحده يُترجَم.
-  return `${day} ${MONTH_NAMES[locale][monthIndex] ?? ''}`.trim();
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === type)?.value ?? '';
+  return `${part('year')}-${part('month')}-${part('day')}`;
 }
 
 /**
@@ -342,7 +328,7 @@ async function notifyExpected(
   const byLocale = await userRepo.groupIdsByLocale(tx, input.userIds);
   let created = 0;
   for (const [locale, ids] of byLocale) {
-    const when = formatExpectedRestockDate(input.restockAt, locale);
+    const when = formatExpectedRestockDate(input.restockAt);
     created += await notificationRepo.createMany(tx, {
       userIds: ids,
       type: 'restockScheduled',

@@ -23,6 +23,8 @@ export interface CartLine {
   variantColorNameAr: string | null;
   variantColorNameCkb: string | null;
   variantColorHex: string | null;
+  /** ما يمثّله الخيار (090) — `null` لسطرٍ بلا خيار. */
+  variantKind: 'color' | 'design' | 'size' | null;
   optionValue: string | null;
   quantity: number;
   /**
@@ -67,6 +69,7 @@ const LINE_FROM = `
          p.delivery_promo_amount AS "deliveryPromoAmount",
          ci.variant_id AS "variantId", pv.color_name AS "variantColorName",
          pv.color_name_ckb AS "variantColorNameCkb", pv.color_hex AS "variantColorHex",
+         CASE WHEN ci.variant_id IS NULL THEN NULL ELSE p.variant_kind END AS "variantKind",
          COALESCE(pv.image_url,
            (SELECT pi.url FROM product_images pi
             WHERE pi.product_id = p.id ORDER BY pi.sort_order LIMIT 1)) AS "productImage"
@@ -98,6 +101,7 @@ function mapLine(row: Record<string, unknown>): CartLine {
     variantColorNameAr: (row.variantColorName as string | null) ?? null,
     variantColorNameCkb: kurdishOrNull(row.variantColorNameCkb as string | null),
     variantColorHex: (row.variantColorHex as string | null) ?? null,
+    variantKind: (row.variantKind as CartLine['variantKind']) ?? null,
     optionValue: (row.optionValue as string | null) ?? null,
     quantity: Number(row.quantity),
     // `Number(null)` صفر — والصفر سعرٌ لا «بلا سعر».

@@ -697,6 +697,14 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with LocaleRefetc
               '-${formatPrice(order.loyaltyDiscount)}',
               valueColor: context.themeColors.success,
             ),
+          // هدية المستوى المربوطة بهذا الطلب — بلا مبلغ، تصل معه. طلبٌ مرفوض
+          // لا يصل، فلا يُقال «ستصل مع طلبك» (مصير الهدية فيه قرارٌ مفتوح).
+          if (order.loyaltyGiftActivated && order.status != OrderStatus.rejected)
+            _buildPriceRow(
+              context.strings('loyaltyGiftLabel'),
+              context.strings('levelGiftActivatedInOrder'),
+              valueColor: context.themeColors.success,
+            ),
           Divider(
             height: AppDimens.space4,
             color: Theme.of(context).colorScheme.outlineVariant,

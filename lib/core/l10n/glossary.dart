@@ -80,7 +80,7 @@ abstract final class Glossary {
     note: 'هوية البرنامج — لا تُستبدل بمرادف ولا تُترجَم حرفياً',
   );
   static const points = Term('نقاط', 'خاڵ');
-  static const reward = Term('مزيّة', 'خەڵات');
+  static const reward = Term('ميزة', 'خەڵات');
   static const gift = Term('هدية', 'دیاری');
   static const discount = Term('خصم', 'داشکاندن');
   static const birthdayDiscount = Term('خصم عيد الميلاد', 'داشکاندنی ڕۆژی لەدایکبوون');

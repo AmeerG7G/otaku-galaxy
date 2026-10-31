@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { unstable_rethrow } from 'next/navigation';
 import Link from '@/components/Link';
 import { Swatch } from '@/components/VariantSelection';
-import { formatShortStoreDate } from '@/lib/format';
+import { formatStoreDate } from '@/lib/format';
 import { requireSession, sessionRead } from '@/lib/page-session';
 import type { ColorAlert, ProductAlert } from '@/lib/types';
 
@@ -46,7 +46,7 @@ export default async function AlertsPage() {
             <li key={alert.productId} className="card summary-row">
               <Link href={`/p/${alert.productId}`}>{alert.name}</Link>
               <span className="hint">
-                {alert.inStock ? 'متوفر الآن' : alert.restockAt ? `بانتظار توفيره بتاريخ ${formatShortStoreDate(alert.restockAt)}` : 'بانتظار التوفر'}
+                {alert.inStock ? 'متوفر الآن' : alert.restockAt ? `بانتظار توفيره بتاريخ ${formatStoreDate(alert.restockAt)}` : 'بانتظار التوفر'}
               </span>
             </li>
           ))}

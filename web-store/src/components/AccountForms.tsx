@@ -274,9 +274,9 @@ export function ClaimRewardButton({ levelKey, label }: { levelKey: string; label
           const result = await bff(`/bff/points/rewards/${levelKey}/claim`, { method: 'POST' });
           setBusy(false);
           if (result.ok) {
-            setFeedback({ kind: 'success', text: result.message ?? 'سُجّلت مزيّتك 🎉' });
+            setFeedback({ kind: 'success', text: result.message ?? 'سُجّلت ميزتك 🎉' });
             router.refresh();
-          } else setFeedback({ kind: 'error', text: result.error?.message ?? 'تعذّرت المطالبة بالمزيّة، حاول مرة أخرى' });
+          } else setFeedback({ kind: 'error', text: result.error?.message ?? 'تعذّرت المطالبة بالميزة، حاول مرة أخرى' });
         }}
       >
         {busy ? 'جاري التسجيل…' : label}

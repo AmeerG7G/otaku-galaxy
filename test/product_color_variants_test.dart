@@ -25,6 +25,7 @@ import 'package:otaku_galaxy/features/cart/domain/entities/cart_sync.dart';
 import 'package:otaku_galaxy/features/cart/domain/repositories/cart_repository.dart';
 import 'package:otaku_galaxy/features/cart/presentation/cubit/cart_cubit.dart';
 import 'package:otaku_galaxy/features/cart/presentation/screens/cart_screen.dart';
+import 'package:otaku_galaxy/features/cart/presentation/widgets/line_color_label.dart';
 import 'package:otaku_galaxy/features/checkout/presentation/screens/order_review_screen.dart';
 import 'package:otaku_galaxy/features/favorites/presentation/cubit/favorites_cubit.dart';
 import 'package:otaku_galaxy/features/orders/domain/entities/order.dart';
@@ -701,5 +702,45 @@ void main() {
       expect(find.text(AppStrings.kurdish.p('colorValue', {'color': 'سوور'})), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
+  });
+
+  // STEP 77 (090): نظام الخيارات نفسه يمثّل تصميماً أو مقاساً، والنوع يسمّي
+  // المحدّد والسطر — لا «اللون» لحقيبةٍ بتصميمين.
+  group('نوع الخيارات', () {
+    test('يُقرأ النوع، والغائب أو المجهول لون كما كان', () {
+      expect(Product.fromJson(_productJson(variants: _threeColours())).variantKind, VariantKind.color);
+      expect(
+        Product.fromJson({..._productJson(variants: _threeColours()), 'variantKind': 'design'}).variantKind,
+        VariantKind.design,
+      );
+      expect(VariantKind.parse('size'), VariantKind.size);
+      expect(VariantKind.parse('flavour'), VariantKind.color);
+      expect(LineColor.fromLineJson({..._colouredLineJson(), 'variantKind': 'size'})!.kind, VariantKind.size);
+      expect(LineColor.fromLineJson(_colouredLineJson())!.kind, VariantKind.color);
+    });
+
+    for (final language in AppLanguage.values) {
+      testWidgets('${language.code}: منتج تصميمات — العنوان وزرّ الإضافة بالتصميم', (tester) async {
+        final product = Product.fromJson({..._productJson(variants: _threeColours()), 'variantKind': 'design'});
+        await _pumpDetail(tester, product, language: language);
+        _drainImageErrors(tester);
+        final strings = AppStrings.of(language);
+        expect(find.text(strings('productDesign')), findsOneWidget);
+        expect(find.text(strings('productColor')), findsNothing);
+        expect(_addButton(tester).label, strings('chooseDesignFirst'));
+        _drainImageErrors(tester);
+      });
+
+      testWidgets('${language.code}: سطر خيار مقاس يُسمّى بالمقاس', (tester) async {
+        final color = LineColor.fromLineJson({..._colouredLineJson(), 'variantKind': 'size'})!;
+        await tester.pumpWidget(
+          _app(language: language, home: Scaffold(body: LineColorLabel(color: color))),
+        );
+        final strings = AppStrings.of(language);
+        final red = language == AppLanguage.kurdish ? 'سوور' : 'أحمر';
+        expect(find.text(strings.p('sizeValue', {'color': red})), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+    }
   });
 }

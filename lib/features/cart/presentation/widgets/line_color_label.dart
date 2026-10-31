@@ -53,7 +53,8 @@ class ColorSwatchDot extends StatelessWidget {
   }
 }
 
-/// «اللون: أحمر» مع دائرته — يُعرض في سطر السلة والمراجعة والطلب.
+/// «اللون: أحمر» مع دائرته — يُعرض في سطر السلة والمراجعة والطلب. خيار
+/// تصميمٍ أو مقاس (090) يُسمّى بنوعه: «التصميم: سوكونا».
 ///
 /// الاسم من [LineColor.nameIn] بلغة الواجهة الآن، لا من نصٍّ محسومٍ سلفاً.
 class LineColorLabel extends StatelessWidget {
@@ -75,7 +76,7 @@ class LineColorLabel extends StatelessWidget {
         ],
         Flexible(
           child: Text(
-            context.strings.p('colorValue', {
+            context.strings.p(color.kind.lineValueKey, {
               'color': color.nameIn(context.language),
             }),
             maxLines: 1,
