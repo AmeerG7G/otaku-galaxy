@@ -109,3 +109,19 @@ export function listBirthdayCustomers(params: {
 }): Promise<BirthdayCustomerList> {
   return get<BirthdayCustomerList>('/admin/customers/birthdays', { params })
 }
+
+/**
+ * تصحيح تاريخ ميلادٍ **محفوظ** (STEP 76 D1) — لصلاحية «أعياد الميلاد» وحدها.
+ *
+ * الزبون يضبط تاريخه مرةً واحدة؛ التصحيح بعده من هنا فقط، بسببٍ يُكتب في سجلّ
+ * التدقيق مع القيمتين القديمة والجديدة. خصم الميلاد السنوي لا يتأثر.
+ */
+export function correctCustomerBirthday(
+  id: string,
+  input: { day: number; month: number; reason: string },
+) {
+  return patch<{ id: string; day: number; month: number; changed: boolean }>(
+    `/admin/customers/${id}/birthday`,
+    input,
+  )
+}

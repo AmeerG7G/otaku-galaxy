@@ -124,8 +124,8 @@ export const reviewsService = {
     return reviewRepo.findForUserProduct(db, userId, productId);
   },
 
-  async listApprovedForProduct(productId: string) {
-    return reviewRepo.listApprovedForProduct(db, productId);
+  async listApprovedForProduct(productId: string, page = 1, limit = 50) {
+    return reviewRepo.listApprovedForProduct(db, productId, page, limit);
   },
 
   async listCommunityPhotos(categoryId?: string | null) {

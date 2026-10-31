@@ -68,6 +68,13 @@ export const catalogController = {
     const data = await catalogService.productDetail(id, resolveLocale(req), wantsUnpriced(req));
     // [D3] فتح صفحة المنتج — يعلنه شاشة التفاصيل وحدها (لا كل جلبٍ للمنتج).
     if (req.get('X-OG-Track') === 'view') trackingService.productView(id, req.auth?.id ?? null);
+    // حالة الزبون صاحب الجلسة على هذا المنتج (STEP 76 B1): المفضلة واشتراكات
+    // التوفر — إضافةٌ لا تظهر لزائرٍ بلا جلسة ولا لحساب إدارة، ولا تخصّ غير صاحبها.
+    if (req.auth?.role === 'customer') {
+      // ردٌّ يخصّ صاحب الجلسة لا يُخزَّن في أي ذاكرة وسيطة.
+      res.set('Cache-Control', 'private, no-store');
+      return ok(res, { ...data, viewer: await catalogService.viewerState(req.auth.id, id) });
+    }
     return ok(res, data);
   }) as RequestHandler,
 
