@@ -3,7 +3,7 @@ import { apiFetch } from './api';
 import { playStoreUrl } from './app-link';
 import { mediaOrigin } from './config';
 import { resolveMediaUrl } from './media';
-import type { Category, Governorate, LoyaltyLevel, Paginated, Product, ProductSort, Zone } from './types';
+import type { Category, Governorate, LoyaltyLevel, Paginated, Product, ProductSort, Review, Zone } from './types';
 
 /**
  * Public catalog reads. Like every API call they are made per request with the
@@ -15,7 +15,7 @@ import type { Category, Governorate, LoyaltyLevel, Paginated, Product, ProductSo
  * React's `cache`, which shares one result within a single request only.
  */
 
-function withMedia(product: Product): Product {
+export function withMedia(product: Product): Product {
   const origin = mediaOrigin();
   return {
     ...product,
@@ -55,10 +55,26 @@ export async function searchProducts(q: string, page = 1): Promise<Paginated<Pro
   return { ...data, items: data.items.map(withMedia) };
 }
 
-export const getProduct = cache(async (id: string): Promise<Product> => {
-  const { data } = await apiFetch<Product>(`/catalog/products/${encodeURIComponent(id)}`);
+/**
+ * One product. With a customer's token the API adds that customer's own
+ * favourite and restock state (`viewer`) and marks the answer uncacheable; the
+ * product itself is the same for everyone.
+ */
+export const getProduct = cache(async (id: string, token?: string | null): Promise<Product> => {
+  const { data } = await apiFetch<Product>(`/catalog/products/${encodeURIComponent(id)}`, { token: token ?? null });
   return withMedia(data);
 });
+
+/** Approved reviews of a product, newest first — bounded pages (the API caps `limit` at 50). */
+export async function listProductReviews(productId: string, page: number, limit: number): Promise<Review[]> {
+  const { data } = await apiFetch<Review[]>(`/catalog/products/${encodeURIComponent(productId)}/reviews`, { query: { page, limit } });
+  return data.map((review) => withReviewMedia(review));
+}
+
+export function withReviewMedia(review: Review): Review {
+  const origin = mediaOrigin();
+  return { ...review, photoUrls: review.photoUrls.map((ref) => resolveMediaUrl(ref, origin)).filter((url): url is string => Boolean(url)) };
+}
 
 export async function listGovernorates(): Promise<Governorate[]> {
   const { data } = await apiFetch<{ items: Governorate[] }>('/catalog/governorates');
