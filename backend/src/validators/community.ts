@@ -210,3 +210,9 @@ export const campaignListSchema = z.object({
 });
 
 export const campaignIdParamSchema = z.object({ id: z.string().uuid('معرّف غير صالح') });
+
+/** صفحة التقييمات المعتمدة لمنتج — الغائب = الصفحة الأولى بخمسين (حدٌّ آمن). */
+export const productReviewsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).max(1000).default(1),
+  limit: z.coerce.number().int().min(1).max(50).default(50),
+});
