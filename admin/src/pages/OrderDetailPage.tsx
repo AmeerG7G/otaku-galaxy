@@ -89,16 +89,18 @@ export default function OrderDetailPage() {
       ),
     },
     {
-      // اللون كما حُفظ مع الطلب — والصورة في عمود المنتج صورة هذا اللون.
-      title: 'اللون',
+      // الخيار كما حُفظ مع الطلب (لون/تصميم/مقاس، 090) — والصورة في عمود
+      // المنتج صورة هذا الخيار. نوعه يسبق اسمه متى لم يكن لوناً.
+      title: 'اللون / التصميم / المقاس',
       key: 'variant',
       render: (_: unknown, item: OrderItem) => {
         const name = item.variantColorName ?? item.variantColorNameAr
         if (!name) return '—'
+        const kind = item.variantKind === 'design' ? 'تصميم: ' : item.variantKind === 'size' ? 'مقاس: ' : ''
         return (
           <Space size={6} data-testid="order-item-color">
             <ColorSwatch hex={item.variantColorHex} />
-            <span>{name}</span>
+            <span>{kind}{name}</span>
           </Space>
         )
       },
@@ -265,7 +267,7 @@ export default function OrderDetailPage() {
             وبكم، والباقي خصم الميلاد.
           */}
           {loyaltyDiscount > 0 && (
-            <Descriptions.Item label="منه خصم مزيّة المستوى">
+            <Descriptions.Item label="منه خصم ميزة المستوى">
               <Typography.Text type="success">
                 −{formatCurrency(loyaltyDiscount)}
               </Typography.Text>

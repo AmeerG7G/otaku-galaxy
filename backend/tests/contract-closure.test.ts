@@ -605,8 +605,13 @@ describe('Pre-staging contract closure (STEP 57)', () => {
       await api.patch(`/api/admin/products/${scarce}`).set(bearer(adminToken)).send({ stock: 1 }).expect(200);
       const placed = await submit();
       expect(placed.status).toBe(201);
-      // ميلاد 5% = 1 000، مستكشف 3% = 600 ← 500 (أقرب ٢٥٠) — الخصمان سليمان للطلب التالي.
-      expect(placed.body.data).toMatchObject({ discount: 1_500, loyaltyDiscount: 500 });
+      // ميلاد 5% = 1 000 — والخصمان سليمان: يوم الميلاد يُطبَّق وحده (STEP 77)
+      // والمستكشف لم يُحرق، فيبقى مفتوحاً.
+      expect(placed.body.data).toMatchObject({ discount: 1_000, loyaltyDiscount: 0 });
+      expect(await count(
+        `loyalty_reward_redemptions WHERE user_id = $1 AND level_key = 'explorer' AND consumed_at IS NULL`,
+        [c.userId],
+      )).toBe(1);
     });
 
     it('[CA-12 contract] a pending order rejected by the admin keeps both discounts consumed; the next order gets neither', async () => {
@@ -615,10 +620,17 @@ describe('Pre-staging contract closure (STEP 57)', () => {
       const discounted = await placeOrder(c.token, [{ productId: item, quantity: 1 }]);
       expect((await setStatus(discounted, 'REJECTED', 'تعذّر التواصل')).status).toBe(200);
 
-      expect(await discountsOf(c.userId, discounted)).toEqual({ loyaltyConsumedBy: discounted, birthdayUsages: 1 });
+      // يوم الميلاد استعمل الطلبُ خصم الميلاد وحده (STEP 77)، والرفض لا يُرجعه.
+      expect(await discountsOf(c.userId, discounted)).toEqual({ loyaltyConsumedBy: null, birthdayUsages: 1 });
       expect(await stockOf(item)).toBe(5); // المنتظر لم يحجز شيئاً (§47.1)
+      // التالي: لا ميلاد (استُعمل هذه السنة) — المستكشف وحده 3% = 600 ← 500.
       const next = await placeOrder(c.token, [{ productId: item, quantity: 1 }]);
-      expect((await one<{ discount: string }>('SELECT discount FROM orders WHERE id = $1', [next])).discount).toBe('0.00');
+      expect((await one<{ discount: string }>('SELECT discount FROM orders WHERE id = $1', [next])).discount).toBe('500.00');
+      // ورفضُ ذلك الطلب لا يُرجع المستكشف: التالي بلا خصم.
+      expect((await setStatus(next, 'REJECTED', 'تعذّر التواصل')).status).toBe(200);
+      expect(await discountsOf(c.userId, next)).toEqual({ loyaltyConsumedBy: next, birthdayUsages: 0 });
+      const after = await placeOrder(c.token, [{ productId: item, quantity: 1 }]);
+      expect((await one<{ discount: string }>('SELECT discount FROM orders WHERE id = $1', [after])).discount).toBe('0.00');
     });
 
     /**
@@ -638,7 +650,7 @@ describe('Pre-staging contract closure (STEP 57)', () => {
       expect(approval.body.error.code).toBe('INSUFFICIENT_STOCK');
       expect((await setStatus(discounted, 'REJECTED', 'نفد المخزون')).status).toBe(200);
 
-      expect(await discountsOf(c.userId, discounted)).toEqual({ loyaltyConsumedBy: discounted, birthdayUsages: 1 });
+      expect(await discountsOf(c.userId, discounted)).toEqual({ loyaltyConsumedBy: null, birthdayUsages: 1 });
     });
 
     it('[CA-12 contract] a rejection after approval (parcel refused) also keeps both discounts consumed', async () => {
@@ -648,7 +660,7 @@ describe('Pre-staging contract closure (STEP 57)', () => {
       expect((await setStatus(discounted, 'OUT_FOR_DELIVERY')).status).toBe(200);
       expect((await setStatus(discounted, 'REJECTED', 'رفض الاستلام')).status).toBe(200);
 
-      expect(await discountsOf(c.userId, discounted)).toEqual({ loyaltyConsumedBy: discounted, birthdayUsages: 1 });
+      expect(await discountsOf(c.userId, discounted)).toEqual({ loyaltyConsumedBy: null, birthdayUsages: 1 });
       // المخزون وحده يعود (§47.1) — الخصمان لا.
       expect(await stockOf(item)).toBe(5);
     });

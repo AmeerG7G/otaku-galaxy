@@ -64,3 +64,31 @@ class ProductVariant {
 
   String nameIn(AppLanguage language) => names.of(language);
 }
+
+/// ما تمثّله خيارات المنتج (090، STEP 77): لون أو تصميم أو مقاس.
+///
+/// نظام الخيارات نفسه (صورةٌ ومخزونٌ لكل خيار) — النوع يسمّي المحدّد للزبون
+/// وحده، فلا يُقال «اللون» لحقيبةٍ بتصميمين. الغائب أو المجهول (خادمٌ أقدم)
+/// لون، كما كان كل منتجٍ بخيارات قبل هذا الحقل.
+enum VariantKind {
+  color('productColor', 'chooseColorFirst', 'colorValue'),
+  design('productDesign', 'chooseDesignFirst', 'designValue'),
+  size('productSize', 'chooseSizeFirst', 'sizeValue');
+
+  const VariantKind(this.headingKey, this.chooseFirstKey, this.lineValueKey);
+
+  /// عنوان المحدّد في صفحة المنتج.
+  final String headingKey;
+
+  /// نصّ زرّ الإضافة قبل اختيار خيار.
+  final String chooseFirstKey;
+
+  /// «النوع: الاسم» في سطر السلة والطلب — معاملُه `{color}`.
+  final String lineValueKey;
+
+  static VariantKind parse(Object? value) => switch (value) {
+    'design' => VariantKind.design,
+    'size' => VariantKind.size,
+    _ => VariantKind.color,
+  };
+}

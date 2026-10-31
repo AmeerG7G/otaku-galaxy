@@ -22,6 +22,8 @@ export interface RedemptionRow {
   consumed_at: Date | string | null;
   fulfilled_at: Date | string | null;
   fulfilled_by: string | null;
+  /** الطلب المربوط بالهدية (081) — يُقرأ في [listForUser] وحده. */
+  gift_order_id?: string | null;
 }
 
 export interface RedemptionDto {
@@ -35,6 +37,8 @@ export interface RedemptionDto {
   consumedOrderId: string | null;
   consumedAt: string | null;
   fulfilledAt: string | null;
+  /** الطلب الذي استُعملت فيه: خصمٌ استُهلك فيه، أو هدية رُبطت به. */
+  orderId: string | null;
 }
 
 const num = (value: string | number | null) =>
@@ -55,19 +59,43 @@ export function shapeRedemption(row: RedemptionRow): RedemptionDto {
     consumedOrderId: row.consumed_order_id,
     consumedAt: iso(row.consumed_at),
     fulfilledAt: iso(row.fulfilled_at),
+    orderId: row.consumed_order_id ?? row.gift_order_id ?? null,
   };
 }
 
-/** «الخصم المفتوح» الأقدم للزبون — تعريفٌ واحد للحجز وللمعاينة. */
-const OPEN_DISCOUNT_SQL = `SELECT * FROM loyalty_reward_redemptions
-        WHERE user_id = $1 AND kind = 'discount' AND consumed_at IS NULL
-        ORDER BY claimed_at
-        LIMIT 1`;
+/**
+ * مزايا الزبون المفتوحة لطلبه القادم بترتيب المطالبة — تعريفٌ واحد للحجز
+ * وللمعاينة.
+ *
+ * خصمٌ مفتوح = لم يُستهلك. هديةٌ مفتوحة = لم تُربط بطلب **ولم تُسلَّم**.
+ *
+ * [CRITICAL] شرط `fulfilled_at IS NULL`: هديةٌ سلّمها المسؤول يدوياً قبل
+ * وجود الربط بالطلب (081) لا رابط لها، فكانت تُعدّ مفتوحة وتُربط بطلبٍ جديد
+ * — هديةٌ واحدة تُسلَّم مرتين.
+ */
+const OPEN_REWARDS_SQL = `SELECT r.*
+         FROM loyalty_reward_redemptions r
+        WHERE r.user_id = $1
+          AND (
+            (r.kind = 'discount' AND r.consumed_at IS NULL)
+            OR (
+              r.kind = 'gift'
+              AND r.fulfilled_at IS NULL
+              AND NOT EXISTS (
+                SELECT 1 FROM orders o WHERE o.loyalty_gift_redemption_id = r.id
+              )
+            )
+          )
+        ORDER BY r.claimed_at, r.id`;
 
 export const rewardRedemptionRepo = {
   async listForUser(db: pg.Pool | pg.PoolClient, userId: string) {
     const { rows } = await db.query<RedemptionRow>(
-      'SELECT * FROM loyalty_reward_redemptions WHERE user_id = $1',
+      `SELECT r.*,
+              (SELECT o.id FROM orders o
+                WHERE o.loyalty_gift_redemption_id = r.id) AS gift_order_id
+         FROM loyalty_reward_redemptions r
+        WHERE r.user_id = $1`,
       [userId],
     );
     return rows.map(shapeRedemption);
@@ -116,36 +144,26 @@ export const rewardRedemptionRepo = {
   },
 
   /**
-   * أقدم خصم مطالَب به ولم يُستهلك — مرشّح الاستهلاك في الطلب القادم.
+   * المزايا المفتوحة ([OPEN_REWARDS_SQL]) — مرشّحات مزيّة الطلب القادم.
    *
-   * `FOR UPDATE` لأن القارئ سيكتب: طلبان متزامنان من نفس الزبون كانا
-   * سيختاران نفس الصفّ ويستهلكانه مرتين لولا القفل.
+   * `lock` لإنشاء الطلب: `FOR UPDATE` لأن القارئ سيكتب، فطلبان متزامنان من
+   * نفس الزبون لا يختاران المزيّة نفسها. بلا قفل لمعاينة شاشة الدفع وحدها —
+   * قراءةٌ لا تحجز شيئاً، والحكم النهائي للإنشاء تحت القفل.
    *
-   * [CRITICAL] الشرط على `consumed_at` لا على `consumed_order_id`. المفتاح
-   * `ON DELETE SET NULL`، فحذفُ الطلب كان سيُفرغ الرابط ويُعيد مزيّةً
-   * أُنفقت فعلاً إلى قائمة المتاح — استهلاكٌ ثانٍ لمزيّةٍ «مرة واحدة» عبر
-   * بابٍ لا علاقة له بالمزايا. الطابع الزمني لا يُمحى بحذف أي شيء.
+   * [CRITICAL] الخصم يُعدّ مستهلكاً بـ`consumed_at` لا بـ`consumed_order_id`.
+   * المفتاح `ON DELETE SET NULL`، فحذفُ الطلب كان سيُفرغ الرابط ويُعيد مزيّةً
+   * أُنفقت فعلاً إلى قائمة المتاح. الطابع الزمني لا يُمحى بحذف أي شيء.
    */
-  async findOpenDiscount(client: pg.PoolClient, userId: string) {
-    const { rows } = await client.query<RedemptionRow>(
-      `${OPEN_DISCOUNT_SQL}
-        FOR UPDATE`,
+  async openRewards(
+    db: pg.Pool | pg.PoolClient,
+    userId: string,
+    options: { lock: boolean },
+  ): Promise<RedemptionDto[]> {
+    const { rows } = await db.query<RedemptionRow>(
+      options.lock ? `${OPEN_REWARDS_SQL}\n        FOR UPDATE OF r` : OPEN_REWARDS_SQL,
       [userId],
     );
-    return rows[0] ? shapeRedemption(rows[0]) : null;
-  },
-
-  /**
-   * الخصم المفتوح نفسه الذي سيختاره [findOpenDiscount] — **بلا قفل**.
-   *
-   * لمعاينة شاشة الدفع وحدها (`orderService.checkoutQuote`): قراءةٌ لا تحجز
-   * شيئاً ولا تستهلك شيئاً. الشرط والترتيب واحد (`OPEN_DISCOUNT_SQL`)، فما
-   * يُعرض على الزبون هو المرشّح الذي سيحجزه الإنشاء — والحكم النهائي يبقى
-   * للإنشاء تحت القفل.
-   */
-  async peekOpenDiscount(db: pg.Pool | pg.PoolClient, userId: string) {
-    const { rows } = await db.query<RedemptionRow>(OPEN_DISCOUNT_SQL, [userId]);
-    return rows[0] ? shapeRedemption(rows[0]) : null;
+    return rows.map(shapeRedemption);
   },
 
   /**
@@ -236,57 +254,6 @@ export const rewardRedemptionRepo = {
       [id, adminId],
     );
     return (rowCount ?? 0) > 0;
-  },
-
-  /**
-   * أقدم هدية مطالَب بها ولم تُربط بعد بأي طلب — مرشَّحة الربط عند إنشاء طلب.
-   *
-   * `FOR UPDATE` لأن القارئ سيكتب: طلبان متزامنان من نفس الزبون كانا
-   * سيختاران نفس الهدية ويربطانها بطلبَين مختلفَين لولا القفل.
-   *
-   * [CRITICAL] الشرط `NOT EXISTS` على جدول الطلبات — لا على `consumed_at`
-   * (الذي يبقى فارغاً للهدايا دائماً بقيد migration 042). الهدية «مشغولة» متى
-   * وُجد طلبٌ يحمل `loyalty_gift_redemption_id = r.id`، لا حين تُكتَب.
-   */
-  async findOpenGift(client: pg.PoolClient, userId: string) {
-    const { rows } = await client.query<RedemptionRow>(
-      `SELECT r.*
-         FROM loyalty_reward_redemptions r
-        WHERE r.user_id = $1
-          AND r.kind = 'gift'
-          AND NOT EXISTS (
-            SELECT 1 FROM orders o
-             WHERE o.loyalty_gift_redemption_id = r.id
-          )
-        ORDER BY r.claimed_at
-        LIMIT 1
-        FOR UPDATE`,
-      [userId],
-    );
-    return rows[0] ? shapeRedemption(rows[0]) : null;
-  },
-
-  /**
-   * نفس المرشّح الذي سيختاره [findOpenGift] — **بلا قفل**.
-   *
-   * للمعاينة في شاشة الدفع وحدها: قراءةٌ تُعلم الزبون بوجود هدية نشطة قبل
-   * التأكيد، دون أن تحجز شيئاً أو تربطه بطلب لم يُنشأ بعد.
-   */
-  async peekOpenGift(db: pg.Pool | pg.PoolClient, userId: string) {
-    const { rows } = await db.query<RedemptionRow>(
-      `SELECT r.*
-         FROM loyalty_reward_redemptions r
-        WHERE r.user_id = $1
-          AND r.kind = 'gift'
-          AND NOT EXISTS (
-            SELECT 1 FROM orders o
-             WHERE o.loyalty_gift_redemption_id = r.id
-          )
-        ORDER BY r.claimed_at
-        LIMIT 1`,
-      [userId],
-    );
-    return rows[0] ? shapeRedemption(rows[0]) : null;
   },
 
   /**

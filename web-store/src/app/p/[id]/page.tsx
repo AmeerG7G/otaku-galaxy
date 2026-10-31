@@ -6,7 +6,7 @@ import { VariantSelectionProvider } from '@/components/VariantSelection';
 import { ApiError } from '@/lib/api';
 import { getProduct, isUuid } from '@/lib/catalog';
 import { coverImage } from '@/lib/gallery';
-import { COMING_SOON, displayRestockAt, formatIqd, formatShortStoreDate, pairOfferLabel, PRICE_COMING_SOON } from '@/lib/format';
+import { COMING_SOON, displayRestockAt, formatIqd, formatStoreDate, pairOfferLabel, PRICE_COMING_SOON } from '@/lib/format';
 import { readSession } from '@/lib/server-session';
 import type { Product } from '@/lib/types';
 import { customerVariants } from '@/lib/variants';
@@ -58,7 +58,7 @@ export default async function ProductPage({ params }: Props) {
           // no stock state. The API refuses it at cart, quote and order anyway.
           <>
             <p className="price-soon price-soon--detail">{PRICE_COMING_SOON}</p>
-            {restockOn ? <p className="pill pill-low">متوقع التوفر: {formatShortStoreDate(restockOn)}</p> : null}
+            {restockOn ? <p className="pill pill-low">متوقع التوفر: {formatStoreDate(restockOn)}</p> : null}
             {product.description ? <p>{product.description}</p> : null}
             <p className="hint">يُتاح الطلب حين يُعلن السعر.</p>
           </>
@@ -80,7 +80,7 @@ export default async function ProductPage({ params }: Props) {
             {!hasColors && product.stock > 0 && product.stock <= 3 ? <p className="pill pill-low">متبقٍّ {product.stock} فقط</p> : null}
             {restockOn ? (
               <p className="pill pill-low">
-                {COMING_SOON} — متوقع التوفر: {formatShortStoreDate(restockOn)}
+                {COMING_SOON} — متوقع التوفر: {formatStoreDate(restockOn)}
               </p>
             ) : null}
             {product.description ? <p>{product.description}</p> : null}
@@ -91,5 +91,5 @@ export default async function ProductPage({ params }: Props) {
       </div>
     </article>
   );
-  return hasColors ? <VariantSelectionProvider variants={variants}>{article}</VariantSelectionProvider> : article;
+  return hasColors ? <VariantSelectionProvider variants={variants} kind={product.variantKind}>{article}</VariantSelectionProvider> : article;
 }

@@ -263,6 +263,12 @@ export function CheckoutForm({
                 <span>−{formatIqd(quote.loyaltyDiscount)}</span>
               </div>
             ) : null}
+            {quote.loyaltyGiftActivated ? (
+              <div className="summary-row">
+                <span>هدية المستوى</span>
+                <span>مفعلة وستصل مع طلبك</span>
+              </div>
+            ) : null}
             <div className="summary-row">
               <span>رسوم التوصيل</span>
               <span>{quote.deliveryFee === null ? 'حسب المحافظة' : formatIqd(quote.deliveryFee)}</span>

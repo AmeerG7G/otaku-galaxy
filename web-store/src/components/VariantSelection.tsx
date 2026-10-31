@@ -1,8 +1,8 @@
 'use client';
 
 import { createContext, useContext, useState, type ReactNode } from 'react';
-import type { ProductVariant } from '@/lib/types';
-import { initialVariantId, safeHex, variantAvailable } from '@/lib/variants';
+import type { ProductVariant, VariantKind } from '@/lib/types';
+import { initialVariantId, safeHex, variantAvailable, variantKindText } from '@/lib/variants';
 
 /**
  * The colour chosen on a product page (STEP 74), shared by the gallery (the
@@ -11,20 +11,30 @@ import { initialVariantId, safeHex, variantAvailable } from '@/lib/variants';
  */
 interface VariantSelectionValue {
   variants: ProductVariant[];
+  /** What the options are (090) — colour, design or size. */
+  kind: VariantKind;
   selected: ProductVariant | null;
   select: (id: string) => void;
 }
 
 const VariantSelectionContext = createContext<VariantSelectionValue | null>(null);
 
-export function VariantSelectionProvider({ variants, children }: { variants: ProductVariant[]; children: ReactNode }) {
+export function VariantSelectionProvider({
+  variants,
+  kind = 'color',
+  children,
+}: {
+  variants: ProductVariant[];
+  kind?: VariantKind;
+  children: ReactNode;
+}) {
   const [selectedId, setSelectedId] = useState<string | null>(() => initialVariantId(variants));
   const selected = variants.find((variant) => variant.id === selectedId) ?? null;
   const select = (id: string) => {
     const variant = variants.find((candidate) => candidate.id === id);
     if (variant && variantAvailable(variant)) setSelectedId(id);
   };
-  return <VariantSelectionContext.Provider value={{ variants, selected, select }}>{children}</VariantSelectionContext.Provider>;
+  return <VariantSelectionContext.Provider value={{ variants, kind, selected, select }}>{children}</VariantSelectionContext.Provider>;
 }
 
 export function useVariantSelection(): VariantSelectionValue | null {
@@ -43,7 +53,7 @@ export function ColorChoices() {
   if (!selection || selection.variants.length === 0) return null;
   return (
     <fieldset className="field color-choices">
-      <legend className="label">اللون{selection.selected ? `: ${selection.selected.colorName}` : ''}</legend>
+      <legend className="label">{variantKindText(selection.kind).label}{selection.selected ? `: ${selection.selected.colorName}` : ''}</legend>
       <div className="color-choices__list">
         {selection.variants.map((variant) => {
           const available = variantAvailable(variant);

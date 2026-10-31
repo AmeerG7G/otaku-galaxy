@@ -4,6 +4,8 @@
 ///   • [unlocked] بلغ العتبة — يظهر له زرّ المطالبة.
 ///   • [claimed] طالب بها فحُجزت له: الخصم ينتظر طلبه القادم، والهدية تنتظر
 ///     تسليم المتجر.
+///   • [inOrder] استُعملت في طلبٍ أُنشئ: هديةٌ رُبطت به تنتظر تسليمها معه
+///     (STEP 77) — لم تعد «جاهزة» لطلبٍ آخر.
 ///   • [consumed] انتهت: خصمٌ طُبِّق على طلب، أو هدية سُلّمت.
 ///
 /// [CRITICAL] كلها من الخادم. التطبيق لا يقرّر أهلية ولا يحسب قيمة خصم؛
@@ -17,6 +19,7 @@ class LevelReward {
     required this.claimed,
     required this.consumed,
     required this.claimable,
+    this.inOrder = false,
     this.percent,
     this.capAmount,
     this.giftAmount,
@@ -34,6 +37,9 @@ class LevelReward {
   final bool unlocked;
   final bool claimed;
   final bool consumed;
+
+  /// استُعملت في طلب. غيابها (خادمٌ أقدم من STEP 77) = `false`.
+  final bool inOrder;
 
   /// هل يُعرض زرّ المطالبة الآن؟ يحسبه الخادم (مفتوحة وغير مطالَب بها).
   final bool claimable;
@@ -53,7 +59,7 @@ class LevelReward {
   bool get isDiscount => kind == 'discount';
 
   /// مطالَب بها ولم تُصرف بعد — «جاهزة للاستعمال».
-  bool get isReady => claimed && !consumed;
+  bool get isReady => claimed && !consumed && !inOrder;
 
   static DateTime? _date(Object? value) =>
       value == null ? null : DateTime.tryParse(value.toString());
@@ -66,6 +72,7 @@ class LevelReward {
     claimed: json['claimed'] as bool? ?? false,
     consumed: json['consumed'] as bool? ?? false,
     claimable: json['claimable'] as bool? ?? false,
+    inOrder: json['inOrder'] as bool? ?? false,
     percent: (json['percent'] as num?)?.toInt(),
     capAmount: json['capAmount'] as num?,
     giftAmount: json['giftAmount'] as num?,

@@ -17,6 +17,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
+import 'package:otaku_galaxy/core/l10n/app_strings.dart';
 import 'package:otaku_galaxy/core/design_system/design_system.dart';
 import 'package:otaku_galaxy/core/errors/app_exception.dart';
 import 'package:otaku_galaxy/core/network/api_client.dart';
@@ -419,10 +420,27 @@ void main() {
       await _pumpData(tester, orders: orders);
 
       expect(orders.quoteRequests, isNotEmpty, reason: 'الملخّص يُطلب من الخادم عند الفتح');
-      expect(find.text('خصم مزيّة المستوى'), findsOneWidget);
+      expect(find.text('خصم ميزة المستوى'), findsOneWidget);
       expect(find.text('-${_price(1500)}'), findsOneWidget);
       // ٣٠٬٠٠٠ − ١٬٥٠٠ (لا محافظة بعد، فلا رسوم).
       expect(find.text(_price(28500)), findsWidgets);
+    });
+
+    // STEP 77: هدية المستوى التي سيحملها الطلب ظاهرةٌ منذ الخطوة الأولى.
+    testWidgets('بيانات الطلب: هدية المستوى من الخادم بسطرها، بلا مبلغ', (tester) async {
+      final orders = _StubOrderRepository(
+        quote: const CheckoutQuote(productsTotal: 30000, loyaltyGiftActivated: true),
+      );
+      await _pumpData(tester, orders: orders);
+      expect(find.text(AppStrings.arabic('loyaltyGiftLabel')), findsOneWidget);
+      expect(find.text(AppStrings.arabic('levelGiftActivatedInOrder')), findsOneWidget);
+      expect(find.text(_price(30000)), findsWidgets);
+    });
+
+    testWidgets('بيانات الطلب: لا سطر هدية حين لم يخترها الخادم', (tester) async {
+      final orders = _StubOrderRepository(quote: rewardQuote);
+      await _pumpData(tester, orders: orders);
+      expect(find.text(AppStrings.arabic('loyaltyGiftLabel')), findsNothing);
     });
 
     testWidgets('«متابعة» تطلب ملخّصاً بالمحافظة وتنقل أرقامه إلى المراجعة', (tester) async {
@@ -437,7 +455,7 @@ void main() {
       expect(review.orderData.discount, 1500);
       expect(review.orderData.quotedTotal, 30000 + 5000 - 1500);
       expect(review.orderData.total, 33500);
-      expect(find.text('خصم مزيّة المستوى'), findsOneWidget);
+      expect(find.text('خصم ميزة المستوى'), findsOneWidget);
       expect(find.text('-${_price(1500)}'), findsOneWidget);
     });
 
@@ -469,7 +487,7 @@ void main() {
       );
       expect(find.text('خصم عيد الميلاد'), findsOneWidget);
       expect(find.text('-${_price(1000)}'), findsOneWidget);
-      expect(find.text('خصم مزيّة المستوى'), findsOneWidget);
+      expect(find.text('خصم ميزة المستوى'), findsOneWidget);
       expect(find.text('-${_price(1500)}'), findsOneWidget);
       expect(find.text(_price(32500)), findsWidgets);
     });
@@ -613,7 +631,7 @@ void main() {
       expect(find.text('رسوم التوصيل'), findsOneWidget);
       // الخصم مسمّى بمصدره من ملخّص الخادم (لا مزيّة هنا ⇒ خصم الميلاد).
       expect(find.text('خصم عيد الميلاد'), findsOneWidget);
-      expect(find.text('خصم مزيّة المستوى'), findsNothing);
+      expect(find.text('خصم ميزة المستوى'), findsNothing);
       expect(find.text('المجموع النهائي'), findsOneWidget);
       expect(find.textContaining('32'), findsWidgets);
     });

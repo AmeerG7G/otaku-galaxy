@@ -141,6 +141,14 @@ database.
 | Cover (cards, lists, link previews) | the first general image, as before; a coloured product with **no** general image shows its first visible colour's image — so an admin never has to upload a colour's image twice |
 | Loading (app) | the shown image and its two neighbours are loaded (`precacheImage`, the same `ImageCache` key as `Image.network`, so one request per URL); a far jump (chosen colour, far dot) jumps instead of animating so the pages in between are never fetched; the slot shows its neutral placeholder until the first decoded frame. Not every image: uploads are stored at full size (up to 2400×2400 ≈ 23 MB decoded) and the 100 MB image cache holds ~4 of them — precaching all was measured to evict and re-download (28 extra downloads for 30 images, ~930 MB peak) |
 
+## 5b. Option kind (STEP 77, migration 090)
+
+`products.variant_kind` (`color` default, `design`, `size`) says what the variants are; the API
+returns `variantKind` on products, cart lines and order items (an order item keeps the kind it had
+when ordered; NULL in the database reads as `color`). It only names the picker and the line label;
+stock, images, cart identity and the gallery rule (§5a) are unchanged. Dashboard: «ماذا تمثّل هذه
+الخيارات للزبون؟» on the variants card.
+
 ## 6. Known limits (documented, not silent)
 
 - Restock subscriptions stay product-level: they fire when the product total goes

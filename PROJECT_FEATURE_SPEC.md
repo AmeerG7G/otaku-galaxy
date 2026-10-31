@@ -12259,3 +12259,89 @@ Open limit (pre-existing, STEP 74): a colour **without** `colorHex` shows its im
 decoded at full size — 6 such colours = 6 full-size downloads on open (+176 MB measured). Proposed,
 not implemented: decode the chip at its display size (`cacheWidth`), at the cost of one separate
 download when that colour's gallery page is shown.
+
+# STEP 77 — ONE LEVEL REWARD PER ORDER, NUMERIC AVAILABILITY DATES, OPTION KINDS (2026-10-31)
+
+Branch `fix/rewards-options-dates` from `origin/dev` `3ace371` (tree = `origin/staging` `ac06dd6`).
+Owner request 2026-10-31. Migrations `089_one_level_reward_per_order.sql` and
+`090_product_variant_kind.sql` (`088` is taken by the unmerged local branch
+`feat/web-parity-backend`, which also calls itself "STEP 76"; this entry is numbered after it).
+
+## 77.1 Level rewards and discounts — rules
+
+| Rule | Behaviour | Where |
+|---|---|---|
+| One level reward per order | The oldest claimed, unused level reward (discount **or** gift) is the order's only level reward; every other unlocked/claimed reward stays available for later orders | `loyaltyRewardsService.levelRewardForOrder` / `pickLevelReward` |
+| No level discount with the birthday discount | On a birthday order the birthday discount applies; the level discount is **skipped, not consumed** and the next claimed reward (e.g. a gift) may apply instead | same |
+| Gift + birthday | Allowed (a gift is not a discount) | same |
+| Preview = create | The checkout quote and order creation call the same selection; preview locks nothing | `orderService.orderDiscounts` |
+| Redemption is final at order creation | Selection, `FOR UPDATE OF r` on the customer's open rewards, consumption/gift link and order insert are one transaction; any failure rolls back and releases the reward. A created order keeps its reward even if rejected later (unchanged BR-32 / CA-12). No online payment exists (cash on delivery), so there is no payment event | — |
+| Gift identity in the quote fingerprint | `levelGiftId` enters the fingerprint only when a gift is attached (old fingerprints unchanged) | `orderPricing.quoteFingerprint` |
+
+**Precedence (birthday over level discount) — UNRESOLVED, owner decision needed.** The request
+forbids combining them but does not say which wins. Implemented: the existing documented order
+(`fitProductDiscounts`: birthday first because it lapses with its day, the level reward never
+expires — §40.9), so no entitlement is lost. The non-combination itself **changes** BR-09/BR-34
+(both used to apply to one order) by the owner's explicit request of 2026-10-31.
+
+```
+CONFLICT: birthday discount vs level discount on the same order
+  Requirement doc: owner request 2026-10-31 — "a level discount cannot be combined with a birthday
+                   discount"; which one applies is not stated
+  Code/migration:  loyaltyRewardsService.ts pickLevelReward — birthday applies, level discount
+                   skipped and left open (`if (birthdayApplies) continue`)
+  Test:            level-reward-exclusivity.test.ts — «يوم الميلاد ⇒ خصم الميلاد وحده…»;
+                   discount-rounding/cart-sync/contract-closure/domain-integrity updated to it
+  History:         BR-09/BR-34 (both stacked) superseded by STEP 77; precedence inferred from
+                   fitProductDiscounts (§40.9)
+  Status: unresolved (owner decision needed) — confirm before merge to staging
+```
+
+## 77.2 Root causes fixed
+
+| Symptom | Cause |
+|---|---|
+| One order consumed a level discount, a level gift and the birthday discount together | `orderDiscounts` reserved the oldest discount and `reserveGiftForOrder` the oldest gift independently, and both were added to the birthday discount |
+| A legacy gift delivered by hand could ride on a new order | "open gift" = not linked to an order; a gift fulfilled before migration 081 has no link, so it was re-attached (`fulfilled_at IS NULL` now required) |
+| A gift already attached to an order showed «جاهزة» on the levels screen | the reward view had no "in an order" state; `inOrder` and `status` (`locked`/`available`/`claimed`/`inOrder`/`completed`) added |
+| The gift was invisible on checkout step 1, the order detail screen and the web store | only the review screen rendered `loyaltyGiftActivated` |
+
+Migration 089 (database backstop): trigger `trg_orders_one_level_reward` (raises check_violation
+`orders_one_level_reward` when a row is inserted or its `loyalty_discount` /
+`loyalty_gift_redemption_id` is written with both set) and unique `consumed_order_id` per redemption.
+A trigger, not a CHECK: a CHECK — even `NOT VALID` — is re-checked on every UPDATE, so an older order
+that already carries both rewards could no longer change status (independent review, STEP 77).
+Verified: the new suite `level-reward-exclusivity.test.ts` (first 12 tests) fails 8 against
+`origin/dev` and passes with the fix; concurrency, idempotent replay and preview were already safe
+(the concurrent-submit test is serialized by the cart row lock, so it does not exercise the reward
+lock itself). A 13th test proves an older order with both rewards still changes status.
+Open (pre-existing, CA-12 territory): a gift linked to an order that is later rejected stays linked
+(`status: inOrder`); the app no longer says «ستصل مع طلبك» on the rejected order, but what happens to
+that gift is an owner decision. Deleting an order would reopen its gift (the gift analogue of the
+042 discount trap); orders are not deleted by the application.
+
+## 77.3 Wording
+
+`مزيّة` → `ميزة` in customer- and admin-visible strings only (app strings, glossary term, server
+messages and their Kurdish map keys, dashboard labels, localization queue); comments, migrations
+and test titles unchanged.
+
+## 77.4 Availability date `YYYY-MM-DD`
+
+The expected restock date is shown as `YYYY-MM-DD` (zero-padded, Western digits) on the product
+page, the restock button, the web store and the restock notification body, in both languages.
+The day is the store (Baghdad) calendar day of the stored instant — unchanged semantics: the
+dashboard stores the chosen day as Baghdad midnight. A malformed date shows no date (web).
+No migration, no API change.
+
+## 77.5 Option kinds (migration 090)
+
+The colour-variant system (one image and one stock per option) also represents designs and sizes.
+`products.variant_kind` ∈ `color|design|size` (default `color`; existing products unchanged) names
+the picker for the customer («اللون» / «التصميم» / «المقاس»); `order_items.variant_kind` snapshots it
+(NULL = colour, every older line), so a later change never relabels an order. `color_*` columns and
+`colorName*` fields keep their names (older apps work and show «اللون»). The free-form
+`product_options` stays: it is the only multi-dimension, stock-less mechanism.
+Kurdish strings for the new kinds are agent drafts (`NEEDS_NATIVE_REVIEW`).
+Open: server messages `VARIANT_REQUIRED` / `VARIANT_UNAVAILABLE` / `VARIANT_OUT_OF_STOCK` still say
+«اللون» (clients prevent the first; the others are rare) — neutral wording is a follow-up.

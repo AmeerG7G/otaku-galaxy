@@ -19,24 +19,20 @@ export function pairOfferLabel(pairPrice: number | null | undefined): string | n
 /** Shown instead of a price while it is not announced (migration 084). */
 export const PRICE_COMING_SOON = 'قريباً — السعر يُعلن لاحقاً';
 
-/** The app's month names (`AppStrings` monthJanuary…monthDecember), so a date reads the same in both. */
-const MONTHS_AR = [
-  'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
-  'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر',
-];
-
 /** The store's UTC offset (Baghdad, +03:00, no DST since 2008). */
 const STORE_OFFSET_MS = 3 * 60 * 60 * 1000;
 
 /**
- * «13 أكتوبر» — the calendar day in the store's timezone, like the app's
- * `formatShortArabicDate`. The dashboard stores a chosen day as Baghdad
- * midnight (21:00Z the previous day), so a UTC or browser-local reading would
- * show the day before.
+ * «2026-10-13» — the calendar day in the store's timezone as `YYYY-MM-DD`,
+ * like the app's `formatStoreIsoDate` (STEP 77: availability dates are numeric,
+ * never a month name). The dashboard stores a chosen day as Baghdad midnight
+ * (21:00Z the previous day), so a UTC or browser-local reading would show the
+ * day before.
  */
-export function formatShortStoreDate(value: string | Date): string {
+export function formatStoreDate(value: string | Date): string {
   const store = new Date((typeof value === 'string' ? new Date(value) : value).getTime() + STORE_OFFSET_MS);
-  return `${store.getUTCDate()} ${MONTHS_AR[store.getUTCMonth()]}`;
+  const two = (n: number) => String(n).padStart(2, '0');
+  return `${store.getUTCFullYear()}-${two(store.getUTCMonth() + 1)}-${two(store.getUTCDate())}`;
 }
 
 /**
@@ -50,7 +46,8 @@ export function displayRestockAt(
   product: { price: number | null; stock: number; restockAt: string | null },
   now: Date = new Date(),
 ): string | null {
-  if (!product.restockAt) return null;
+  // A malformed date is shown as no date, never as a fabricated one.
+  if (!product.restockAt || Number.isNaN(Date.parse(product.restockAt))) return null;
   if (product.price === null) return new Date(product.restockAt) > now ? product.restockAt : null;
   return product.stock <= 0 ? product.restockAt : null;
 }

@@ -91,7 +91,7 @@ export const communityController = {
     return ok(
       res,
       result.reward,
-      result.created ? 'سُجّلت مزيّتك' : 'هذه المزيّة مسجّلة لك بالفعل',
+      result.created ? 'سُجّلت ميزتك' : 'هذه الميزة مسجّلة لك بالفعل',
     );
   }) as RequestHandler,
 

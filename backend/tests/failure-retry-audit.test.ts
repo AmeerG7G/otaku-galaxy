@@ -900,7 +900,7 @@ describe('Failure / retry / idempotency audit', () => {
     const claim = (token: string, level = 'explorer') =>
       api.post(`/api/points/rewards/${level}/claim`).set(authed(token)).then((r) => r);
     /** «أُنشئ الآن» لا يصل الحمولةَ — الرسالة وحدها تفرّق (انظر `claimReward`). */
-    const isCreated = (r: { body: { message: string } }) => r.body.message === 'سُجّلت مزيّتك';
+    const isCreated = (r: { body: { message: string } }) => r.body.message === 'سُجّلت ميزتك';
     const redemptionsOf = (userId: string) => count('FROM loyalty_reward_redemptions WHERE user_id = $1', [userId]);
     const claimNotificationsOf = (userId: string) =>
       count(`FROM notifications WHERE user_id = $1 AND type = 'rewardClaimed'`, [userId]);

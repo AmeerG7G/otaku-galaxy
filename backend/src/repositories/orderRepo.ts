@@ -27,6 +27,8 @@ export interface OrderItemSnapshot {
   variantColorNameAr?: string | null;
   variantColorNameCkb: string | null;
   variantColorHex: string | null;
+  /** ما يمثّله الخيار لحظة الطلب (090); NULL في القاعدة = لون (سطرٌ أقدم). */
+  variantKind?: 'color' | 'design' | 'size' | null;
   optionValue: string | null;
   price: number;
   /**
@@ -145,6 +147,8 @@ const ORDER_WITH_CUSTOMER = `
               'variantColorNameAr', oi.variant_color_name,
               'variantColorNameCkb', oi.variant_color_name_ckb,
               'variantColorHex', oi.variant_color_hex,
+              'variantKind', CASE WHEN oi.variant_id IS NULL THEN NULL
+                                  ELSE COALESCE(oi.variant_kind, 'color') END,
               'optionValue', oi.option_value,
               'price', oi.price,
               'pairPrice', oi.pair_price,
@@ -415,8 +419,9 @@ export const orderRepo = {
         `INSERT INTO order_items (
            order_id, product_id, product_name, product_name_ckb, image_url, option_value,
            price, quantity, line_total, pair_price,
-           variant_id, variant_color_name, variant_color_name_ckb, variant_color_hex
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+           variant_id, variant_color_name, variant_color_name_ckb, variant_color_hex,
+           variant_kind
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
         [
           order.id,
           item.productId,
@@ -432,6 +437,7 @@ export const orderRepo = {
           item.variantColorName,
           item.variantColorNameCkb,
           item.variantColorHex,
+          item.variantId ? (item.variantKind ?? 'color') : null,
         ],
       );
     }

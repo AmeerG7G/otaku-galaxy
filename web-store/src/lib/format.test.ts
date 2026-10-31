@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { displayRestockAt, formatDateTime, formatIqd, formatShortStoreDate, localPhone, orderStatusLabel } from './format';
+import { displayRestockAt, formatDateTime, formatIqd, formatStoreDate, localPhone, orderStatusLabel } from './format';
 import { resolveMediaUrl } from './media';
 
 describe('formatIqd', () => {
@@ -48,14 +48,18 @@ describe('resolveMediaUrl', () => {
   });
 });
 
-describe('formatShortStoreDate — the Baghdad calendar day, like the app', () => {
+describe('formatStoreDate — the Baghdad calendar day, like the app', () => {
   it('Baghdad midnight stored as 21:00Z reads as the chosen day, not the day before', () => {
-    expect(formatShortStoreDate('2026-10-12T21:00:00.000Z')).toBe('13 أكتوبر');
-    expect(formatShortStoreDate('2026-10-12T20:59:00.000Z')).toBe('12 أكتوبر');
+    expect(formatStoreDate('2026-10-12T21:00:00.000Z')).toBe('2026-10-13');
+    expect(formatStoreDate('2026-10-12T20:59:00.000Z')).toBe('2026-10-12');
   });
   it('crosses month, year and leap-day boundaries in the store timezone', () => {
-    expect(formatShortStoreDate('2026-12-31T21:00:00.000Z')).toBe('1 يناير');
-    expect(formatShortStoreDate('2028-02-28T21:00:00.000Z')).toBe('29 فبراير');
+    expect(formatStoreDate('2026-12-31T21:00:00.000Z')).toBe('2027-01-01');
+    expect(formatStoreDate('2028-02-28T21:00:00.000Z')).toBe('2028-02-29');
+    expect(formatStoreDate('2026-01-31T21:00:00.000Z')).toBe('2026-02-01');
+  });
+  it('zero-pads single-digit months and days (STEP 77)', () => {
+    expect(formatStoreDate('2026-07-02T21:00:00.000Z')).toBe('2026-07-03');
   });
 });
 
@@ -70,6 +74,9 @@ describe('displayRestockAt — one rule with the app', () => {
   it('priced: only when out of stock (coming soon), never when buyable', () => {
     expect(displayRestockAt({ price: 5000, stock: 0, restockAt: future }, now)).toBe(future);
     expect(displayRestockAt({ price: 5000, stock: 3, restockAt: future }, now)).toBeNull();
+  });
+  it('a malformed date: nothing, never a fabricated day', () => {
+    expect(displayRestockAt({ price: 5000, stock: 0, restockAt: 'not-a-date' }, now)).toBeNull();
   });
   it('no date: nothing', () => {
     expect(displayRestockAt({ price: null, stock: 0, restockAt: null }, now)).toBeNull();

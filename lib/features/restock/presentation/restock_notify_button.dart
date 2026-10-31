@@ -196,7 +196,7 @@ class _RestockNotifyButtonState extends State<RestockNotifyButton> {
 ///
 /// ليست زرّاً معطَّلاً بل سطحٌ لا يملك `onTap`: الزرّ المعطَّل يدعو للضغط ثم
 /// لا يستجيب، وهذه حالةٌ لا فعل فيها أصلاً. التاريخ يُنسَّق من
-/// [formatShortArabicDate] المركزية لا هنا.
+/// [formatStoreIsoDate] المركزية لا هنا.
 class _ScheduledRestockState extends StatelessWidget {
   const _ScheduledRestockState({required this.date});
 
@@ -209,7 +209,7 @@ class _ScheduledRestockState extends StatelessWidget {
 
     return Semantics(
       readOnly: true,
-      label: context.strings.p('waitingRestockOn', {'date': formatShortArabicDate(context, date)}),
+      label: context.strings.p('waitingRestockOn', {'date': formatStoreIsoDate(date)}),
       child: Container(
         height: AppDimens.buttonHeightXl,
         alignment: Alignment.center,
@@ -226,7 +226,7 @@ class _ScheduledRestockState extends StatelessWidget {
             const SizedBox(width: 8),
             Flexible(
               child: Text(
-                context.strings.p('waitingRestockOn', {'date': formatShortArabicDate(context, date)}),
+                context.strings.p('waitingRestockOn', {'date': formatStoreIsoDate(date)}),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.titleSmall?.copyWith(

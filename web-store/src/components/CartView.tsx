@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { formatIqd, pairOfferLabel } from '@/lib/format';
 import type { CartLine } from '@/lib/types';
-import { lineColorName } from '@/lib/variants';
+import { lineColorName, variantKindText } from '@/lib/variants';
 import { bff } from './client-api';
 import { useHydrated } from './use-hydrated';
 import { Swatch } from './VariantSelection';
@@ -59,7 +59,7 @@ export function CartView({ lines }: { lines: CartLine[] }) {
                   // The same product in two colours is two lines (STEP 74); the image is the colour's.
                   <div className="hint line-color">
                     <Swatch hex={line.variantColorHex} />
-                    اللون: {lineColorName(line)}
+                    {variantKindText(line.variantKind).label}: {lineColorName(line)}
                   </div>
                 ) : null}
                 {line.optionValue ? <div className="hint">{line.optionValue}</div> : null}

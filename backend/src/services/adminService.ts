@@ -377,6 +377,7 @@ export const adminService = {
     price: number | null;
     /** سعر قطعتين (085)؛ الغائب/`null` = لا عرض. */
     pairPrice?: number | null;
+    variantKind?: 'color' | 'design' | 'size';
     categoryId: string;
     subcategoryId?: string | null;
     /** لمنتجٍ بلا ألوان؛ مع ألوانٍ يُرفض (`STOCK_PER_VARIANT`). */
@@ -405,9 +406,10 @@ export const adminService = {
         `INSERT INTO products (
            name, description, price, category_id, subcategory_id, stock,
            is_offer, is_selected, previous_price, has_delivery_promo,
-           delivery_promo_amount, restock_at, name_ckb, description_ckb, pair_price
+           delivery_promo_amount, restock_at, name_ckb, description_ckb, pair_price,
+           variant_kind
          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
          RETURNING *`,
         [
           // `name`/`description` هما العمودان العربيان (046، موثَّقان في 066).
@@ -428,6 +430,7 @@ export const adminService = {
           input.nameCkb ?? null,
           input.descriptionCkb ?? null,
           input.pairPrice ?? null,
+          input.variantKind ?? 'color',
         ],
       );
       const product = rows[0]!;
@@ -507,6 +510,7 @@ export const adminService = {
       price?: number | null;
       /** `null` يزيل عرض القطعتين (085)؛ الغائب لا يُمسّ. */
       pairPrice?: number | null;
+      variantKind?: 'color' | 'design' | 'size';
       categoryId?: string;
       subcategoryId?: string | null;
       stock?: number;
@@ -593,6 +597,7 @@ export const adminService = {
         'description_ckb',
         'price',
         'pair_price',
+        'variant_kind',
         'category_id',
         'subcategory_id',
         'stock',
@@ -611,6 +616,7 @@ export const adminService = {
         description_ckb: input.descriptionCkb,
         price: input.price,
         pair_price: input.pairPrice,
+        variant_kind: input.variantKind,
         category_id: input.categoryId,
         subcategory_id: input.subcategoryId,
         stock: input.stock,

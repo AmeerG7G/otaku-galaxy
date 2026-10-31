@@ -108,6 +108,7 @@ function adminProductToDraft(product: Product, options: ProductOption[]): Produc
     price: product.price,
     // خادمٌ أقدم من 085 لا يرسل الحقل: لا عرض.
     pairPrice: product.pairPrice ?? null,
+    variantKind: product.variantKind ?? 'color',
     stock: product.stock,
     categoryId: product.categoryId,
     subcategoryId: product.subcategoryId,

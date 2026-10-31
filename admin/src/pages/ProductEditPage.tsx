@@ -220,6 +220,7 @@ function LoadedProductEditor({ id, loaded }: { id: string; loaded: ProductForEdi
       // `null` = «السعر يُعلن لاحقاً» (084)؛ `pairPrice: null` يزيل العرض المحفوظ.
       price: values.price,
       pairPrice: values.pairPrice ?? null,
+      ...(values.variantKind ? { variantKind: values.variantKind } : {}),
       categoryId: values.categoryId,
       subcategoryId: values.subcategoryId ?? null,
       ...(stockChanged ? { stock: values.stock, expectedStock: loadedStock } : {}),

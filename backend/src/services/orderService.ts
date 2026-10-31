@@ -263,8 +263,9 @@ function reviewReminderDelayHours(): number {
  *
  * - **الميلاد**: نسبة ثابتة (`domain/birthday.ts`)، مرة واحدة سنوياً، بتقويم
  *   المتجر — التقويم نفسه الذي يرى به المسؤول «عيد اليوم».
- * - **مزيّة المستوى**: الخصم المطالَب به الأقدم، من مجموع المنتجات الفعلي
- *   ومسقوفاً بسقفه المالي.
+ * - **مزيّة المستوى**: واحدة لكل طلب — أقدم مزيّة مطالَب بها، خصماً (من
+ *   مجموع المنتجات الفعلي ومسقوفاً بسقفه) أو هدية؛ وخصم المستوى لا يجتمع
+ *   مع خصم الميلاد (STEP 77).
  *
  * `reserve` (إنشاء الطلب) يقفل صفّ المزيّة ليستهلكه بعد إنشاء الطلب؛
  * `preview` (شاشة الدفع) يقرأ المرشّح نفسه بلا قفل ولا استهلاك. لا مبلغ
@@ -282,16 +283,18 @@ async function orderDiscounts(
   mode: 'reserve' | 'preview',
 ) {
   const birthday = await birthdayRepo.status(client, userId, config.storeTimezone);
-  const candidate =
-    mode === 'reserve'
-      ? await loyaltyRewardsService.reserveDiscountForOrder(
-          client as pg.PoolClient,
-          userId,
-          productsTotal,
-        )
-      : await loyaltyRewardsService.previewDiscountForOrder(client, userId, productsTotal);
+  const birthdayRaw = birthday.rewardAvailable ? birthdayDiscountAmount(productsTotal) : 0;
+  // مزيّة مستوى واحدة، ولا خصمَ مستوى مع خصم الميلاد (STEP 77) — القاعدة
+  // في `loyaltyRewardsService.levelRewardForOrder`.
+  const levelReward = await loyaltyRewardsService.levelRewardForOrder(
+    client,
+    userId,
+    productsTotal,
+    { birthdayApplies: birthdayRaw > 0, mode },
+  );
+  const candidate = levelReward?.kind === 'discount' ? levelReward : null;
   const fitted = fitProductDiscounts(productsTotal, {
-    birthday: birthday.rewardAvailable ? birthdayDiscountAmount(productsTotal) : 0,
+    birthday: birthdayRaw,
     loyalty: candidate?.amount ?? 0,
   });
   const loyaltyReward =
@@ -299,6 +302,7 @@ async function orderDiscounts(
   return {
     birthdayDiscount: fitted.birthday,
     loyaltyReward,
+    levelGift: levelReward?.kind === 'gift' ? levelReward : null,
     discount: fitted.birthday + fitted.loyalty,
   };
 }
@@ -635,6 +639,7 @@ export const orderService = {
         variantColorName: variant?.colorNameAr ?? null,
         variantColorNameCkb: variant?.colorNameCkb ?? null,
         variantColorHex: variant?.colorHex ?? null,
+        variantKind: variant ? product.variantKind : null,
         optionValue: item.optionValue,
         price: unitPrice,
         pairPrice: product.pairPrice,
@@ -650,7 +655,7 @@ export const orderService = {
       // هذه المعاملة، فسقوط الطلب لاحقاً يُرجع المزيّة. يسبق إنشاء الطلب لأن
       // `discount` جزءٌ من الصفّ المُنشأ؛ الربط بالطلب يقع بعد وجود معرّفه.
       const productsTotal = snapshots.reduce((sum, item) => sum + item.lineTotal, 0);
-      const { birthdayDiscount, loyaltyReward, discount } = await orderDiscounts(
+      const { birthdayDiscount, loyaltyReward, levelGift, discount } = await orderDiscounts(
         tx,
         userId,
         productsTotal,
@@ -673,6 +678,7 @@ export const orderService = {
           governorateId: selected.id,
           zoneId,
           deliveryFee,
+          levelGiftId: levelGift?.redemptionId ?? null,
           pricing: priceOrder({
             productsTotal,
             deliveryFee,
@@ -727,16 +733,17 @@ export const orderService = {
           order.id,
         );
         if (!applied) {
-          throw Errors.conflict('مزيّة الخصم استُهلكت في طلب آخر', 'REWARD_ALREADY_USED');
+          throw Errors.conflict('ميزة الخصم استُهلكت في طلب آخر', 'REWARD_ALREADY_USED');
         }
       }
 
-      // ربط هدية المستوى النشطة بهذا الطلب — إن وُجدت.
-      // [CRITICAL] الهدية لا تُكتَب consumed_at ولا تؤثر على المبالغ؛ هي فقط
-      // مرتبطةٌ بالطلب حتى يسلّمها المسؤول. الصفّ مقفول بـFOR UPDATE داخل
-      // reserveGiftForOrder، والمؤشر الفريد على orders.loyalty_gift_redemption_id
+      // هدية المستوى المحجوزة (إن كانت هي مزيّة هذا الطلب) تُربط به.
+      // [CRITICAL] الهدية لا تُكتَب consumed_at ولا تؤثر على المبالغ؛ الصفّ
+      // مقفول منذ الحجز، والمؤشر الفريد على orders.loyalty_gift_redemption_id
       // هو الحارس النهائي ضد أي سباق لم يُكشف بالقفل.
-      await loyaltyRewardsService.reserveGiftForOrder(tx, userId, order.id);
+      if (levelGift) {
+        await loyaltyRewardsService.linkGiftToOrder(tx, levelGift.redemptionId, order.id);
+      }
 
       await cartRepo.clear(tx, userId);
       const created = await orderRepo.findById(tx, order.id);
@@ -872,11 +879,13 @@ export const orderService = {
       }
     }
 
-    const [{ birthdayDiscount, loyaltyReward, discount }, loyaltyGiftActivated] =
-      await Promise.all([
-        orderDiscounts(db, userId, productsTotal, 'preview'),
-        loyaltyRewardsService.previewGiftForOrder(db, userId),
-      ]);
+    const { birthdayDiscount, loyaltyReward, levelGift, discount } = await orderDiscounts(
+      db,
+      userId,
+      productsTotal,
+      'preview',
+    );
+    const loyaltyGiftActivated = levelGift !== null;
     const priced = priceOrder({
       productsTotal,
       deliveryFee: deliveryFee ?? 0,
@@ -914,6 +923,7 @@ export const orderService = {
               governorateId,
               zoneId,
               deliveryFee,
+              levelGiftId: levelGift?.redemptionId ?? null,
               pricing: priced,
             }),
     };
