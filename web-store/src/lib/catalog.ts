@@ -3,6 +3,7 @@ import { apiFetch } from './api';
 import { playStoreUrl } from './app-link';
 import { mediaOrigin } from './config';
 import { resolveMediaUrl } from './media';
+import { NO_SOCIAL_LINKS, toSocialLinks, type SocialLinks } from './social-links';
 import type { Category, Governorate, LoyaltyLevel, Paginated, Product, ProductSort, Review, Zone } from './types';
 
 /**
@@ -109,22 +110,7 @@ export function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
 
-/** A store social link the shopper may open — `https://` only, never a script or a relative path. */
-function safeSocialUrl(value: unknown): string | null {
-  if (typeof value !== 'string') return null;
-  try {
-    const url = new URL(value.trim());
-    return url.protocol === 'https:' ? url.toString() : null;
-  } catch {
-    return null;
-  }
-}
-
-export interface SocialLinks {
-  tiktok: string | null;
-  instagram: string | null;
-  whatsapp: string | null;
-}
+export type { SocialLinks } from './social-links';
 
 /**
  * The store's social links from the admin settings (`/catalog/settings`), the
@@ -134,12 +120,8 @@ export interface SocialLinks {
 export const getSocialLinks = cache(async (): Promise<SocialLinks> => {
   try {
     const { data } = await apiFetch<{ social?: Record<string, unknown> }>('/catalog/settings');
-    return {
-      tiktok: safeSocialUrl(data.social?.tiktok),
-      instagram: safeSocialUrl(data.social?.instagram),
-      whatsapp: safeSocialUrl(data.social?.whatsapp),
-    };
+    return toSocialLinks(data.social);
   } catch {
-    return { tiktok: null, instagram: null, whatsapp: null };
+    return NO_SOCIAL_LINKS;
   }
 });

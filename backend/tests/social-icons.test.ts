@@ -30,6 +30,63 @@ describe('أيقونات التواصل أصولٌ ثابتة', () => {
         .expect(200);
     }
   });
+
+  it('[CRITICAL] تيك توك وإنستغرام وواتساب تُحفظ معاً، وتعديل أحدها لا يمسّ الآخرَين', async () => {
+    const token = await createAdminUser();
+    const auth = `Bearer ${token}`;
+    const before = (await api.get('/api/admin/settings').set('Authorization', auth).expect(200)).body.data;
+    const restore = {
+      social_tiktok: before.social_tiktok,
+      social_instagram: before.social_instagram,
+      social_whatsapp: before.social_whatsapp,
+    };
+    try {
+      await api
+        .patch('/api/admin/settings')
+        .set('Authorization', auth)
+        .send({
+          social_tiktok: 'https://www.tiktok.com/@otakugalaxy',
+          social_instagram: 'https://www.instagram.com/otakugalaxy',
+          social_whatsapp: '+9647701234567',
+        })
+        .expect(200);
+      let social = (await api.get('/api/catalog/settings').expect(200)).body.data.social;
+      expect(social).toMatchObject({
+        tiktok: 'https://www.tiktok.com/@otakugalaxy',
+        instagram: 'https://www.instagram.com/otakugalaxy',
+        whatsapp: '+9647701234567',
+      });
+
+      // تعديل واحد فقط — الآخران كما هما.
+      await api
+        .patch('/api/admin/settings')
+        .set('Authorization', auth)
+        .send({ social_whatsapp: 'https://wa.me/9647809876543' })
+        .expect(200);
+      social = (await api.get('/api/catalog/settings').expect(200)).body.data.social;
+      expect(social).toMatchObject({
+        tiktok: 'https://www.tiktok.com/@otakugalaxy',
+        instagram: 'https://www.instagram.com/otakugalaxy',
+        whatsapp: 'https://wa.me/9647809876543',
+      });
+
+      // الإفراغ يمسح حقله وحده.
+      await api.patch('/api/admin/settings').set('Authorization', auth).send({ social_tiktok: '' }).expect(200);
+      social = (await api.get('/api/catalog/settings').expect(200)).body.data.social;
+      expect(social).toMatchObject({
+        tiktok: '',
+        instagram: 'https://www.instagram.com/otakugalaxy',
+        whatsapp: 'https://wa.me/9647809876543',
+      });
+
+      // قيمة غير صالحة تُرفض ولا تمسّ المحفوظ.
+      await api.patch('/api/admin/settings').set('Authorization', auth).send({ social_whatsapp: 'not a number' }).expect(400);
+      social = (await api.get('/api/catalog/settings').expect(200)).body.data.social;
+      expect(social.whatsapp).toBe('https://wa.me/9647809876543');
+    } finally {
+      await api.patch('/api/admin/settings').set('Authorization', auth).send(restore).expect(200);
+    }
+  });
 });
 
 afterAll(async () => {
