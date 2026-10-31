@@ -123,6 +123,24 @@ that never sold a colour turns it back into a legacy product with stock 0.
 A colour's stock going 0 → n while the product total was 0 triggers the existing
 «back in stock» notifications (product-level, as before).
 
+## 5a. Customer gallery (decision 2026-10-31, supersedes "the chosen colour's image leads")
+
+The API is unchanged: the product already carries both image sources, and the gallery is derived
+from them in each client by the same rule (`productGalleryImages` in the app, `galleryImages` in
+the web store, `customerGallery` in the dashboard preview). Nothing is merged or copied in the
+database.
+
+| Rule | |
+|---|---|
+| Sources | `variants[].imageUrl` — each colour's one primary image; `images[]` — general product images (back, side, close-up, packaging), not tied to a colour |
+| Order | 1. the image of every **customer-visible** colour (active, by `sortOrder`), 2. then the general images by `sort_order` |
+| Identity | the stored media reference, resolved by the client's own `resolveMediaUrl` (the same function for both sources). A general image equal to a colour's image is shown once, in the colour's place; two colours sharing one image show it once. Empty refs are skipped. Nothing is deleted: the duplicate general image stays stored and is only skipped in the gallery (the dashboard preview says so) |
+| Inactive colours | never in the gallery. Out-of-stock active colours stay in it (they are shown, disabled, in the picker) |
+| Browsing ≠ choosing | swiping, previous/next, dots and thumbnails never change the chosen colour. Choosing a colour (the picker) moves the gallery to that colour's image; the cart receives the chosen `variantId` only |
+| First image | the app opens on gallery image 1 with no colour chosen (no default choice, as before). The web store keeps its existing pre-selection of the first in-stock colour and opens on that colour's image |
+| Cover (cards, lists, link previews) | the first general image, as before; a coloured product with **no** general image shows its first visible colour's image — so an admin never has to upload a colour's image twice |
+| Loading (app) | the shown image and its two neighbours are loaded (`precacheImage`, the same `ImageCache` key as `Image.network`, so one request per URL); a far jump (chosen colour, far dot) jumps instead of animating so the pages in between are never fetched; the slot shows its neutral placeholder until the first decoded frame. Not every image: uploads are stored at full size (up to 2400×2400 ≈ 23 MB decoded) and the 100 MB image cache holds ~4 of them — precaching all was measured to evict and re-download (28 extra downloads for 30 images, ~930 MB peak) |
+
 ## 6. Known limits (documented, not silent)
 
 - Restock subscriptions stay product-level: they fire when the product total goes

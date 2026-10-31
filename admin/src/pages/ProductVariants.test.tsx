@@ -232,6 +232,45 @@ describe('ProductEditPage — تعديل الألوان', () => {
     expect(screen.getByLabelText('المخزون الكلّي')).toHaveValue('7')
   })
 
+  it('معاينة المعرض: صور الألوان ثم العامة، والمكرّرة تُذكر ولا تُحذف', async () => {
+    vi.mocked(getProductForEdit).mockResolvedValue({
+      draft: { ...structuredClone(variantDraft), images: ['/uploads/product/front.png', '/uploads/product/blue.png'] },
+      optionsLoaded: true,
+    })
+    renderEdit()
+    await screen.findByRole('button', { name: 'حفظ التعديلات' })
+    const preview = within(screen.getByTestId('gallery-preview'))
+    const items = preview.getAllByTestId('gallery-preview-item')
+    expect(items.map((item) => item.textContent)).toEqual(['1اللون: أحمر', '2اللون: أزرق', '3صورة عامة'])
+    expect(preview.getByTestId('gallery-preview-duplicate')).toHaveTextContent('الصورة العامة 2 هي نفسها صورة اللون «أزرق»')
+  })
+
+  it('[CRITICAL] الحفظ يحفظ الصور العامة كما هي — المكرّرة لا تُحذف تلقائياً، والألوان لا تُرسَل', async () => {
+    vi.mocked(getProductForEdit).mockResolvedValue({
+      draft: { ...structuredClone(variantDraft), images: ['/uploads/product/front.png', '/uploads/product/blue.png'] },
+      optionsLoaded: true,
+    })
+    const user = userEvent.setup()
+    renderEdit()
+    await screen.findByRole('button', { name: 'حفظ التعديلات' })
+    await save(user)
+    await waitFor(() => expect(updateProduct).toHaveBeenCalledTimes(1))
+    expect(lastPayload().images).toEqual(['/uploads/product/front.png', '/uploads/product/blue.png'])
+    expect(lastPayload()).not.toHaveProperty('variants')
+  })
+
+  it('معاينة المعرض تتبع الألوان: إيقاف لونٍ يخرج صورته، وإعادة الترتيب ترتّبها', async () => {
+    const user = userEvent.setup()
+    renderEdit()
+    await screen.findByRole('button', { name: 'حفظ التعديلات' })
+    const preview = () => within(screen.getByTestId('gallery-preview'))
+    await user.click(row(1).getByRole('button', { name: 'نقل اللون للأعلى' }))
+    expect(preview().getAllByTestId('gallery-preview-item').map((item) => item.textContent)).toEqual(['1اللون: أزرق', '2اللون: أحمر'])
+    await user.click(row(1).getByRole('switch'))
+    expect(preview().getAllByTestId('gallery-preview-item').map((item) => item.textContent)).toEqual(['1اللون: أزرق'])
+    expect(preview().getByTestId('gallery-preview-inactive')).toHaveTextContent('(1)')
+  })
+
   it('[CRITICAL] حفظٌ لا يمسّ الألوان لا يرسل `variants` ولا `stock`', async () => {
     const user = userEvent.setup()
     renderEdit()

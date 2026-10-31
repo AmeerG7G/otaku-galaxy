@@ -15,6 +15,7 @@ import {
 import { useQuery } from '@tanstack/react-query'
 import { listAdminCategories } from '../api/categoriesApi'
 import { listFranchises } from '../api/communityApi'
+import GalleryPreview from './GalleryPreview'
 import ImagesEditor from './ImagesEditor'
 import type { ReactNode } from 'react'
 import OptionsEditor from './OptionsEditor'
@@ -479,7 +480,12 @@ export default function ProductForm({
         </Space>
       </Card>
 
-      <Card title="الصور" variant="outlined" style={{ marginTop: 16 }}>
+      <Card
+        title="الصور العامة"
+        variant="outlined"
+        style={{ marginTop: 16 }}
+        extra={<Typography.Text type="secondary">صورٌ إضافية للمنتج — صورة كل لونٍ تُرفع في قسم الألوان</Typography.Text>}
+      >
         <ImagesEditor purpose="product" />
       </Card>
 
@@ -491,6 +497,10 @@ export default function ProductForm({
         extra={<Typography.Text type="secondary">اختياري — حتى ٢٠ لوناً</Typography.Text>}
       >
         <VariantsEditor stockBase={variantStockBase} />
+      </Card>
+
+      <Card title="معرض المنتج كما يراه الزبون" variant="outlined" style={{ marginTop: 16 }}>
+        <GalleryPreview />
       </Card>
 
       <Card title="الأنمي المرتبط" variant="outlined" style={{ marginTop: 16 }}>

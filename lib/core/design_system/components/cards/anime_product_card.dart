@@ -84,7 +84,7 @@ class AnimeProductCard extends StatelessWidget {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    ProductPhotoSlot(imageUrl: _firstImage),
+                    ProductPhotoSlot(imageUrl: product.coverImage),
                     // نفاد المخزون يُقال بشارة فوق الصورة لا بتغيير الصورة.
                     // المنتظَر بموعد لا شارة نفاد له — شارة الحالة تحته
                     // تقول «قريباً يتوفر» وحدها.
@@ -265,15 +265,6 @@ class AnimeProductCard extends StatelessWidget {
     );
 
     return width == null ? card : SizedBox(width: width, child: card);
-  }
-
-  String? get _firstImage {
-    final images = product.images;
-    if (images.isNotEmpty) {
-      final first = images.first;
-      return first.isEmpty ? null : first;
-    }
-    return null;
   }
 
   /// شارة البطاقة: نسبة الخصم الحقيقية أولاً (لا تظهر إلا بوجود سعر سابق

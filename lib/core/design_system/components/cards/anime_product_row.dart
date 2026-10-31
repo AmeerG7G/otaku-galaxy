@@ -45,7 +45,7 @@ class AnimeProductRow extends StatelessWidget {
             ),
             clipBehavior: Clip.antiAlias,
             child: ProductPhotoSlot(
-              imageUrl: product.images.isNotEmpty ? product.images.first : null,
+              imageUrl: product.coverImage,
               showLabel: false,
               iconSize: 22,
             ),

@@ -33,7 +33,11 @@ class ProductPhotoSlot extends StatelessWidget {
       content = Image.network(
         url,
         fit: BoxFit.cover,
-        loadingBuilder: (context, child, progress) => progress == null
+        // البديل حتى أوّل إطارٍ مفكوك — لا `loadingBuilder`: تقدّمه `null`
+        // قبل وصول أوّل بايت أيضاً، فكانت الفتحة فارغةً طوال انتظار الخادم.
+        // صورةٌ في الذاكرة (`wasSynchronouslyLoaded`) تُرسم فوراً بلا وميض.
+        frameBuilder: (context, child, frame, wasSynchronouslyLoaded) =>
+            wasSynchronouslyLoaded || frame != null
             ? child
             : _Placeholder(showLabel: false, iconSize: iconSize),
         errorBuilder: (_, _, _) =>
