@@ -1,3 +1,6 @@
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../src/database/pool.js';
 import { api, createAdminUser, purgeTestUsers, registerAndLogin, seedTestCatalog } from './helpers.js';
@@ -177,5 +180,24 @@ describe('نوع خيارات المنتج', () => {
       .expect(200);
     const cart = await api.get('/api/cart').set(bearer(plain.token)).expect(200);
     expect(cart.body.data.items[0].variantKind).toBeNull();
+  });
+
+  it('the 090 rollback refuses while a design product exists and changes nothing', async () => {
+    const product = await backpack({ variantKind: 'design' });
+    const script = await readFile(
+      path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../scripts/rollback/090_product_variant_kind.down.sql'),
+      'utf8',
+    );
+    const client = await db.connect();
+    try {
+      await expect(client.query(script)).rejects.toThrow(/090 rollback refused/);
+      await client.query('ROLLBACK');
+    } finally {
+      client.release();
+    }
+    const detail = await api.get(`/api/catalog/products/${product.id}`).expect(200);
+    expect(detail.body.data.variantKind).toBe('design');
+    const applied = await db.query(`SELECT 1 FROM schema_migrations WHERE name = '090_product_variant_kind.sql'`);
+    expect(applied.rowCount).toBe(1);
   });
 });

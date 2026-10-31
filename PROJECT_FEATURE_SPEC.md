@@ -12433,6 +12433,8 @@ Migration 089 (database backstop): trigger `trg_orders_one_level_reward` (raises
 `loyalty_gift_redemption_id` is written with both set) and unique `consumed_order_id` per redemption.
 A trigger, not a CHECK: a CHECK — even `NOT VALID` — is re-checked on every UPDATE, so an older order
 that already carries both rewards could no longer change status (independent review, STEP 77).
+Rollback: `backend/scripts/rollback/089_one_level_reward_per_order.down.sql` drops the trigger,
+its function and the index, one transaction, no data touched.
 Verified: the new suite `level-reward-exclusivity.test.ts` (first 12 tests) fails 8 against
 `origin/dev` and passes with the fix; concurrency, idempotent replay and preview were already safe
 (the concurrent-submit test is serialized by the cart row lock, so it does not exercise the reward
@@ -12464,6 +12466,11 @@ the picker for the customer («اللون» / «التصميم» / «المقا�
 (NULL = colour, every older line), so a later change never relabels an order. `color_*` columns and
 `colorName*` fields keep their names (older apps work and show «اللون»). The free-form
 `product_options` stays: it is the only multi-dimension, stock-less mechanism.
+Rollback: `backend/scripts/rollback/090_product_variant_kind.down.sql` drops both columns, one
+transaction; it refuses while any product or order line has a kind other than `color` (dropping
+the column would silently relabel designs and sizes as colours). Both scripts are covered by
+`migration-rollback.test.ts` (up → down → up schema fingerprint); the 090 refusal by
+`product-variant-kind.test.ts`.
 Kurdish strings for the new kinds are agent drafts (`NEEDS_NATIVE_REVIEW`).
 Open: server messages `VARIANT_REQUIRED` / `VARIANT_UNAVAILABLE` / `VARIANT_OUT_OF_STOCK` still say
 «اللون» (clients prevent the first; the others are rare) — neutral wording is a follow-up.
