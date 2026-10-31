@@ -45,7 +45,10 @@ export async function dispatchDueRatingReminders(
 ): Promise<number> {
   const { rows } = await client.query<{ id: string }>(
     `WITH candidates AS (
-       SELECT o.id, EXISTS (SELECT 1 ${REVIEWABLE_ITEMS_OF_ORDER}) AS reviewable
+       -- [STEP 78] طلبُ حسابٍ محذوف (شاهد) لا يُذكَّر صاحبه: يُسحب كغير القابل للتقييم.
+       SELECT o.id,
+              EXISTS (SELECT 1 ${REVIEWABLE_ITEMS_OF_ORDER})
+                AND EXISTS (SELECT 1 FROM users u WHERE u.id = o.user_id AND u.role = 'customer') AS reviewable
          FROM orders o
         WHERE o.status = 'COMPLETED'
           AND o.rating_reminder_sent_at IS NULL
@@ -99,6 +102,7 @@ export async function sendRatingReminderNow(
           AND o.delivered_at IS NOT NULL
           AND o.rating_reminder_sent_at IS NULL
           AND EXISTS (SELECT 1 ${REVIEWABLE_ITEMS_OF_ORDER})
+          AND EXISTS (SELECT 1 FROM users u WHERE u.id = o.user_id AND u.role = 'customer')
         RETURNING o.id, o.user_id
      )
      INSERT INTO notifications (user_id, type, title, body, order_id)

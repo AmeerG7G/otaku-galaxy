@@ -480,6 +480,11 @@ class AppStrings {
     'linkComingSoon': 'الرابط يُضاف لاحقاً',
     'linkInvalid': 'الرابط غير صالح',
     'linkOpenFailed': 'تعذّر فتح الرابط',
+    // ═══ STEP 78 — حذف الحساب وسياسة الخصوصية (صفحتا الموقع) ═══
+    'deleteAccount': 'حذف الحساب',
+    'deleteAccountOpensWebsite': 'سيُفتح موقع المتجر لإكمال حذف الحساب: تسجيل الدخول ثم تأكيد الحذف بكلمة المرور. الحذف نهائي ولا يمكن التراجع عنه.',
+    'deleteAccountContinue': 'المتابعة إلى الموقع',
+    'privacyPolicy': 'سياسة الخصوصية',
     // ═══ الدفعة ١٠ — المصادقة ═══
     'phoneRequiredShort': 'يرجى إدخال رقم الهاتف',
     'passwordRequired': 'يرجى إدخال كلمة المرور',
@@ -1134,6 +1139,11 @@ class AppStrings {
     'linkComingSoon': 'بەستەرەکە دواتر زیاد دەکرێت',
     'linkInvalid': 'بەستەرەکە دروست نییە',
     'linkOpenFailed': 'کردنەوەی بەستەرەکە سەرکەوتوو نەبوو',
+    // ═══ STEP 78 — سڕینەوەی هەژمار و سیاسەتی تایبەتمەندی ═══
+    'deleteAccount': 'سڕینەوەی هەژمار',
+    'deleteAccountOpensWebsite': 'ماڵپەڕی فرۆشگاکە دەکرێتەوە بۆ تەواوکردنی سڕینەوەی هەژمار: چوونەژوورەوە، پاشان پشتڕاستکردنەوەی سڕینەوە بە وشەی نهێنی. سڕینەوە کۆتاییە و ناگەڕێتەوە.',
+    'deleteAccountContinue': 'بەردەوامبوون بۆ ماڵپەڕ',
+    'privacyPolicy': 'سیاسەتی تایبەتمەندی',
     'onbExclusiveProducts': 'بەرهەمی تایبەت',
     'onbExclusiveProductsSub': 'جانتا، ئێکسسوار، جلوبەرگ، و زیاتر.',
     'onbWelcomeTitle': 'بەخێربێیت بۆ گەلاکسی ئۆتاکو',
