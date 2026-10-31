@@ -1,10 +1,11 @@
 name: CI
 
-# يعمل على طلبات الدمج نحو staging و prod، وعلى الدفع إلى الفروع الثلاثة.
-# وجود هذا الفحص شرطٌ لتفعيل «required status checks» في حماية الفروع.
+# يعمل على طلبات الدمج نحو dev و staging و prod، وعلى الدفع إلى الفروع الثلاثة.
+# وجود هذا الفحص شرطٌ لتفعيل «required status checks» في حماية الفروع؛ وطلبات
+# الدمج نحو dev تُفحص أيضاً كي لا يُدمج فيها فرعٌ لم تجرِ عليه الاختبارات (STEP 76).
 on:
   pull_request:
-    branches: [staging, prod]
+    branches: [dev, staging, prod]
   push:
     branches: [dev, staging, prod]
 
