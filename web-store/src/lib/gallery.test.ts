@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { ProductGallery } from '@/components/ProductGallery';
 import { VariantSelectionProvider } from '@/components/VariantSelection';
-import { galleryImages, stepIndex, SWIPE_MIN_PX, swipeStep } from './gallery';
+import { colourImageIndex, coverImage, galleryImages, stepIndex, SWIPE_MIN_PX, swipeStep } from './gallery';
 import type { ProductVariant } from './types';
 
 /**
@@ -12,6 +12,10 @@ import type { ProductVariant } from './types';
  * never reach the main slot. Clicking/swiping is measured in
  * `e2e/gallery.spec.ts`; this file pins the order, the bounds and the first
  * render.
+ *
+ * Unified gallery (post-Staging 51eae0b): every visible colour's image, then the
+ * general images, once each — the chosen colour only focuses its image, and
+ * browsing never chooses a colour.
  */
 
 const images = ['http://api.test/uploads/product/front.png', 'http://api.test/uploads/product/back.png', 'http://api.test/uploads/product/detail.png'];
@@ -27,6 +31,9 @@ const red: ProductVariant = {
   sortOrder: 0,
 };
 
+const blue: ProductVariant = { ...red, id: 'blue', colorName: 'أزرق', colorNameAr: 'أزرق', imageUrl: 'http://api.test/uploads/product/blue.png', stock: 3, sortOrder: 1 };
+const green: ProductVariant = { ...red, id: 'green', colorName: 'أخضر', colorNameAr: 'أخضر', imageUrl: 'http://api.test/uploads/product/green.png', isActive: false, sortOrder: 2 };
+
 const render = (list: string[], variants?: ProductVariant[]) => {
   const gallery = createElement(ProductGallery, { images: list, alt: 'هودي' });
   return renderToStaticMarkup(variants ? createElement(VariantSelectionProvider, { variants } as ComponentProps<typeof VariantSelectionProvider>, gallery) : gallery);
@@ -40,11 +47,29 @@ describe('galleryImages', () => {
     expect(galleryImages([])).toEqual([]);
   });
 
-  it("puts the chosen colour's image first without repeating it", () => {
-    expect(galleryImages(images, red.imageUrl)).toEqual([red.imageUrl, ...images]);
-    expect(galleryImages(images, images[1])).toEqual([images[1], images[0], images[2]]);
-    expect(galleryImages(images, null)).toEqual(images);
-    expect(galleryImages(images, '')).toEqual(images);
+  it('every colour image in colour order, then the general images, each once', () => {
+    expect(galleryImages(images, [red, blue])).toEqual([red.imageUrl, blue.imageUrl, ...images]);
+    // A colour image also uploaded as a general image stays in the colour's place.
+    expect(galleryImages([images[0]!, blue.imageUrl, images[1]!], [red, blue])).toEqual([red.imageUrl, blue.imageUrl, images[0], images[1]]);
+    expect(galleryImages([], [red, { ...blue, imageUrl: red.imageUrl }])).toEqual([red.imageUrl]);
+    expect(galleryImages(images, [{ imageUrl: '' }, { imageUrl: '  ' }])).toEqual(images);
+    expect(galleryImages(images, [red, blue])).toEqual(galleryImages(images, [red, blue]));
+  });
+});
+
+describe('coverImage / colourImageIndex', () => {
+  it('cards keep the first general image; a coloured product without one shows its first visible colour', () => {
+    expect(coverImage({ images, variants: [red] })).toBe(images[0]);
+    expect(coverImage({ images: [], variants: [blue, red] })).toBe(red.imageUrl);
+    expect(coverImage({ images: [], variants: [{ ...red, isActive: false }, blue] })).toBe(blue.imageUrl);
+    expect(coverImage({ images: [] })).toBeNull();
+  });
+
+  it("finds a colour's image in the gallery; none for no colour or a missing image", () => {
+    const list = galleryImages(images, [red, blue]);
+    expect(colourImageIndex(list, blue)).toBe(1);
+    expect(colourImageIndex(list, null)).toBeNull();
+    expect(colourImageIndex(list, { imageUrl: 'http://api.test/uploads/other.png' })).toBeNull();
   });
 });
 
@@ -92,11 +117,22 @@ describe('ProductGallery first render', () => {
     expect(html).not.toContain('gallery__nav');
   });
 
-  it("with colours: the pre-selected colour's image leads, the product's images follow", () => {
-    const html = render(images, [red]);
+  it("with colours: every visible colour's image and the general images are thumbnails; the pre-selected colour is shown", () => {
+    // `green` is inactive — never shown. Red is out of stock, so blue is pre-selected (the store's existing rule).
+    const html = render(images, [{ ...red, stock: 0 }, blue, green]);
+    const [main, ...thumbs] = srcs(html);
+    expect(thumbs).toEqual([red.imageUrl, blue.imageUrl, ...images]);
+    expect(main).toBe(blue.imageUrl);
+    expect(html).toContain('alt="هودي — أزرق"');
+    expect(html).toMatch(/aria-label="هودي — أزرق"[^>]*aria-current="true"/);
+    expect(html).toContain('aria-label="هودي — أحمر"');
+    expect(html).not.toContain(green.imageUrl);
+  });
+
+  it('with colours and no general images: the colour images alone', () => {
+    const html = render([], [red, blue]);
     const [main, ...thumbs] = srcs(html);
     expect(main).toBe(red.imageUrl);
-    expect(thumbs).toEqual([red.imageUrl, ...images]);
-    expect(html).toContain('alt="هودي — أحمر"');
+    expect(thumbs).toEqual([red.imageUrl, blue.imageUrl]);
   });
 });

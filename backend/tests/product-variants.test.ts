@@ -160,6 +160,42 @@ describe('ألوان المنتج — صورةٌ ومخزونٌ مستقلّان
     expect(ckb.body.data.variants[0].colorNameAr).toBe('أحمر');
   });
 
+  it('[CRITICAL] المعرض الموحّد: الصور العامة وصور الألوان مصدران مستقلّان بترتيبهما، وحفظ أحدهما لا يمسّ الآخر', async () => {
+    const { product, red, blue } = await colouredProduct();
+    // صورٌ عامة بترتيبٍ غير أبجدي، إحداها هي صورة الأزرق — تُحفظ كما أُرسلت ولا تُدمج.
+    const images = [IMG('side'), IMG('blue'), IMG('back')];
+    const saved = await api.patch(`/api/admin/products/${product.id}`).set(admin()).send({ images });
+    expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+
+    const detail = await api.get(`/api/catalog/products/${product.id}`).expect(200);
+    // يكفي العميلَ ليبني المعرض: الصور العامة بترتيب `sort_order` وكل لونٍ بمعرّفه وصورته بترتيبه.
+    expect(detail.body.data.images).toEqual(images);
+    expect(detail.body.data.variants.map((v: { id: string; imageUrl: string; sortOrder: number }) => [v.id, v.imageUrl, v.sortOrder])).toEqual([
+      [red.id, IMG('red'), 0],
+      [blue.id, IMG('blue'), 1],
+    ]);
+
+    // حفظ الألوان وحدها يُبقي الصور العامة، والعكس.
+    const colours = await api
+      .patch(`/api/admin/products/${product.id}`)
+      .set(admin())
+      .send({
+        variants: [
+          { id: blue.id, colorName: 'أزرق', imageUrl: IMG('blue'), stock: 5, expectedStock: 5 },
+          { id: red.id, colorName: 'أحمر', imageUrl: IMG('red'), stock: 3, expectedStock: 3 },
+        ],
+      });
+    expect(colours.status, JSON.stringify(colours.body)).toBe(200);
+    expect(colours.body.data.images).toEqual(images);
+    expect(colours.body.data.variants.map((v: { id: string }) => v.id)).toEqual([blue.id, red.id]);
+
+    const general = await api.patch(`/api/admin/products/${product.id}`).set(admin()).send({ images: [IMG('back')] });
+    expect(general.status).toBe(200);
+    expect(general.body.data.variants).toEqual(colours.body.data.variants);
+    const { rows } = await db.query<{ n: number }>('SELECT COUNT(*)::int AS n FROM product_images WHERE product_id = $1', [product.id]);
+    expect(rows[0]!.n).toBe(1);
+  });
+
   it('منتجٌ بلا ألوان يبقى كما كان: `variants: []` ومخزونه يُكتب مباشرة', async () => {
     const legacy = await legacyProduct(4);
     const res = await api.get(`/api/catalog/products/${legacy.id}`).expect(200);

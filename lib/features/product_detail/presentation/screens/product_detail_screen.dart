@@ -88,9 +88,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     return best;
   }
 
+  /// يزيد مع كل اختيارٍ للون — فينتقل المعرض إلى صورته ولو كان مختاراً.
+  int _galleryFocusRequest = 0;
+
   void _selectVariant(ProductVariant variant) {
     setState(() {
       _selectedVariantId = variant.id;
+      _galleryFocusRequest++;
       if (_quantity > variant.stock) _quantity = variant.stock;
     });
   }
@@ -180,7 +184,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     final theme = Theme.of(context);
     final images = productGalleryImages(
       product.images,
-      leading: _selectedVariantOf(product)?.imageUrl,
+      colours: product.activeVariants,
     );
 
     return SizedBox(
@@ -194,11 +198,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                 bottom: BorderSide(color: theme.colorScheme.outlineVariant),
               ),
             ),
-            // اللون المختار يتقدّم المعرض بصورته (STEP 74) وصور المنتج بعده؛
-            // مفتاحه أوّل صورة فيبدأ اختيارٌ جديد من صورة اللون.
+            // معرضٌ واحد: صور الألوان كلها ثم صور المنتج العامة (STEP 74).
+            // تصفّحه لا يختار لوناً؛ اختيار لونٍ ينقله إلى صورته. لا مفتاح
+            // يتغيّر مع الاختيار — كان يهدم المعرض ويبدأ تنزيل الصورة لحظتها.
             child: ProductImageGallery(
-              key: ValueKey(images.isEmpty ? null : images.first),
               images: images,
+              focusImage: _selectedVariantOf(product)?.imageUrl,
+              focusRequest: _galleryFocusRequest,
             ),
           ),
           SafeArea(

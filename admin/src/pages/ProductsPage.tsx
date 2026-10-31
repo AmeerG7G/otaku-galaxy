@@ -29,6 +29,7 @@ import { SearchField } from '../components/ui/SearchField'
 import { PageHeader } from '../components/ui/PageHeader'
 import { useTableState } from '../hooks/useTableState'
 import ProductPriceText from '../components/ProductPriceText'
+import { productCover } from '../utils/gallery'
 
 const PAGE_LIMIT = 12
 
@@ -158,7 +159,7 @@ export default function ProductsPage() {
         <Space direction="vertical" size={4}>
           <ProductLink
             productId={product.id}
-            image={product.images[0] ?? null}
+            image={productCover(product.images, product.variants)}
             imageSize={52}
             name={<span lang="ar">{product.nameAr}</span>}
             secondary={product.nameCkb ? <span lang="ckb">{product.nameCkb}</span> : undefined}

@@ -12217,3 +12217,45 @@ product stock are two saves; Kurdish texts are drafts.
 | App | `flutter analyze`; `flutter test --exclude-tags integration` | no issues; **2560/2560** on the final tree |
 
 Not verified: a real device or browser session against a running API, and Staging (not deployed).
+
+# STEP 75 — ONE PRODUCT GALLERY: COLOUR IMAGES + GENERAL IMAGES, PROMPT LOADING (2026-10-31)
+
+Branch `fix/unified-product-gallery` from `origin/staging` `51eae0b` (tree = `origin/dev` `7b8b844`).
+Owner request 2026-10-31: every colour's one primary image and the product's general images form
+one customer gallery; no image has to be uploaded twice; browsing never chooses a colour; option
+images must not appear only after a tap. Supersedes the STEP 74 / PR #12 rule "the chosen colour's
+image leads the gallery". Binding rule: `docs/staging/color-variants-contract.md` §5a.
+
+## 75.1 Root causes (reproduced before the fix)
+
+| Symptom | Cause |
+|---|---|
+| A colour's image appears only after tapping the colour (app) | The gallery contained only the *chosen* colour's image (PR #12 rule); unchosen colours were never in it and their image was never requested. A request recorder on the product page showed only `front.png` requested on open; `red.png` first requested at the moment `red` was tapped |
+| The image shows a blank/placeholder after choosing a colour (app) | The gallery was keyed by its first image, so choosing a colour destroyed and rebuilt it; the colour image's download started only then |
+| Other images blank while swiping (app) | `PageView` builds only the visible page, so the next image was requested only when the swipe reached it; and `loadingBuilder` gets `null` progress before the first byte, so the slot was empty (not even the placeholder) while waiting for the server |
+| Admins re-uploaded colour images as general images | Cards, lists and link previews used `images[0]` only — a coloured product without a general image showed an empty card |
+| Web store | Same gallery rule (chosen colour only); otherwise images load promptly (thumbnails render all) |
+
+API and data were correct: `images` (by `sort_order`) and `variants[].imageUrl` (by `sortOrder`)
+are both returned. No migration, no API change, no data touched.
+
+## 75.2 Fix
+
+| Surface | Change |
+|---|---|
+| App | `productGalleryImages(images, colours:)`; `ProductImageGallery` keeps its state, `focusImage`/`focusRequest` move it to a chosen colour (jump when far), precaches the two neighbours; `ProductPhotoSlot` uses `frameBuilder` (placeholder until the first frame); `Product.coverImage` for cards and rows |
+| Web store | `galleryImages(images, colours)`, `coverImage`, `colourImageIndex`; `ProductGallery` filters inactive colours itself, focuses the chosen colour, labels colour images by name; `ProductCard` and `og:image` use the cover |
+| Dashboard | «الصور العامة» card with a hint; new «معرض المنتج كما يراه الزبون» preview (`customerGallery`): order, colour/general tags, duplicate general image reported (never removed), inactive colours counted; product list thumbnail uses `productCover` |
+
+## 75.3 Image cache measurement (app, flutter test with real 2400×2400 PNG bytes)
+
+| Gallery | Precache all (first attempt) | Neighbours only (shipped) |
+|---|---|---|
+| 30 × 2400²: requests on open / extra downloads after visiting every page / peak RSS | 30 / 28 / 930 MB | 2 / 0 / 438 MB |
+| 6 × 2400² | 6 / 5 / 470 MB | 2 / 0 / 433 MB |
+| 30 × 1024² | 30 / 29 | 2 / 0 |
+
+Open limit (pre-existing, STEP 74): a colour **without** `colorHex` shows its image in a 24 px chip,
+decoded at full size — 6 such colours = 6 full-size downloads on open (+176 MB measured). Proposed,
+not implemented: decode the chip at its display size (`cacheWidth`), at the cost of one separate
+download when that colour's gallery page is shown.
