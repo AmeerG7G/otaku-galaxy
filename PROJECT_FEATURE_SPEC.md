@@ -12399,8 +12399,9 @@ Owner request 2026-10-31. Migrations `089_one_level_reward_per_order.sql` and
 | Redemption is final at order creation | Selection, `FOR UPDATE OF r` on the customer's open rewards, consumption/gift link and order insert are one transaction; any failure rolls back and releases the reward. A created order keeps its reward even if rejected later (unchanged BR-32 / CA-12). No online payment exists (cash on delivery), so there is no payment event | — |
 | Gift identity in the quote fingerprint | `levelGiftId` enters the fingerprint only when a gift is attached (old fingerprints unchanged) | `orderPricing.quoteFingerprint` |
 
-**Precedence (birthday over level discount) — UNRESOLVED, owner decision needed.** The request
-forbids combining them but does not say which wins. Implemented: the existing documented order
+**Precedence (birthday over level discount) — owner decision 2026-10-31: the birthday wins.**
+The request forbade combining them without saying which wins; the owner confirmed the implemented
+rule after review. Implemented: the existing documented order
 (`fitProductDiscounts`: birthday first because it lapses with its day, the level reward never
 expires — §40.9), so no entitlement is lost. The non-combination itself **changes** BR-09/BR-34
 (both used to apply to one order) by the owner's explicit request of 2026-10-31.
@@ -12415,7 +12416,7 @@ CONFLICT: birthday discount vs level discount on the same order
                    discount-rounding/cart-sync/contract-closure/domain-integrity updated to it
   History:         BR-09/BR-34 (both stacked) superseded by STEP 77; precedence inferred from
                    fitProductDiscounts (§40.9)
-  Status: unresolved (owner decision needed) — confirm before merge to staging
+  Status: current — owner decision 2026-10-31 («Birthday wins»), recorded before merge to dev
 ```
 
 ## 77.2 Root causes fixed
