@@ -460,7 +460,9 @@ void main() {
       expect(_colour('blue'), findsOneWidget);
       expect(_colour('green'), findsNothing);
       expect(find.text('أخضر'), findsNothing);
-      expect(_heroUrl(tester), _mainImage);
+      // المعرض الموحّد يبدأ بصورة أول لون — عرضها ليس اختياراً له.
+      expect(_heroUrl(tester), _redImage);
+      expect(find.byKey(const Key('product_selected_color_name')), findsNothing);
       expect(_addButton(tester).onPressed, isNull);
       expect(_addButton(tester).label, AppStrings.arabic('chooseColorFirst'));
       _drainImageErrors(tester);
@@ -507,7 +509,8 @@ void main() {
       );
 
       await _tap(tester, _colour('blue'));
-      expect(_heroUrl(tester), _mainImage, reason: 'النافد لا يُختار');
+      expect(_heroUrl(tester), _redImage, reason: 'النافد لا يُختار ولا ينقل المعرض');
+      expect(find.byKey(const Key('product_selected_color_name')), findsNothing);
       expect(_addButton(tester).onPressed, isNull);
 
       await _tap(tester, _colour('red'));
@@ -548,7 +551,8 @@ void main() {
 
       expect(find.text('هذا اللون نفد من المخزون'), findsOneWidget);
       expect(products.fetches, 2);
-      expect(_heroUrl(tester), _mainImage, reason: 'اللون النافد يسقط من الاختيار');
+      expect(find.byKey(const Key('product_selected_color_name')), findsNothing,
+          reason: 'اللون النافد يسقط من الاختيار');
       expect(_addButton(tester).onPressed, isNull);
       await tester.pump(const Duration(seconds: 5));
       _drainImageErrors(tester);

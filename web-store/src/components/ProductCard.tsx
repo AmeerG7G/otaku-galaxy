@@ -1,10 +1,11 @@
 import Link from '@/components/Link';
 import { COMING_SOON, formatIqd, pairOfferLabel, PRICE_COMING_SOON } from '@/lib/format';
+import { coverImage } from '@/lib/gallery';
 import type { Product } from '@/lib/types';
 
 /** Mirrors the app's `AnimeProductCard`: image, name, price, previous price, stock state. */
 export function ProductCard({ product, eager = false }: { product: Product; eager?: boolean }) {
-  const image = product.images[0];
+  const image = coverImage(product);
   const outOfStock = product.stock <= 0;
   const pairOffer = product.price === null ? null : pairOfferLabel(product.pairPrice);
   return (

@@ -5,6 +5,7 @@ import { ProductGallery } from '@/components/ProductGallery';
 import { VariantSelectionProvider } from '@/components/VariantSelection';
 import { ApiError } from '@/lib/api';
 import { getProduct, isUuid } from '@/lib/catalog';
+import { coverImage } from '@/lib/gallery';
 import { COMING_SOON, displayRestockAt, formatIqd, formatShortStoreDate, pairOfferLabel, PRICE_COMING_SOON } from '@/lib/format';
 import { readSession } from '@/lib/server-session';
 import type { Product } from '@/lib/types';
@@ -27,10 +28,11 @@ async function load(id: string): Promise<Product | null> {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const product = await load((await params).id);
   if (!product) return { title: 'المنتج غير موجود' };
+  const cover = coverImage(product);
   return {
     title: product.name,
     description: product.description.slice(0, 160) || undefined,
-    openGraph: product.images[0] ? { images: [{ url: product.images[0] }] } : undefined,
+    openGraph: cover ? { images: [{ url: cover }] } : undefined,
   };
 }
 
@@ -40,8 +42,8 @@ export default async function ProductPage({ params }: Props) {
   const session = await readSession();
   // The app's `displayRestockAt` rule — see `lib/format.ts`.
   const restockOn = displayRestockAt(product);
-  // Colours (STEP 74): inactive ones are never shown; the chosen colour's image
-  // leads the gallery and its stock bounds the cart.
+  // Colours (STEP 74): inactive ones are never shown; every shown colour's image
+  // is in the gallery (the chosen one is focused) and its stock bounds the cart.
   const variants = customerVariants(product);
   const hasColors = variants.length > 0;
 

@@ -142,6 +142,20 @@ class Product {
   /// أرسلها الخادم. `[]` = منتجٌ قديم بلا ألوان.
   final List<ProductVariant> variants;
 
+  /// صورة المنتج في البطاقات والقوائم: أولى صوره العامة كما كانت، وإن لم
+  /// تكن له صورٌ عامة فصورة أول لونٍ فعّال (STEP 74) — فلا يُضطرّ المسؤول إلى
+  /// رفع صورة اللون مرّةً ثانية صورةً عامة كي لا تظهر البطاقة فارغة.
+  String? get coverImage {
+    for (final url in images) {
+      if (url.trim().isNotEmpty) return url;
+    }
+    for (final colour in activeVariants) {
+      final url = colour.imageUrl;
+      if (url != null && url.trim().isNotEmpty) return url;
+    }
+    return null;
+  }
+
   /// هل هذا منتجٌ بألوان؟ — يكفي لونٌ واحد ولو غير فعّال (قاعدة العقد).
   bool get hasVariants => variants.isNotEmpty;
 

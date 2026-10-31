@@ -1,33 +1,38 @@
 'use client';
 
 import { useRef, useState, type TouchEvent } from 'react';
-import { galleryImages, stepIndex, swipeStep } from '@/lib/gallery';
+import { colourImageIndex, galleryImages, stepIndex, swipeStep } from '@/lib/gallery';
+import { customerVariants } from '@/lib/variants';
 import { useVariantSelection } from './VariantSelection';
 
 /**
  * The product page gallery: the main image, previous/next buttons, a swipe on
- * touch screens, and one thumbnail button per image. The chosen colour's image
- * (STEP 74) leads; the product's ordinary images follow in their order. One
- * image (or none) renders as before — no buttons, no thumbnails.
+ * touch screens, and one thumbnail button per image. Every visible colour's
+ * image comes first (STEP 74), then the product's general images, without a
+ * repeat (`galleryImages`). One image (or none) renders as before — no buttons,
+ * no thumbnails.
  *
- * The thumbnails used to be bare `<img>`s on a server component and the first
- * image was left out of them, so the other uploaded images could never be shown
- * in the main slot.
+ * [CRITICAL] Browsing never chooses a colour: the gallery only reads the
+ * selection. Choosing a colour (the radio buttons) moves the gallery to that
+ * colour's image; showing a colour's image here does not select it for the cart.
  */
 export function ProductGallery({ images, alt }: { images: string[]; alt: string }) {
   const selection = useVariantSelection();
-  const lead = selection?.selected?.imageUrl ?? null;
-  const list = galleryImages(images, lead);
-  const [active, setActive] = useState(0);
-  const [shownLead, setShownLead] = useState(lead);
+  // Inactive colours are never shown, even if a caller passed them.
+  const colours = customerVariants({ variants: selection?.variants });
+  const list = galleryImages(images, colours);
+  const selectedId = selection?.selected?.id ?? null;
+  const [active, setActive] = useState(() => colourImageIndex(list, selection?.selected) ?? 0);
+  const [shownSelectedId, setShownSelectedId] = useState(selectedId);
   const [failed, setFailed] = useState<ReadonlySet<string>>(() => new Set());
   // A ref, not state: `touchend` must see the `touchstart` even within one render.
   const touchStart = useRef<{ x: number; y: number } | null>(null);
 
-  // A newly chosen colour brings its own image to the front.
-  if (lead !== shownLead) {
-    setShownLead(lead);
-    setActive(0);
+  // A newly chosen colour brings the gallery to its image.
+  if (selectedId !== shownSelectedId) {
+    setShownSelectedId(selectedId);
+    const focus = colourImageIndex(list, selection?.selected);
+    if (focus !== null) setActive(focus);
   }
   const index = stepIndex(active, 0, list.length);
   const src = list[index];
@@ -38,8 +43,9 @@ export function ProductGallery({ images, alt }: { images: string[]; alt: string 
   const failedBeforeHydration = (url: string) => (image: HTMLImageElement | null) => {
     if (image?.complete && image.naturalWidth === 0) markFailed(url);
   };
-  const label =
-    lead && index === 0 && selection?.selected ? `${alt} — ${selection.selected.colorName}` : many ? `${alt} — صورة ${index + 1} من ${list.length}` : alt;
+  const colourOf = (url: string | undefined) => colours.find((colour) => colour.imageUrl?.trim() === url);
+  const shownColour = colourOf(src);
+  const label = shownColour ? `${alt} — ${shownColour.colorName}` : many ? `${alt} — صورة ${index + 1} من ${list.length}` : alt;
 
   const onTouchStart = (event: TouchEvent) => {
     const touch = event.touches[0];
@@ -77,7 +83,7 @@ export function ProductGallery({ images, alt }: { images: string[]; alt: string 
               key={url}
               type="button"
               className="gallery__thumb"
-              aria-label={`${alt} — صورة ${i + 1}`}
+              aria-label={`${alt} — ${colourOf(url)?.colorName ?? `صورة ${i + 1}`}`}
               aria-current={i === index ? 'true' : undefined}
               onClick={() => setActive(i)}
             >
