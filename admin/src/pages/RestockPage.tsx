@@ -2,7 +2,13 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Alert, App, Button, Card, Flex, Space, Statistic, Tag, Typography } from 'antd'
 import { ReloadOutlined } from '@ant-design/icons'
-import { listRestockDemand, setRestockAt, type RestockDemandRow } from '../api/restockApi'
+import {
+  listRestockDemand,
+  listRestockVariantDemand,
+  setRestockAt,
+  type RestockDemandRow,
+  type RestockVariantDemandRow,
+} from '../api/restockApi'
 import EmptyState from '../components/EmptyState'
 import { formatDateTime } from '../utils/format'
 import { StoreDateInput, StoreTimeInput } from '../components/ui/StoreDateInput'
@@ -43,6 +49,13 @@ export default function RestockPage() {
   const demand = useQuery({
     queryKey: ['restock-demand'],
     queryFn: listRestockDemand,
+  })
+
+  // ألوانٌ بعينها ينتظرها زبائن (088) — قد يكون المنتج نفسه متوفراً بلونٍ آخر،
+  // فلا تظهر في الجدول أعلاه. الإشعار يُرسل حين يعود **اللون** لا المنتج.
+  const variantDemand = useQuery({
+    queryKey: ['restock-demand-variants'],
+    queryFn: listRestockVariantDemand,
   })
 
   const save = useMutation({
@@ -154,10 +167,10 @@ export default function RestockPage() {
     )
   }
 
-  const subscribers = (row: RestockDemandRow) => (
+  const subscribers = (key: string, list: RestockDemandRow['subscribers']) => (
     <Flex vertical gap={8}>
-      {row.subscribers.map((s, i) => (
-        <Flex key={`${row.productId}-${i}`} justify="space-between" align="center" gap={8} wrap>
+      {list.map((s, i) => (
+        <Flex key={`${key}-${i}`} justify="space-between" align="center" gap={8} wrap>
           <Space direction="vertical" size={0} style={{ minWidth: 0 }}>
             <Typography.Text>{s.username}</Typography.Text>
             <PhoneText phone={s.phone} secondary copyable />
@@ -168,6 +181,32 @@ export default function RestockPage() {
       ))}
     </Flex>
   )
+
+
+  const variantColumns = [
+    {
+      title: 'المنتج',
+      key: 'product',
+      width: 240,
+      render: (_: unknown, row: RestockVariantDemandRow) => <ProductLink productId={row.productId} name={row.productName} />,
+    },
+    {
+      title: 'اللون',
+      key: 'color',
+      width: 140,
+      render: (_: unknown, row: RestockVariantDemandRow) => <Tag style={{ marginInlineEnd: 0 }}>{row.colorName}</Tag>,
+    },
+    {
+      title: 'المنتظرون',
+      key: 'count',
+      width: 130,
+      render: (_: unknown, row: RestockVariantDemandRow) => (
+        <Tag color="magenta" style={{ marginInlineEnd: 0 }}>
+          {row.subscriberCount} ينتظرون
+        </Tag>
+      ),
+    },
+  ]
 
   const columns = [
     {
@@ -197,7 +236,14 @@ export default function RestockPage() {
       <PageHeader
         title="طلبات التوفر"
         extra={
-          <Button icon={<ReloadOutlined />} onClick={() => demand.refetch()} loading={demand.isFetching}>
+          <Button
+            icon={<ReloadOutlined />}
+            onClick={() => {
+              void demand.refetch()
+              void variantDemand.refetch()
+            }}
+            loading={demand.isFetching || variantDemand.isFetching}
+          >
             تحديث
           </Button>
         }
@@ -220,7 +266,7 @@ export default function RestockPage() {
             locale={{ emptyText: <EmptyState description="لا يوجد منتج نافد ينتظره زبون حالياً." /> }}
             expandable={{
               rowExpandable: (row) => row.subscribers.length > 0,
-              expandedRowRender: (row) => subscribers(row),
+              expandedRowRender: (row) => subscribers(row.productId, row.subscribers),
             }}
             renderCard={(row) => (
               <Space direction="vertical" size={12} style={{ width: '100%' }}>
@@ -239,7 +285,7 @@ export default function RestockPage() {
                     <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>
                       المنتظرون
                     </Typography.Text>
-                    {subscribers(row)}
+                    {subscribers(row.productId, row.subscribers)}
                   </div>
                 )}
               </Space>
@@ -247,6 +293,40 @@ export default function RestockPage() {
           />
         </Card>
       )}
+
+      <Card title="ألوان ينتظرها زبائن" styles={{ body: { padding: 12 } }}>
+        <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
+          زبائن طلبوا لوناً بعينه نفد. يصلهم إشعار «عاد للتوفر» تلقائياً حين يعود مخزون ذلك اللون — ولو كان المنتج متوفراً بألوان أخرى.
+        </Typography.Paragraph>
+        {variantDemand.isError ? (
+          <Alert type="error" showIcon message="تعذّر جلب طلبات الألوان" />
+        ) : (
+          <ResponsiveTable<RestockVariantDemandRow>
+            rowKey="variantId"
+            loading={variantDemand.isPending}
+            dataSource={variantDemand.data ?? []}
+            columns={variantColumns}
+            pagination={false}
+            locale={{ emptyText: <EmptyState description="لا يوجد لونٌ ينتظره زبون حالياً." /> }}
+            expandable={{
+              rowExpandable: (row) => row.subscribers.length > 0,
+              expandedRowRender: (row) => subscribers(row.variantId, row.subscribers),
+            }}
+            renderCard={(row) => (
+              <Space direction="vertical" size={10} style={{ width: '100%' }}>
+                <Flex justify="space-between" align="flex-start" gap={8} wrap>
+                  <ProductLink productId={row.productId} name={row.productName} />
+                  <Tag color="magenta" style={{ marginInlineEnd: 0 }}>
+                    {row.subscriberCount} ينتظرون
+                  </Tag>
+                </Flex>
+                <Tag style={{ marginInlineEnd: 0, alignSelf: 'flex-start' }}>{row.colorName}</Tag>
+                {subscribers(row.variantId, row.subscribers)}
+              </Space>
+            )}
+          />
+        )}
+      </Card>
     </Space>
   )
 }

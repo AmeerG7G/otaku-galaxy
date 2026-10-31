@@ -65,12 +65,25 @@ export const reviewRepo = {
   },
 
   /** التقييمات المنشورة لمنتج — تُعرض في تفاصيل المنتج. */
-  async listApprovedForProduct(db: pg.Pool | pg.PoolClient, productId: string) {
+  /**
+   * التقييمات المعتمدة لمنتج — صفحةً صفحة، الأحدث أولاً (STEP 76).
+   *
+   * كانت بلا حدّ: منتجٌ بآلاف التقييمات كان يُرسل كلها في كل فتحٍ لصفحته.
+   * الشكل يبقى مصفوفة (التطبيق المثبَّت يقرؤها كذلك)، والمجموع في
+   * `products.review_count` لمن يريد أن يعرف إن بقي المزيد.
+   */
+  async listApprovedForProduct(
+    db: pg.Pool | pg.PoolClient,
+    productId: string,
+    page = 1,
+    limit = 50,
+  ) {
     const { rows } = await db.query<ReviewRow>(
       `SELECT * FROM reviews
        WHERE product_id = $1 AND status = 'approved'
-       ORDER BY created_at DESC`,
-      [productId],
+       ORDER BY created_at DESC, id DESC
+       LIMIT $2 OFFSET $3`,
+      [productId, limit, (page - 1) * limit],
     );
     return rows.map(shapeReview);
   },

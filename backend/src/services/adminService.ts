@@ -18,6 +18,7 @@ import {
 import { config } from '../config/index.js';
 import type { NotificationType, OrderStatus } from '../types/index.js';
 import type { Gender } from '../types/index.js';
+import { isValidDayForMonth } from './birthdayService.js';
 import { Errors } from '../utils/errors.js';
 import type { ProductNames } from '../utils/locale.js';
 import { orderService } from './orderService.js';
@@ -696,6 +697,10 @@ export const adminService = {
         }
       }
 
+      // ألوانٌ صارت متاحة بهذا الحفظ (مخزون لون من صفر، تفعيل لون أو منتج، إعلان
+      // سعر): مشتركو **ذلك اللون** يُبلَّغون (088) — مستقلاً عن مجموع المنتج.
+      await restockService.variantsReturned(tx, id, names);
+
       if (input.franchiseIds !== undefined) {
         await franchiseRepo.setProductFranchises(tx, id, input.franchiseIds);
       }
@@ -811,6 +816,10 @@ export const adminService = {
   /** طلبات «أخبرني عند توفره» من وجهة الإدارة — المنتجات النافدة وعليها اشتراكات. */
   async restockDemand() {
     return restockService.adminDemand();
+  },
+
+  async restockVariantDemand() {
+    return restockService.adminVariantDemand();
   },
 
   async createBanner(input: {
@@ -1365,6 +1374,57 @@ export const adminService = {
         details: { gender },
       });
       return { id: customerId, gender };
+    });
+  },
+
+  /**
+   * تصحيح تاريخ ميلادٍ **محفوظ** (STEP 76 D1).
+   *
+   * الزبون يضبط تاريخه مرةً واحدة (`birthdayService`)، ولا يغيّره أحدٌ غيره إلا
+   * من هنا: مسؤولٌ بصلاحية «أعياد الميلاد»، بسببٍ مكتوب، وكل تصحيحٍ سطرٌ في
+   * سجلّ التدقيق بالقيمتين القديمة والجديدة. حسابٌ لم يضبط تاريخه لا يُصحَّح
+   * — ضبطه الأول للزبون وحده بشروطه (استلام أول طلب).
+   *
+   * [CRITICAL] خصم الميلاد السنوي لا يتأثر: الاستهلاك مفتاحه (الزبون، السنة)
+   * في `birthday_discount_usage`، فنقلُ التاريخ إلى اليوم بعد استعمال خصم هذه
+   * السنة لا يمنح خصماً ثانياً.
+   */
+  async correctCustomerBirthday(
+    customerId: string,
+    actorId: string,
+    input: { day: number; month: number; reason: string },
+  ) {
+    if (!isValidDayForMonth(input.day, input.month)) throw Errors.validation('تاريخ غير صالح');
+    return withTransaction(async (tx) => {
+      const { rows } = await tx.query<{ role: string; birth_day: number | null; birth_month: number | null }>(
+        'SELECT role, birth_day, birth_month FROM users WHERE id = $1 FOR UPDATE',
+        [customerId],
+      );
+      const row = rows[0];
+      if (!row || row.role !== 'customer') throw Errors.notFound('الزبون غير موجود');
+      if (row.birth_day === null || row.birth_month === null) {
+        throw Errors.conflict('لم يضبط الزبون تاريخ ميلاده بعد — لا شيء يُصحَّح', 'BIRTHDAY_NOT_SET');
+      }
+      const unchanged = row.birth_day === input.day && row.birth_month === input.month;
+      if (!unchanged) {
+        await tx.query('UPDATE users SET birth_day = $2, birth_month = $3 WHERE id = $1', [
+          customerId,
+          input.day,
+          input.month,
+        ]);
+        await adminAuditRepo.record(tx, {
+          actorId,
+          action: 'customer.birthday_corrected',
+          targetType: 'customer',
+          targetId: customerId,
+          details: {
+            from: { day: row.birth_day, month: row.birth_month },
+            to: { day: input.day, month: input.month },
+            reason: input.reason,
+          },
+        });
+      }
+      return { id: customerId, day: input.day, month: input.month, changed: !unchanged };
     });
   },
 

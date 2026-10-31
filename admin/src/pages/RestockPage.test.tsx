@@ -8,10 +8,11 @@ vi.setConfig({ testTimeout: 20_000 })
 
 vi.mock('../api/restockApi', () => ({
   listRestockDemand: vi.fn(),
+  listRestockVariantDemand: vi.fn().mockResolvedValue([]),
   setRestockAt: vi.fn(),
 }))
 
-import { listRestockDemand, setRestockAt, type RestockDemandRow } from '../api/restockApi'
+import { listRestockDemand, listRestockVariantDemand, setRestockAt, type RestockDemandRow } from '../api/restockApi'
 import { DESKTOP, PHONE, setViewportWidth } from '../test/viewport'
 import RestockPage from './RestockPage'
 
@@ -252,5 +253,45 @@ describe('طلبات التوفر على الهاتف', () => {
     await user.click(screen.getByText('حفظ'))
     expect(await screen.findByText(/الموعد في الماضي/)).toBeInTheDocument()
     expect(setRestockAt).not.toHaveBeenCalled()
+  })
+})
+
+describe('ألوان ينتظرها زبائن (088)', () => {
+  afterEach(() => {
+    vi.mocked(listRestockVariantDemand).mockResolvedValue([])
+  })
+
+  it('lists a waited-for colour of a product that is in stock overall, with the full phone', async () => {
+    setViewportWidth(DESKTOP)
+    vi.mocked(listRestockDemand).mockResolvedValue([])
+    vi.mocked(listRestockVariantDemand).mockResolvedValue([
+      {
+        productId: 'p9',
+        productName: 'قميص أنمي',
+        productStock: 4,
+        restockAt: null,
+        variantId: 'v-red',
+        colorName: 'أحمر',
+        subscriberCount: 1,
+        subscribers: [{ username: 'سارة', phone: '+9647701112233' }],
+      },
+    ])
+    renderPage()
+    expect(await screen.findByText('ألوان ينتظرها زبائن')).toBeInTheDocument()
+    expect(await screen.findByText('قميص أنمي')).toBeInTheDocument()
+    expect(screen.getByText('أحمر')).toBeInTheDocument()
+    expect(screen.getByText('1 ينتظرون')).toBeInTheDocument()
+    const toggles = document.querySelectorAll<HTMLElement>('.ant-table-row-expand-icon')
+    await userEvent.click(toggles[toggles.length - 1]!)
+    await waitFor(() => expect(screen.getByText('سارة')).toBeInTheDocument())
+    expect(screen.getByText('07701112233')).toBeInTheDocument()
+  })
+
+  it('says so when no colour is waited for', async () => {
+    setViewportWidth(PHONE)
+    vi.mocked(listRestockDemand).mockResolvedValue([])
+    vi.mocked(listRestockVariantDemand).mockResolvedValue([])
+    renderPage()
+    expect(await screen.findByText('لا يوجد لونٌ ينتظره زبون حالياً.')).toBeInTheDocument()
   })
 })

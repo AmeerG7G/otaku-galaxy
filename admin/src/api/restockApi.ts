@@ -41,3 +41,21 @@ export async function listRestockDemand() {
 export async function setRestockAt(productId: string, restockAt: string | null) {
   return patch(`/admin/restock/${productId}/schedule`, { restockAt })
 }
+
+/** صفّ في «ألوان ينتظرها زبائن» (088): لونٌ غير متاح ومن ينتظره. */
+export interface RestockVariantDemandRow {
+  productId: string
+  productName: string
+  /** مخزون المنتج كله — قد يكون متوفراً بألوانٍ أخرى. */
+  productStock: number
+  restockAt: string | null
+  variantId: string
+  colorName: string
+  subscriberCount: number
+  subscribers: { username: string; phone: string }[]
+}
+
+/** طلب التوفر بالألوان — `GET /admin/restock/demand/variants` (صلاحية «طلبات التوفر»). */
+export async function listRestockVariantDemand() {
+  return get<RestockVariantDemandRow[]>('/admin/restock/demand/variants')
+}

@@ -84,6 +84,112 @@ export const restockService = {
     return restockRepo.listMine(db, userId);
   },
 
+  // ═══ اللون (088، STEP 76 D3) ═══
+
+  /**
+   * اشتراك بلونٍ بعينه — مكرَّر آمن.
+   *
+   * [CRITICAL] «متاح؟» يُقرأ بعد `FOR SHARE` على صفّ اللون — الحارس نفسه الذي
+   * يحرس اشتراك المنتج (CA-17a): حفظ المسؤول ورفضُ طلبٍ مقبول يكتبان مخزون
+   * اللون بـ`UPDATE` (قفل صفّ يتعارض مع `FOR SHARE`)، فإمّا أن ينتظر الاشتراك
+   * ثم يرى اللون عائداً فيُرفض، وإمّا أن ينتظر الحفظ ثم يجد الاشتراك فيُبلّغه.
+   *
+   * لا إشعار «الموعد المتوقَّع» هنا: الموعد في القاعدة للمنتج كله لا للون.
+   */
+  async subscribeVariant(userId: string, productId: string, variantId: string) {
+    return withTransaction(async (tx) => {
+      const { rows } = await tx.query<{
+        product_id: string;
+        variant_active: boolean;
+        stock: number;
+        product_active: boolean;
+        product_name: string;
+        color_name: string;
+      }>(
+        `SELECT v.product_id, v.is_active AS variant_active, v.stock,
+                p.is_active AS product_active, p.name AS product_name, v.color_name
+           FROM product_variants v JOIN products p ON p.id = v.product_id
+          WHERE v.id = $1
+          FOR SHARE OF v`,
+        [variantId],
+      );
+      const variant = rows[0];
+      // لونٌ من منتجٍ آخر يُعامل كلونٍ غير موجود — لا يُكشف لمن هو.
+      if (!variant || variant.product_id !== productId || !variant.product_active) {
+        throw Errors.notFound('اللون المختار غير موجود لهذا المنتج');
+      }
+      // لونٌ موقوف لا يُعرض للزبون ولا يُنتظر.
+      if (!variant.variant_active) {
+        throw Errors.notFound('اللون المختار غير موجود لهذا المنتج');
+      }
+      if (Number(variant.stock) > 0) {
+        throw Errors.conflict('هذا اللون متوفر حالياً — لا حاجة لإشعار عند توفره', 'VARIANT_IN_STOCK');
+      }
+
+      const result = await restockRepo.subscribeVariant(tx, userId, productId, variantId);
+      if (!result.alreadySubscribed) {
+        await adminEvents.restockRequest(tx, {
+          id: productId,
+          name: `${variant.product_name} — ${variant.color_name}`,
+        });
+      }
+      return { subscribed: true, alreadySubscribed: result.alreadySubscribed, variantId };
+    });
+  },
+
+  async unsubscribeVariant(userId: string, productId: string, variantId: string) {
+    const removed = await restockRepo.unsubscribeVariant(db, userId, productId, variantId);
+    return { subscribed: false, wasSubscribed: removed, variantId };
+  },
+
+  async mineVariants(userId: string) {
+    return restockRepo.listMineVariants(db, userId);
+  },
+
+  /** حالة الزبون على منتج — تُرفق بقراءة المنتج له وحده (`viewer`). */
+  async viewerState(userId: string, productId: string) {
+    return restockRepo.viewerState(db, userId, productId);
+  },
+
+  /**
+   * ألوانٌ صارت متاحة — **أيّاً كان المسار** (حفظ المسؤول، رفضُ طلبٍ مقبول،
+   * إعلان السعر، إعادة تفعيل اللون أو المنتج).
+   *
+   * يُستدعى داخل معاملة كل مسارٍ يغيّر مخزون الألوان أو حالتها، بعد الكتابة.
+   * يستهلك اشتراكات الألوان المتاحة ويكتب لكل مشترك إشعار `backInStock` باسم
+   * المنتج واللون بلغته، ولا يمسّ اشتراكات المنتج كله.
+   */
+  async variantsReturned(
+    tx: pg.PoolClient,
+    productId: string,
+    productNames: ProductNames,
+  ): Promise<number> {
+    const consumed = await restockRepo.consumeAvailableVariants(tx, productId);
+    if (consumed.length === 0) return 0;
+
+    const byLocale = await userRepo.groupIdsByLocale(tx, [...new Set(consumed.map((row) => row.userId))]);
+    let created = 0;
+    for (const [locale, ids] of byLocale) {
+      const wanted = new Set(ids);
+      for (const row of consumed) {
+        if (!wanted.has(row.userId)) continue;
+        const colour = locale === 'ckb' ? (row.colorNameCkb ?? row.colorNameAr) : row.colorNameAr;
+        created += await notificationRepo.createMany(tx, {
+          userIds: [row.userId],
+          type: 'backInStock',
+          ...PARAM_TEMPLATES.backInStock[locale](`${pickProductName(productNames, locale)} — ${colour}`),
+          productId,
+        });
+      }
+    }
+    return created;
+  },
+
+  /** طلب التوفر بالألوان من وجهة الإدارة. */
+  async adminVariantDemand() {
+    return restockRepo.adminVariantDemand(db);
+  },
+
   /** طلبات إعادة التوفر من وجهة الإدارة. */
   async adminDemand() {
     return restockRepo.adminDemand(db);

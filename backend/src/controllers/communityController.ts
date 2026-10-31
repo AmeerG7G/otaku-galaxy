@@ -15,6 +15,7 @@ import {
   findReviewQuerySchema,
   notificationIdParamSchema,
   productIdParamSchema,
+  productReviewsQuerySchema,
   resubmitReviewSchema,
   rewardLevelParamSchema,
   reviewIdParamSchema,
@@ -64,7 +65,8 @@ export const communityController = {
 
   listProductReviews: (async (req, res) => {
     const { productId } = parse(productIdParamSchema, req.params);
-    return ok(res, await reviewsService.listApprovedForProduct(productId));
+    const { page, limit } = parse(productReviewsQuerySchema, req.query);
+    return ok(res, await reviewsService.listApprovedForProduct(productId, page, limit));
   }) as RequestHandler,
 
   listCommunityPhotos: (async (req, res) => {

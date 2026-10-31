@@ -5,17 +5,27 @@
  * app_dimens.dart). Layout uses logical properties (inline-start/end) so RTL
  * is the native direction, not an override. Every width works down to 320px
  * with no horizontal scrolling; touch targets are at least 44px.
+ *
+ * Themes: the light colours below; the dark ones follow the device setting
+ * (prefers-color-scheme) unless the shopper chose a theme, which the server
+ * writes as `data-theme` on <html> from the `og_theme` cookie — no script.
+ * The two dark blocks must stay identical, and every text/fill pair meets
+ * WCAG AA 4.5:1 in both themes (`theme-tokens.test.ts`).
  */
 
 :root {
+  color-scheme: light;
   --primary: #8b5cf6;
-  --primary-dark: #6d3bc0;
   --primary-pale: #ede7fe;
   --secondary: #f0459b;
-  --secondary-pale: #fde3ef;
   --accent: #f6c144;
-  --indigo: #3b2fa8;
-  --success: #22b07d;
+  /* Brand colour as text (prices, wordmark, active navigation) and as a fill under white text. */
+  --brand-text: #6d3bc0;
+  --brand-fill: #6d3bc0;
+  --on-brand: #ffffff;
+  /* The CTA keeps the app's pink → violet, with both ends dark enough for white text. */
+  --cta-start: #d0307f;
+  --cta-end: #6d3bc0;
   --success-text: #0f7a55;
   --success-pale: #e3f7ec;
   --warning-text: #965a0c;
@@ -30,6 +40,8 @@
   --on-surface: #180f30;
   --on-surface-variant: #5f5680;
   --outline: rgba(28, 16, 58, 0.14);
+  --skeleton: #ebe6f7;
+  --shadow: 0 6px 20px rgba(51, 44, 140, 0.08);
   --radius-sm: 12px;
   --radius-md: 16px;
   --radius-lg: 22px;
@@ -42,8 +54,61 @@
   --header-height: 60px;
   --bottom-nav-height: 64px;
   --tap: 44px;
-  --shadow: 0 6px 20px rgba(51, 44, 140, 0.08);
-  --cta: linear-gradient(135deg, var(--secondary), var(--primary));
+  --logo-size: 36px;
+  --cta: linear-gradient(135deg, var(--cta-start), var(--cta-end));
+}
+
+/* Dark: the logo's own night-sky ground as the page, lighter brand tints as text. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --primary: #a78bfa;
+    --primary-pale: #2e2366;
+    --secondary: #f472b6;
+    --brand-text: #c4b5fd;
+    --brand-fill: #7c4dd6;
+    --success-text: #6ee7b7;
+    --success-pale: #12382b;
+    --warning-text: #fcd34d;
+    --warning-pale: #3d2c0c;
+    --error-text: #fda4af;
+    --error-pale: #3f1420;
+    --info-text: #93c5fd;
+    --info-pale: #0f2a44;
+    --surface: #1b1440;
+    --surface-variant: #241b52;
+    --background: #0f0b24;
+    --on-surface: #f1edff;
+    --on-surface-variant: #b9b0d9;
+    --outline: rgba(255, 255, 255, 0.14);
+    --skeleton: #2a2160;
+    --shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --primary: #a78bfa;
+  --primary-pale: #2e2366;
+  --secondary: #f472b6;
+  --brand-text: #c4b5fd;
+  --brand-fill: #7c4dd6;
+  --success-text: #6ee7b7;
+  --success-pale: #12382b;
+  --warning-text: #fcd34d;
+  --warning-pale: #3d2c0c;
+  --error-text: #fda4af;
+  --error-pale: #3f1420;
+  --info-text: #93c5fd;
+  --info-pale: #0f2a44;
+  --surface: #1b1440;
+  --surface-variant: #241b52;
+  --background: #0f0b24;
+  --on-surface: #f1edff;
+  --on-surface-variant: #b9b0d9;
+  --outline: rgba(255, 255, 255, 0.14);
+  --skeleton: #2a2160;
+  --shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
 }
 
 *,
@@ -186,12 +251,22 @@ textarea {
   font-family: var(--font-heading), sans-serif;
   font-weight: 700;
   font-size: 1.2rem;
-  color: var(--primary-dark);
+  color: var(--brand-text);
   text-decoration: none;
   white-space: nowrap;
   min-height: var(--tap);
   display: inline-flex;
   align-items: center;
+  gap: var(--space-2);
+}
+
+/* The square mark with its own ground, rounded here only (0.22 × size, the app's
+   logoCornerRatio) — the image file itself is never edited. */
+.logo {
+  inline-size: var(--logo-size);
+  block-size: var(--logo-size);
+  border-radius: calc(var(--logo-size) * 0.22);
+  flex: none;
 }
 
 .search-form {
@@ -236,6 +311,11 @@ textarea {
   background: var(--primary-pale);
 }
 
+.desktop-nav a[aria-current='page'] {
+  background: var(--primary-pale);
+  color: var(--brand-text);
+}
+
 /* ── Bottom navigation (mobile, like the app) ── */
 
 .bottom-nav {
@@ -264,7 +344,7 @@ textarea {
 }
 
 .bottom-nav a[aria-current='page'] {
-  color: var(--primary-dark);
+  color: var(--brand-text);
 }
 
 .bottom-nav svg {
@@ -298,7 +378,7 @@ textarea {
 
 .btn-primary {
   background: var(--cta);
-  color: #fff;
+  color: var(--on-brand);
   border: 0;
 }
 
@@ -472,9 +552,9 @@ textarea {
 }
 
 .chip[aria-current='true'] {
-  background: var(--primary-dark);
-  border-color: var(--primary-dark);
-  color: #fff;
+  background: var(--brand-fill);
+  border-color: var(--brand-fill);
+  color: var(--on-brand);
 }
 
 /* ── Product grid & card ── */
@@ -537,7 +617,7 @@ textarea {
 
 .price {
   font-weight: 700;
-  color: var(--primary-dark);
+  color: var(--brand-text);
   white-space: nowrap;
 }
 
@@ -572,8 +652,8 @@ textarea {
   position: absolute;
   inset-block-start: var(--space-2);
   inset-inline-start: var(--space-2);
-  background: var(--secondary);
-  color: #fff;
+  background: var(--cta-start);
+  color: var(--on-brand);
   border-radius: 999px;
   padding: 2px 10px;
   font-size: 0.8rem;
@@ -612,9 +692,16 @@ textarea {
 .pagination {
   display: flex;
   justify-content: center;
+  align-items: center;
   gap: var(--space-3);
   margin-block: var(--space-5);
   flex-wrap: wrap;
+}
+
+/* The current page is a label, not a control. */
+.pagination__current {
+  font-weight: 700;
+  color: var(--on-surface-variant);
 }
 
 /* ── Product page ── */
@@ -994,4 +1081,371 @@ textarea {
   min-height: 44px;
   padding-inline: var(--space-4);
   font-weight: 700;
+}
+
+/* ── Footer: theme choice ── */
+
+.site-footer {
+  margin-block-start: var(--space-6);
+  padding-block-start: var(--space-4);
+  border-block-start: 1px solid var(--outline);
+  display: grid;
+  justify-items: center;
+  gap: var(--space-3);
+}
+
+.site-footer .app-download {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.theme-switch {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+.theme-switch legend {
+  float: inline-start;
+  margin-inline-end: var(--space-2);
+  font-weight: 700;
+  color: var(--on-surface-variant);
+}
+
+.theme-switch .chip {
+  position: relative;
+  min-height: var(--tap);
+  margin: 0;
+  cursor: pointer;
+}
+
+.theme-switch input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.theme-switch .chip:has(input:checked) {
+  background: var(--brand-fill);
+  border-color: var(--brand-fill);
+  color: var(--on-brand);
+}
+
+.theme-switch .chip:has(input:focus-visible) {
+  outline: 3px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* ── Loading skeletons (route changes wait for one server render) ── */
+
+.skeleton {
+  display: block;
+  background: var(--skeleton);
+  border-radius: var(--radius-sm);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .skeleton {
+    animation: skeleton-pulse 1.4s ease-in-out infinite;
+  }
+}
+
+@keyframes skeleton-pulse {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.skeleton--title {
+  inline-size: min(220px, 60%);
+  block-size: 28px;
+  margin-block-end: var(--space-4);
+}
+
+.skeleton--chips {
+  block-size: 40px;
+  margin-block-end: var(--space-4);
+}
+
+.skeleton--media {
+  aspect-ratio: 1 / 1;
+  border-radius: 0;
+}
+
+.skeleton--line {
+  block-size: 14px;
+  margin-block: var(--space-2);
+}
+
+.skeleton--short {
+  inline-size: 50%;
+}
+
+.skeleton--block {
+  block-size: 96px;
+  border-radius: var(--radius-md);
+}
+
+.skeleton--gallery {
+  aspect-ratio: 1 / 1;
+  border-radius: var(--radius-lg);
+}
+
+.social-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+.social-links .chip {
+  min-height: var(--tap);
+}
+
+/* ═══ STEP 76 — reviews, favourites, alerts, account ═══ */
+
+.btn-small {
+  min-height: var(--tap);
+  padding: 0 var(--space-3);
+  font-size: 0.9rem;
+}
+
+.btn-ghost {
+  background: transparent;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.choice {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--tap);
+}
+
+.file-pick {
+  position: relative;
+}
+
+.favorite {
+  margin-block-start: var(--space-3);
+}
+
+.favorite__button svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+}
+
+.favorite__button--on {
+  color: var(--secondary);
+  border-color: var(--secondary);
+}
+
+.favorite__button--on svg {
+  fill: currentColor;
+}
+
+.restock {
+  margin-block: var(--space-3);
+}
+
+.restock-colors,
+.review-list,
+.review-slots,
+.level-list,
+.notification-list,
+.alert-list,
+.account-links ul,
+.activity-list,
+.rules {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+
+.restock-color {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.restock-color__name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.stars {
+  display: inline-flex;
+  letter-spacing: 1px;
+  direction: ltr;
+}
+
+.stars__on {
+  color: var(--accent);
+}
+
+.stars__off {
+  color: var(--outline);
+}
+
+.reviews {
+  margin-block-start: var(--space-6);
+}
+
+.reviews__summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 700;
+}
+
+.review__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.review__comment {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.review__photos {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.review__photos li {
+  display: grid;
+  gap: var(--space-1);
+  justify-items: center;
+}
+
+.review__photos img {
+  width: 88px;
+  height: 88px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  background: var(--skeleton);
+}
+
+.star-input {
+  display: flex;
+  gap: var(--space-1);
+  direction: ltr;
+  justify-content: flex-end;
+}
+
+.star-input label {
+  display: inline-grid;
+  place-items: center;
+  min-width: var(--tap);
+  min-height: var(--tap);
+  font-size: 1.75rem;
+  color: var(--outline);
+  cursor: pointer;
+}
+
+.star-input input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+
+.star-input .star-input__on {
+  color: var(--accent);
+}
+
+.star-input label:focus-within {
+  outline: 2px solid var(--brand-text);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--surface-variant);
+  flex: none;
+}
+
+.avatar--empty {
+  display: inline-block;
+}
+
+.account-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.account-links a {
+  display: flex;
+  align-items: center;
+  min-height: var(--tap);
+  font-weight: 700;
+}
+
+.points-balance strong {
+  font-size: 2rem;
+  color: var(--brand-text);
+}
+
+.progress {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--surface-variant);
+  overflow: hidden;
+}
+
+.progress span {
+  display: block;
+  height: 100%;
+  background: var(--cta);
+}
+
+.level--reached {
+  border-color: var(--brand-fill);
+}
+
+.amount-positive {
+  color: var(--success-text);
+}
+
+.amount-negative {
+  color: var(--error-text);
+}
+
+.notification--unread {
+  border-inline-start: 4px solid var(--brand-fill);
+}
+
+.h3 {
+  font-size: 1rem;
+  margin: 0;
 }

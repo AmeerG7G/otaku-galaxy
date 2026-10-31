@@ -42,6 +42,8 @@ export interface ApiRequest {
 }
 
 const TIMEOUT_MS = 10_000;
+// A 5 MB photo over a slow uplink is still one request.
+const UPLOAD_TIMEOUT_MS = 60_000;
 
 async function shopperIpHeaders(): Promise<Record<string, string>> {
   const secret = bffSharedSecret();
@@ -96,6 +98,33 @@ export async function apiFetch<T>(path: string, request: ApiRequest = {}): Promi
     throw new ApiError(503, 'UPSTREAM_UNAVAILABLE', 'تعذّر الاتصال بالخادم — حاول بعد قليل');
   }
 
+  return readEnvelope<T>(response);
+}
+
+/**
+ * One image to the API's upload route (`POST /uploads`, multipart field
+ * `file`). The API checks the bytes, the size and the purpose; this only
+ * carries them with the shopper's token and signed IP.
+ */
+export async function apiUpload<T>(path: string, form: FormData, token: string): Promise<{ data: T; message: string | null; headers: Headers }> {
+  const headers: Record<string, string> = { Accept: 'application/json', 'Accept-Language': 'ar', Authorization: `Bearer ${token}` };
+  Object.assign(headers, await shopperIpHeaders());
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl()}${path}`, {
+      method: 'POST',
+      headers,
+      body: form,
+      signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
+      cache: 'no-store',
+    });
+  } catch {
+    throw new ApiError(503, 'UPSTREAM_UNAVAILABLE', 'تعذّر الاتصال بالخادم — حاول بعد قليل');
+  }
+  return readEnvelope<T>(response);
+}
+
+async function readEnvelope<T>(response: Response): Promise<{ data: T; message: string | null; headers: Headers }> {
   let envelope: Envelope<T> | null = null;
   if (response.status !== 204) {
     try {

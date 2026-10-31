@@ -12259,3 +12259,124 @@ Open limit (pre-existing, STEP 74): a colour **without** `colorHex` shows its im
 decoded at full size — 6 such colours = 6 full-size downloads on open (+176 MB measured). Proposed,
 not implemented: decode the chip at its display size (`cacheWidth`), at the cost of one separate
 download when that colour's gallery page is shown.
+
+# STEP 76 — WEB STORE: FULL CUSTOMER PARITY — SCOPE, BACKEND GAP ANALYSIS, ROADMAP (2026-10-31)
+
+**Status:** specification only. No code, migration or deployment in this step. Implementation starts
+stage by stage, each after the owner approves it.
+
+**Owner decision (2026-10-31).** This replaces the STEP 68 web-store README list "Not included yet:
+profile and password editing; favourites, reviews and points". The web store must be a **fully
+functional** store. Important customer interactions must not stay exclusive to the mobile app.
+
+Binding rules:
+- One system per domain. The web store calls the same API services as the app; there is no second
+  loyalty, review, notification or inventory system.
+- No UI-only demonstrations: every control on the web performs the real API action.
+- No invented rules. Reward rules, point values, discount eligibility and notification behaviour
+  come from the backend.
+- Missing backend capability is built in the backend through `dev → staging → prod`.
+- Checkout is **unchanged**. Delivery address and phone are never prefilled from previous orders.
+- Staging and development only, until the normal release.
+
+## 76.1 Required features and the backend that already exists
+
+Audited on `origin/dev` `3ace371`. The "Backend" column is what exists today. The app column names
+the Flutter feature that already uses the same endpoints, which is the behaviour the web must match.
+
+| # | Feature | Backend today | App counterpart | Web work | Backend work |
+|---|---|---|---|---|---|
+| 1 | Ratings | `products.rating`/`review_count` maintained by moderation (migration 050); `sort=rating` (`catalogRepo` `p.rating DESC NULLS LAST, p.review_count DESC`) | product cards, product detail | Add `rating`/`reviewCount` to the web `Product` type. Show both on cards and the product page; keep the sort | none |
+| 1 | Approved reviews (read) | `GET /catalog/products/:id/reviews`, approved only, public | product detail reviews | Review list on the product page | **open:** the list has no `LIMIT` (`reviewsRepo.listApprovedForProduct`). Paginate before it grows |
+| 1 | Submit and resubmit reviews | `POST /reviews` (owner only, order `COMPLETED`, product in the order, one per user and product `uq_reviews_user_product`), `PATCH /reviews/:id` (only while `rejected`, conditional update), `GET /reviews`, `GET /reviews/find`; photos via `POST /uploads` with `purpose=review`, `assertOwnedPhotos` (uploaded by the caller); moderation by admin with a mandatory rejection reason; points +1 comment / +5 flat for photos (max 5), capped per order (`reviewPointsForOrder`) | `reviews/` (RateOrderScreen), order detail «قيّم طلبك» keyed on `reviewableProductCount` | From order detail and «تقييماتي»: rating, comment, photos, resubmit after rejection, pending/approved/rejected state with the reason | none. **Needs a BFF upload proxy** (§76.3) |
+| 2 | Favourites | `GET/POST /favorites`, `DELETE /favorites/:productId` (server-side, so the same list on every device) | `favorites/` (FavoritesCubit loads the list from the server) | Toggle on the product page, «المفضلة» page | **small (B1):** the product read has no `isFavorite` for the viewer (`favoriteRepo.isFavorite` exists, unused). Add viewer flags to `GET /catalog/products/:id` when authenticated (`optionalAuthenticate` is already on `/api/catalog`) |
+| 3 | Points, level, rewards | `GET /points` returns balance, activity (ledger), ladder, level, next level, progress and rewards in one call; `POST /points/rewards/:levelKey/claim`: balance read on the server, `REWARD_LOCKED`, idempotent (repeat returns the same row), row and notification in one transaction; discount reserved `FOR UPDATE` inside order creation and consumed once; gifts linked by a partial unique index; ledger has no stored balance (balance = `SUM`) | `points/` (Galaxy Points screen, explainer text) | Points page: balance, level and progress, ladder, activity history, rewards with state (locked, unlocked, claimed, consumed or delivered) and a claim button; result message from the API | none |
+| 4 | Birthday | `GET/POST /birthday`: unlocked only after the first **received** order (`BIRTHDAY_LOCKED`); **set once, never changed** (`BIRTHDAY_ALREADY_SET`, conditional insert); day validated per month (29 Feb allowed, no year stored); discount once per store-calendar year (`birthday_discount_usage` unique `(user_id, used_year)`), applied by the server quote and order | `birthday/` | Account section: locked, set-once form, saved date, "used this year" status | **D1:** admin-only correction with an audit entry (`PATCH /api/admin/customers/:id/birthday`, permission `birthdays`) |
+| 5 | Profile | `PATCH /auth/me` (username, gender, avatar, preferredLanguage); avatar must be the caller's own upload (`assertOwnedAvatar`) | `account/`, `settings/` | Edit name, gender and avatar. The web never sends `preferredLanguage` (Kurdish on the web is later; it drives the app's and notifications' language) | none. Avatar uses the BFF upload proxy |
+| 5 | Password | `PATCH /auth/me/password`: wrong current password → **400** `INVALID_CURRENT_PASSWORD` (not 401); bumps `token_version` (every older token, the app's included, stops working) and returns `{token, user}` | `change_password_usecase` saves the new session | Form; the BFF **re-seals `__Host-og_session` with the returned token** in the same response | none |
+| 6 | Notifications inbox | `GET /notifications` (`{items, unread}`), `POST /notifications/:id/read`, `POST /notifications/read-all`, `POST /notifications/:id/opened` (tracking, only when enabled in `/catalog/settings`). Rows are written by real backend events only | `notifications/` | Inbox with unread state, mark one and mark all as read, links to the order or product | none |
+| 6 | Push to the browser | `device_tokens.platform` already accepts `web`; the FCM v1 sender sends `webpush` headers; `push_outbox` with preferences checked at send time; `GET/PATCH /notifications/prefs` | app uses FCM via dart-defines | Service worker, Firebase JS messaging, permission prompt, register/unregister through the BFF, preferences in settings | **Deferred (D2).** B3: customer device tokens are not bound to a session. A token left after logout on a shared browser would push the previous customer's notifications. Mirror the admin rule (migration 082): expire with the session, remove at logout. Also needs a Firebase project (FCM Gate 1) |
+| 7 | Restock alerts (product) | `POST /restock-subscriptions` (refused when in stock `PRODUCT_IN_STOCK`; `FOR SHARE` against the stock-return race; repeat-safe `alreadySubscribed`), `DELETE /restock-subscriptions/:productId`, `GET /restock-subscriptions/mine`; alert sent and subscriptions consumed by `restockService.stockReturned` on every 0→n path (admin save, approved-order rejection), deferred while unpriced (084) | `restock/` | «أعلمني عند التوفر» on out-of-stock products, my subscriptions list, cancel | none for whole products. B1 adds the viewer's subscription state to the product read |
+| 7 | Restock alerts (colour) | **Not supported.** Subscriptions are per product only; `stockReturned` fires only when the product's **total** stock goes 0→n. A colour that is sold out while others are in stock cannot be subscribed to, and its return triggers nothing | — | Per-colour button | **B2:** migration (nullable `variant_id`, uniqueness per user+product+colour), subscribe validation against the colour's stock and activity, a colour-level `stockReturned` called from every path that raises a colour's stock from 0 (admin colour stock, rejection release), colour name in the alert text (ar + ckb templates), admin «طلبات التوفر» per colour. The app keeps working on product-level subscriptions |
+| 8 | Theme | not a backend concern | app follows the system | Follow the device by default; manual light/dark kept in an `og_theme` cookie, read on the server (no inline script, CSP unchanged) | none |
+
+## 76.2 Rules the web must not change
+
+- **Rewards are thresholds, not purchases.** Reaching `requiredPoints` unlocks a level's reward;
+  claiming it **does not deduct points** (`loyaltyRewardsService`). The ladder is fixed in
+  `domain/galaxyPoints.ts`: 100 → 3 % (cap 5,000), 250 → gift 5,000, 400 → 5 % (cap 10,000),
+  600 → gift 10,000, 800 → 10 % (cap 20,000), 1,000 → gift 25,000.
+- **Earning:**
+  - 5 points per 10,000 IQD of products after discount, delivery excluded. They are awarded when
+    the order is received (`order_received`; there is no separate flat award).
+  - Per approved review: +1 for a qualifying comment and +5 flat for photos (at most 5 photos),
+    within a per-order review cap.
+- The web shows these from `GET /points`; it never computes eligibility or amounts.
+- **Birthday is set once** and cannot be edited by the customer or the dashboard.
+- **Reviews:** only for products in the customer's own completed order; one per product; only a
+  rejected review can be edited; photos must be the caller's own uploads.
+- Points, rewards and the birthday discount are applied only by the server quote and order
+  (`orderDiscounts` + `priceOrder`); the web's checkout already shows them from the quote.
+
+## 76.3 Web-store platform work shared by several features
+
+- **BFF routes:** one allowlisted handler per new customer endpoint, through `handleBff` (Origin
+  check, session, API errors passed through). Still no generic proxy and nothing under `/api/admin`.
+- **Session re-seal:** a helper that writes a new sealed cookie from an API `{token, user}` (password
+  change) or updates the stored display name (profile edit).
+- **Upload proxy:** `POST /bff/uploads` streams one image to `POST /api/uploads` with the session
+  token. Requirements:
+  - a hard body cap equal to the API's limit, enforced before buffering;
+  - same-origin only;
+  - `purpose` limited to `review` and `avatar`;
+  - the API stays the only type authority (magic bytes);
+  - returns the stored `/uploads/…` ref only.
+
+  It needs a security review and e2e coverage: CSRF, oversize, a non-image labelled as an image,
+  anonymous.
+- **API budget:** every page stays at one to three API calls (STEP 68 R1/R2-1). Per-user state is
+  read once per page (B1), not once per card.
+
+## 76.4 Roadmap (one PR each, in this order)
+
+| Stage | Content | Depends on | Size | Tests |
+|---|---|---|---|---|
+| W1 Foundations | Dark and light tokens (AA in both, tested), logo and icons (byte copies), shared navigation with active state, loading skeletons, strings module, **theme (feature 8 complete)** | — | M | contrast unit test, logo SHA test, e2e widths in both themes, no CSP violation |
+| W2 Components | Button, Field, Card, Alert, Price, LineItem, AmountSummary, PageHeader, EmptyState; no behaviour change | W1 | M | same e2e, same API call counts |
+| W3 BFF platform | Session re-seal helper, upload proxy, BFF route conventions | W1 | M | unit tests; e2e CSRF and anonymous for every new route; oversize and mislabelled upload |
+| B1 Backend | Viewer flags on the authenticated product read: `isFavorite`, product and colour restock subscription | — | S | API tests: anonymous gets no flags; another customer's state is never visible; flags match after toggling from a second token (cross-device) |
+| W4 Catalog | Ratings on cards and the product page, approved reviews list, rating sort kept, pagination label, search query kept, contact links from `/catalog/settings` | W2 | M | e2e: displayed rating equals API value; sort order equals API order |
+| W5 Favourites | Toggle on the product page, «المفضلة» page | W3, B1 | S | e2e: add on the web → `GET /favorites` with a second token (the app) sees it, and the reverse; remove; inactive product gives the API error |
+| W6 Account | Profile (name, gender, avatar), password change with re-seal, birthday, points and rewards page with claim | W3 | L | e2e: password change keeps the web session and makes the old token 401; wrong current password stays signed in; birthday locked, set, second set refused; double claim gives one redemption; locked reward refused; balance equals the ledger sum |
+| W7 Reviews | Rate from order detail (reviewable products), photos, resubmit after rejection, «تقييماتي» | W3, W6 | L | e2e: not-completed order refused; second review refused; foreign photo ref refused; admin approval → rating on the product and points in the ledger |
+| W8 Notifications inbox | Inbox, read and read-all, links, unread count on the account page | W2 | M | e2e: notification created by a real event (order status change, reward claim) appears; read state shared with a second token |
+| B2 Backend | Colour-level restock subscriptions and alerts (migration 088) | B1 | L | API: subscribe refused for an in-stock colour; duplicate is a no-op; colour 0→n alerts only that colour's subscribers; product-level subscribers still alerted on total 0→n; rejection release path; race test like CA-17a |
+| W9 Restock | «أعلمني عند التوفر» for a product and a colour, my subscriptions, cancel | B1, B2 | M | e2e: subscribe, admin restock → notification in the inbox, subscription consumed |
+| B3 + W10 Web push | Session-bound customer device tokens (backend), service worker, permission prompt, preferences | W8, **Firebase project** | L | device registration bound to the session; logout removes it; preferences honoured at send; real delivery only after Firebase exists |
+| W11 Hardening | Real-device checklist §68.7, a11y pass, 429 page, image sizes | all | M | manual sign-off on staging |
+
+Gates on every PR: backend `vitest` (fresh DB) and the admin-route completeness ratchet;
+web typecheck, lint, vitest, build, Playwright (8 widths, budget spec); no merge or deploy without
+owner approval.
+
+## 76.5 Owner decisions (final, 2026-10-31)
+
+These supersede the earlier answers recorded in the audit report.
+
+| # | Decision |
+|---|---|
+| D1 | **Birthday correction is admin-only.** A customer sets the birthday once, under the existing rules (after the first received order, `BIRTHDAY_LOCKED`, `BIRTHDAY_ALREADY_SET`). Only an admin with the `birthdays` permission may correct a saved birthday. Every correction writes an `admin_audit` entry recording the old and new day/month. The annual discount rule is unchanged: `birthday_discount_usage` stays unique per `(user_id, used_year)`, so a correction can never grant a second discount in the same year. |
+| D2 | **In-site notifications inbox now; browser push deferred.** Push stays a future phase after Firebase registration, FCM integration, a session-bound device-token lifecycle and logout isolation (B3). |
+| D3 | **Colour-level restock in the backend and on the website now; app UI later.** The app keeps product-level subscriptions. Those must keep working unchanged. |
+| D4 | **Collections are excluded** from the first website release. The app's collections are untouched. |
+| D5 | **Favourite state only on the product page and the favourites page.** There is no per-card or per-listing favourite read. |
+
+Deferred, recorded as future work:
+- browser push and FCM (B3 + W10);
+- website Collections;
+- the app UI for colour-level restock alerts.
+
+Release path for this work: feature branches → PRs into `dev`, with CI running on PRs into `dev`
+from this step → promotion PR `dev → staging` → Staging deployment with the existing compose
+mechanism (`deploy/README.md`, `docs/staging/staging-store-deploy-plan.md`). There is no
+Production change.

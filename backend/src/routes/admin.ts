@@ -77,6 +77,7 @@ adminRoutes.delete('/banners/:id', can('banners'), adminController.deleteBanner)
 
 // ── طلبات «أخبرني عند توفره» ──
 adminRoutes.get('/restock/demand', can('restock'), adminController.restockDemand);
+adminRoutes.get('/restock/demand/variants', can('restock'), adminController.restockVariantDemand);
 adminRoutes.patch('/restock/:id/schedule', can('restock', 'products'), adminController.scheduleRestock);
 
 adminRoutes.get('/governorates', can('delivery'), adminController.listGovernorates);
@@ -112,6 +113,7 @@ adminRoutes.get('/notifications/stats', can('notifications'), adminController.no
 adminRoutes.get('/notifications', can('notifications'), adminController.listNotifications);
 
 adminRoutes.get('/customers/birthdays', can('birthdays'), adminController.listBirthdayCustomers);
+adminRoutes.patch('/customers/:id/birthday', can('birthdays'), adminController.correctCustomerBirthday);
 adminRoutes.patch('/users/:id/active', can('customers'), adminController.setUserActive);
 
 // ===== ملفّ الزبون وطلبات الحساب (إنشاء / إعادة تعيين) =====

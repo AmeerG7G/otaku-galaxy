@@ -1,28 +1,25 @@
+import { Suspense } from 'react';
 import Link from '@/components/Link';
+import { SearchBox } from './SearchBox';
+import { DesktopNav } from './SiteNav';
 
-/** Site header: text wordmark (no character artwork), search, desktop navigation. */
+/**
+ * Site header: the store's square mark (the app's own logo file, rounded by
+ * CSS only) beside the wordmark, search, desktop navigation. No character art.
+ */
 export function Header({ signedIn }: { signedIn: boolean }) {
   return (
     <header className="site-header">
       <div className="site-header__inner">
         <Link href="/" className="wordmark">
+          {/* eslint-disable-next-line @next/next/no-img-element -- a 36px brand mark served from this site */}
+          <img className="logo" src="/icon.png" alt="" width={36} height={36} />
           مجرة الأوتاكو
         </Link>
-        <form className="search-form" action="/search" method="get" role="search">
-          <label htmlFor="site-search" className="visually-hidden">
-            ابحث عن منتج
-          </label>
-          <input id="site-search" name="q" type="search" placeholder="دوّر على أي منتج…" maxLength={120} />
-          <button type="submit" className="btn">
-            بحث
-          </button>
-        </form>
-        <nav className="desktop-nav" aria-label="التنقّل الرئيسي">
-          <Link href="/">الرئيسية</Link>
-          <Link href="/categories">الأقسام</Link>
-          <Link href="/cart">السلة</Link>
-          <Link href={signedIn ? '/account' : '/login'}>{signedIn ? 'حسابي' : 'تسجيل الدخول'}</Link>
-        </nav>
+        <Suspense fallback={null}>
+          <SearchBox />
+        </Suspense>
+        <DesktopNav signedIn={signedIn} />
       </div>
     </header>
   );

@@ -80,6 +80,7 @@ customerRoutes.post('/tracking/share', trackingController.share);
 
 // ── «أخبرني عند توفره» ──
 customerRoutes.get('/restock-subscriptions/mine', restockController.mine);
+customerRoutes.get('/restock-subscriptions/mine/variants', restockController.mineVariants);
 customerRoutes.post('/restock-subscriptions', restockController.subscribe);
 customerRoutes.delete('/restock-subscriptions/:productId', restockController.unsubscribe);
 
