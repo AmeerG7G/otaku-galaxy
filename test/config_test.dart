@@ -74,6 +74,30 @@ void main() {
     expect(AppConfig.staging.envName, 'staging');
   });
 
+  // ── الإنتاج — مضيفه الحقيقي، ولا أثر لمضيف اختبار أو تطوير أو نائب ──
+
+  test('[PROD] الإنتاج يشير إلى مضيفه الحقيقي بلا dart-define', () {
+    expect(
+      AppConfig.production.effectiveApiBaseUrl,
+      'https://api.otakugalaxystore.com/api',
+    );
+    expect(AppConfig.production.usesPlaceholderApi, isFalse);
+    expect(AppConfig.production.enableLogging, isFalse);
+  });
+
+  test('[PROD] عناوين الإنتاج لا تحمل مضيف اختبار أو تطوير أو نائباً', () {
+    final forbidden = RegExp(
+      r'staging|\.example|localhost|127\.0\.0\.1|10\.0\.2\.2|192\.168\.|^http:',
+    );
+    for (final url in [
+      AppConfig.production.apiBaseUrl!,
+      AppConfig.production.publicSiteOrigin,
+    ]) {
+      expect(forbidden.hasMatch(url), isFalse, reason: url);
+      expect(Uri.parse(url).host, endsWith('otakugalaxystore.com'), reason: url);
+    }
+  });
+
   test('[STEP 64][regression] bootstrap يمرّر إعدادات النكهة إلى الحقن', () {
     // كان `di.init()` بلا إعدادات فيسجّل التطوير لكل نكهة: نسخة staging تقول
     // `dev` وتخاطب 10.0.2.2. قراءة المصدر لأن bootstrap يشغّل runApp.
