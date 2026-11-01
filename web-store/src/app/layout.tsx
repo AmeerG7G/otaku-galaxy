@@ -5,6 +5,7 @@ import { Header } from '@/components/Header';
 import { BottomNav } from '@/components/SiteNav';
 import { SiteFooter } from '@/components/SiteFooter';
 import { getPlayStoreLink, getSocialLinks } from '@/lib/catalog';
+import { siteOrigin } from '@/lib/config';
 import { readSession } from '@/lib/server-session';
 import { parseTheme, THEME_COOKIE } from '@/lib/theme';
 import './globals.css';
@@ -25,10 +26,16 @@ const tajawal = localFont({
   display: 'swap',
 });
 
-export const metadata: Metadata = {
-  title: { default: 'مجرة الأوتاكو', template: '%s | مجرة الأوتاكو' },
-  description: 'متجر مجرة الأوتاكو — منتجات الأنمي في العراق، الدفع عند الاستلام.',
-};
+// A function, not a constant: SITE_ORIGIN is read at request time (the same image
+// serves staging and production), so canonical and Open Graph URLs resolve to the
+// origin this deployment actually answers on.
+export function generateMetadata(): Metadata {
+  return {
+    metadataBase: new URL(siteOrigin()),
+    title: { default: 'مجرة الأوتاكو', template: '%s | مجرة الأوتاكو' },
+    description: 'متجر مجرة الأوتاكو — منتجات الأنمي في العراق، الدفع عند الاستلام.',
+  };
+}
 
 export const viewport: Viewport = {
   width: 'device-width',
