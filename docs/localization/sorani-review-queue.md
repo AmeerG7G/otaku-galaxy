@@ -18,7 +18,7 @@
 > `dart run tool/l10n/render_sorani_review_queue.dart` — لا يُحرَّر باليد.
 
 
-**المجموع:** 544 · عالي 129 · متوسّط 261 · منخفض 154
+**المجموع:** 548 · عالي 130 · متوسّط 264 · منخفض 154
 
 
 ## نتيجة المراجعة الآلية
@@ -29,7 +29,7 @@
 | NEEDS_REVISION | 13 | عطبٌ موضوعي (نحو/صرف/إملاء/معنى) |
 | QUESTIONABLE | 11 | صحيح لكن قابل للتحسين أو مقيَّد بقرار خارجي |
 | GOOD | 87 | لا مأخذ في المراجعة الآلية |
-| NOT_REVIEWED | 432 | خارج نطاق الجولة الآلية (لم يُقرأ آلياً بعد) |
+| NOT_REVIEWED | 436 | خارج نطاق الجولة الآلية (لم يُقرأ آلياً بعد) |
 
 ## الطابور
 
@@ -172,410 +172,414 @@
 | 135 | `claimGift` | HIGH | **NOT_REVIEWED** | تفعيل الهدية | چالاک کردنی دیاری | — | لم يمرّ على جولة المراجعة الآلية بعد. | زر تفعيل هدية المستوى | — | **NEEDS_NATIVE_REVIEW** | PENDING |
 | 136 | `levelGiftActivatedInOrder` | HIGH | **NOT_REVIEWED** | هدية المستوى مفعلة وستصل مع طلبك | دیارییەکەی ئاستەکە چالاک کراوە و لەگەڵ داواکارییەکەتەوە دەگات | — | لم يمرّ على جولة المراجعة الآلية بعد. | سطر هدية المستوى المفعّلة في ملخّص الطلب | — | **NEEDS_NATIVE_REVIEW** | PENDING |
 | 137 | `loyaltyGiftLabel` | HIGH | **NOT_REVIEWED** | هدية المستوى | دیارییەکەی ئاست | — | لم يمرّ على جولة المراجعة الآلية بعد. | تسمية سطر هدية المستوى في ملخّص الطلب | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 138 | `discover` | MEDIUM | **NOT_REVIEWED** | اكتشف المنتجات | بەرهەمەکان بدۆزەوە | — | صيغة أمر: دعوةٌ لا تسمية — استثناء CTA في قفل الأسلوب | SectionHeader + actionLabel في حالات الفراغ (السلة/المفضلة) | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 139 | `totalShort` | MEDIUM | **NOT_REVIEWED** | المجموع | کۆ | — | قصيرة عمداً: الشريط ضيّق. «کۆی گشتی» تفيض هنا | order_data_screen:697 — تسمية صغيرة فوق المبلغ في شريط المتابعة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 140 | `finalTotal` | MEDIUM | **NOT_REVIEWED** | المجموع النهائي | کۆی کۆتایی | — | — | ملخّص الأسعار — السطر الأخير | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 141 | `grandTotal` | MEDIUM | **NOT_REVIEWED** | الإجمالي | کۆی گشتی | — | — | cart_screen:136 — الإجمالي أسفل السلة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 142 | `subtotal` | MEDIUM | **NOT_REVIEWED** | المجموع الفرعي | کۆی بەرهەمەکان | — | «کۆی لاوەکی» حرفيّة وغير مألوفة؛ لا تصطدم بـproductsPrice | cart_screen:112 — سطر المجموع الفرعي | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 143 | `homeSearchHint` | MEDIUM | **NOT_REVIEWED** | ابحث عن منتجك المفضّل… | بەدوای بەرهەمە دڵخوازەکەتدا بگەڕێ… | — | — | home_screen:322 — بطاقة البحث القابلة للنقر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 144 | `shopNow` | MEDIUM | **NOT_REVIEWED** | تسوّق الآن | ئێستا بکڕە | — | CTA بصيغة الأمر | home_compositions:177 — زر البطل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 145 | `promoUpToDiscount` | MEDIUM | **NOT_REVIEWED** | حتى {percent}٪ | تا {percent}٪ | — | ٪ يبقى كما هو؛ القيمة تأتي من التطبيق | home_compositions:313 — النسبة الحقيقية من الكتالوج | percent | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 146 | `deliveryAllGovernorates` | MEDIUM | **NOT_REVIEWED** | توصيل لكل المحافظات | گەیاندن بۆ هەموو پارێزگاکان | — | — | home_compositions:465 + onboarding_slides:638 | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 147 | `loading` | MEDIUM | **NOT_REVIEWED** | جاري التحميل… | باردەکرێت… | — | صيغة المبني للمجهول الحاضر لا الاسمية | category_products / collection_detail / community — أثناء التحميل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 148 | `retryShort` | MEDIUM | **NOT_REVIEWED** | إعادة | دووبارە | — | مختصرة عمداً كما العربية «إعادة» | settings_screen:447 — TextButton ضيّق داخل ملاحظة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 149 | `forgotPassword` | MEDIUM | **NOT_REVIEWED** | نسيت كلمة المرور؟ | وشەی نهێنیت لەبیرچووە؟ | — | علامة الاستفهام العربية «؟» تبقى | login_screen:198 رابط | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 150 | `passwordMinLength` | MEDIUM | **NOT_REVIEWED** | كلمة المرور يجب أن تكون 8 أحرف على الأقل | وشەی نهێنی دەبێت لانیکەم 8 پیت بێت | — | ٨ كما يفرض الخادم — كان ٦. | settings/reset مُدقّق | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 151 | `passwordsDoNotMatch` | MEDIUM | **NOT_REVIEWED** | كلمتا المرور غير متطابقتين | هەردوو وشەی نهێنی وەک یەک نین | — | — | تأكيد كلمة المرور | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 152 | `passwordChanged` | MEDIUM | **NOT_REVIEWED** | تم تغيير كلمة المرور بنجاح | وشەی نهێنی بە سەرکەوتوویی گۆڕدرا | — | — | SnackBar بعد النجاح | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 153 | `resetPassword` | MEDIUM | **NOT_REVIEWED** | إعادة تعيين كلمة المرور | ڕێکخستنەوەی وشەی نهێنی | — | — | عنوان وزر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 154 | `noAccountRegister` | MEDIUM | **NOT_REVIEWED** | ما عندك حساب؟ إنشاء حساب جديد | هەژمارت نییە؟ هەژمارێکی نوێ دروست بکە | — | — | login_screen:222 رابط أسفل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 155 | `haveAccountLogin` | MEDIUM | **NOT_REVIEWED** | عندك حساب؟ تسجيل الدخول | هەژمارت هەیە؟ بچۆ ژوورەوە | — | — | register/forgot رابط أسفل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 156 | `browseAsGuest` | MEDIUM | **NOT_REVIEWED** | تصفح كزائر | وەک میوان بگەڕێ | — | صيغة أمر — دعوة | login_screen:227 زر ثانوي | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 157 | `browsingAsGuest` | MEDIUM | **NOT_REVIEWED** | أنت تتصفح كزائر | وەک میوان دەگەڕێیت | — | خبرية لا أمرية — تصف الحالة الراهنة، بخلاف browseAsGuest | بطاقة الزائر في الحساب/السلة/المفضلة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 158 | `usernameHintExample` | MEDIUM | **NOT_REVIEWED** | أدخل اسمك | ناوت بنووسە | — | توجيه واضح لإدخال الاسم. أُبدل عن «ضع اسمك» (2026-09-15) وقبله عن «عمر الطيار / ئاسۆ ڕەشید» بطلب المنتج. | register_screen:150 hint داخل حقل الاسم | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 159 | `codeResent` | MEDIUM | **NOT_REVIEWED** | تم إعادة إرسال رمز التحقق | کۆدی پشتڕاستکردنەوە دووبارە نێردرایەوە | — | — | SnackBar | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 160 | `resendCodeIn` | MEDIUM | **NOT_REVIEWED** | إعادة إرسال الرمز بعد {seconds} ث | دووبارە ناردنی کۆد دوای {seconds} چ | — | «چ» اختصار چرکە كما «ث» اختصار ثانية | otp عدّاد تنازلي | seconds | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 161 | `editVerifyCode` | MEDIUM | **NOT_REVIEWED** | تعديل رمز التحقق | دەستکاری کۆدی پشتڕاستکردنەوە | — | — | reset_password:298 رابط | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 162 | `codeIncorrect` | MEDIUM | **NOT_REVIEWED** | رمز التحقق غير صحيح | کۆدی پشتڕاستکردنەوە هەڵەیە | — | — | otp_code_field حالة الخطأ | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 163 | `codeVerified` | MEDIUM | **NOT_REVIEWED** | ✓ تم التحقق بنجاح | ✓ بە سەرکەوتوویی پشتڕاستکرایەوە | — | ✓ يبقى في موضعه | otp_code_field حالة النجاح | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 164 | `checkCodeRetry` | MEDIUM | **NOT_REVIEWED** | تأكد من الرمز وحاول مرة أخرى. | کۆدەکە بپشکنە و دووبارە هەوڵ بدەوە. | — | — | otp_code_field سطر تحت الخطأ | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 165 | `continuingLogin` | MEDIUM | **NOT_REVIEWED** | جاري متابعة تسجيل الدخول… | بەردەوامبوون لە چوونەژوورەوە… | — | — | otp_code_field بعد نجاح التحقق | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 166 | `logoutConfirm` | MEDIUM | **NOT_REVIEWED** | هل أنت متأكد من رغبتك في تسجيل الخروج؟ | دڵنیایت لەوەی دەتەوێت بچیتە دەرەوە؟ | — | — | account_screen:337 حوار تأكيد | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 167 | `categoriesSubtitle` | MEDIUM | **NOT_REVIEWED** | تصفّح المتجر حسب ما تحتاجه | بەپێی پێویستیت بەشەکانی فرۆشگا ببینە | — | — | categories_screen:63 سطر تحت العنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 168 | `noCategoriesBody` | MEDIUM | **NOT_REVIEWED** | لا توجد أقسام متاحة حالياً — عد لاحقاً. | لە ئێستادا هیچ بەشێک بەردەست نییە — دواتر بگەڕێوە. | — | — | AnimeEmptyState سطر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 169 | `productsInCategoryCount` | MEDIUM | **NOT_REVIEWED** | {count} منتج في هذا القسم | {count} بەرهەم لەم بەشەدا | — | — | category_products عدّاد تحت العنوان | count | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 170 | `noProductsInCategoryBody` | MEDIUM | **NOT_REVIEWED** | القسم فارغ حالياً — تصفّح قسماً آخر أو عد لاحقاً. | ئێستا بەشەکە بەتاڵە — بەشێکی تر بگەڕێ یان دواتر بگەڕێوە. | — | — | EmptyState سطر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 171 | `sortBy` | MEDIUM | **NOT_REVIEWED** | ترتيب حسب | ڕیزکردن بەپێی | — | — | مُنتقي الترتيب عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 172 | `noProductsHereBody` | MEDIUM | **NOT_REVIEWED** | جرّب قسماً فرعياً آخر — ستجد ما يناسبك. | بەشێکی لاوەکی تر تاقی بکەوە — ئەوەی دەتەوێت دەدۆزیتەوە. | — | — | EmptyState سطر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 173 | `searchIdleTitle` | MEDIUM | **NOT_REVIEWED** | ابحث عمّا يخطر ببالك | بەدوای ئەوەدا بگەڕێ کە بەبیرتدا دێت | — | — | OtakuEditorialPanel عنوان قبل أي بحث | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 174 | `searchingInGalaxy` | MEDIUM | **NOT_REVIEWED** | نبحث في المجرّة… | لە گەلاکسیدا دەگەڕێین… | — | — | أثناء تنفيذ البحث | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 175 | `resultsCount` | MEDIUM | **NOT_REVIEWED** | {count} نتيجة | {count} ئەنجام | — | — | عدّاد النتائج | count | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 176 | `noResultsBody` | MEDIUM | **NOT_REVIEWED** | جرّب كلمة أقصر أو تصفّح الأقسام. | وشەیەکی کورتتر تاقی بکەوە یان بەشەکان بگەڕێ. | — | — | EmptyState سطر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 177 | `collectionNameHint` | MEDIUM | **NOT_REVIEWED** | مثلاً: أريد شراءها لاحقاً | بۆ نموونە: دواتر دەیکڕم | — | — | hint داخل حقل الاسم | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 178 | `firstCollectionTitle` | MEDIUM | **NOT_REVIEWED** | أنشئ مجموعتك الأولى | یەکەم کۆمەڵەکەت دروست بکە | — | — | EmptyState عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 179 | `productsCount` | MEDIUM | **NOT_REVIEWED** | {count} منتج | {count} بەرهەم | — | — | عدّاد على بطاقة المجموعة وبطاقة الطلب | count | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 180 | `noCollectionsYet` | MEDIUM | **NOT_REVIEWED** | لا توجد مجموعات بعد — أنشئ أول مجموعة. | هێشتا هیچ کۆمەڵەیەک نییە — یەکەمیان دروست بکە. | — | — | داخل ورقة الإضافة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 181 | `productsInThisCollectionCount` | MEDIUM | **NOT_REVIEWED** | {count} منتج في هذه المجموعة | {count} بەرهەم لەم کۆمەڵەیەدا | — | — | collection_detail عدّاد | count | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 182 | `available` | MEDIUM | **NOT_REVIEWED** | متوفر | بەردەستە | — | — | product_stock_pill (stock>3) | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 183 | `lastPiecesCount` | MEDIUM | **NOT_REVIEWED** | آخر {count} قطع | دوایین {count} دانە | — | — | product_stock_pill (stock<=3) | count | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 184 | `deliveryPromoProduct` | MEDIUM | **NOT_REVIEWED** | هذا المنتج ضمن عرض التوصيل المميّز | ئەم بەرهەمە لە داشکاندنی تایبەتی گەیاندندایە | — | — | product_detail:357 شريط ترويج التوصيل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 185 | `productKurdishMissingNote` | MEDIUM | **NOT_REVIEWED** | هذا المنتج لم يُكتب بالكردية بعد — يُعرض بالعربية. | ئەم بەرهەمە هێشتا بە کوردی نەنووسراوە — بە عەرەبی پیشان دەدرێت. | — | يعلن أن النصّ المعروض عربيٌّ لأن الكردية ناقصة — لا يُعرض العربي على أنه كردي. «پیشان دەدرێت» كما في loginRequiredForAccount. | product_detail تحت الوصف — يظهر في الواجهة الكردية وحدها لمنتجٍ قديم ينقصه اسمٌ أو وصفٌ كردي (هجرة ٠٦٦) | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 186 | `availableStockCount` | MEDIUM | **NOT_REVIEWED** | متاح {count} | {count} بەردەستە | — | — | product_detail:408 بجانب مُنتقي الكمية | count | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 187 | `cashOnDelivery` | MEDIUM | **NOT_REVIEWED** | الدفع عند الاستلام | پارەدان لە کاتی وەرگرتن | — | — | product_detail:462 عنوان طمأنة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 188 | `chooseOptionsFirst` | MEDIUM | **NOT_REVIEWED** | اختر الخيارات أولاً | سەرەتا هەڵبژاردنەکان دیاری بکە | — | — | product_detail:557 نصّ الزر حين تنقص الخيارات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 189 | `productColor` | MEDIUM | **NOT_REVIEWED** | اللون | ڕەنگ | — | STEP 74 (ألوان المنتج، 2026-10-27): مسوّدة صاغها وكيل آلي ولم يقرأها ناطق. «ڕەنگ» = اللون كما في ترجمة خيار «اللون» القائمة (047_kurdish_catalog_backfill.sql). | product_detail_screen.dart — عنوان قسم مُنتقي الألوان فوق رقائق الألوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 190 | `chooseColorFirst` | MEDIUM | **NOT_REVIEWED** | اختر اللون أولاً | سەرەتا ڕەنگەکە دیاری بکە | — | STEP 74 (ألوان المنتج، 2026-10-27): مسوّدة صاغها وكيل آلي ولم يقرأها ناطق. «ڕەنگ» = اللون كما في ترجمة خيار «اللون» القائمة (047_kurdish_catalog_backfill.sql). يتبع بنية chooseOptionsFirst («سەرەتا … دیاری بکە»). | product_detail_screen.dart — نصّ زرّ الإضافة المعطَّل حين لم يُختر لون منتجٍ بألوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 191 | `colorValue` | MEDIUM | **NOT_REVIEWED** | اللون: {color} | ڕەنگ: {color} | — | STEP 74 (ألوان المنتج، 2026-10-27): مسوّدة صاغها وكيل آلي ولم يقرأها ناطق. «ڕەنگ» = اللون كما في ترجمة خيار «اللون» القائمة (047_kurdish_catalog_backfill.sql). | line_color_label.dart — لون السطر في السلة ومراجعة الطلب وبيانات الطلب وتفاصيل الطلب؛ {color} اسم اللون من الخادم | color | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 192 | `productDesign` | MEDIUM | **NOT_REVIEWED** | التصميم | دیزاین | — | STEP 77 (نوع خيارات المنتج، 2026-10-31): مسوّدة صاغها وكيل آلي ولم يقرأها ناطق. «دیزاین» كما في ترجمة خيار «التصميم» القائمة (047_kurdish_catalog_backfill.sql). | product_detail_screen.dart — عنوان قسم مُنتقي الخيارات حين يمثّل المنتجُ تصميمات (variantKind=design) | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 193 | `productSize` | MEDIUM | **NOT_REVIEWED** | المقاس | قەبارە | — | STEP 77 (نوع خيارات المنتج، 2026-10-31): مسوّدة صاغها وكيل آلي ولم يقرأها ناطق. «قەبارە» كما في ترجمة خيار «المقاس» القائمة (047_kurdish_catalog_backfill.sql). | product_detail_screen.dart — عنوان قسم مُنتقي الخيارات حين يمثّل المنتجُ مقاسات (variantKind=size) | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 194 | `chooseDesignFirst` | MEDIUM | **NOT_REVIEWED** | اختر التصميم أولاً | سەرەتا دیزاینەکە دیاری بکە | — | STEP 77 (نوع خيارات المنتج، 2026-10-31): مسوّدة صاغها وكيل آلي ولم يقرأها ناطق. «دیزاین» كما في ترجمة خيار «التصميم» القائمة (047_kurdish_catalog_backfill.sql)؛ يتبع بنية chooseColorFirst. | product_detail_screen.dart — نصّ زرّ الإضافة المعطَّل حين لم يُختر تصميم | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 195 | `chooseSizeFirst` | MEDIUM | **NOT_REVIEWED** | اختر المقاس أولاً | سەرەتا قەبارەکە دیاری بکە | — | STEP 77 (نوع خيارات المنتج، 2026-10-31): مسوّدة صاغها وكيل آلي ولم يقرأها ناطق. «قەبارە» كما في ترجمة خيار «المقاس» القائمة (047_kurdish_catalog_backfill.sql)؛ يتبع بنية chooseColorFirst. | product_detail_screen.dart — نصّ زرّ الإضافة المعطَّل حين لم يُختر مقاس | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 196 | `designValue` | MEDIUM | **NOT_REVIEWED** | التصميم: {color} | دیزاین: {color} | — | STEP 77 (نوع خيارات المنتج، 2026-10-31): مسوّدة صاغها وكيل آلي ولم يقرأها ناطق. «دیزاین» كما في ترجمة خيار «التصميم» القائمة (047_kurdish_catalog_backfill.sql). | line_color_label.dart — تصميم السطر في السلة والمراجعة وتفاصيل الطلب؛ {color} اسم الخيار من الخادم | color | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 197 | `sizeValue` | MEDIUM | **NOT_REVIEWED** | المقاس: {color} | قەبارە: {color} | — | STEP 77 (نوع خيارات المنتج، 2026-10-31): مسوّدة صاغها وكيل آلي ولم يقرأها ناطق. «قەبارە» كما في ترجمة خيار «المقاس» القائمة (047_kurdish_catalog_backfill.sql). | line_color_label.dart — مقاس السطر في السلة والمراجعة وتفاصيل الطلب؛ {color} اسم الخيار من الخادم | color | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 198 | `listSeparator` | MEDIUM | **NOT_REVIEWED** | ، | ، | — | السوراني يستعمل الفاصلة العربية نفسها — أُبقيت مفتاحاً لا محفورة | product_detail:657 فاصل بين الخيارات المختارة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 199 | `addToYourCollection` | MEDIUM | **NOT_REVIEWED** | أضف إلى مجموعتك | بیخە کۆمەڵەکەتەوە | — | — | product_detail:799 زر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 200 | `deliveryDiscountAmount` | MEDIUM | **NOT_REVIEWED** | خصم {amount} د.ع من التوصيل | داشکاندنی {amount} د.ع لە گەیاندن | — | — | delivery_promo_label — بطاقة المنتج وصفحة التفاصيل، سطر مبلغ ترويج التوصيل | amount | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 201 | `soldOutShort` | MEDIUM | **NOT_REVIEWED** | نفدت | تەواو بوو | — | مختصرة كما «نفدت»؛ نفس معنى outOfStock بصيغة أقصر | anime_product_card:372 شارة مختصرة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 202 | `noFavoritesYet` | MEDIUM | **NOT_REVIEWED** | لم تحفظ أي منتج بعد | هێشتا هیچ بەرهەمێکت پاشەکەوت نەکردووە | — | — | عدّاد حين لا مفضلة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 203 | `savedProductsCount` | MEDIUM | **NOT_REVIEWED** | {count} منتج محفوظ | {count} بەرهەمی پاشەکەوتکراو | — | — | عدّاد المفضلة | count | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 204 | `sortNewest` | MEDIUM | **NOT_REVIEWED** | الأحدث | نوێترین | — | التسمية فقط تُترجَم؛ apiValue لا يُمَسّ | مُنتقي الترتيب — يقابل apiValue=newest | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 205 | `sortPriceAsc` | MEDIUM | **NOT_REVIEWED** | السعر: من الأقل | نرخ: لە کەمترەوە | — | — | مُنتقي الترتيب | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 206 | `sortPriceDesc` | MEDIUM | **NOT_REVIEWED** | السعر: من الأعلى | نرخ: لە زۆرترەوە | — | — | مُنتقي الترتيب | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 207 | `sortRating` | MEDIUM | **NOT_REVIEWED** | الأعلى تقييماً | بەرزترین پلەدان | — | — | مُنتقي الترتيب | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 208 | `cartEmptyCount` | MEDIUM | **NOT_REVIEWED** | 0 منتجات في السلة | 0 بەرهەم لە سەبەتەدا | — | — | cart_screen عدّاد حين تفرغ | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 209 | `cartItemsCount` | MEDIUM | **NOT_REVIEWED** | {count} منتجات في السلة | {count} بەرهەم لە سەبەتەدا | — | العربية تفرّق الصفر عن غيره بمفتاحين؛ حُفظ التفريع كما هو | cart_screen عدّاد | count | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 210 | `deliveryFee` | MEDIUM | **NOT_REVIEWED** | رسوم التوصيل | کرێی گەیاندن | — | — | سطر في ملخّص السلة والأسعار | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 211 | `deliveryFeeAtAddress` | MEDIUM | **NOT_REVIEWED** | يُحتسب عند إدخال العنوان | لە کاتی نووسینی ناونیشان دیاری دەکرێت | — | — | cart_screen:120 بدل المبلغ قبل إدخال العنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 212 | `addedToCart` | MEDIUM | **NOT_REVIEWED** | تمت إضافة المنتج إلى السلة | بەرهەمەکە خرایە سەبەتەوە | — | — | SnackBar بعد الإضافة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 213 | `stepOneOfTwo` | MEDIUM | **NOT_REVIEWED** | الخطوة ١ من ٢ | هەنگاوی 1 لە 2 | — | أرقام غربية في الكردية — العربية تحمل استثناءً قديماً وحدها | order_data ترويسة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 214 | `stepTwoOfTwo` | MEDIUM | **NOT_REVIEWED** | الخطوة ٢ من ٢ | هەنگاوی 2 لە 2 | — | — | order_review ترويسة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 215 | `chooseProvince` | MEDIUM | **NOT_REVIEWED** | اختر المحافظة | پارێزگا هەڵبژێرە | — | — | placeholder المُنتقي + عنوان الورقة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 216 | `deliveryZone` | MEDIUM | **NOT_REVIEWED** | منطقة التوصيل | ناوچەی گەیاندن | — | — | تسمية المُنتقي + عنوان الورقة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 217 | `fullAddressHint` | MEDIUM | **NOT_REVIEWED** | المنطقة، الشارع، أقرب نقطة دالة | ناوچە، شەقام، نزیکترین خاڵی دیار | — | — | hint حقل العنوان الكامل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 218 | `deliveringTo` | MEDIUM | **NOT_REVIEWED** | التوصيل إلى {place} | گەیاندن بۆ {place} | — | — | order_data شريط تأكيد المنطقة/المحافظة | place | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 219 | `orderSummary` | MEDIUM | **NOT_REVIEWED** | ملخص الطلب | کورتەی داواکاری | — | — | order_data عنوان قسم | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 220 | `productsPrice` | MEDIUM | **NOT_REVIEWED** | سعر المنتجات | نرخی بەرهەمەکان | — | — | سطر في ملخّص الأسعار | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 221 | `deliverySetAfterZone` | MEDIUM | **NOT_REVIEWED** | يُحدد بعد اختيار المنطقة | دوای هەڵبژاردنی ناوچە دیاری دەکرێت | — | — | بدل مبلغ التوصيل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 222 | `deliverySetAfterProvince` | MEDIUM | **NOT_REVIEWED** | يُحدد بعد اختيار المحافظة | دوای هەڵبژاردنی پارێزگا دیاری دەکرێت | — | — | بدل مبلغ التوصيل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 223 | `deliveryDiscount` | MEDIUM | **NOT_REVIEWED** | خصم التوصيل | داشکاندنی گەیاندن | — | — | سطر الخصم في الملخّص | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 224 | `freeDelivery` | MEDIUM | **NOT_REVIEWED** | توصيل مجاني 🎉 | گەیاندنی بێبەرامبەر 🎉 | — | الإيموجي في موضعه نفسه | بدل المبلغ حين يسقط التوصيل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 225 | `birthdayDiscount` | MEDIUM | **NOT_REVIEWED** | خصم عيد الميلاد | داشکاندنی ڕۆژی لەدایکبوون | — | — | سطر الخصم في الملخّص | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 226 | `codNoOnlinePayment` | MEDIUM | **NOT_REVIEWED** | الدفع عند الاستلام — لا يتطلب دفعاً إلكترونياً. | پارەدان لە کاتی وەرگرتن — پێویست بە پارەدانی ئەلیکترۆنی ناکات. | — | — | order_data ملاحظة أسفل الملخّص | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 227 | `reviewOrder` | MEDIUM | **NOT_REVIEWED** | مراجعة الطلب | پێداچوونەوەی داواکاری | — | — | زر المتابعة + عنوان الشاشة الثانية | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 228 | `provincesLoadFailed` | MEDIUM | **NOT_REVIEWED** | تعذّر تحميل المحافظات — أعد المحاولة | بارکردنی پارێزگاکان سەرکەوتوو نەبوو — دووبارە هەوڵ بدەوە | — | — | حالة خطأ في ورقة المحافظات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 229 | `noProvincesBody` | MEDIUM | **NOT_REVIEWED** | المحافظات غير متاحة حالياً | لە ئێستادا پارێزگاکان بەردەست نین | — | — | EmptyState سطر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 230 | `zonesLoadFailed` | MEDIUM | **NOT_REVIEWED** | تعذّر تحميل مناطق التوصيل لهذه المحافظة. | بارکردنی ناوچەکانی گەیاندن بۆ ئەم پارێزگایە سەرکەوتوو نەبوو. | — | — | ملاحظة خطأ داخل ورقة المناطق | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 231 | `orderItemsCount` | MEDIUM | **NOT_REVIEWED** | منتجات الطلب ({count}) | بەرهەمەکانی داواکاری ({count}) | — | — | عنوان قسم المنتجات | count | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 232 | `discount` | MEDIUM | **NOT_REVIEWED** | الخصم | داشکاندن | — | — | سطر الخصم العام في الملخّص | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 233 | `orderSent` | MEDIUM | **NOT_REVIEWED** | تم إرسال طلبك | داواکارییەکەت نێردرا | — | — | order_success عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 234 | `stepAdminReview` | MEDIUM | **NOT_REVIEWED** | مراجعة الطلب من الإدارة | پێداچوونەوەی داواکاری لەلایەن بەڕێوەبەرایەتییەوە | — | — | خطوة 1 | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 235 | `stepWhatsappConfirm` | MEDIUM | **NOT_REVIEWED** | تأكيد عبر واتساب | پشتڕاستکردنەوە لە ڕێگەی واتسئاپ | — | — | خطوة 2 | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 236 | `continueShopping` | MEDIUM | **NOT_REVIEWED** | متابعة التسوق | بەردەوامبوون لە بازاڕکردن | — | — | order_success زر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 237 | `ordersSubtitle` | MEDIUM | **NOT_REVIEWED** | تابع حالة طلباتك خطوة بخطوة | هەنگاو بە هەنگاو دۆخی داواکارییەکانت بەدواداچوون بکە | — | — | orders_screen ترويسة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 238 | `noOrdersBody` | MEDIUM | **NOT_REVIEWED** | كل طلب تكمله سيظهر هنا مع حالته ومحتوياته وتفاصيل توصيله. | هەر داواکارییەک تەواوی بکەیت لێرە دەردەکەوێت لەگەڵ دۆخ و ناوەڕۆک و وردەکاری گەیاندنی. | — | — | EmptyState سطر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 239 | `startShopping` | MEDIUM | **NOT_REVIEWED** | ابدأ التسوق | دەست بە بازاڕکردن بکە | — | CTA بصيغة الأمر | EmptyState actionLabel | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 240 | `receivedOrderQuestion` | MEDIUM | **NOT_REVIEWED** | هل استلمت طلبك؟ | داواکارییەکەت وەرگرت؟ | — | — | ورقة تأكيد الاستلام عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 241 | `receivedOrderNote` | MEDIUM | **NOT_REVIEWED** | نريد التأكد من وصول طلبك إليك | دەمانەوێت دڵنیا بین لەوەی داواکارییەکەت پێگەیشتووە | — | — | سطر تحت السؤال | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 242 | `yesIReceived` | MEDIUM | **NOT_REVIEWED** | نعم، استلمت الطلب | بەڵێ، داواکارییەکەم وەرگرت | — | — | زر التأكيد | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 243 | `notReceivedYet` | MEDIUM | **NOT_REVIEWED** | لم أستلمه بعد | هێشتا وەرمنەگرتووە | — | — | زر النفي | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 244 | `orderNotFoundBody` | MEDIUM | **NOT_REVIEWED** | تعذر العثور على تفاصيل هذا الطلب | دۆزینەوەی وردەکاری ئەم داواکارییە سەرکەوتوو نەبوو | — | — | حالة خطأ سطر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 245 | `orderStaysPending` | MEDIUM | **NOT_REVIEWED** | سيبقى الطلب قائماً — وسنسألك مرة أخرى لاحقاً. | داواکارییەکە دەمێنێتەوە — دواتر دیسان لێت دەپرسینەوە. | — | — | SnackBar بعد «لم أستلمه بعد» | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 246 | `birthdaySaved` | MEDIUM | **NOT_REVIEWED** | تاريخ ميلادك محفوظ 🎂 | ڕۆژی لەدایکبوونت پاشەکەوتکرا 🎂 | — | — | SnackBar | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 247 | `receiptConfirmFailed` | MEDIUM | **NOT_REVIEWED** | تعذر تأكيد الاستلام، حاول مرة أخرى | پشتڕاستکردنەوەی وەرگرتن سەرکەوتوو نەبوو، دووبارە هەوڵ بدەوە | — | — | رسالة احتياطية | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 248 | `deliveryCostLabel` | MEDIUM | **NOT_REVIEWED** | تكلفة التوصيل | تێچووی گەیاندن | — | «تێچوو» (تكلفة) تختلف عن «کرێ» (رسوم) في deliveryFee كما تفرّق العربية | سطر تكلفة التوصيل في تفاصيل الطلب | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 249 | `rejectionReason` | MEDIUM | **NOT_REVIEWED** | سبب الرفض | هۆکاری ڕەتکردنەوە | — | — | order_detail عند رفض الطلب | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 250 | `orderJourney` | MEDIUM | **NOT_REVIEWED** | مسار الطلب | ڕێڕەوی داواکاری | — | — | order_detail عنوان مسار الحالات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 251 | `etaTwoToFourDays` | MEDIUM | **NOT_REVIEWED** | موعد الوصول المتوقع خلال ٢–٤ أيام حسب المحافظة. | چاوەڕوانی گەیشتن لە ماوەی 2–4 ڕۆژدا بەپێی پارێزگا. | — | أرقام غربية في الكردية؛ الشرطة «–» تبقى | order_detail سطر تحت المسار | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 252 | `reviewOpensAfterReceipt` | MEDIUM | **NOT_REVIEWED** | التقييم يُفتح بعد الاستلام | هەڵسەنگاندن دوای وەرگرتن دەکرێتەوە | — | — | بطاقة دعوة التقييم | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 253 | `receiptNotConfirmedYet` | MEDIUM | **NOT_REVIEWED** | لم يُؤكَّد الاستلام بعد | هێشتا وەرگرتن پشتڕاست نەکراوەتەوە | — | — | تسمية حالة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 254 | `journeyPendingBody` | MEDIUM | **NOT_REVIEWED** | مراجعة الطلب وتأكيده عبر واتساب | پێداچوونەوەی داواکاری و پشتڕاستکردنەوەی لە ڕێگەی واتسئاپ | — | — | خطوة المسار 1 | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 255 | `journeyProcessingBody` | MEDIUM | **NOT_REVIEWED** | الطلب مقبول ويُجهَّز الآن | داواکارییەکە پەسەندکرا و ئێستا ئامادە دەکرێت | — | — | خطوة المسار 2 | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 256 | `journeyDeliveringBody` | MEDIUM | **NOT_REVIEWED** | الطلب في الطريق إليك | داواکارییەکە لە ڕێگادایە بۆت | — | — | خطوة المسار 3 | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 257 | `journeyReceivedBody` | MEDIUM | **NOT_REVIEWED** | وصل الطلب — يمكنك تقييم المنتجات | داواکارییەکە گەیشت — دەتوانیت بەرهەمەکان هەڵبسەنگێنیت | — | — | خطوة المسار 4 | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 258 | `pickStarRating` | MEDIUM | **NOT_REVIEWED** | يرجى اختيار تقييم بالنجوم | تکایە بە ئەستێرە پلە بدە | — | — | SnackBar تحقّق قبل الإرسال | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 259 | `writeYourOpinion` | MEDIUM | **NOT_REVIEWED** | يرجى كتابة رأيك بالمنتج | تکایە ڕات دەربارەی بەرهەمەکە بنووسە | — | — | SnackBar تحقّق | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 260 | `maxPhotosPerReviewDot` | MEDIUM | **NOT_REVIEWED** | الحد الأقصى {max} صور للتقييم الواحد. | زۆرترین سنوور {max} وێنەیە بۆ هەر هەڵسەنگاندنێک. | — | — | خطأ خادم مترجَم — بنقطة | max | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 261 | `maxPhotosPerReview` | MEDIUM | **NOT_REVIEWED** | الحد الأقصى {max} صور للتقييم الواحد | زۆرترین سنوور {max} وێنەیە بۆ هەر هەڵسەنگاندنێک | — | — | SnackBar — بلا نقطة، فرقٌ مقصود عن maxPhotosPerReviewDot | max | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 262 | `reviewSendFailed` | MEDIUM | **NOT_REVIEWED** | تعذر إرسال التقييم، حاول مرة أخرى | ناردنی هەڵسەنگاندن سەرکەوتوو نەبوو، دووبارە هەوڵ بدەوە | — | — | رسالة احتياطية | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 263 | `photoUploadFailed` | MEDIUM | **NOT_REVIEWED** | تعذّر رفع الصورة، حاول مرة أخرى | بارکردنی وێنەکە سەرکەوتوو نەبوو، دووبارە هەوڵ بدەوە | — | — | SnackBar | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 264 | `whatDoYouThink` | MEDIUM | **NOT_REVIEWED** | ما رأيك في المنتج؟ | ڕات دەربارەی بەرهەمەکە چییە؟ | — | — | عنوان فوق النجوم | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 265 | `resend` | MEDIUM | **NOT_REVIEWED** | إعادة الإرسال | دووبارە ناردنەوە | — | — | زر الإرسال حين كان مرفوضاً | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 266 | `oneReviewPerProductPublished` | MEDIUM | **NOT_REVIEWED** | لكل منتج تقييم واحد، ويُنشر بعد المراجعة. | بۆ هەر بەرهەمێک یەک هەڵسەنگاندن، و دوای پێداچوونەوە بڵاو دەکرێتەوە. | — | — | ملاحظة أسفل شاشة الكتابة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 267 | `reviewRejectedReason` | MEDIUM | **NOT_REVIEWED** | السبب: {reason} | هۆکار: {reason} | — | {reason} كلام المسؤول ولا يُترجَم | سبب الرفض — النصّ من الإدارة | reason | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 268 | `photoLimitReached` | MEDIUM | **NOT_REVIEWED** | وصلت إلى الحد الأقصى ({max} صور). | گەیشتیتە زۆرترین سنوور ({max} وێنە). | — | — | تحت مُنتقي الصور | max | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 269 | `rateOrderSubtitle` | MEDIUM | **NOT_REVIEWED** | رأيك يساعد بقية العملاء يختارون بثقة | ڕاکەت یارمەتی کڕیارانی تر دەدات بە دڵنیاییەوە هەڵبژێرن | — | — | rate_order ترويسة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 270 | `oneReviewPerProductReviewed` | MEDIUM | **NOT_REVIEWED** | لكل منتج تقييم واحد، ويُراجَع قبل نشره. | بۆ هەر بەرهەمێک یەک هەڵسەنگاندن، و پێش بڵاوکردنەوە پێداچوونەوەی بۆ دەکرێت. | — | — | ملاحظة في rate_order | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 271 | `notRatedYet` | MEDIUM | **NOT_REVIEWED** | لم يُقيَّم بعد | هێشتا پلەی نەدراوە | — | — | شارة على منتج غير مقيَّم | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 272 | `editAndResend` | MEDIUM | **NOT_REVIEWED** | عدّل وأعد الإرسال | دەستکاری بکە و دووبارە بینێرە | — | — | زر بعد الرفض | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 273 | `reviewPublishedThanks` | MEDIUM | **NOT_REVIEWED** | تقييمك منشور — شكراً 💜 | هەڵسەنگاندنەکەت بڵاوکرایەوە — سوپاس 💜 | — | — | حالة منشورة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 274 | `reviewUnderReview` | MEDIUM | **NOT_REVIEWED** | تقييمك قيد المراجعة | هەڵسەنگاندنەکەت لە پێداچوونەوەدایە | — | — | حالة قيد المراجعة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 275 | `awaitingReview` | MEDIUM | **NOT_REVIEWED** | بانتظار المراجعة | چاوەڕوانی پێداچوونەوە | — | — | شارة في شاشة الإرسال | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 276 | `reviewWillBeChecked` | MEDIUM | **NOT_REVIEWED** | سيتم مراجعة تقييمك قبل نشره. | پێش بڵاوکردنەوە پێداچوونەوە بۆ هەڵسەنگاندنەکەت دەکرێت. | — | — | review_submitted سطر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 277 | `continueRatingProducts` | MEDIUM | **NOT_REVIEWED** | متابعة تقييم المنتجات | بەردەوامبوون لە هەڵسەنگاندنی بەرهەمەکان | — | — | review_submitted زر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 278 | `reviewPendingChip` | MEDIUM | **NOT_REVIEWED** | ⏳ تقييمك قيد المراجعة | ⏳ هەڵسەنگاندنەکەت لە پێداچوونەوەدایە | — | — | ReviewStatusChip | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 279 | `reviewApprovedChip` | MEDIUM | **NOT_REVIEWED** | ✓ تم نشر تقييمك | ✓ هەڵسەنگاندنەکەت بڵاوکرایەوە | — | — | ReviewStatusChip | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 280 | `customerReviews` | MEDIUM | **NOT_REVIEWED** | ⭐ تقييمات العملاء | ⭐ هەڵسەنگاندنی کڕیاران | — | — | عنوان قسم في صفحة المنتج | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 281 | `customerPhotos` | MEDIUM | **NOT_REVIEWED** | 📸 صور العملاء | 📸 وێنەی کڕیاران | — | — | عنوان قسم الصور | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 282 | `verifiedBuyer` | MEDIUM | **NOT_REVIEWED** | ✓ اشترى هذا المنتج | ✓ ئەم بەرهەمەی کڕیوە | — | — | شارة على بطاقة التقييم | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 283 | `noReviewsTitle` | MEDIUM | **NOT_REVIEWED** | لا توجد تقييمات لهذا المنتج بعد | هێشتا هیچ هەڵسەنگاندنێک بۆ ئەم بەرهەمە نییە | — | — | EmptyState عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 284 | `noReviewsBody` | MEDIUM | **NOT_REVIEWED** | كن أول من يشارك تجربته بعد استلام طلبه. | یەکەم کەس بە کە ئەزموونی خۆی بەشدار دەکات دوای وەرگرتنی داواکارییەکەی. | — | — | EmptyState سطر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 285 | `approvedPhotosCount` | MEDIUM | **NOT_REVIEWED** | {count} صورة معتمدة | {count} وێنەی پەسەندکراو | — | — | عدّاد الصور المعتمدة | count | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 286 | `noPhotosInCategoryBody` | MEDIUM | **NOT_REVIEWED** | جرّب قسماً آخر أو تصفّح كل الصور. | بەشێکی تر تاقی بکەوە یان هەموو وێنەکان بگەڕێ. | — | — | EmptyState سطر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 287 | `beFirstToShareTitle` | MEDIUM | **NOT_REVIEWED** | كن أول من يشارك تجربته | یەکەم کەس بە کە ئەزموونی خۆی بەشدار دەکات | — | — | EmptyState عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 288 | `shareYourExperience` | MEDIUM | **NOT_REVIEWED** | شارك تجربتك | ئەزموونەکەت بەشدار بکە | — | — | EmptyState actionLabel | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 289 | `photoUnderReviewTitle` | MEDIUM | **NOT_REVIEWED** | صورتك قيد المراجعة | وێنەکەت لە پێداچوونەوەدایە | — | — | لافتة حالة الصورة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 290 | `photoUnderReviewBody` | MEDIUM | **NOT_REVIEWED** | ستظهر في المجتمع وفي صفحة المنتج بعد الموافقة. | دوای پەسەندکردن لە کۆمەڵگا و لە لاپەڕەی بەرهەمەکەدا دەردەکەوێت. | — | — | لافتة حالة الصورة سطر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 291 | `photoRejectedTitle` | MEDIUM | **NOT_REVIEWED** | لم يتم قبول الصورة | وێنەکە پەسەند نەکرا | — | — | لافتة الرفض عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 292 | `photoRejectedDefaultReason` | MEDIUM | **NOT_REVIEWED** | الصورة لا تظهر المنتج بوضوح. | وێنەکە بەرهەمەکە بە ڕوونی پیشان نادات. | — | — | سبب افتراضي حين لا يكتب المسؤول سبباً | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 293 | `editAndResubmit` | MEDIUM | **NOT_REVIEWED** | تعديل وإعادة الإرسال | دەستکاری و دووبارە ناردنەوە | — | — | زر بعد رفض الصورة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 294 | `alreadyOnWaitlist` | MEDIUM | **NOT_REVIEWED** | أنت على قائمة الانتظار مسبقاً | پێشتر لە لیستی چاوەڕوانیدایت | — | — | SnackBar | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 295 | `willNotifyWhenAvailable` | MEDIUM | **NOT_REVIEWED** | سنُعلمك فور توفّره 🔔 | کاتێک بەردەست بوو ئاگادارت دەکەینەوە 🔔 | — | الإيموجي في موضعه | SnackBar نجاح | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 296 | `alertCancelled` | MEDIUM | **NOT_REVIEWED** | أُلغي التنبيه | ئاگادارکردنەوەکە ڕەتکرایەوە | — | — | SnackBar بعد الإلغاء | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 297 | `operationFailed` | MEDIUM | **NOT_REVIEWED** | تعذّر إتمام العملية، حاول مرة أخرى | تەواوکردنی کارەکە سەرکەوتوو نەبوو، دووبارە هەوڵ بدەوە | — | — | رسالة احتياطية | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 298 | `waitingCancelAlert` | MEDIUM | **NOT_REVIEWED** | بانتظار التوفر — إلغاء التنبيه | چاوەڕوانی بەردەستبوون — ڕەتکردنەوەی ئاگادارکردنەوە | — | — | نصّ الزر حين يكون مشتركاً | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 299 | `markAllRead` | MEDIUM | **NOT_REVIEWED** | تعليم الكل كمقروء | هەمووی وەک خوێندراوە نیشان بکە | — | — | إجراء في ترويسة الإشعارات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 300 | `noNotificationsBody` | MEDIUM | **NOT_REVIEWED** | ستظهر هنا تحديثات طلباتك وتقييماتك فور حدوثها. | نوێکردنەوەی داواکاری و هەڵسەنگاندنەکانت هەرکە ڕوویاندا لێرە دەردەکەون. | — | — | EmptyState سطر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 301 | `minutesAgo` | MEDIUM | **NOT_REVIEWED** | قبل {count} دقيقة | {count} خولەک لەمەوپێش | — | — | وقت نسبي | count | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 302 | `hoursAgo` | MEDIUM | **NOT_REVIEWED** | قبل {count} ساعة | {count} کاتژمێر لەمەوپێش | — | — | وقت نسبي | count | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 303 | `daysAgo` | MEDIUM | **NOT_REVIEWED** | قبل {count} يوم | {count} ڕۆژ لەمەوپێش | — | — | وقت نسبي | count | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 304 | `prefOrders` | MEDIUM | **NOT_REVIEWED** | الطلبات | داواکارییەکان | — | — | تفضيل إشعارات — key=orders لدى الخادم | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 305 | `prefReviews` | MEDIUM | **NOT_REVIEWED** | التقييمات | هەڵسەنگاندنەکان | — | — | تفضيل إشعارات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 306 | `prefStock` | MEDIUM | **NOT_REVIEWED** | توفر المنتجات | بەردەستبوونی بەرهەمەکان | — | — | تفضيل إشعارات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 307 | `prefOffers` | MEDIUM | **NOT_REVIEWED** | العروض | داشکاندنەکان | — | نفس كردية offers — نفس المفهوم | تفضيل إشعارات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 308 | `prefBirthday` | MEDIUM | **NOT_REVIEWED** | عيد الميلاد | ڕۆژی لەدایکبوون | — | — | تفضيل إشعارات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 309 | `shortDate` | MEDIUM | **NOT_REVIEWED** | {day} {month} | {day}ی {month} | — | السوراني يربط اليوم بالشهر بـ«ی» الإضافة | «15 سبتمبر» — يوم وشهر بلا سنة | day, month | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 310 | `unitMinuteOne` | MEDIUM | **NOT_REVIEWED** | دقيقة | خولەک | — | السوراني بلا مثنّى: خانة «الاثنين» تحمل الرقم صراحةً وإلّا ضاع العدد. التفريع العربي محفوظ كما هو ولم يُحذف | formatRemaining — العدد 1 والعدد >10 | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 311 | `unitMinuteMany` | MEDIUM | **NOT_REVIEWED** | دقائق | خولەک | — | السوراني بلا مثنّى: خانة «الاثنين» تحمل الرقم صراحةً وإلّا ضاع العدد. التفريع العربي محفوظ كما هو ولم يُحذف | formatRemaining — 3..10 داخل countWithUnit | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 312 | `unitHourOne` | MEDIUM | **NOT_REVIEWED** | ساعة | کاتژمێر | — | السوراني بلا مثنّى: خانة «الاثنين» تحمل الرقم صراحةً وإلّا ضاع العدد. التفريع العربي محفوظ كما هو ولم يُحذف | formatRemaining | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 313 | `unitHourMany` | MEDIUM | **NOT_REVIEWED** | ساعات | کاتژمێر | — | السوراني بلا مثنّى: خانة «الاثنين» تحمل الرقم صراحةً وإلّا ضاع العدد. التفريع العربي محفوظ كما هو ولم يُحذف | formatRemaining | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 314 | `unitDayOne` | MEDIUM | **NOT_REVIEWED** | يوم | ڕۆژ | — | السوراني بلا مثنّى: خانة «الاثنين» تحمل الرقم صراحةً وإلّا ضاع العدد. التفريع العربي محفوظ كما هو ولم يُحذف | formatRemaining | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 315 | `unitDayMany` | MEDIUM | **NOT_REVIEWED** | أيام | ڕۆژ | — | السوراني بلا مثنّى: خانة «الاثنين» تحمل الرقم صراحةً وإلّا ضاع العدد. التفريع العربي محفوظ كما هو ولم يُحذف | formatRemaining | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 316 | `galaxyPointsSubtitle` | MEDIUM | **NOT_REVIEWED** | كل نقطة تقربك لمستوى أعلى | هەر خاڵێک نزیکت دەکاتەوە لە ئاستێکی بەرزتر | — | — | ترويسة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 317 | `yourLevels` | MEDIUM | **NOT_REVIEWED** | مستوياتك في المجرّة | ئاستەکانت لە گەلاکسیدا | — | — | عنوان كتلة سُلّم المستويات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 318 | `howPointsWork` | MEDIUM | **NOT_REVIEWED** | كيف تعمل النقاط؟ | خاڵەکان چۆن کار دەکەن؟ | — | — | عنوان كتلة الشرح | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 319 | `noActivityBody` | MEDIUM | **NOT_REVIEWED** | ستظهر هنا نقاطك فور استلام أول طلب أو نشر أول تقييم. | هەرکە یەکەم داواکارییەکەت وەربگریت یان یەکەم هەڵسەنگاندن بڵاو بکەیتەوە خاڵەکانت لێرە دەردەکەون. | — | — | EmptyState سطر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 320 | `levelsLoadFailed` | MEDIUM | **NOT_REVIEWED** | تعذّر تحميل المستويات — حاول مرة أخرى. | بارکردنی ئاستەکان سەرکەوتوو نەبوو — دووبارە هەوڵ بدەوە. | — | — | حالة خطأ في سُلّم المستويات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 321 | `pointsExplainerIntro` | MEDIUM | **NOT_REVIEWED** | تجمع النقاط من مشترياتك ومن تقييماتك، وكلما زادت ارتفع مستواك. | خاڵ لە کڕینەکانت و لە هەڵسەنگاندنەکانتەوە کۆدەکەیتەوە، و هەرچەندە زیاتر بن ئاستەکەت بەرزتر دەبێت. | — | — | مقدّمة كتلة الشرح | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 322 | `rulePerWrittenReview` | MEDIUM | **NOT_REVIEWED** | عند نشر تقييم مكتوب لمنتج | کاتێک هەڵسەنگاندنێکی نووسراو بۆ بەرهەمێک بڵاو دەکەیتەوە | — | — | قاعدة نقاط التقييم | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 323 | `rulePerPhotoReview` | MEDIUM | **NOT_REVIEWED** | عند إرفاق صور بالتقييم (من صورة إلى خمس) | کاتێک وێنە بە هەڵسەنگاندنەوە هاوپێچ دەکەیت (لە یەک وێنەوە تا پێنج) | — | — | قاعدة نقاط الصور | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 324 | `birthdayTitle` | MEDIUM | **NOT_REVIEWED** | 🎂 تاريخ ميلادك | 🎂 ڕۆژی لەدایکبوونت | — | — | عنوان حوار تاريخ الميلاد | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 325 | `day` | MEDIUM | **NOT_REVIEWED** | اليوم | ڕۆژ | — | حقل تاريخ — يختلف عن today «ئەمڕۆ» الزمنية رغم تطابق العربية | تسمية حقل اليوم في حوار الميلاد | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 326 | `birthdaySaveFailed` | MEDIUM | **NOT_REVIEWED** | تعذّر حفظ تاريخ الميلاد، حاول مرة أخرى | پاشەکەوتکردنی ڕۆژی لەدایکبوون سەرکەوتوو نەبوو، دووبارە هەوڵ بدەوە | — | — | رسالة احتياطية | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 327 | `happyBirthday` | MEDIUM | **NOT_REVIEWED** | 🎂 عيد ميلاد سعيد! | 🎂 ڕۆژی لەدایکبوونت پیرۆز بێت! | — | — | بطاقة عيد الميلاد عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 328 | `orderData` | MEDIUM | **NOT_REVIEWED** | بيانات الطلب | زانیاری داواکاری | — | — | order_data عنوان الشاشة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 329 | `province` | MEDIUM | **NOT_REVIEWED** | المحافظة | پارێزگا | — | — | تسمية المحافظة في الطلب والتفاصيل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 330 | `deliveryCost` | MEDIUM | **NOT_REVIEWED** | تكلفة التوصيل | تێچووی گەیاندن | — | — | تسمية عامة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 331 | `fullAddress` | MEDIUM | **NOT_REVIEWED** | العنوان الكامل | ناونیشانی تەواو | — | — | تسمية حقل العنوان الكامل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 332 | `confirmOrder` | MEDIUM | **NOT_REVIEWED** | تأكيد إرسال الطلب | پشتڕاستکردنەوەی ناردنی داواکاری | — | — | تسمية إجراء | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 333 | `orderSentSuccessfully` | MEDIUM | **NOT_REVIEWED** | تم إرسال طلبك بنجاح. | داواکارییەکەت بە سەرکەوتوویی نێردرا. | — | — | رسالة نجاح | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 334 | `prefsLoadFailed` | MEDIUM | **NOT_REVIEWED** | تعذّر تحميل تفضيلاتك، أعد المحاولة. | بارکردنی ڕێکخستنەکانت سەرکەوتوو نەبوو، دووبارە هەوڵ بدەوە. | — | — | ملاحظة خطأ | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 335 | `personalizeTitle` | MEDIUM | **NOT_REVIEWED** | لنُهيّئ تجربتك | با ئەزموونەکەت ڕێک بخەین | — | — | personalize عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 336 | `personalizeBody` | MEDIUM | **NOT_REVIEWED** | اختر لغتك والمظهر المناسب لك. يمكنك تغييرهما في أي وقت من الإعدادات. | زمان و ڕووکاری گونجاو بۆ خۆت هەڵبژێرە. هەر کاتێک بتەوێت لە ڕێکخستنەکانەوە دەیانگۆڕیت. | — | — | personalize سطر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 337 | `defaultLanguage` | MEDIUM | **NOT_REVIEWED** | اللغة الافتراضية | زمانی بنەڕەت | — | — | سطر فرعي على بطاقة العربية | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 338 | `ctaLetsStart` | MEDIUM | **NOT_REVIEWED** | لنبدأ | با دەست پێبکەین | — | — | onboarding زر الشريحة الأولى | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 339 | `birthdaySavedOn` | MEDIUM | **NOT_REVIEWED** | 🎂 تاريخ ميلادك محفوظ — {date} | 🎂 ڕۆژی لەدایکبوونت پاشەکەوتکرا — {date} | — | — | بطاقة في الحساب | date | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 340 | `birthdayDiscountNote` | MEDIUM | **NOT_REVIEWED** | خصم {percent}٪ على طلب واحد بيوم ميلادك. | داشکاندنی {percent}٪ لەسەر یەک داواکاری لە ڕۆژی لەدایکبوونتدا. | — | — | سطر تحت بطاقة الميلاد | percent | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 341 | `followUs` | MEDIUM | **NOT_REVIEWED** | تابعنا وتواصل معنا | شوێنمان بکەوە و پەیوەندیمان پێوە بکە | — | — | عنوان مجموعة التواصل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 342 | `socialTiktok` | MEDIUM | **NOT_REVIEWED** | تيك توك | تیک تۆک | — | اسم علامة يُنقَل صوتياً كما نقلته العربية، لا يُترجَم | اسم منصّة — منقول للحروف الكردية | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 343 | `socialInstagram` | MEDIUM | **NOT_REVIEWED** | إنستغرام | ئینستاگرام | — | — | اسم منصّة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 344 | `socialWhatsapp` | MEDIUM | **NOT_REVIEWED** | واتساب | واتسئاپ | — | — | اسم منصّة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 345 | `avatarUploadFailed` | MEDIUM | **NOT_REVIEWED** | تعذّر رفع الصورة، تأكد من اتصالك وحاول مرة أخرى | بارکردنی وێنەکە سەرکەوتوو نەبوو، لە پەیوەندییەکەت دڵنیابەرەوە و دووبارە هەوڵ بدەوە | — | — | رسالة احتياطية | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 346 | `levelNumberAndNameLong` | MEDIUM | **NOT_REVIEWED** | المستوى {number} — {name} | ئاستی {number} — {name} | — | — | بطاقة الحساب — «المستوى» بأل التعريف بخلاف levelNumberAndName | name, number | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 347 | `pointsToNextLevel` | MEDIUM | **NOT_REVIEWED** | باقي {count} نقطة للمستوى التالي | {count} خاڵ ماوە بۆ ئاستی داهاتوو | — | — | بطاقة الحساب | count | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 348 | `onbExclusiveProducts` | MEDIUM | **NOT_REVIEWED** | منتجات حصرية | بەرهەمی تایبەت | — | — | شريحة 1 عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 349 | `onbWorldTitle` | MEDIUM | **NOT_REVIEWED** | كل ما يخص عالمك، بمكان واحد | هەرچی پەیوەندی بە جیهانتەوە هەیە، لە یەک شوێندا | — | — | شريحة 2 عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 350 | `onbWorldBody` | MEDIUM | **NOT_REVIEWED** | منتجات حصرية ومبتكرة تلبي تطلعاتكم | بەرهەمی تایبەت و داهێنەرانە کە چاوەڕوانییەکانتان دەهێنێتە دی | — | — | شريحة 2 سطر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 351 | `onbCodTitle` | MEDIUM | **NOT_REVIEWED** | اطلب اليوم، وادفع عند الاستلام | ئەمڕۆ داوا بکە، و لە کاتی وەرگرتن پارە بدە | — | — | شريحة 3 عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 352 | `updateLinkUnavailable` | MEDIUM | **NOT_REVIEWED** | رابط التحديث غير متوفر حالياً — حدّث التطبيق من المتجر. | بەستەری نوێکردنەوە لە ئێستادا بەردەست نییە — لە فرۆشگاوە ئەپەکە نوێ بکەرەوە. | — | — | SnackBar | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 353 | `updateRequiredTitle` | MEDIUM | **NOT_REVIEWED** | يلزم تحديث التطبيق | پێویستە ئەپەکە نوێ بکرێتەوە | — | — | عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 354 | `updateAvailableMessage` | MEDIUM | **NOT_REVIEWED** | صدرت نسخة أحدث من مجرة الأوتاكو فيها آخر التحسينات. حدّث الآن أو لاحقاً. | وەشانێکی نوێتری گەلاکسی ئۆتاکو دەرچووە کە دوایین باشترکردنەکانی تێدایە. ئێستا یان دواتر نوێی بکەرەوە. | — | STEP 70 — نصّ تنبيه التحديث الاختياري؛ اسم العلامة كما في updateRequiredMessage. | رسالة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 355 | `pairOffer` | MEDIUM | **NOT_REVIEWED** | قطعتان بـ{price} | دوو دانە بە {price} | — | STEP 70 — عرض القطعتين (085) تحت السعر؛ {price} مبلغٌ منسَّق بـpriceIqd. «دانە» كما في lastPiecesCount. | شارة سعر | price | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 356 | `offlineShort` | MEDIUM | **NOT_REVIEWED** | غير متصل بالإنترنت | پەیوەندی ئینتەرنێت نییە | — | — | شريط علوي مختصر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 357 | `offlineTitle` | MEDIUM | **NOT_REVIEWED** | لا يوجد اتصال بالإنترنت | هیچ پەیوەندییەکی ئینتەرنێت نییە | — | — | شاشة الحاجز عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 358 | `offlineBody` | MEDIUM | **NOT_REVIEWED** | تحقّق من اتصالك وحاول مرة أخرى. | لە پەیوەندییەکەت دڵنیابەرەوە و دووبارە هەوڵ بدەوە. | — | 2026-09-20: حُذفت الجملة الثانية «يحتاج المتجر إلى اتصال بالإنترنت» بقرار المنتج؛ الكردية اختُصرت تبعاً. | شاشة الحاجز سطر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 359 | `genericError` | MEDIUM | **NOT_REVIEWED** | حدث خطأ | هەڵەیەک ڕوویدا | — | — | AnimeErrorState عنوان افتراضي | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 360 | `subcategoriesCount` | MEDIUM | **NOT_REVIEWED** | {count} قسم فرعي | {count} بەشی لاوەکی | — | — | بطاقة القسم | count | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 361 | `splashTagline` | MEDIUM | **NOT_REVIEWED** | عالم الأنمي بين يديك | جیهانی ئەنیمە لە نێو دەستەکانتدا | — | — | سطر تحت الشعار | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 362 | `errServerStatus` | MEDIUM | **NOT_REVIEWED** | خطأ من الخادم ({status}) | هەڵە لە ڕاژەکارەوە ({status}) | — | — | api_client — الرمز تشخيصي | status | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 363 | `errTimeout` | MEDIUM | **NOT_REVIEWED** | انتهت مهلة الاتصال — حاول مرة أخرى ({detail}) | ماوەی پەیوەندی تەواو بوو — دووبارە هەوڵ بدەوە ({detail}) | — | — | api_client مهلة | detail | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 364 | `errConnection` | MEDIUM | **NOT_REVIEWED** | تعذر الاتصال بالخادم — تحقق من الإنترنت ({detail}) | پەیوەندیکردن بە ڕاژەکارەوە سەرکەوتوو نەبوو — ئینتەرنێت بپشکنە ({detail}) | — | — | api_client انقطاع | detail | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 365 | `navHome` | MEDIUM | **NOT_REVIEWED** | الرئيسية | سەرەکی | — | من الترجمات الـ17 السابقة — دُقّقت مقابل قفل الأسلوب والمسرد ولم تُعدَّل (القاعدة ٣٥) | التنقّل السفلي | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 366 | `navCategories` | MEDIUM | **NOT_REVIEWED** | الأقسام | بەشەکان | — | من الترجمات الـ17 السابقة — دُقّقت مقابل قفل الأسلوب والمسرد ولم تُعدَّل (القاعدة ٣٥) | التنقّل السفلي | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 367 | `navCommunity` | MEDIUM | **NOT_REVIEWED** | المجتمع | کۆمەڵگا | — | من الترجمات الـ17 السابقة — دُقّقت مقابل قفل الأسلوب والمسرد ولم تُعدَّل (القاعدة ٣٥) | التنقّل السفلي | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 368 | `navFavorites` | MEDIUM | **NOT_REVIEWED** | المفضلة | دڵخوازەکان | — | من الترجمات الـ17 السابقة — دُقّقت مقابل قفل الأسلوب والمسرد ولم تُعدَّل (القاعدة ٣٥) | التنقّل السفلي | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 369 | `navCart` | MEDIUM | **NOT_REVIEWED** | السلة | سەبەتە | — | من الترجمات الـ17 السابقة — دُقّقت مقابل قفل الأسلوب والمسرد ولم تُعدَّل (القاعدة ٣٥) | التنقّل السفلي | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 370 | `navAccount` | MEDIUM | **NOT_REVIEWED** | الحساب | هەژمار | — | من الترجمات الـ17 السابقة — دُقّقت مقابل قفل الأسلوب والمسرد ولم تُعدَّل (القاعدة ٣٥) | التنقّل السفلي | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 371 | `settings` | MEDIUM | **NOT_REVIEWED** | الإعدادات | ڕێکخستنەکان | — | من الترجمات الـ17 السابقة — دُقّقت مقابل قفل الأسلوب والمسرد ولم تُعدَّل (القاعدة ٣٥) | الإعدادات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 372 | `language` | MEDIUM | **NOT_REVIEWED** | اللغة | زمان | — | من الترجمات الـ17 السابقة — دُقّقت مقابل قفل الأسلوب والمسرد ولم تُعدَّل (القاعدة ٣٥) | الإعدادات/التخصيص | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 373 | `theme` | MEDIUM | **NOT_REVIEWED** | المظهر | ڕووکار | — | من الترجمات الـ17 السابقة — دُقّقت مقابل قفل الأسلوب والمسرد ولم تُعدَّل (القاعدة ٣٥) | الإعدادات/التخصيص | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 374 | `themeLight` | MEDIUM | **NOT_REVIEWED** | فاتح | ڕووناک | — | من الترجمات الـ17 السابقة — دُقّقت مقابل قفل الأسلوب والمسرد ولم تُعدَّل (القاعدة ٣٥) | التخصيص | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 375 | `themeDark` | MEDIUM | **NOT_REVIEWED** | داكن | تاریک | — | من الترجمات الـ17 السابقة — دُقّقت مقابل قفل الأسلوب والمسرد ولم تُعدَّل (القاعدة ٣٥) | التخصيص | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 376 | `notifications` | MEDIUM | **NOT_REVIEWED** | الإشعارات | ئاگادارکردنەوەکان | — | من الترجمات الـ17 السابقة — دُقّقت مقابل قفل الأسلوب والمسرد ولم تُعدَّل (القاعدة ٣٥) | الإشعارات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 377 | `galaxyPoints` | MEDIUM | **NOT_REVIEWED** | نقاط المجرّة | خاڵەکانی گەلاکسی | — | من الترجمات الـ17 السابقة — دُقّقت مقابل قفل الأسلوب والمسرد ولم تُعدَّل (القاعدة ٣٥) | نقاط المجرّة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 378 | `myOrders` | MEDIUM | **NOT_REVIEWED** | طلباتي | داواکارییەکانم | — | من الترجمات الـ17 السابقة — دُقّقت مقابل قفل الأسلوب والمسرد ولم تُعدَّل (القاعدة ٣٥) | الطلبات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 379 | `logout` | MEDIUM | **NOT_REVIEWED** | تسجيل الخروج | چوونەدەرەوە | — | من الترجمات الـ17 السابقة — دُقّقت مقابل قفل الأسلوب والمسرد ولم تُعدَّل (القاعدة ٣٥) | الحساب | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 380 | `save` | MEDIUM | **NOT_REVIEWED** | حفظ | پاشەکەوتکردن | — | من الترجمات الـ17 السابقة — دُقّقت مقابل قفل الأسلوب والمسرد ولم تُعدَّل (القاعدة ٣٥) | حوارات عامّة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 381 | `startupFailed` | MEDIUM | **NOT_REVIEWED** | تعذّر تشغيل التطبيق — تحقق من اتصالك ثم أعد المحاولة. | نەتوانرا ئەپەکە دەستپێبکات — پەیوەندییەکەت بپشکنە و دووبارە هەوڵبدەوە. | — | يظهر حين تفشل خطوة إقلاع مطلوبة؛ الصيغة تطلب فعلاً من المستخدم لا تصف عطباً فقط. | splash_screen.dart — حالة تعذّر الإقلاع مع زر إعادة المحاولة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 382 | `gender` | MEDIUM | **NOT_REVIEWED** | الجنس | ڕەگەز | — | اسمُ الحقل لا خطاب. كانت ثابتاً عربياً في GenderedStrings بلا مسار كردي — نُقل إلى AppStrings. | gender_selector.dart — عنوان الحقل · settings_screen.dart — بطاقة الحساب وعنوان الورقة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 383 | `genderRequired` | MEDIUM | **NOT_REVIEWED** | يرجى اختيار الجنس | تکایە ڕەگەز هەڵبژێرە | — | فعل أمر — السوراني لا يصرّفه بالجنس، صيغة واحدة. | register_screen.dart — رسالة التحقق تحت البطاقتين | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 384 | `forgotPasswordIntro` | MEDIUM | **NOT_REVIEWED** | هذه البيانات تساعد الإدارة على التحقّق من أنك صاحب الحساب. | ئەم زانیارییانە یارمەتی بەڕێوەبەرایەتی دەدەن بۆ دڵنیابوون لەوەی کە خاوەنی هەژمارەکەیت. | — | صيغة محايدة عمداً: الزائر بلا جلسة فلا جنس يُعرف. | forgot_password_screen.dart — subtitle | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 385 | `pendingAdminReview` | MEDIUM | **NOT_REVIEWED** | بانتظار مراجعة الإدارة | چاوەڕوانی پێداچوونەوەی بەڕێوەبەرایەتی | — | — | account_pending_screen.dart — كبسولة الحالة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 386 | `stepAdminContactsWhatsapp` | MEDIUM | **NOT_REVIEWED** | تتواصل معك الإدارة عبر واتساب للتحقق | بەڕێوەبەرایەتی لە ڕێگەی واتسئاپەوە پەیوەندیت پێوە دەکات بۆ پشتڕاستکردنەوە | — | — | account_pending_screen.dart — الخطوة ١ | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 387 | `stepAdminApprovesAccount` | MEDIUM | **NOT_REVIEWED** | بعد التحقق يُفعَّل حسابك | دوای پشتڕاستکردنەوە هەژمارەکەت چالاک دەکرێت | — | — | account_pending_screen.dart — الخطوة ٢ (تسجيل) | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 388 | `stepLoginWithPassword` | MEDIUM | **NOT_REVIEWED** | تسجّل الدخول بكلمة المرور التي اخترتها | بە وشەی نهێنییەکەی هەڵتبژاردووە دەچیتە ژوورەوە | — | فعل مضارع مخاطَب — الكردية صيغة واحدة. | account_pending_screen.dart — الخطوة ٣ (تسجيل) | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 389 | `showPassword` | MEDIUM | **NOT_REVIEWED** | إظهار كلمة المرور | پیشاندانی وشەی نهێنی | — | وصف زرّ العين للقارئ الصوتي. | settings_screen.dart change-password eye toggle (tooltip/semantics) | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 390 | `hidePassword` | MEDIUM | **NOT_REVIEWED** | إخفاء كلمة المرور | شاردنەوەی وشەی نهێنی | — | وصف زرّ العين للقارئ الصوتي. | settings_screen.dart change-password eye toggle (tooltip/semantics) | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 391 | `genderGateTitle` | MEDIUM | **NOT_REVIEWED** | خطوة أخيرة قبل المتابعة | هەنگاوێکی کۆتایی پێش بەردەوامبوون | — | حاجز إلزامي بعد الدخول. «بەردەوامبوون» كما في continueLabel. | gender_required_gate.dart — عنوان حاجز إكمال الجنس (D5) لحسابٍ قديم بلا جنس | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 392 | `searchHint` | LOW | **NOT_REVIEWED** | ابحث عن منتج… | بەدوای بەرهەمێکدا بگەڕێ… | — | صيغة أمر كما في العربية؛ الحذف «…» محرف واحد | search_screen.dart — TextField hintText | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 393 | `selectedProducts` | LOW | **NOT_REVIEWED** | منتجات مختارة | بەرهەمی هەڵبژێردراو | — | — | home_screen.dart:159 — ProductSection title | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 394 | `price` | LOW | **NOT_REVIEWED** | السعر | نرخ | — | — | product_detail — تسمية | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 395 | `description` | LOW | **NOT_REVIEWED** | الوصف | وەسف | — | — | product_detail:371 — عنوان قسم | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 396 | `quantity` | LOW | **NOT_REVIEWED** | الكمية | بڕ | — | — | product_detail:404 — عنوان مُنتقي الكمية | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 397 | `welcomeTo` | LOW | **NOT_REVIEWED** | أهلاً بك في | بەخێربێیت بۆ | — | — | home_screen:258 — سطر فوق اسم المتجر مباشرة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 398 | `seeAll` | LOW | **NOT_REVIEWED** | عرض الكل | هەموویان ببینە | — | — | home_compositions:36 — رابط بجانب عنوان القسم | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 399 | `promoActiveDiscounts` | LOW | **NOT_REVIEWED** | خصومات فعّالة | داشکاندنی چالاک | — | — | home_compositions:312 — عنوان بطاقة الخصومات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 400 | `addToFavorites` | LOW | **NOT_REVIEWED** | إضافة إلى المفضلة | زیادکردن بۆ دڵخوازەکان | — | — | تسمية إجراء | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 401 | `editProfile` | LOW | **NOT_REVIEWED** | تعديل الملف الشخصي | دەستکاری پرۆفایل | — | — | تسمية إجراء في الحساب | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 402 | `all` | LOW | **NOT_REVIEWED** | الكل | هەموو | — | — | community_screen:214 — رقاقة «الكل» في مرشّح الأقسام | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 403 | `retry` | LOW | **NOT_REVIEWED** | إعادة المحاولة | دووبارە هەوڵدانەوە | — | — | زر إعادة المحاولة في حالات الخطأ | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 404 | `back` | LOW | **NOT_REVIEWED** | العودة | گەڕانەوە | — | — | order_detail:114 — actionLabel لحالة الخطأ | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 405 | `login` | LOW | **NOT_REVIEWED** | تسجيل الدخول | چوونەژوورەوە | — | — | login_screen العنوان والزر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 406 | `register` | LOW | **NOT_REVIEWED** | إنشاء حساب | دروستکردنی هەژمار | — | — | register_screen العنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 407 | `phoneNumber` | LOW | **NOT_REVIEWED** | رقم الهاتف | ژمارەی مۆبایل | — | — | حقل الهاتف في الدخول/التسجيل/الاستعادة/الطلب | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 408 | `password` | LOW | **NOT_REVIEWED** | كلمة المرور | وشەی نهێنی | — | — | حقل كلمة المرور | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 409 | `username` | LOW | **NOT_REVIEWED** | اسم المستخدم | ناوی بەکارهێنەر | — | — | حقل الاسم في التسجيل والإعدادات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 410 | `verifyCode` | LOW | **NOT_REVIEWED** | رمز التحقق | کۆدی پشتڕاستکردنەوە | — | — | otp_verification عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 411 | `sendCode` | LOW | **NOT_REVIEWED** | إرسال رمز التحقق | ناردنی کۆدی پشتڕاستکردنەوە | — | — | زر إرسال الرمز | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 412 | `sendVerifyCode` | LOW | **NOT_REVIEWED** | إرسال رمز التحقق | ناردنی کۆدی پشتڕاستکردنەوە | — | — | register_screen:230 زر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 413 | `confirmPhone` | LOW | **NOT_REVIEWED** | تأكيد رقم الهاتف | پشتڕاستکردنەوەی ژمارەی مۆبایل | — | — | تسمية إجراء | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 414 | `phoneRequired` | LOW | **NOT_REVIEWED** | يرجى إدخال رقم الهاتف | تکایە ژمارەی مۆبایل بنووسە | — | — | order_data مُدقّق الحقل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 415 | `phoneRequiredShort` | LOW | **NOT_REVIEWED** | يرجى إدخال رقم الهاتف | تکایە ژمارەی مۆبایل بنووسە | — | — | مُدقّق حقل الهاتف في شاشات المصادقة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 416 | `phoneInvalid` | LOW | **NOT_REVIEWED** | رقم الهاتف غير صحيح | ژمارەی مۆبایل هەڵەیە | — | — | مُدقّق الحقل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 417 | `passwordRequired` | LOW | **NOT_REVIEWED** | يرجى إدخال كلمة المرور | تکایە وشەی نهێنی بنووسە | — | — | مُدقّق الحقل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 418 | `currentPassword` | LOW | **NOT_REVIEWED** | كلمة المرور الحالية | وشەی نهێنی ئێستا | — | — | settings_screen:329 حقل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 419 | `newPassword` | LOW | **NOT_REVIEWED** | كلمة المرور الجديدة | وشەی نهێنی نوێ | — | — | حقل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 420 | `confirmPassword` | LOW | **NOT_REVIEWED** | تأكيد كلمة المرور | پشتڕاستکردنەوەی وشەی نهێنی | — | — | reset_password حقل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 421 | `required` | LOW | **NOT_REVIEWED** | مطلوب | پێویستە | — | — | مُدقّق مختصر لحقل فارغ | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 422 | `usernameRequired` | LOW | **NOT_REVIEWED** | يرجى إدخال اسم المستخدم | تکایە ناوی بەکارهێنەر بنووسە | — | — | مُدقّق | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 423 | `usernameTooShort` | LOW | **NOT_REVIEWED** | اسم المستخدم قصير جداً | ناوی بەکارهێنەر زۆر کورتە | — | — | مُدقّق | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 424 | `forgotPasswordTitle` | LOW | **NOT_REVIEWED** | نسيت كلمة المرور | وشەی نهێنی لەبیرچوو | — | بلا استفهام — عنوان لا سؤال، بخلاف forgotPassword | forgot_password عنوان الشاشة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 425 | `sendCodeShort` | LOW | **NOT_REVIEWED** | إرسال الرمز | ناردنی کۆد | — | — | forgot_password:146 زر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 426 | `confirmCode` | LOW | **NOT_REVIEWED** | تأكيد الرمز | پشتڕاستکردنەوەی کۆد | — | — | otp زر التأكيد | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 427 | `resendCode` | LOW | **NOT_REVIEWED** | إعادة إرسال الرمز | دووبارە ناردنی کۆد | — | — | otp زر بعد انتهاء العدّاد | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 428 | `devOtp` | LOW | **NOT_REVIEWED** | رمز التجربة: {code} | کۆدی تاقیکردنەوە: {code} | — | — | otp — يظهر في بيئة التطوير فقط | code | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 429 | `verifying` | LOW | **NOT_REVIEWED** | جاري التحقق… | پشتڕاست دەکرێتەوە… | — | — | otp_code_field أثناء التحقق | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 430 | `nameUpdated` | LOW | **NOT_REVIEWED** | تم تحديث الاسم | ناو نوێکرایەوە | — | — | SnackBar بعد تعديل الاسم | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 431 | `choiceUpdated` | LOW | **NOT_REVIEWED** | تم تحديث الاختيار | هەڵبژاردن نوێکرایەوە | — | — | SnackBar بعد تعديل الجنس | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 432 | `account` | LOW | **NOT_REVIEWED** | الحساب | هەژمار | — | — | settings_screen:120 عنوان مجموعة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 433 | `editDisplayName` | LOW | **NOT_REVIEWED** | تعديل اسم الحساب | دەستکاری ناوی هەژمار | — | — | settings صف وعنوان حوار | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 434 | `noCategoriesTitle` | LOW | **NOT_REVIEWED** | لا توجد أقسام بعد | هێشتا هیچ بەشێک نییە | — | — | AnimeEmptyState عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 435 | `search` | LOW | **NOT_REVIEWED** | بحث | گەڕان | — | — | category_products tooltip لأيقونة البحث | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 436 | `noProductsInCategoryTitle` | LOW | **NOT_REVIEWED** | لا توجد منتجات في هذا القسم | هیچ بەرهەمێک لەم بەشەدا نییە | — | — | EmptyState عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 437 | `backToCategories` | LOW | **NOT_REVIEWED** | رجوع للأقسام | گەڕانەوە بۆ بەشەکان | — | — | EmptyState actionLabel | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 438 | `noProductsHereTitle` | LOW | **NOT_REVIEWED** | لا توجد منتجات هنا | هیچ بەرهەمێک لێرە نییە | — | — | EmptyState داخل قسم فرعي | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 439 | `recentSearches` | LOW | **NOT_REVIEWED** | عمليات البحث الأخيرة | گەڕانە دواییەکان | — | — | search_screen عنوان مجموعة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 440 | `clearAll` | LOW | **NOT_REVIEWED** | مسح الكل | سڕینەوەی هەموو | — | — | زر بجانب عمليات البحث الأخيرة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 441 | `suggestedForYou` | LOW | **NOT_REVIEWED** | مقترحة لك | پێشنیار بۆ تۆ | — | — | عنوان مجموعة الاقتراحات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 442 | `noResultsTitle` | LOW | **NOT_REVIEWED** | لا توجد نتائج | هیچ ئەنجامێک نییە | — | — | EmptyState عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 443 | `browseCategories` | LOW | **NOT_REVIEWED** | تصفّح الأقسام | بەشەکان بگەڕێ | — | — | EmptyState actionLabel | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 444 | `renameCollection` | LOW | **NOT_REVIEWED** | إعادة تسمية المجموعة | گۆڕینی ناوی کۆمەڵە | — | — | حوار إعادة التسمية عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 445 | `collectionName` | LOW | **NOT_REVIEWED** | اسم المجموعة | ناوی کۆمەڵە | — | — | حقل الاسم في حواري الإنشاء والتسمية | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 446 | `deleteCollection` | LOW | **NOT_REVIEWED** | حذف المجموعة | سڕینەوەی کۆمەڵە | — | — | خيار في المُنتقي + عنوان حوار | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 447 | `delete` | LOW | **NOT_REVIEWED** | حذف | سڕینەوە | — | — | زر تأكيد الحذف | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 448 | `rename` | LOW | **NOT_REVIEWED** | إعادة تسمية | گۆڕینی ناو | — | — | خيار في مُنتقي المجموعة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 449 | `newCollection` | LOW | **NOT_REVIEWED** | مجموعة جديدة | کۆمەڵەی نوێ | — | — | زر وعنوان حوار الإنشاء | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 450 | `create` | LOW | **NOT_REVIEWED** | إنشاء | دروستکردن | — | — | زر تأكيد الإنشاء | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 451 | `addToCollection` | LOW | **NOT_REVIEWED** | إضافة إلى مجموعة | زیادکردن بۆ کۆمەڵە | — | — | عنوان الورقة السفلية | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 452 | `add` | LOW | **NOT_REVIEWED** | إضافة | زیادکردن | — | — | زر التبديل في ورقة الإضافة (مقابل إزالة) | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 453 | `collectionEmpty` | LOW | **NOT_REVIEWED** | المجموعة فارغة | کۆمەڵەکە بەتاڵە | — | — | EmptyState عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 454 | `removeFromCollection` | LOW | **NOT_REVIEWED** | إزالة من المجموعة | لابردن لە کۆمەڵە | — | — | حوار تأكيد الإزالة عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 455 | `discountPercentBadge` | LOW | **NOT_REVIEWED** | −{percent}٪ | −{percent}٪ | — | رموز فقط — مطابقة للعربية | شارة الخصم على بطاقة المنتج والتفاصيل | percent | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 456 | `noDescriptionYet` | LOW | **NOT_REVIEWED** | لا يوجد وصف لهذا المنتج بعد. | هێشتا وەسفێک بۆ ئەم بەرهەمە نییە. | — | — | product_detail قسم الوصف | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 457 | `availableOptions` | LOW | **NOT_REVIEWED** | الخيارات المتاحة | هەڵبژاردنە بەردەستەکان | — | — | product_detail:387 عنوان قسم الخيارات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 458 | `product` | LOW | **NOT_REVIEWED** | المنتج | بەرهەم | — | — | product_detail:619 عنوان الشاشة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 459 | `selectedBadge` | LOW | **NOT_REVIEWED** | مختار | هەڵبژێردراو | — | — | شارة «مختار» على بطاقة المنتج | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 460 | `favorites` | LOW | **NOT_REVIEWED** | المفضلة | دڵخوازەکان | — | — | favorites_screen عنوان + تبويب | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 461 | `myCollections` | LOW | **NOT_REVIEWED** | مجموعاتي | کۆمەڵەکانم | — | — | تبويب بجانب المفضلة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 462 | `favoritesEmptyTitle` | LOW | **NOT_REVIEWED** | مفضلتك فارغة | دڵخوازەکانت بەتاڵن | — | — | EmptyState عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 463 | `cartEmptyTitle` | LOW | **NOT_REVIEWED** | السلة فارغة | سەبەتەکە بەتاڵە | — | — | EmptyState عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 464 | `removeProduct` | LOW | **NOT_REVIEWED** | إزالة المنتج | لابردنی بەرهەم | — | — | حوار تأكيد الإزالة عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 465 | `remove` | LOW | **NOT_REVIEWED** | إزالة | لابردن | — | — | زر تأكيد الإزالة + تبديل في ورقة المجموعات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 466 | `viewCart` | LOW | **NOT_REVIEWED** | عرض السلة | سەبەتە ببینە | — | — | إجراء داخل SnackBar الإضافة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 467 | `recipientInfo` | LOW | **NOT_REVIEWED** | معلومات المستلم | زانیاری وەرگر | — | — | order_data عنوان بطاقة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 468 | `phoneHintExample` | LOW | **NOT_REVIEWED** | أدخل رقم الهاتف | ژمارەی مۆبایل بنووسە | — | أُلغيت بادئة 07 الثابتة من الحقل (2026-09-27): الزبون يكتب رقم الموبايل العراقي كاملاً بصيغته المحلية (07XXXXXXXXX، و07 بيده)، فصار النصّ النائب «أدخل رقم الهاتف» بطلب المنتج. الكردية تتبع تسمية الحقل «ژمارەی مۆبایل» وصيغة «تکایە ژمارەی مۆبایل بنووسە». | hint داخل حقل الهاتف (الدخول، إنشاء الحساب، استعادة كلمة المرور، بيانات الطلب) — الرقم كاملاً بلا بادئة مفروضة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 469 | `deliveryAddress` | LOW | **NOT_REVIEWED** | عنوان التوصيل | ناونیشانی گەیاندن | — | — | order_data عنوان بطاقة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 470 | `provinceRequired` | LOW | **NOT_REVIEWED** | يرجى اختيار المحافظة | تکایە پارێزگا هەڵبژێرە | — | — | مُدقّق | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 471 | `chooseZone` | LOW | **NOT_REVIEWED** | اختر المنطقة | ناوچە هەڵبژێرە | — | — | placeholder المُنتقي | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 472 | `fullAddressRequired` | LOW | **NOT_REVIEWED** | يرجى إدخال العنوان الكامل | تکایە ناونیشانی تەواو بنووسە | — | — | مُدقّق | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 473 | `addressTooShort` | LOW | **NOT_REVIEWED** | العنوان قصير جداً | ناونیشانەکە زۆر کورتە | — | — | مُدقّق | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 474 | `quantityCount` | LOW | **NOT_REVIEWED** | الكمية: {count} | بڕ: {count} | — | — | سطر تحت اسم المنتج في الملخّص | count | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 475 | `quantityValue` | LOW | **NOT_REVIEWED** | الكمية {count} | بڕ {count} | — | — | order_review — بلا نقطتين، بخلاف quantityCount | count | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 476 | `delivery` | LOW | **NOT_REVIEWED** | التوصيل | گەیاندن | — | — | سطر التوصيل في ملخّص الأسعار | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 477 | `noProvincesTitle` | LOW | **NOT_REVIEWED** | لا توجد محافظات | هیچ پارێزگایەک نییە | — | — | EmptyState عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 478 | `deliveryInfo` | LOW | **NOT_REVIEWED** | معلومات التوصيل | زانیاری گەیاندن | — | — | order_review عنوان بطاقة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 479 | `priceSummary` | LOW | **NOT_REVIEWED** | ملخّص الأسعار | کورتەی نرخەکان | — | — | order_review عنوان قسم | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 480 | `nextSteps` | LOW | **NOT_REVIEWED** | الخطوات التالية | هەنگاوەکانی داهاتوو | — | — | order_success عنوان قائمة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 481 | `stepPrepareDeliver` | LOW | **NOT_REVIEWED** | التجهيز والتوصيل | ئامادەکردن و گەیاندن | — | — | خطوة 3 | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 482 | `stepNumeral1` | LOW | **NOT_REVIEWED** | ١ | 1 | — | رقم غربيّ في الكردية | رقم الخطوة في دائرة صغيرة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 483 | `stepNumeral2` | LOW | **NOT_REVIEWED** | ٢ | 2 | — | — | رقم الخطوة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 484 | `stepNumeral3` | LOW | **NOT_REVIEWED** | ٣ | 3 | — | — | رقم الخطوة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 485 | `noOrdersTitle` | LOW | **NOT_REVIEWED** | لا توجد طلبات بعد | هێشتا هیچ داواکارییەکت نییە | — | — | EmptyState عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 486 | `orderDetails` | LOW | **NOT_REVIEWED** | تفاصيل الطلب | وردەکاری داواکاری | — | — | order_detail عنوان الشاشة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 487 | `orderNotFoundTitle` | LOW | **NOT_REVIEWED** | الطلب غير موجود | داواکارییەکە نەدۆزرایەوە | — | — | حالة خطأ عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 488 | `orderInfo` | LOW | **NOT_REVIEWED** | معلومات الطلب | زانیاری داواکاری | — | — | order_detail عنوان بطاقة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 489 | `priceSummaryShort` | LOW | **NOT_REVIEWED** | ملخص الأسعار | کورتەی نرخەکان | — | — | order_detail عنوان قسم | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 490 | `photoAdded` | LOW | **NOT_REVIEWED** | تمت إضافة الصورة | وێنەکە زیادکرا | — | — | SnackBar نجاح | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 491 | `editReview` | LOW | **NOT_REVIEWED** | تعديل التقييم | دەستکاری هەڵسەنگاندن | — | — | عنوان الشاشة عند التعديل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 492 | `sendReview` | LOW | **NOT_REVIEWED** | إرسال التقييم | ناردنی هەڵسەنگاندن | — | — | زر الإرسال | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 493 | `addPhoto` | LOW | **NOT_REVIEWED** | إضافة صورة | زیادکردنی وێنە | — | — | زر مُنتقي الصور | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 494 | `photoCountOfMax` | LOW | **NOT_REVIEWED** | {count} من {max} | {count} لە {max} | — | — | عدّاد الصور | count, max | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 495 | `removePhoto` | LOW | **NOT_REVIEWED** | إزالة الصورة | لابردنی وێنە | — | — | tooltip على المصغّرة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 496 | `noPhotosInCategoryTitle` | LOW | **NOT_REVIEWED** | لا توجد صور في هذا القسم بعد | هێشتا هیچ وێنەیەک لەم بەشەدا نییە | — | — | EmptyState عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 497 | `allCategories` | LOW | **NOT_REVIEWED** | كل الأقسام | هەموو بەشەکان | — | — | EmptyState actionLabel | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 498 | `viewProduct` | LOW | **NOT_REVIEWED** | عرض المنتج | بەرهەمەکە ببینە | — | — | زر داخل عارض الصور | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 499 | `today` | LOW | **NOT_REVIEWED** | اليوم | ئەمڕۆ | — | «اليوم» زمنيّة — تختلف عن key=day «الیوم» حقل التاريخ | مجموعة زمنية في قائمة الإشعارات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 500 | `thisWeek` | LOW | **NOT_REVIEWED** | هذا الأسبوع | ئەم هەفتەیە | — | — | مجموعة زمنية | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 501 | `older` | LOW | **NOT_REVIEWED** | أقدم | کۆنتر | — | — | مجموعة زمنية | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 502 | `noNotificationsTitle` | LOW | **NOT_REVIEWED** | لا توجد إشعارات | هیچ ئاگادارکردنەوەیەک نییە | — | — | EmptyState عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 503 | `justNow` | LOW | **NOT_REVIEWED** | الآن | ئێستا | — | — | وقت نسبي < دقيقة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 504 | `lessThanAMinute` | LOW | **NOT_REVIEWED** | أقل من دقيقة | کەمتر لە خولەکێک | — | — | formatRemaining | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 505 | `countWithUnit` | LOW | **NOT_REVIEWED** | {count} {unit} | {count} {unit} | — | — | تركيب العدد بالوحدة | count, unit | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 506 | `pointsLog` | LOW | **NOT_REVIEWED** | سجل النقاط | تۆماری خاڵەکان | — | — | عنوان كتلة السجل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 507 | `noActivityTitle` | LOW | **NOT_REVIEWED** | لا توجد حركات بعد | هێشتا هیچ جووڵەیەک نییە | — | — | EmptyState عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 508 | `claiming` | LOW | **NOT_REVIEWED** | جاري التسجيل… | تۆمار دەکرێت… | — | — | نصّ الزر أثناء الطلب | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 509 | `invalidDay` | LOW | **NOT_REVIEWED** | يوم غير صالح | ڕۆژی نادروست | — | — | مُدقّق | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 510 | `month` | LOW | **NOT_REVIEWED** | الشهر | مانگ | — | — | تسمية حقل الشهر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 511 | `invalidMonth` | LOW | **NOT_REVIEWED** | شهر غير صالح | مانگی نادروست | — | — | مُدقّق | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 512 | `languageAndTheme` | LOW | **NOT_REVIEWED** | اللغة والمظهر | زمان و ڕووکار | — | — | صف الإعدادات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 513 | `notificationSettings` | LOW | **NOT_REVIEWED** | إعدادات الإشعارات | ڕێکخستنی ئاگادارکردنەوەکان | — | — | صف الإعدادات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 514 | `confirmNewPassword` | LOW | **NOT_REVIEWED** | تأكيد كلمة المرور الجديدة | پشتڕاستکردنەوەی وشەی نهێنی نوێ | — | — | حقل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 515 | `appearance` | LOW | **NOT_REVIEWED** | المظهر | ڕووکار | — | — | عنوان مجموعة المظهر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 516 | `continueLabel` | LOW | **NOT_REVIEWED** | متابعة | بەردەوامبوون | — | — | personalize زر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 517 | `ctaContinue` | LOW | **NOT_REVIEWED** | متابعة | بەردەوامبوون | — | نفس العربية «متابعة» مثل continueLabel — نفس الكردية | onboarding زر الشريحة الوسطى | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 518 | `addBirthday` | LOW | **NOT_REVIEWED** | إضافة تاريخ الميلاد | زیادکردنی ڕۆژی لەدایکبوون | — | — | صف في الحساب | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 519 | `socialTiktokSub` | LOW | **NOT_REVIEWED** | جديد المنتجات والعروض | نوێترین بەرهەم و داشکاندنەکان | — | — | سطر فرعي | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 520 | `socialInstagramSub` | LOW | **NOT_REVIEWED** | صور المنتجات ولقطات المتجر | وێنەی بەرهەمەکان و دیمەنی فرۆشگا | — | — | سطر فرعي | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 521 | `socialWhatsappSub` | LOW | **NOT_REVIEWED** | تواصل مباشر مع خدمة العملاء | پەیوەندی ڕاستەوخۆ لەگەڵ خزمەتگوزاری کڕیاران | — | — | سطر فرعي | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 522 | `profilePhoto` | LOW | **NOT_REVIEWED** | الصورة الشخصية | وێنەی پرۆفایل | — | — | عنوان مُنتقي الصورة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 523 | `pickFromGallery` | LOW | **NOT_REVIEWED** | اختيار من المعرض | هەڵبژاردن لە گەلەری | — | — | خيار في المُنتقي | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 524 | `avatarRemoved` | LOW | **NOT_REVIEWED** | أُزيلت الصورة الشخصية | وێنەی پرۆفایل لابرا | — | — | SnackBar | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 525 | `avatarUpdated` | LOW | **NOT_REVIEWED** | تم تحديث الصورة الشخصية | وێنەی پرۆفایل نوێکرایەوە | — | — | SnackBar | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 526 | `linkComingSoon` | LOW | **NOT_REVIEWED** | الرابط يُضاف لاحقاً | بەستەرەکە دواتر زیاد دەکرێت | — | — | SnackBar لرابط غير مضبوط | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 527 | `linkInvalid` | LOW | **NOT_REVIEWED** | الرابط غير صالح | بەستەرەکە دروست نییە | — | — | SnackBar | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 528 | `onbHighQuality` | LOW | **NOT_REVIEWED** | منتجات بجودة عالية | بەرهەم بە کوالیتی بەرز | — | — | شريحة 2 شارة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 529 | `onbFastSafeDelivery` | LOW | **NOT_REVIEWED** | توصيل سريع وآمن. | گەیاندنی خێرا و پارێزراو. | — | — | شريحة 3 شارة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 530 | `updateApp` | LOW | **NOT_REVIEWED** | تحديث التطبيق | نوێکردنەوەی ئەپ | — | — | زر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 531 | `yourVersion` | LOW | **NOT_REVIEWED** | نسختك {version} | وەشانی تۆ {version} | — | — | رقاقة معلومات | version | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 532 | `requiredVersion` | LOW | **NOT_REVIEWED** | المطلوبة {version} | پێویست {version} | — | — | رقاقة معلومات | version | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 533 | `latestVersion` | LOW | **NOT_REVIEWED** | الأحدث {version} | نوێترین {version} | — | STEP 70 — سطر النسخ في تنبيه التحديث الاختياري، نظير requiredVersion. | رقاقة معلومات | version | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 534 | `updateAvailableTitle` | LOW | **NOT_REVIEWED** | نسخة جديدة متوفّرة | وەشانێکی نوێ بەردەستە | — | STEP 70 — عنوان تنبيه التحديث الاختياري (يُغلق). | عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 535 | `updateLater` | LOW | **NOT_REVIEWED** | لاحقاً | دواتر | — | STEP 70 — يُغلق تنبيه التحديث الاختياري لهذا الإصدار. «دواتر» كما في linkComingSoon. | زر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 536 | `browseCategory` | LOW | **NOT_REVIEWED** | تصفّح القسم | بەشەکە بگەڕێ | — | — | بطاقة القسم حين لا أقسام فرعية | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 537 | `productPhoto` | LOW | **NOT_REVIEWED** | صورة المنتج | وێنەی بەرهەم | — | — | product_photo_slot تسمية دلالية | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 538 | `accountLevel` | LOW | **NOT_REVIEWED** | مستوى الحساب | ئاستی هەژمار | — | — | forgot_password_screen.dart — عنوان حقل المستوى | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 539 | `chooseAccountLevel` | LOW | **NOT_REVIEWED** | اختر مستوى حسابك | ئاستی هەژمارەکەت هەڵبژێرە | — | — | forgot_password_screen.dart — عنوان ورقة الاختيار والعنصر النائب | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 540 | `accountLevelRequired` | LOW | **NOT_REVIEWED** | يرجى اختيار مستوى الحساب | تکایە ئاستی هەژمار هەڵبژێرە | — | — | forgot_password_screen.dart — رسالة التحقق | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 541 | `accountLevelHint` | LOW | **NOT_REVIEWED** | تجده في صفحة نقاط المجرّة أو الحساب | لە لاپەڕەی خاڵەکانی گەلاکسی یان هەژمار دەیدۆزیتەوە | — | «خاڵەکانی گەلاکسی» من المسرد المقفل. | forgot_password_screen.dart — تلميح تحت الحقل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 542 | `submitRequest` | LOW | **NOT_REVIEWED** | إرسال الطلب | ناردنی داواکاری | — | — | forgot_password_screen.dart — الزرّ الرئيسي | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 543 | `backToLogin` | LOW | **NOT_REVIEWED** | العودة لتسجيل الدخول | گەڕانەوە بۆ چوونەژوورەوە | — | — | account_pending_screen.dart — الزرّ الرئيسي | — | **NEEDS_NATIVE_REVIEW** | PENDING |
-| 544 | `photoUploading` | LOW | **NOT_REVIEWED** | جارٍ رفع الصورة… | وێنەکە بار دەکرێت… | — | وصف المصغّرة أثناء الرفع؛ الحذف «…» محرف واحد. | write_review_screen.dart pending local thumbnail (semantics label) | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 138 | `deleteAccountOpensWebsite` | HIGH | **NOT_REVIEWED** | سيُفتح موقع المتجر لإكمال حذف الحساب: تسجيل الدخول ثم تأكيد الحذف بكلمة المرور. الحذف نهائي ولا يمكن التراجع عنه. | ماڵپەڕی فرۆشگاکە دەکرێتەوە بۆ تەواوکردنی سڕینەوەی هەژمار: چوونەژوورەوە، پاشان پشتڕاستکردنەوەی سڕینەوە بە وشەی نهێنی. سڕینەوە کۆتاییە و ناگەڕێتەوە. | — | إجراء نهائي: يجب أن يفهم الزبون أن الحذف يبدأ على الموقع وأنه لا رجعة فيه. صياغة محايدة الجنس (مصادر لا أوامر). | settings_screen: رسالة حوار التأكيد قبل فتح صفحة حذف الحساب على الموقع | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 139 | `discover` | MEDIUM | **NOT_REVIEWED** | اكتشف المنتجات | بەرهەمەکان بدۆزەوە | — | صيغة أمر: دعوةٌ لا تسمية — استثناء CTA في قفل الأسلوب | SectionHeader + actionLabel في حالات الفراغ (السلة/المفضلة) | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 140 | `totalShort` | MEDIUM | **NOT_REVIEWED** | المجموع | کۆ | — | قصيرة عمداً: الشريط ضيّق. «کۆی گشتی» تفيض هنا | order_data_screen:697 — تسمية صغيرة فوق المبلغ في شريط المتابعة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 141 | `finalTotal` | MEDIUM | **NOT_REVIEWED** | المجموع النهائي | کۆی کۆتایی | — | — | ملخّص الأسعار — السطر الأخير | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 142 | `grandTotal` | MEDIUM | **NOT_REVIEWED** | الإجمالي | کۆی گشتی | — | — | cart_screen:136 — الإجمالي أسفل السلة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 143 | `subtotal` | MEDIUM | **NOT_REVIEWED** | المجموع الفرعي | کۆی بەرهەمەکان | — | «کۆی لاوەکی» حرفيّة وغير مألوفة؛ لا تصطدم بـproductsPrice | cart_screen:112 — سطر المجموع الفرعي | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 144 | `homeSearchHint` | MEDIUM | **NOT_REVIEWED** | ابحث عن منتجك المفضّل… | بەدوای بەرهەمە دڵخوازەکەتدا بگەڕێ… | — | — | home_screen:322 — بطاقة البحث القابلة للنقر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 145 | `shopNow` | MEDIUM | **NOT_REVIEWED** | تسوّق الآن | ئێستا بکڕە | — | CTA بصيغة الأمر | home_compositions:177 — زر البطل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 146 | `promoUpToDiscount` | MEDIUM | **NOT_REVIEWED** | حتى {percent}٪ | تا {percent}٪ | — | ٪ يبقى كما هو؛ القيمة تأتي من التطبيق | home_compositions:313 — النسبة الحقيقية من الكتالوج | percent | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 147 | `deliveryAllGovernorates` | MEDIUM | **NOT_REVIEWED** | توصيل لكل المحافظات | گەیاندن بۆ هەموو پارێزگاکان | — | — | home_compositions:465 + onboarding_slides:638 | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 148 | `loading` | MEDIUM | **NOT_REVIEWED** | جاري التحميل… | باردەکرێت… | — | صيغة المبني للمجهول الحاضر لا الاسمية | category_products / collection_detail / community — أثناء التحميل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 149 | `retryShort` | MEDIUM | **NOT_REVIEWED** | إعادة | دووبارە | — | مختصرة عمداً كما العربية «إعادة» | settings_screen:447 — TextButton ضيّق داخل ملاحظة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 150 | `forgotPassword` | MEDIUM | **NOT_REVIEWED** | نسيت كلمة المرور؟ | وشەی نهێنیت لەبیرچووە؟ | — | علامة الاستفهام العربية «؟» تبقى | login_screen:198 رابط | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 151 | `passwordMinLength` | MEDIUM | **NOT_REVIEWED** | كلمة المرور يجب أن تكون 8 أحرف على الأقل | وشەی نهێنی دەبێت لانیکەم 8 پیت بێت | — | ٨ كما يفرض الخادم — كان ٦. | settings/reset مُدقّق | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 152 | `passwordsDoNotMatch` | MEDIUM | **NOT_REVIEWED** | كلمتا المرور غير متطابقتين | هەردوو وشەی نهێنی وەک یەک نین | — | — | تأكيد كلمة المرور | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 153 | `passwordChanged` | MEDIUM | **NOT_REVIEWED** | تم تغيير كلمة المرور بنجاح | وشەی نهێنی بە سەرکەوتوویی گۆڕدرا | — | — | SnackBar بعد النجاح | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 154 | `resetPassword` | MEDIUM | **NOT_REVIEWED** | إعادة تعيين كلمة المرور | ڕێکخستنەوەی وشەی نهێنی | — | — | عنوان وزر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 155 | `noAccountRegister` | MEDIUM | **NOT_REVIEWED** | ما عندك حساب؟ إنشاء حساب جديد | هەژمارت نییە؟ هەژمارێکی نوێ دروست بکە | — | — | login_screen:222 رابط أسفل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 156 | `haveAccountLogin` | MEDIUM | **NOT_REVIEWED** | عندك حساب؟ تسجيل الدخول | هەژمارت هەیە؟ بچۆ ژوورەوە | — | — | register/forgot رابط أسفل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 157 | `browseAsGuest` | MEDIUM | **NOT_REVIEWED** | تصفح كزائر | وەک میوان بگەڕێ | — | صيغة أمر — دعوة | login_screen:227 زر ثانوي | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 158 | `browsingAsGuest` | MEDIUM | **NOT_REVIEWED** | أنت تتصفح كزائر | وەک میوان دەگەڕێیت | — | خبرية لا أمرية — تصف الحالة الراهنة، بخلاف browseAsGuest | بطاقة الزائر في الحساب/السلة/المفضلة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 159 | `usernameHintExample` | MEDIUM | **NOT_REVIEWED** | أدخل اسمك | ناوت بنووسە | — | توجيه واضح لإدخال الاسم. أُبدل عن «ضع اسمك» (2026-09-15) وقبله عن «عمر الطيار / ئاسۆ ڕەشید» بطلب المنتج. | register_screen:150 hint داخل حقل الاسم | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 160 | `codeResent` | MEDIUM | **NOT_REVIEWED** | تم إعادة إرسال رمز التحقق | کۆدی پشتڕاستکردنەوە دووبارە نێردرایەوە | — | — | SnackBar | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 161 | `resendCodeIn` | MEDIUM | **NOT_REVIEWED** | إعادة إرسال الرمز بعد {seconds} ث | دووبارە ناردنی کۆد دوای {seconds} چ | — | «چ» اختصار چرکە كما «ث» اختصار ثانية | otp عدّاد تنازلي | seconds | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 162 | `editVerifyCode` | MEDIUM | **NOT_REVIEWED** | تعديل رمز التحقق | دەستکاری کۆدی پشتڕاستکردنەوە | — | — | reset_password:298 رابط | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 163 | `codeIncorrect` | MEDIUM | **NOT_REVIEWED** | رمز التحقق غير صحيح | کۆدی پشتڕاستکردنەوە هەڵەیە | — | — | otp_code_field حالة الخطأ | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 164 | `codeVerified` | MEDIUM | **NOT_REVIEWED** | ✓ تم التحقق بنجاح | ✓ بە سەرکەوتوویی پشتڕاستکرایەوە | — | ✓ يبقى في موضعه | otp_code_field حالة النجاح | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 165 | `checkCodeRetry` | MEDIUM | **NOT_REVIEWED** | تأكد من الرمز وحاول مرة أخرى. | کۆدەکە بپشکنە و دووبارە هەوڵ بدەوە. | — | — | otp_code_field سطر تحت الخطأ | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 166 | `continuingLogin` | MEDIUM | **NOT_REVIEWED** | جاري متابعة تسجيل الدخول… | بەردەوامبوون لە چوونەژوورەوە… | — | — | otp_code_field بعد نجاح التحقق | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 167 | `logoutConfirm` | MEDIUM | **NOT_REVIEWED** | هل أنت متأكد من رغبتك في تسجيل الخروج؟ | دڵنیایت لەوەی دەتەوێت بچیتە دەرەوە؟ | — | — | account_screen:337 حوار تأكيد | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 168 | `categoriesSubtitle` | MEDIUM | **NOT_REVIEWED** | تصفّح المتجر حسب ما تحتاجه | بەپێی پێویستیت بەشەکانی فرۆشگا ببینە | — | — | categories_screen:63 سطر تحت العنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 169 | `noCategoriesBody` | MEDIUM | **NOT_REVIEWED** | لا توجد أقسام متاحة حالياً — عد لاحقاً. | لە ئێستادا هیچ بەشێک بەردەست نییە — دواتر بگەڕێوە. | — | — | AnimeEmptyState سطر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 170 | `productsInCategoryCount` | MEDIUM | **NOT_REVIEWED** | {count} منتج في هذا القسم | {count} بەرهەم لەم بەشەدا | — | — | category_products عدّاد تحت العنوان | count | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 171 | `noProductsInCategoryBody` | MEDIUM | **NOT_REVIEWED** | القسم فارغ حالياً — تصفّح قسماً آخر أو عد لاحقاً. | ئێستا بەشەکە بەتاڵە — بەشێکی تر بگەڕێ یان دواتر بگەڕێوە. | — | — | EmptyState سطر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 172 | `sortBy` | MEDIUM | **NOT_REVIEWED** | ترتيب حسب | ڕیزکردن بەپێی | — | — | مُنتقي الترتيب عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 173 | `noProductsHereBody` | MEDIUM | **NOT_REVIEWED** | جرّب قسماً فرعياً آخر — ستجد ما يناسبك. | بەشێکی لاوەکی تر تاقی بکەوە — ئەوەی دەتەوێت دەدۆزیتەوە. | — | — | EmptyState سطر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 174 | `searchIdleTitle` | MEDIUM | **NOT_REVIEWED** | ابحث عمّا يخطر ببالك | بەدوای ئەوەدا بگەڕێ کە بەبیرتدا دێت | — | — | OtakuEditorialPanel عنوان قبل أي بحث | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 175 | `searchingInGalaxy` | MEDIUM | **NOT_REVIEWED** | نبحث في المجرّة… | لە گەلاکسیدا دەگەڕێین… | — | — | أثناء تنفيذ البحث | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 176 | `resultsCount` | MEDIUM | **NOT_REVIEWED** | {count} نتيجة | {count} ئەنجام | — | — | عدّاد النتائج | count | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 177 | `noResultsBody` | MEDIUM | **NOT_REVIEWED** | جرّب كلمة أقصر أو تصفّح الأقسام. | وشەیەکی کورتتر تاقی بکەوە یان بەشەکان بگەڕێ. | — | — | EmptyState سطر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 178 | `collectionNameHint` | MEDIUM | **NOT_REVIEWED** | مثلاً: أريد شراءها لاحقاً | بۆ نموونە: دواتر دەیکڕم | — | — | hint داخل حقل الاسم | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 179 | `firstCollectionTitle` | MEDIUM | **NOT_REVIEWED** | أنشئ مجموعتك الأولى | یەکەم کۆمەڵەکەت دروست بکە | — | — | EmptyState عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 180 | `productsCount` | MEDIUM | **NOT_REVIEWED** | {count} منتج | {count} بەرهەم | — | — | عدّاد على بطاقة المجموعة وبطاقة الطلب | count | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 181 | `noCollectionsYet` | MEDIUM | **NOT_REVIEWED** | لا توجد مجموعات بعد — أنشئ أول مجموعة. | هێشتا هیچ کۆمەڵەیەک نییە — یەکەمیان دروست بکە. | — | — | داخل ورقة الإضافة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 182 | `productsInThisCollectionCount` | MEDIUM | **NOT_REVIEWED** | {count} منتج في هذه المجموعة | {count} بەرهەم لەم کۆمەڵەیەدا | — | — | collection_detail عدّاد | count | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 183 | `available` | MEDIUM | **NOT_REVIEWED** | متوفر | بەردەستە | — | — | product_stock_pill (stock>3) | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 184 | `lastPiecesCount` | MEDIUM | **NOT_REVIEWED** | آخر {count} قطع | دوایین {count} دانە | — | — | product_stock_pill (stock<=3) | count | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 185 | `deliveryPromoProduct` | MEDIUM | **NOT_REVIEWED** | هذا المنتج ضمن عرض التوصيل المميّز | ئەم بەرهەمە لە داشکاندنی تایبەتی گەیاندندایە | — | — | product_detail:357 شريط ترويج التوصيل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 186 | `productKurdishMissingNote` | MEDIUM | **NOT_REVIEWED** | هذا المنتج لم يُكتب بالكردية بعد — يُعرض بالعربية. | ئەم بەرهەمە هێشتا بە کوردی نەنووسراوە — بە عەرەبی پیشان دەدرێت. | — | يعلن أن النصّ المعروض عربيٌّ لأن الكردية ناقصة — لا يُعرض العربي على أنه كردي. «پیشان دەدرێت» كما في loginRequiredForAccount. | product_detail تحت الوصف — يظهر في الواجهة الكردية وحدها لمنتجٍ قديم ينقصه اسمٌ أو وصفٌ كردي (هجرة ٠٦٦) | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 187 | `availableStockCount` | MEDIUM | **NOT_REVIEWED** | متاح {count} | {count} بەردەستە | — | — | product_detail:408 بجانب مُنتقي الكمية | count | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 188 | `cashOnDelivery` | MEDIUM | **NOT_REVIEWED** | الدفع عند الاستلام | پارەدان لە کاتی وەرگرتن | — | — | product_detail:462 عنوان طمأنة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 189 | `chooseOptionsFirst` | MEDIUM | **NOT_REVIEWED** | اختر الخيارات أولاً | سەرەتا هەڵبژاردنەکان دیاری بکە | — | — | product_detail:557 نصّ الزر حين تنقص الخيارات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 190 | `productColor` | MEDIUM | **NOT_REVIEWED** | اللون | ڕەنگ | — | STEP 74 (ألوان المنتج، 2026-10-27): مسوّدة صاغها وكيل آلي ولم يقرأها ناطق. «ڕەنگ» = اللون كما في ترجمة خيار «اللون» القائمة (047_kurdish_catalog_backfill.sql). | product_detail_screen.dart — عنوان قسم مُنتقي الألوان فوق رقائق الألوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 191 | `chooseColorFirst` | MEDIUM | **NOT_REVIEWED** | اختر اللون أولاً | سەرەتا ڕەنگەکە دیاری بکە | — | STEP 74 (ألوان المنتج، 2026-10-27): مسوّدة صاغها وكيل آلي ولم يقرأها ناطق. «ڕەنگ» = اللون كما في ترجمة خيار «اللون» القائمة (047_kurdish_catalog_backfill.sql). يتبع بنية chooseOptionsFirst («سەرەتا … دیاری بکە»). | product_detail_screen.dart — نصّ زرّ الإضافة المعطَّل حين لم يُختر لون منتجٍ بألوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 192 | `colorValue` | MEDIUM | **NOT_REVIEWED** | اللون: {color} | ڕەنگ: {color} | — | STEP 74 (ألوان المنتج، 2026-10-27): مسوّدة صاغها وكيل آلي ولم يقرأها ناطق. «ڕەنگ» = اللون كما في ترجمة خيار «اللون» القائمة (047_kurdish_catalog_backfill.sql). | line_color_label.dart — لون السطر في السلة ومراجعة الطلب وبيانات الطلب وتفاصيل الطلب؛ {color} اسم اللون من الخادم | color | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 193 | `productDesign` | MEDIUM | **NOT_REVIEWED** | التصميم | دیزاین | — | STEP 77 (نوع خيارات المنتج، 2026-10-31): مسوّدة صاغها وكيل آلي ولم يقرأها ناطق. «دیزاین» كما في ترجمة خيار «التصميم» القائمة (047_kurdish_catalog_backfill.sql). | product_detail_screen.dart — عنوان قسم مُنتقي الخيارات حين يمثّل المنتجُ تصميمات (variantKind=design) | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 194 | `productSize` | MEDIUM | **NOT_REVIEWED** | المقاس | قەبارە | — | STEP 77 (نوع خيارات المنتج، 2026-10-31): مسوّدة صاغها وكيل آلي ولم يقرأها ناطق. «قەبارە» كما في ترجمة خيار «المقاس» القائمة (047_kurdish_catalog_backfill.sql). | product_detail_screen.dart — عنوان قسم مُنتقي الخيارات حين يمثّل المنتجُ مقاسات (variantKind=size) | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 195 | `chooseDesignFirst` | MEDIUM | **NOT_REVIEWED** | اختر التصميم أولاً | سەرەتا دیزاینەکە دیاری بکە | — | STEP 77 (نوع خيارات المنتج، 2026-10-31): مسوّدة صاغها وكيل آلي ولم يقرأها ناطق. «دیزاین» كما في ترجمة خيار «التصميم» القائمة (047_kurdish_catalog_backfill.sql)؛ يتبع بنية chooseColorFirst. | product_detail_screen.dart — نصّ زرّ الإضافة المعطَّل حين لم يُختر تصميم | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 196 | `chooseSizeFirst` | MEDIUM | **NOT_REVIEWED** | اختر المقاس أولاً | سەرەتا قەبارەکە دیاری بکە | — | STEP 77 (نوع خيارات المنتج، 2026-10-31): مسوّدة صاغها وكيل آلي ولم يقرأها ناطق. «قەبارە» كما في ترجمة خيار «المقاس» القائمة (047_kurdish_catalog_backfill.sql)؛ يتبع بنية chooseColorFirst. | product_detail_screen.dart — نصّ زرّ الإضافة المعطَّل حين لم يُختر مقاس | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 197 | `designValue` | MEDIUM | **NOT_REVIEWED** | التصميم: {color} | دیزاین: {color} | — | STEP 77 (نوع خيارات المنتج، 2026-10-31): مسوّدة صاغها وكيل آلي ولم يقرأها ناطق. «دیزاین» كما في ترجمة خيار «التصميم» القائمة (047_kurdish_catalog_backfill.sql). | line_color_label.dart — تصميم السطر في السلة والمراجعة وتفاصيل الطلب؛ {color} اسم الخيار من الخادم | color | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 198 | `sizeValue` | MEDIUM | **NOT_REVIEWED** | المقاس: {color} | قەبارە: {color} | — | STEP 77 (نوع خيارات المنتج، 2026-10-31): مسوّدة صاغها وكيل آلي ولم يقرأها ناطق. «قەبارە» كما في ترجمة خيار «المقاس» القائمة (047_kurdish_catalog_backfill.sql). | line_color_label.dart — مقاس السطر في السلة والمراجعة وتفاصيل الطلب؛ {color} اسم الخيار من الخادم | color | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 199 | `listSeparator` | MEDIUM | **NOT_REVIEWED** | ، | ، | — | السوراني يستعمل الفاصلة العربية نفسها — أُبقيت مفتاحاً لا محفورة | product_detail:657 فاصل بين الخيارات المختارة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 200 | `addToYourCollection` | MEDIUM | **NOT_REVIEWED** | أضف إلى مجموعتك | بیخە کۆمەڵەکەتەوە | — | — | product_detail:799 زر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 201 | `deliveryDiscountAmount` | MEDIUM | **NOT_REVIEWED** | خصم {amount} د.ع من التوصيل | داشکاندنی {amount} د.ع لە گەیاندن | — | — | delivery_promo_label — بطاقة المنتج وصفحة التفاصيل، سطر مبلغ ترويج التوصيل | amount | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 202 | `soldOutShort` | MEDIUM | **NOT_REVIEWED** | نفدت | تەواو بوو | — | مختصرة كما «نفدت»؛ نفس معنى outOfStock بصيغة أقصر | anime_product_card:372 شارة مختصرة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 203 | `noFavoritesYet` | MEDIUM | **NOT_REVIEWED** | لم تحفظ أي منتج بعد | هێشتا هیچ بەرهەمێکت پاشەکەوت نەکردووە | — | — | عدّاد حين لا مفضلة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 204 | `savedProductsCount` | MEDIUM | **NOT_REVIEWED** | {count} منتج محفوظ | {count} بەرهەمی پاشەکەوتکراو | — | — | عدّاد المفضلة | count | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 205 | `sortNewest` | MEDIUM | **NOT_REVIEWED** | الأحدث | نوێترین | — | التسمية فقط تُترجَم؛ apiValue لا يُمَسّ | مُنتقي الترتيب — يقابل apiValue=newest | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 206 | `sortPriceAsc` | MEDIUM | **NOT_REVIEWED** | السعر: من الأقل | نرخ: لە کەمترەوە | — | — | مُنتقي الترتيب | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 207 | `sortPriceDesc` | MEDIUM | **NOT_REVIEWED** | السعر: من الأعلى | نرخ: لە زۆرترەوە | — | — | مُنتقي الترتيب | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 208 | `sortRating` | MEDIUM | **NOT_REVIEWED** | الأعلى تقييماً | بەرزترین پلەدان | — | — | مُنتقي الترتيب | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 209 | `cartEmptyCount` | MEDIUM | **NOT_REVIEWED** | 0 منتجات في السلة | 0 بەرهەم لە سەبەتەدا | — | — | cart_screen عدّاد حين تفرغ | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 210 | `cartItemsCount` | MEDIUM | **NOT_REVIEWED** | {count} منتجات في السلة | {count} بەرهەم لە سەبەتەدا | — | العربية تفرّق الصفر عن غيره بمفتاحين؛ حُفظ التفريع كما هو | cart_screen عدّاد | count | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 211 | `deliveryFee` | MEDIUM | **NOT_REVIEWED** | رسوم التوصيل | کرێی گەیاندن | — | — | سطر في ملخّص السلة والأسعار | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 212 | `deliveryFeeAtAddress` | MEDIUM | **NOT_REVIEWED** | يُحتسب عند إدخال العنوان | لە کاتی نووسینی ناونیشان دیاری دەکرێت | — | — | cart_screen:120 بدل المبلغ قبل إدخال العنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 213 | `addedToCart` | MEDIUM | **NOT_REVIEWED** | تمت إضافة المنتج إلى السلة | بەرهەمەکە خرایە سەبەتەوە | — | — | SnackBar بعد الإضافة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 214 | `stepOneOfTwo` | MEDIUM | **NOT_REVIEWED** | الخطوة ١ من ٢ | هەنگاوی 1 لە 2 | — | أرقام غربية في الكردية — العربية تحمل استثناءً قديماً وحدها | order_data ترويسة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 215 | `stepTwoOfTwo` | MEDIUM | **NOT_REVIEWED** | الخطوة ٢ من ٢ | هەنگاوی 2 لە 2 | — | — | order_review ترويسة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 216 | `chooseProvince` | MEDIUM | **NOT_REVIEWED** | اختر المحافظة | پارێزگا هەڵبژێرە | — | — | placeholder المُنتقي + عنوان الورقة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 217 | `deliveryZone` | MEDIUM | **NOT_REVIEWED** | منطقة التوصيل | ناوچەی گەیاندن | — | — | تسمية المُنتقي + عنوان الورقة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 218 | `fullAddressHint` | MEDIUM | **NOT_REVIEWED** | المنطقة، الشارع، أقرب نقطة دالة | ناوچە، شەقام، نزیکترین خاڵی دیار | — | — | hint حقل العنوان الكامل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 219 | `deliveringTo` | MEDIUM | **NOT_REVIEWED** | التوصيل إلى {place} | گەیاندن بۆ {place} | — | — | order_data شريط تأكيد المنطقة/المحافظة | place | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 220 | `orderSummary` | MEDIUM | **NOT_REVIEWED** | ملخص الطلب | کورتەی داواکاری | — | — | order_data عنوان قسم | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 221 | `productsPrice` | MEDIUM | **NOT_REVIEWED** | سعر المنتجات | نرخی بەرهەمەکان | — | — | سطر في ملخّص الأسعار | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 222 | `deliverySetAfterZone` | MEDIUM | **NOT_REVIEWED** | يُحدد بعد اختيار المنطقة | دوای هەڵبژاردنی ناوچە دیاری دەکرێت | — | — | بدل مبلغ التوصيل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 223 | `deliverySetAfterProvince` | MEDIUM | **NOT_REVIEWED** | يُحدد بعد اختيار المحافظة | دوای هەڵبژاردنی پارێزگا دیاری دەکرێت | — | — | بدل مبلغ التوصيل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 224 | `deliveryDiscount` | MEDIUM | **NOT_REVIEWED** | خصم التوصيل | داشکاندنی گەیاندن | — | — | سطر الخصم في الملخّص | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 225 | `freeDelivery` | MEDIUM | **NOT_REVIEWED** | توصيل مجاني 🎉 | گەیاندنی بێبەرامبەر 🎉 | — | الإيموجي في موضعه نفسه | بدل المبلغ حين يسقط التوصيل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 226 | `birthdayDiscount` | MEDIUM | **NOT_REVIEWED** | خصم عيد الميلاد | داشکاندنی ڕۆژی لەدایکبوون | — | — | سطر الخصم في الملخّص | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 227 | `codNoOnlinePayment` | MEDIUM | **NOT_REVIEWED** | الدفع عند الاستلام — لا يتطلب دفعاً إلكترونياً. | پارەدان لە کاتی وەرگرتن — پێویست بە پارەدانی ئەلیکترۆنی ناکات. | — | — | order_data ملاحظة أسفل الملخّص | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 228 | `reviewOrder` | MEDIUM | **NOT_REVIEWED** | مراجعة الطلب | پێداچوونەوەی داواکاری | — | — | زر المتابعة + عنوان الشاشة الثانية | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 229 | `provincesLoadFailed` | MEDIUM | **NOT_REVIEWED** | تعذّر تحميل المحافظات — أعد المحاولة | بارکردنی پارێزگاکان سەرکەوتوو نەبوو — دووبارە هەوڵ بدەوە | — | — | حالة خطأ في ورقة المحافظات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 230 | `noProvincesBody` | MEDIUM | **NOT_REVIEWED** | المحافظات غير متاحة حالياً | لە ئێستادا پارێزگاکان بەردەست نین | — | — | EmptyState سطر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 231 | `zonesLoadFailed` | MEDIUM | **NOT_REVIEWED** | تعذّر تحميل مناطق التوصيل لهذه المحافظة. | بارکردنی ناوچەکانی گەیاندن بۆ ئەم پارێزگایە سەرکەوتوو نەبوو. | — | — | ملاحظة خطأ داخل ورقة المناطق | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 232 | `orderItemsCount` | MEDIUM | **NOT_REVIEWED** | منتجات الطلب ({count}) | بەرهەمەکانی داواکاری ({count}) | — | — | عنوان قسم المنتجات | count | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 233 | `discount` | MEDIUM | **NOT_REVIEWED** | الخصم | داشکاندن | — | — | سطر الخصم العام في الملخّص | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 234 | `orderSent` | MEDIUM | **NOT_REVIEWED** | تم إرسال طلبك | داواکارییەکەت نێردرا | — | — | order_success عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 235 | `stepAdminReview` | MEDIUM | **NOT_REVIEWED** | مراجعة الطلب من الإدارة | پێداچوونەوەی داواکاری لەلایەن بەڕێوەبەرایەتییەوە | — | — | خطوة 1 | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 236 | `stepWhatsappConfirm` | MEDIUM | **NOT_REVIEWED** | تأكيد عبر واتساب | پشتڕاستکردنەوە لە ڕێگەی واتسئاپ | — | — | خطوة 2 | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 237 | `continueShopping` | MEDIUM | **NOT_REVIEWED** | متابعة التسوق | بەردەوامبوون لە بازاڕکردن | — | — | order_success زر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 238 | `ordersSubtitle` | MEDIUM | **NOT_REVIEWED** | تابع حالة طلباتك خطوة بخطوة | هەنگاو بە هەنگاو دۆخی داواکارییەکانت بەدواداچوون بکە | — | — | orders_screen ترويسة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 239 | `noOrdersBody` | MEDIUM | **NOT_REVIEWED** | كل طلب تكمله سيظهر هنا مع حالته ومحتوياته وتفاصيل توصيله. | هەر داواکارییەک تەواوی بکەیت لێرە دەردەکەوێت لەگەڵ دۆخ و ناوەڕۆک و وردەکاری گەیاندنی. | — | — | EmptyState سطر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 240 | `startShopping` | MEDIUM | **NOT_REVIEWED** | ابدأ التسوق | دەست بە بازاڕکردن بکە | — | CTA بصيغة الأمر | EmptyState actionLabel | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 241 | `receivedOrderQuestion` | MEDIUM | **NOT_REVIEWED** | هل استلمت طلبك؟ | داواکارییەکەت وەرگرت؟ | — | — | ورقة تأكيد الاستلام عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 242 | `receivedOrderNote` | MEDIUM | **NOT_REVIEWED** | نريد التأكد من وصول طلبك إليك | دەمانەوێت دڵنیا بین لەوەی داواکارییەکەت پێگەیشتووە | — | — | سطر تحت السؤال | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 243 | `yesIReceived` | MEDIUM | **NOT_REVIEWED** | نعم، استلمت الطلب | بەڵێ، داواکارییەکەم وەرگرت | — | — | زر التأكيد | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 244 | `notReceivedYet` | MEDIUM | **NOT_REVIEWED** | لم أستلمه بعد | هێشتا وەرمنەگرتووە | — | — | زر النفي | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 245 | `orderNotFoundBody` | MEDIUM | **NOT_REVIEWED** | تعذر العثور على تفاصيل هذا الطلب | دۆزینەوەی وردەکاری ئەم داواکارییە سەرکەوتوو نەبوو | — | — | حالة خطأ سطر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 246 | `orderStaysPending` | MEDIUM | **NOT_REVIEWED** | سيبقى الطلب قائماً — وسنسألك مرة أخرى لاحقاً. | داواکارییەکە دەمێنێتەوە — دواتر دیسان لێت دەپرسینەوە. | — | — | SnackBar بعد «لم أستلمه بعد» | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 247 | `birthdaySaved` | MEDIUM | **NOT_REVIEWED** | تاريخ ميلادك محفوظ 🎂 | ڕۆژی لەدایکبوونت پاشەکەوتکرا 🎂 | — | — | SnackBar | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 248 | `receiptConfirmFailed` | MEDIUM | **NOT_REVIEWED** | تعذر تأكيد الاستلام، حاول مرة أخرى | پشتڕاستکردنەوەی وەرگرتن سەرکەوتوو نەبوو، دووبارە هەوڵ بدەوە | — | — | رسالة احتياطية | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 249 | `deliveryCostLabel` | MEDIUM | **NOT_REVIEWED** | تكلفة التوصيل | تێچووی گەیاندن | — | «تێچوو» (تكلفة) تختلف عن «کرێ» (رسوم) في deliveryFee كما تفرّق العربية | سطر تكلفة التوصيل في تفاصيل الطلب | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 250 | `rejectionReason` | MEDIUM | **NOT_REVIEWED** | سبب الرفض | هۆکاری ڕەتکردنەوە | — | — | order_detail عند رفض الطلب | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 251 | `orderJourney` | MEDIUM | **NOT_REVIEWED** | مسار الطلب | ڕێڕەوی داواکاری | — | — | order_detail عنوان مسار الحالات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 252 | `etaTwoToFourDays` | MEDIUM | **NOT_REVIEWED** | موعد الوصول المتوقع خلال ٢–٤ أيام حسب المحافظة. | چاوەڕوانی گەیشتن لە ماوەی 2–4 ڕۆژدا بەپێی پارێزگا. | — | أرقام غربية في الكردية؛ الشرطة «–» تبقى | order_detail سطر تحت المسار | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 253 | `reviewOpensAfterReceipt` | MEDIUM | **NOT_REVIEWED** | التقييم يُفتح بعد الاستلام | هەڵسەنگاندن دوای وەرگرتن دەکرێتەوە | — | — | بطاقة دعوة التقييم | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 254 | `receiptNotConfirmedYet` | MEDIUM | **NOT_REVIEWED** | لم يُؤكَّد الاستلام بعد | هێشتا وەرگرتن پشتڕاست نەکراوەتەوە | — | — | تسمية حالة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 255 | `journeyPendingBody` | MEDIUM | **NOT_REVIEWED** | مراجعة الطلب وتأكيده عبر واتساب | پێداچوونەوەی داواکاری و پشتڕاستکردنەوەی لە ڕێگەی واتسئاپ | — | — | خطوة المسار 1 | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 256 | `journeyProcessingBody` | MEDIUM | **NOT_REVIEWED** | الطلب مقبول ويُجهَّز الآن | داواکارییەکە پەسەندکرا و ئێستا ئامادە دەکرێت | — | — | خطوة المسار 2 | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 257 | `journeyDeliveringBody` | MEDIUM | **NOT_REVIEWED** | الطلب في الطريق إليك | داواکارییەکە لە ڕێگادایە بۆت | — | — | خطوة المسار 3 | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 258 | `journeyReceivedBody` | MEDIUM | **NOT_REVIEWED** | وصل الطلب — يمكنك تقييم المنتجات | داواکارییەکە گەیشت — دەتوانیت بەرهەمەکان هەڵبسەنگێنیت | — | — | خطوة المسار 4 | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 259 | `pickStarRating` | MEDIUM | **NOT_REVIEWED** | يرجى اختيار تقييم بالنجوم | تکایە بە ئەستێرە پلە بدە | — | — | SnackBar تحقّق قبل الإرسال | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 260 | `writeYourOpinion` | MEDIUM | **NOT_REVIEWED** | يرجى كتابة رأيك بالمنتج | تکایە ڕات دەربارەی بەرهەمەکە بنووسە | — | — | SnackBar تحقّق | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 261 | `maxPhotosPerReviewDot` | MEDIUM | **NOT_REVIEWED** | الحد الأقصى {max} صور للتقييم الواحد. | زۆرترین سنوور {max} وێنەیە بۆ هەر هەڵسەنگاندنێک. | — | — | خطأ خادم مترجَم — بنقطة | max | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 262 | `maxPhotosPerReview` | MEDIUM | **NOT_REVIEWED** | الحد الأقصى {max} صور للتقييم الواحد | زۆرترین سنوور {max} وێنەیە بۆ هەر هەڵسەنگاندنێک | — | — | SnackBar — بلا نقطة، فرقٌ مقصود عن maxPhotosPerReviewDot | max | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 263 | `reviewSendFailed` | MEDIUM | **NOT_REVIEWED** | تعذر إرسال التقييم، حاول مرة أخرى | ناردنی هەڵسەنگاندن سەرکەوتوو نەبوو، دووبارە هەوڵ بدەوە | — | — | رسالة احتياطية | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 264 | `photoUploadFailed` | MEDIUM | **NOT_REVIEWED** | تعذّر رفع الصورة، حاول مرة أخرى | بارکردنی وێنەکە سەرکەوتوو نەبوو، دووبارە هەوڵ بدەوە | — | — | SnackBar | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 265 | `whatDoYouThink` | MEDIUM | **NOT_REVIEWED** | ما رأيك في المنتج؟ | ڕات دەربارەی بەرهەمەکە چییە؟ | — | — | عنوان فوق النجوم | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 266 | `resend` | MEDIUM | **NOT_REVIEWED** | إعادة الإرسال | دووبارە ناردنەوە | — | — | زر الإرسال حين كان مرفوضاً | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 267 | `oneReviewPerProductPublished` | MEDIUM | **NOT_REVIEWED** | لكل منتج تقييم واحد، ويُنشر بعد المراجعة. | بۆ هەر بەرهەمێک یەک هەڵسەنگاندن، و دوای پێداچوونەوە بڵاو دەکرێتەوە. | — | — | ملاحظة أسفل شاشة الكتابة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 268 | `reviewRejectedReason` | MEDIUM | **NOT_REVIEWED** | السبب: {reason} | هۆکار: {reason} | — | {reason} كلام المسؤول ولا يُترجَم | سبب الرفض — النصّ من الإدارة | reason | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 269 | `photoLimitReached` | MEDIUM | **NOT_REVIEWED** | وصلت إلى الحد الأقصى ({max} صور). | گەیشتیتە زۆرترین سنوور ({max} وێنە). | — | — | تحت مُنتقي الصور | max | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 270 | `rateOrderSubtitle` | MEDIUM | **NOT_REVIEWED** | رأيك يساعد بقية العملاء يختارون بثقة | ڕاکەت یارمەتی کڕیارانی تر دەدات بە دڵنیاییەوە هەڵبژێرن | — | — | rate_order ترويسة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 271 | `oneReviewPerProductReviewed` | MEDIUM | **NOT_REVIEWED** | لكل منتج تقييم واحد، ويُراجَع قبل نشره. | بۆ هەر بەرهەمێک یەک هەڵسەنگاندن، و پێش بڵاوکردنەوە پێداچوونەوەی بۆ دەکرێت. | — | — | ملاحظة في rate_order | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 272 | `notRatedYet` | MEDIUM | **NOT_REVIEWED** | لم يُقيَّم بعد | هێشتا پلەی نەدراوە | — | — | شارة على منتج غير مقيَّم | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 273 | `editAndResend` | MEDIUM | **NOT_REVIEWED** | عدّل وأعد الإرسال | دەستکاری بکە و دووبارە بینێرە | — | — | زر بعد الرفض | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 274 | `reviewPublishedThanks` | MEDIUM | **NOT_REVIEWED** | تقييمك منشور — شكراً 💜 | هەڵسەنگاندنەکەت بڵاوکرایەوە — سوپاس 💜 | — | — | حالة منشورة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 275 | `reviewUnderReview` | MEDIUM | **NOT_REVIEWED** | تقييمك قيد المراجعة | هەڵسەنگاندنەکەت لە پێداچوونەوەدایە | — | — | حالة قيد المراجعة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 276 | `awaitingReview` | MEDIUM | **NOT_REVIEWED** | بانتظار المراجعة | چاوەڕوانی پێداچوونەوە | — | — | شارة في شاشة الإرسال | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 277 | `reviewWillBeChecked` | MEDIUM | **NOT_REVIEWED** | سيتم مراجعة تقييمك قبل نشره. | پێش بڵاوکردنەوە پێداچوونەوە بۆ هەڵسەنگاندنەکەت دەکرێت. | — | — | review_submitted سطر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 278 | `continueRatingProducts` | MEDIUM | **NOT_REVIEWED** | متابعة تقييم المنتجات | بەردەوامبوون لە هەڵسەنگاندنی بەرهەمەکان | — | — | review_submitted زر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 279 | `reviewPendingChip` | MEDIUM | **NOT_REVIEWED** | ⏳ تقييمك قيد المراجعة | ⏳ هەڵسەنگاندنەکەت لە پێداچوونەوەدایە | — | — | ReviewStatusChip | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 280 | `reviewApprovedChip` | MEDIUM | **NOT_REVIEWED** | ✓ تم نشر تقييمك | ✓ هەڵسەنگاندنەکەت بڵاوکرایەوە | — | — | ReviewStatusChip | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 281 | `customerReviews` | MEDIUM | **NOT_REVIEWED** | ⭐ تقييمات العملاء | ⭐ هەڵسەنگاندنی کڕیاران | — | — | عنوان قسم في صفحة المنتج | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 282 | `customerPhotos` | MEDIUM | **NOT_REVIEWED** | 📸 صور العملاء | 📸 وێنەی کڕیاران | — | — | عنوان قسم الصور | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 283 | `verifiedBuyer` | MEDIUM | **NOT_REVIEWED** | ✓ اشترى هذا المنتج | ✓ ئەم بەرهەمەی کڕیوە | — | — | شارة على بطاقة التقييم | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 284 | `noReviewsTitle` | MEDIUM | **NOT_REVIEWED** | لا توجد تقييمات لهذا المنتج بعد | هێشتا هیچ هەڵسەنگاندنێک بۆ ئەم بەرهەمە نییە | — | — | EmptyState عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 285 | `noReviewsBody` | MEDIUM | **NOT_REVIEWED** | كن أول من يشارك تجربته بعد استلام طلبه. | یەکەم کەس بە کە ئەزموونی خۆی بەشدار دەکات دوای وەرگرتنی داواکارییەکەی. | — | — | EmptyState سطر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 286 | `approvedPhotosCount` | MEDIUM | **NOT_REVIEWED** | {count} صورة معتمدة | {count} وێنەی پەسەندکراو | — | — | عدّاد الصور المعتمدة | count | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 287 | `noPhotosInCategoryBody` | MEDIUM | **NOT_REVIEWED** | جرّب قسماً آخر أو تصفّح كل الصور. | بەشێکی تر تاقی بکەوە یان هەموو وێنەکان بگەڕێ. | — | — | EmptyState سطر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 288 | `beFirstToShareTitle` | MEDIUM | **NOT_REVIEWED** | كن أول من يشارك تجربته | یەکەم کەس بە کە ئەزموونی خۆی بەشدار دەکات | — | — | EmptyState عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 289 | `shareYourExperience` | MEDIUM | **NOT_REVIEWED** | شارك تجربتك | ئەزموونەکەت بەشدار بکە | — | — | EmptyState actionLabel | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 290 | `photoUnderReviewTitle` | MEDIUM | **NOT_REVIEWED** | صورتك قيد المراجعة | وێنەکەت لە پێداچوونەوەدایە | — | — | لافتة حالة الصورة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 291 | `photoUnderReviewBody` | MEDIUM | **NOT_REVIEWED** | ستظهر في المجتمع وفي صفحة المنتج بعد الموافقة. | دوای پەسەندکردن لە کۆمەڵگا و لە لاپەڕەی بەرهەمەکەدا دەردەکەوێت. | — | — | لافتة حالة الصورة سطر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 292 | `photoRejectedTitle` | MEDIUM | **NOT_REVIEWED** | لم يتم قبول الصورة | وێنەکە پەسەند نەکرا | — | — | لافتة الرفض عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 293 | `photoRejectedDefaultReason` | MEDIUM | **NOT_REVIEWED** | الصورة لا تظهر المنتج بوضوح. | وێنەکە بەرهەمەکە بە ڕوونی پیشان نادات. | — | — | سبب افتراضي حين لا يكتب المسؤول سبباً | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 294 | `editAndResubmit` | MEDIUM | **NOT_REVIEWED** | تعديل وإعادة الإرسال | دەستکاری و دووبارە ناردنەوە | — | — | زر بعد رفض الصورة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 295 | `alreadyOnWaitlist` | MEDIUM | **NOT_REVIEWED** | أنت على قائمة الانتظار مسبقاً | پێشتر لە لیستی چاوەڕوانیدایت | — | — | SnackBar | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 296 | `willNotifyWhenAvailable` | MEDIUM | **NOT_REVIEWED** | سنُعلمك فور توفّره 🔔 | کاتێک بەردەست بوو ئاگادارت دەکەینەوە 🔔 | — | الإيموجي في موضعه | SnackBar نجاح | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 297 | `alertCancelled` | MEDIUM | **NOT_REVIEWED** | أُلغي التنبيه | ئاگادارکردنەوەکە ڕەتکرایەوە | — | — | SnackBar بعد الإلغاء | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 298 | `operationFailed` | MEDIUM | **NOT_REVIEWED** | تعذّر إتمام العملية، حاول مرة أخرى | تەواوکردنی کارەکە سەرکەوتوو نەبوو، دووبارە هەوڵ بدەوە | — | — | رسالة احتياطية | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 299 | `waitingCancelAlert` | MEDIUM | **NOT_REVIEWED** | بانتظار التوفر — إلغاء التنبيه | چاوەڕوانی بەردەستبوون — ڕەتکردنەوەی ئاگادارکردنەوە | — | — | نصّ الزر حين يكون مشتركاً | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 300 | `markAllRead` | MEDIUM | **NOT_REVIEWED** | تعليم الكل كمقروء | هەمووی وەک خوێندراوە نیشان بکە | — | — | إجراء في ترويسة الإشعارات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 301 | `noNotificationsBody` | MEDIUM | **NOT_REVIEWED** | ستظهر هنا تحديثات طلباتك وتقييماتك فور حدوثها. | نوێکردنەوەی داواکاری و هەڵسەنگاندنەکانت هەرکە ڕوویاندا لێرە دەردەکەون. | — | — | EmptyState سطر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 302 | `minutesAgo` | MEDIUM | **NOT_REVIEWED** | قبل {count} دقيقة | {count} خولەک لەمەوپێش | — | — | وقت نسبي | count | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 303 | `hoursAgo` | MEDIUM | **NOT_REVIEWED** | قبل {count} ساعة | {count} کاتژمێر لەمەوپێش | — | — | وقت نسبي | count | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 304 | `daysAgo` | MEDIUM | **NOT_REVIEWED** | قبل {count} يوم | {count} ڕۆژ لەمەوپێش | — | — | وقت نسبي | count | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 305 | `prefOrders` | MEDIUM | **NOT_REVIEWED** | الطلبات | داواکارییەکان | — | — | تفضيل إشعارات — key=orders لدى الخادم | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 306 | `prefReviews` | MEDIUM | **NOT_REVIEWED** | التقييمات | هەڵسەنگاندنەکان | — | — | تفضيل إشعارات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 307 | `prefStock` | MEDIUM | **NOT_REVIEWED** | توفر المنتجات | بەردەستبوونی بەرهەمەکان | — | — | تفضيل إشعارات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 308 | `prefOffers` | MEDIUM | **NOT_REVIEWED** | العروض | داشکاندنەکان | — | نفس كردية offers — نفس المفهوم | تفضيل إشعارات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 309 | `prefBirthday` | MEDIUM | **NOT_REVIEWED** | عيد الميلاد | ڕۆژی لەدایکبوون | — | — | تفضيل إشعارات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 310 | `shortDate` | MEDIUM | **NOT_REVIEWED** | {day} {month} | {day}ی {month} | — | السوراني يربط اليوم بالشهر بـ«ی» الإضافة | «15 سبتمبر» — يوم وشهر بلا سنة | day, month | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 311 | `unitMinuteOne` | MEDIUM | **NOT_REVIEWED** | دقيقة | خولەک | — | السوراني بلا مثنّى: خانة «الاثنين» تحمل الرقم صراحةً وإلّا ضاع العدد. التفريع العربي محفوظ كما هو ولم يُحذف | formatRemaining — العدد 1 والعدد >10 | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 312 | `unitMinuteMany` | MEDIUM | **NOT_REVIEWED** | دقائق | خولەک | — | السوراني بلا مثنّى: خانة «الاثنين» تحمل الرقم صراحةً وإلّا ضاع العدد. التفريع العربي محفوظ كما هو ولم يُحذف | formatRemaining — 3..10 داخل countWithUnit | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 313 | `unitHourOne` | MEDIUM | **NOT_REVIEWED** | ساعة | کاتژمێر | — | السوراني بلا مثنّى: خانة «الاثنين» تحمل الرقم صراحةً وإلّا ضاع العدد. التفريع العربي محفوظ كما هو ولم يُحذف | formatRemaining | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 314 | `unitHourMany` | MEDIUM | **NOT_REVIEWED** | ساعات | کاتژمێر | — | السوراني بلا مثنّى: خانة «الاثنين» تحمل الرقم صراحةً وإلّا ضاع العدد. التفريع العربي محفوظ كما هو ولم يُحذف | formatRemaining | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 315 | `unitDayOne` | MEDIUM | **NOT_REVIEWED** | يوم | ڕۆژ | — | السوراني بلا مثنّى: خانة «الاثنين» تحمل الرقم صراحةً وإلّا ضاع العدد. التفريع العربي محفوظ كما هو ولم يُحذف | formatRemaining | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 316 | `unitDayMany` | MEDIUM | **NOT_REVIEWED** | أيام | ڕۆژ | — | السوراني بلا مثنّى: خانة «الاثنين» تحمل الرقم صراحةً وإلّا ضاع العدد. التفريع العربي محفوظ كما هو ولم يُحذف | formatRemaining | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 317 | `galaxyPointsSubtitle` | MEDIUM | **NOT_REVIEWED** | كل نقطة تقربك لمستوى أعلى | هەر خاڵێک نزیکت دەکاتەوە لە ئاستێکی بەرزتر | — | — | ترويسة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 318 | `yourLevels` | MEDIUM | **NOT_REVIEWED** | مستوياتك في المجرّة | ئاستەکانت لە گەلاکسیدا | — | — | عنوان كتلة سُلّم المستويات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 319 | `howPointsWork` | MEDIUM | **NOT_REVIEWED** | كيف تعمل النقاط؟ | خاڵەکان چۆن کار دەکەن؟ | — | — | عنوان كتلة الشرح | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 320 | `noActivityBody` | MEDIUM | **NOT_REVIEWED** | ستظهر هنا نقاطك فور استلام أول طلب أو نشر أول تقييم. | هەرکە یەکەم داواکارییەکەت وەربگریت یان یەکەم هەڵسەنگاندن بڵاو بکەیتەوە خاڵەکانت لێرە دەردەکەون. | — | — | EmptyState سطر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 321 | `levelsLoadFailed` | MEDIUM | **NOT_REVIEWED** | تعذّر تحميل المستويات — حاول مرة أخرى. | بارکردنی ئاستەکان سەرکەوتوو نەبوو — دووبارە هەوڵ بدەوە. | — | — | حالة خطأ في سُلّم المستويات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 322 | `pointsExplainerIntro` | MEDIUM | **NOT_REVIEWED** | تجمع النقاط من مشترياتك ومن تقييماتك، وكلما زادت ارتفع مستواك. | خاڵ لە کڕینەکانت و لە هەڵسەنگاندنەکانتەوە کۆدەکەیتەوە، و هەرچەندە زیاتر بن ئاستەکەت بەرزتر دەبێت. | — | — | مقدّمة كتلة الشرح | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 323 | `rulePerWrittenReview` | MEDIUM | **NOT_REVIEWED** | عند نشر تقييم مكتوب لمنتج | کاتێک هەڵسەنگاندنێکی نووسراو بۆ بەرهەمێک بڵاو دەکەیتەوە | — | — | قاعدة نقاط التقييم | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 324 | `rulePerPhotoReview` | MEDIUM | **NOT_REVIEWED** | عند إرفاق صور بالتقييم (من صورة إلى خمس) | کاتێک وێنە بە هەڵسەنگاندنەوە هاوپێچ دەکەیت (لە یەک وێنەوە تا پێنج) | — | — | قاعدة نقاط الصور | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 325 | `birthdayTitle` | MEDIUM | **NOT_REVIEWED** | 🎂 تاريخ ميلادك | 🎂 ڕۆژی لەدایکبوونت | — | — | عنوان حوار تاريخ الميلاد | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 326 | `day` | MEDIUM | **NOT_REVIEWED** | اليوم | ڕۆژ | — | حقل تاريخ — يختلف عن today «ئەمڕۆ» الزمنية رغم تطابق العربية | تسمية حقل اليوم في حوار الميلاد | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 327 | `birthdaySaveFailed` | MEDIUM | **NOT_REVIEWED** | تعذّر حفظ تاريخ الميلاد، حاول مرة أخرى | پاشەکەوتکردنی ڕۆژی لەدایکبوون سەرکەوتوو نەبوو، دووبارە هەوڵ بدەوە | — | — | رسالة احتياطية | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 328 | `happyBirthday` | MEDIUM | **NOT_REVIEWED** | 🎂 عيد ميلاد سعيد! | 🎂 ڕۆژی لەدایکبوونت پیرۆز بێت! | — | — | بطاقة عيد الميلاد عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 329 | `orderData` | MEDIUM | **NOT_REVIEWED** | بيانات الطلب | زانیاری داواکاری | — | — | order_data عنوان الشاشة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 330 | `province` | MEDIUM | **NOT_REVIEWED** | المحافظة | پارێزگا | — | — | تسمية المحافظة في الطلب والتفاصيل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 331 | `deliveryCost` | MEDIUM | **NOT_REVIEWED** | تكلفة التوصيل | تێچووی گەیاندن | — | — | تسمية عامة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 332 | `fullAddress` | MEDIUM | **NOT_REVIEWED** | العنوان الكامل | ناونیشانی تەواو | — | — | تسمية حقل العنوان الكامل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 333 | `confirmOrder` | MEDIUM | **NOT_REVIEWED** | تأكيد إرسال الطلب | پشتڕاستکردنەوەی ناردنی داواکاری | — | — | تسمية إجراء | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 334 | `orderSentSuccessfully` | MEDIUM | **NOT_REVIEWED** | تم إرسال طلبك بنجاح. | داواکارییەکەت بە سەرکەوتوویی نێردرا. | — | — | رسالة نجاح | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 335 | `prefsLoadFailed` | MEDIUM | **NOT_REVIEWED** | تعذّر تحميل تفضيلاتك، أعد المحاولة. | بارکردنی ڕێکخستنەکانت سەرکەوتوو نەبوو، دووبارە هەوڵ بدەوە. | — | — | ملاحظة خطأ | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 336 | `personalizeTitle` | MEDIUM | **NOT_REVIEWED** | لنُهيّئ تجربتك | با ئەزموونەکەت ڕێک بخەین | — | — | personalize عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 337 | `personalizeBody` | MEDIUM | **NOT_REVIEWED** | اختر لغتك والمظهر المناسب لك. يمكنك تغييرهما في أي وقت من الإعدادات. | زمان و ڕووکاری گونجاو بۆ خۆت هەڵبژێرە. هەر کاتێک بتەوێت لە ڕێکخستنەکانەوە دەیانگۆڕیت. | — | — | personalize سطر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 338 | `defaultLanguage` | MEDIUM | **NOT_REVIEWED** | اللغة الافتراضية | زمانی بنەڕەت | — | — | سطر فرعي على بطاقة العربية | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 339 | `ctaLetsStart` | MEDIUM | **NOT_REVIEWED** | لنبدأ | با دەست پێبکەین | — | — | onboarding زر الشريحة الأولى | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 340 | `birthdaySavedOn` | MEDIUM | **NOT_REVIEWED** | 🎂 تاريخ ميلادك محفوظ — {date} | 🎂 ڕۆژی لەدایکبوونت پاشەکەوتکرا — {date} | — | — | بطاقة في الحساب | date | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 341 | `birthdayDiscountNote` | MEDIUM | **NOT_REVIEWED** | خصم {percent}٪ على طلب واحد بيوم ميلادك. | داشکاندنی {percent}٪ لەسەر یەک داواکاری لە ڕۆژی لەدایکبوونتدا. | — | — | سطر تحت بطاقة الميلاد | percent | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 342 | `followUs` | MEDIUM | **NOT_REVIEWED** | تابعنا وتواصل معنا | شوێنمان بکەوە و پەیوەندیمان پێوە بکە | — | — | عنوان مجموعة التواصل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 343 | `socialTiktok` | MEDIUM | **NOT_REVIEWED** | تيك توك | تیک تۆک | — | اسم علامة يُنقَل صوتياً كما نقلته العربية، لا يُترجَم | اسم منصّة — منقول للحروف الكردية | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 344 | `socialInstagram` | MEDIUM | **NOT_REVIEWED** | إنستغرام | ئینستاگرام | — | — | اسم منصّة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 345 | `socialWhatsapp` | MEDIUM | **NOT_REVIEWED** | واتساب | واتسئاپ | — | — | اسم منصّة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 346 | `avatarUploadFailed` | MEDIUM | **NOT_REVIEWED** | تعذّر رفع الصورة، تأكد من اتصالك وحاول مرة أخرى | بارکردنی وێنەکە سەرکەوتوو نەبوو، لە پەیوەندییەکەت دڵنیابەرەوە و دووبارە هەوڵ بدەوە | — | — | رسالة احتياطية | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 347 | `levelNumberAndNameLong` | MEDIUM | **NOT_REVIEWED** | المستوى {number} — {name} | ئاستی {number} — {name} | — | — | بطاقة الحساب — «المستوى» بأل التعريف بخلاف levelNumberAndName | name, number | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 348 | `pointsToNextLevel` | MEDIUM | **NOT_REVIEWED** | باقي {count} نقطة للمستوى التالي | {count} خاڵ ماوە بۆ ئاستی داهاتوو | — | — | بطاقة الحساب | count | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 349 | `onbExclusiveProducts` | MEDIUM | **NOT_REVIEWED** | منتجات حصرية | بەرهەمی تایبەت | — | — | شريحة 1 عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 350 | `onbWorldTitle` | MEDIUM | **NOT_REVIEWED** | كل ما يخص عالمك، بمكان واحد | هەرچی پەیوەندی بە جیهانتەوە هەیە، لە یەک شوێندا | — | — | شريحة 2 عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 351 | `onbWorldBody` | MEDIUM | **NOT_REVIEWED** | منتجات حصرية ومبتكرة تلبي تطلعاتكم | بەرهەمی تایبەت و داهێنەرانە کە چاوەڕوانییەکانتان دەهێنێتە دی | — | — | شريحة 2 سطر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 352 | `onbCodTitle` | MEDIUM | **NOT_REVIEWED** | اطلب اليوم، وادفع عند الاستلام | ئەمڕۆ داوا بکە، و لە کاتی وەرگرتن پارە بدە | — | — | شريحة 3 عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 353 | `updateLinkUnavailable` | MEDIUM | **NOT_REVIEWED** | رابط التحديث غير متوفر حالياً — حدّث التطبيق من المتجر. | بەستەری نوێکردنەوە لە ئێستادا بەردەست نییە — لە فرۆشگاوە ئەپەکە نوێ بکەرەوە. | — | — | SnackBar | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 354 | `updateRequiredTitle` | MEDIUM | **NOT_REVIEWED** | يلزم تحديث التطبيق | پێویستە ئەپەکە نوێ بکرێتەوە | — | — | عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 355 | `updateAvailableMessage` | MEDIUM | **NOT_REVIEWED** | صدرت نسخة أحدث من مجرة الأوتاكو فيها آخر التحسينات. حدّث الآن أو لاحقاً. | وەشانێکی نوێتری گەلاکسی ئۆتاکو دەرچووە کە دوایین باشترکردنەکانی تێدایە. ئێستا یان دواتر نوێی بکەرەوە. | — | STEP 70 — نصّ تنبيه التحديث الاختياري؛ اسم العلامة كما في updateRequiredMessage. | رسالة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 356 | `pairOffer` | MEDIUM | **NOT_REVIEWED** | قطعتان بـ{price} | دوو دانە بە {price} | — | STEP 70 — عرض القطعتين (085) تحت السعر؛ {price} مبلغٌ منسَّق بـpriceIqd. «دانە» كما في lastPiecesCount. | شارة سعر | price | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 357 | `offlineShort` | MEDIUM | **NOT_REVIEWED** | غير متصل بالإنترنت | پەیوەندی ئینتەرنێت نییە | — | — | شريط علوي مختصر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 358 | `offlineTitle` | MEDIUM | **NOT_REVIEWED** | لا يوجد اتصال بالإنترنت | هیچ پەیوەندییەکی ئینتەرنێت نییە | — | — | شاشة الحاجز عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 359 | `offlineBody` | MEDIUM | **NOT_REVIEWED** | تحقّق من اتصالك وحاول مرة أخرى. | لە پەیوەندییەکەت دڵنیابەرەوە و دووبارە هەوڵ بدەوە. | — | 2026-09-20: حُذفت الجملة الثانية «يحتاج المتجر إلى اتصال بالإنترنت» بقرار المنتج؛ الكردية اختُصرت تبعاً. | شاشة الحاجز سطر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 360 | `genericError` | MEDIUM | **NOT_REVIEWED** | حدث خطأ | هەڵەیەک ڕوویدا | — | — | AnimeErrorState عنوان افتراضي | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 361 | `subcategoriesCount` | MEDIUM | **NOT_REVIEWED** | {count} قسم فرعي | {count} بەشی لاوەکی | — | — | بطاقة القسم | count | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 362 | `splashTagline` | MEDIUM | **NOT_REVIEWED** | عالم الأنمي بين يديك | جیهانی ئەنیمە لە نێو دەستەکانتدا | — | — | سطر تحت الشعار | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 363 | `errServerStatus` | MEDIUM | **NOT_REVIEWED** | خطأ من الخادم ({status}) | هەڵە لە ڕاژەکارەوە ({status}) | — | — | api_client — الرمز تشخيصي | status | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 364 | `errTimeout` | MEDIUM | **NOT_REVIEWED** | انتهت مهلة الاتصال — حاول مرة أخرى ({detail}) | ماوەی پەیوەندی تەواو بوو — دووبارە هەوڵ بدەوە ({detail}) | — | — | api_client مهلة | detail | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 365 | `errConnection` | MEDIUM | **NOT_REVIEWED** | تعذر الاتصال بالخادم — تحقق من الإنترنت ({detail}) | پەیوەندیکردن بە ڕاژەکارەوە سەرکەوتوو نەبوو — ئینتەرنێت بپشکنە ({detail}) | — | — | api_client انقطاع | detail | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 366 | `navHome` | MEDIUM | **NOT_REVIEWED** | الرئيسية | سەرەکی | — | من الترجمات الـ17 السابقة — دُقّقت مقابل قفل الأسلوب والمسرد ولم تُعدَّل (القاعدة ٣٥) | التنقّل السفلي | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 367 | `navCategories` | MEDIUM | **NOT_REVIEWED** | الأقسام | بەشەکان | — | من الترجمات الـ17 السابقة — دُقّقت مقابل قفل الأسلوب والمسرد ولم تُعدَّل (القاعدة ٣٥) | التنقّل السفلي | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 368 | `navCommunity` | MEDIUM | **NOT_REVIEWED** | المجتمع | کۆمەڵگا | — | من الترجمات الـ17 السابقة — دُقّقت مقابل قفل الأسلوب والمسرد ولم تُعدَّل (القاعدة ٣٥) | التنقّل السفلي | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 369 | `navFavorites` | MEDIUM | **NOT_REVIEWED** | المفضلة | دڵخوازەکان | — | من الترجمات الـ17 السابقة — دُقّقت مقابل قفل الأسلوب والمسرد ولم تُعدَّل (القاعدة ٣٥) | التنقّل السفلي | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 370 | `navCart` | MEDIUM | **NOT_REVIEWED** | السلة | سەبەتە | — | من الترجمات الـ17 السابقة — دُقّقت مقابل قفل الأسلوب والمسرد ولم تُعدَّل (القاعدة ٣٥) | التنقّل السفلي | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 371 | `navAccount` | MEDIUM | **NOT_REVIEWED** | الحساب | هەژمار | — | من الترجمات الـ17 السابقة — دُقّقت مقابل قفل الأسلوب والمسرد ولم تُعدَّل (القاعدة ٣٥) | التنقّل السفلي | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 372 | `settings` | MEDIUM | **NOT_REVIEWED** | الإعدادات | ڕێکخستنەکان | — | من الترجمات الـ17 السابقة — دُقّقت مقابل قفل الأسلوب والمسرد ولم تُعدَّل (القاعدة ٣٥) | الإعدادات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 373 | `language` | MEDIUM | **NOT_REVIEWED** | اللغة | زمان | — | من الترجمات الـ17 السابقة — دُقّقت مقابل قفل الأسلوب والمسرد ولم تُعدَّل (القاعدة ٣٥) | الإعدادات/التخصيص | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 374 | `theme` | MEDIUM | **NOT_REVIEWED** | المظهر | ڕووکار | — | من الترجمات الـ17 السابقة — دُقّقت مقابل قفل الأسلوب والمسرد ولم تُعدَّل (القاعدة ٣٥) | الإعدادات/التخصيص | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 375 | `themeLight` | MEDIUM | **NOT_REVIEWED** | فاتح | ڕووناک | — | من الترجمات الـ17 السابقة — دُقّقت مقابل قفل الأسلوب والمسرد ولم تُعدَّل (القاعدة ٣٥) | التخصيص | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 376 | `themeDark` | MEDIUM | **NOT_REVIEWED** | داكن | تاریک | — | من الترجمات الـ17 السابقة — دُقّقت مقابل قفل الأسلوب والمسرد ولم تُعدَّل (القاعدة ٣٥) | التخصيص | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 377 | `notifications` | MEDIUM | **NOT_REVIEWED** | الإشعارات | ئاگادارکردنەوەکان | — | من الترجمات الـ17 السابقة — دُقّقت مقابل قفل الأسلوب والمسرد ولم تُعدَّل (القاعدة ٣٥) | الإشعارات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 378 | `galaxyPoints` | MEDIUM | **NOT_REVIEWED** | نقاط المجرّة | خاڵەکانی گەلاکسی | — | من الترجمات الـ17 السابقة — دُقّقت مقابل قفل الأسلوب والمسرد ولم تُعدَّل (القاعدة ٣٥) | نقاط المجرّة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 379 | `myOrders` | MEDIUM | **NOT_REVIEWED** | طلباتي | داواکارییەکانم | — | من الترجمات الـ17 السابقة — دُقّقت مقابل قفل الأسلوب والمسرد ولم تُعدَّل (القاعدة ٣٥) | الطلبات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 380 | `logout` | MEDIUM | **NOT_REVIEWED** | تسجيل الخروج | چوونەدەرەوە | — | من الترجمات الـ17 السابقة — دُقّقت مقابل قفل الأسلوب والمسرد ولم تُعدَّل (القاعدة ٣٥) | الحساب | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 381 | `save` | MEDIUM | **NOT_REVIEWED** | حفظ | پاشەکەوتکردن | — | من الترجمات الـ17 السابقة — دُقّقت مقابل قفل الأسلوب والمسرد ولم تُعدَّل (القاعدة ٣٥) | حوارات عامّة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 382 | `startupFailed` | MEDIUM | **NOT_REVIEWED** | تعذّر تشغيل التطبيق — تحقق من اتصالك ثم أعد المحاولة. | نەتوانرا ئەپەکە دەستپێبکات — پەیوەندییەکەت بپشکنە و دووبارە هەوڵبدەوە. | — | يظهر حين تفشل خطوة إقلاع مطلوبة؛ الصيغة تطلب فعلاً من المستخدم لا تصف عطباً فقط. | splash_screen.dart — حالة تعذّر الإقلاع مع زر إعادة المحاولة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 383 | `gender` | MEDIUM | **NOT_REVIEWED** | الجنس | ڕەگەز | — | اسمُ الحقل لا خطاب. كانت ثابتاً عربياً في GenderedStrings بلا مسار كردي — نُقل إلى AppStrings. | gender_selector.dart — عنوان الحقل · settings_screen.dart — بطاقة الحساب وعنوان الورقة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 384 | `genderRequired` | MEDIUM | **NOT_REVIEWED** | يرجى اختيار الجنس | تکایە ڕەگەز هەڵبژێرە | — | فعل أمر — السوراني لا يصرّفه بالجنس، صيغة واحدة. | register_screen.dart — رسالة التحقق تحت البطاقتين | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 385 | `forgotPasswordIntro` | MEDIUM | **NOT_REVIEWED** | هذه البيانات تساعد الإدارة على التحقّق من أنك صاحب الحساب. | ئەم زانیارییانە یارمەتی بەڕێوەبەرایەتی دەدەن بۆ دڵنیابوون لەوەی کە خاوەنی هەژمارەکەیت. | — | صيغة محايدة عمداً: الزائر بلا جلسة فلا جنس يُعرف. | forgot_password_screen.dart — subtitle | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 386 | `pendingAdminReview` | MEDIUM | **NOT_REVIEWED** | بانتظار مراجعة الإدارة | چاوەڕوانی پێداچوونەوەی بەڕێوەبەرایەتی | — | — | account_pending_screen.dart — كبسولة الحالة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 387 | `stepAdminContactsWhatsapp` | MEDIUM | **NOT_REVIEWED** | تتواصل معك الإدارة عبر واتساب للتحقق | بەڕێوەبەرایەتی لە ڕێگەی واتسئاپەوە پەیوەندیت پێوە دەکات بۆ پشتڕاستکردنەوە | — | — | account_pending_screen.dart — الخطوة ١ | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 388 | `stepAdminApprovesAccount` | MEDIUM | **NOT_REVIEWED** | بعد التحقق يُفعَّل حسابك | دوای پشتڕاستکردنەوە هەژمارەکەت چالاک دەکرێت | — | — | account_pending_screen.dart — الخطوة ٢ (تسجيل) | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 389 | `stepLoginWithPassword` | MEDIUM | **NOT_REVIEWED** | تسجّل الدخول بكلمة المرور التي اخترتها | بە وشەی نهێنییەکەی هەڵتبژاردووە دەچیتە ژوورەوە | — | فعل مضارع مخاطَب — الكردية صيغة واحدة. | account_pending_screen.dart — الخطوة ٣ (تسجيل) | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 390 | `showPassword` | MEDIUM | **NOT_REVIEWED** | إظهار كلمة المرور | پیشاندانی وشەی نهێنی | — | وصف زرّ العين للقارئ الصوتي. | settings_screen.dart change-password eye toggle (tooltip/semantics) | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 391 | `hidePassword` | MEDIUM | **NOT_REVIEWED** | إخفاء كلمة المرور | شاردنەوەی وشەی نهێنی | — | وصف زرّ العين للقارئ الصوتي. | settings_screen.dart change-password eye toggle (tooltip/semantics) | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 392 | `genderGateTitle` | MEDIUM | **NOT_REVIEWED** | خطوة أخيرة قبل المتابعة | هەنگاوێکی کۆتایی پێش بەردەوامبوون | — | حاجز إلزامي بعد الدخول. «بەردەوامبوون» كما في continueLabel. | gender_required_gate.dart — عنوان حاجز إكمال الجنس (D5) لحسابٍ قديم بلا جنس | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 393 | `deleteAccount` | MEDIUM | **NOT_REVIEWED** | حذف الحساب | سڕینەوەی هەژمار | — | — | settings_screen: عنوان مجموعة وصفّ «حذف الحساب» + عنوان حوار التأكيد | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 394 | `deleteAccountContinue` | MEDIUM | **NOT_REVIEWED** | المتابعة إلى الموقع | بەردەوامبوون بۆ ماڵپەڕ | — | — | settings_screen: زرّ التأكيد في حوار حذف الحساب | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 395 | `privacyPolicy` | MEDIUM | **NOT_REVIEWED** | سياسة الخصوصية | سیاسەتی تایبەتمەندی | — | المصطلح نفسه في termsNotice (gender.dart): «سیاسەتی تایبەتمەندی». | login_screen: رابط نصّي أسفل النموذج يفتح صفحة سياسة الخصوصية | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 396 | `searchHint` | LOW | **NOT_REVIEWED** | ابحث عن منتج… | بەدوای بەرهەمێکدا بگەڕێ… | — | صيغة أمر كما في العربية؛ الحذف «…» محرف واحد | search_screen.dart — TextField hintText | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 397 | `selectedProducts` | LOW | **NOT_REVIEWED** | منتجات مختارة | بەرهەمی هەڵبژێردراو | — | — | home_screen.dart:159 — ProductSection title | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 398 | `price` | LOW | **NOT_REVIEWED** | السعر | نرخ | — | — | product_detail — تسمية | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 399 | `description` | LOW | **NOT_REVIEWED** | الوصف | وەسف | — | — | product_detail:371 — عنوان قسم | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 400 | `quantity` | LOW | **NOT_REVIEWED** | الكمية | بڕ | — | — | product_detail:404 — عنوان مُنتقي الكمية | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 401 | `welcomeTo` | LOW | **NOT_REVIEWED** | أهلاً بك في | بەخێربێیت بۆ | — | — | home_screen:258 — سطر فوق اسم المتجر مباشرة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 402 | `seeAll` | LOW | **NOT_REVIEWED** | عرض الكل | هەموویان ببینە | — | — | home_compositions:36 — رابط بجانب عنوان القسم | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 403 | `promoActiveDiscounts` | LOW | **NOT_REVIEWED** | خصومات فعّالة | داشکاندنی چالاک | — | — | home_compositions:312 — عنوان بطاقة الخصومات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 404 | `addToFavorites` | LOW | **NOT_REVIEWED** | إضافة إلى المفضلة | زیادکردن بۆ دڵخوازەکان | — | — | تسمية إجراء | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 405 | `editProfile` | LOW | **NOT_REVIEWED** | تعديل الملف الشخصي | دەستکاری پرۆفایل | — | — | تسمية إجراء في الحساب | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 406 | `all` | LOW | **NOT_REVIEWED** | الكل | هەموو | — | — | community_screen:214 — رقاقة «الكل» في مرشّح الأقسام | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 407 | `retry` | LOW | **NOT_REVIEWED** | إعادة المحاولة | دووبارە هەوڵدانەوە | — | — | زر إعادة المحاولة في حالات الخطأ | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 408 | `back` | LOW | **NOT_REVIEWED** | العودة | گەڕانەوە | — | — | order_detail:114 — actionLabel لحالة الخطأ | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 409 | `login` | LOW | **NOT_REVIEWED** | تسجيل الدخول | چوونەژوورەوە | — | — | login_screen العنوان والزر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 410 | `register` | LOW | **NOT_REVIEWED** | إنشاء حساب | دروستکردنی هەژمار | — | — | register_screen العنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 411 | `phoneNumber` | LOW | **NOT_REVIEWED** | رقم الهاتف | ژمارەی مۆبایل | — | — | حقل الهاتف في الدخول/التسجيل/الاستعادة/الطلب | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 412 | `password` | LOW | **NOT_REVIEWED** | كلمة المرور | وشەی نهێنی | — | — | حقل كلمة المرور | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 413 | `username` | LOW | **NOT_REVIEWED** | اسم المستخدم | ناوی بەکارهێنەر | — | — | حقل الاسم في التسجيل والإعدادات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 414 | `verifyCode` | LOW | **NOT_REVIEWED** | رمز التحقق | کۆدی پشتڕاستکردنەوە | — | — | otp_verification عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 415 | `sendCode` | LOW | **NOT_REVIEWED** | إرسال رمز التحقق | ناردنی کۆدی پشتڕاستکردنەوە | — | — | زر إرسال الرمز | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 416 | `sendVerifyCode` | LOW | **NOT_REVIEWED** | إرسال رمز التحقق | ناردنی کۆدی پشتڕاستکردنەوە | — | — | register_screen:230 زر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 417 | `confirmPhone` | LOW | **NOT_REVIEWED** | تأكيد رقم الهاتف | پشتڕاستکردنەوەی ژمارەی مۆبایل | — | — | تسمية إجراء | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 418 | `phoneRequired` | LOW | **NOT_REVIEWED** | يرجى إدخال رقم الهاتف | تکایە ژمارەی مۆبایل بنووسە | — | — | order_data مُدقّق الحقل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 419 | `phoneRequiredShort` | LOW | **NOT_REVIEWED** | يرجى إدخال رقم الهاتف | تکایە ژمارەی مۆبایل بنووسە | — | — | مُدقّق حقل الهاتف في شاشات المصادقة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 420 | `phoneInvalid` | LOW | **NOT_REVIEWED** | رقم الهاتف غير صحيح | ژمارەی مۆبایل هەڵەیە | — | — | مُدقّق الحقل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 421 | `passwordRequired` | LOW | **NOT_REVIEWED** | يرجى إدخال كلمة المرور | تکایە وشەی نهێنی بنووسە | — | — | مُدقّق الحقل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 422 | `currentPassword` | LOW | **NOT_REVIEWED** | كلمة المرور الحالية | وشەی نهێنی ئێستا | — | — | settings_screen:329 حقل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 423 | `newPassword` | LOW | **NOT_REVIEWED** | كلمة المرور الجديدة | وشەی نهێنی نوێ | — | — | حقل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 424 | `confirmPassword` | LOW | **NOT_REVIEWED** | تأكيد كلمة المرور | پشتڕاستکردنەوەی وشەی نهێنی | — | — | reset_password حقل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 425 | `required` | LOW | **NOT_REVIEWED** | مطلوب | پێویستە | — | — | مُدقّق مختصر لحقل فارغ | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 426 | `usernameRequired` | LOW | **NOT_REVIEWED** | يرجى إدخال اسم المستخدم | تکایە ناوی بەکارهێنەر بنووسە | — | — | مُدقّق | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 427 | `usernameTooShort` | LOW | **NOT_REVIEWED** | اسم المستخدم قصير جداً | ناوی بەکارهێنەر زۆر کورتە | — | — | مُدقّق | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 428 | `forgotPasswordTitle` | LOW | **NOT_REVIEWED** | نسيت كلمة المرور | وشەی نهێنی لەبیرچوو | — | بلا استفهام — عنوان لا سؤال، بخلاف forgotPassword | forgot_password عنوان الشاشة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 429 | `sendCodeShort` | LOW | **NOT_REVIEWED** | إرسال الرمز | ناردنی کۆد | — | — | forgot_password:146 زر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 430 | `confirmCode` | LOW | **NOT_REVIEWED** | تأكيد الرمز | پشتڕاستکردنەوەی کۆد | — | — | otp زر التأكيد | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 431 | `resendCode` | LOW | **NOT_REVIEWED** | إعادة إرسال الرمز | دووبارە ناردنی کۆد | — | — | otp زر بعد انتهاء العدّاد | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 432 | `devOtp` | LOW | **NOT_REVIEWED** | رمز التجربة: {code} | کۆدی تاقیکردنەوە: {code} | — | — | otp — يظهر في بيئة التطوير فقط | code | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 433 | `verifying` | LOW | **NOT_REVIEWED** | جاري التحقق… | پشتڕاست دەکرێتەوە… | — | — | otp_code_field أثناء التحقق | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 434 | `nameUpdated` | LOW | **NOT_REVIEWED** | تم تحديث الاسم | ناو نوێکرایەوە | — | — | SnackBar بعد تعديل الاسم | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 435 | `choiceUpdated` | LOW | **NOT_REVIEWED** | تم تحديث الاختيار | هەڵبژاردن نوێکرایەوە | — | — | SnackBar بعد تعديل الجنس | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 436 | `account` | LOW | **NOT_REVIEWED** | الحساب | هەژمار | — | — | settings_screen:120 عنوان مجموعة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 437 | `editDisplayName` | LOW | **NOT_REVIEWED** | تعديل اسم الحساب | دەستکاری ناوی هەژمار | — | — | settings صف وعنوان حوار | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 438 | `noCategoriesTitle` | LOW | **NOT_REVIEWED** | لا توجد أقسام بعد | هێشتا هیچ بەشێک نییە | — | — | AnimeEmptyState عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 439 | `search` | LOW | **NOT_REVIEWED** | بحث | گەڕان | — | — | category_products tooltip لأيقونة البحث | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 440 | `noProductsInCategoryTitle` | LOW | **NOT_REVIEWED** | لا توجد منتجات في هذا القسم | هیچ بەرهەمێک لەم بەشەدا نییە | — | — | EmptyState عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 441 | `backToCategories` | LOW | **NOT_REVIEWED** | رجوع للأقسام | گەڕانەوە بۆ بەشەکان | — | — | EmptyState actionLabel | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 442 | `noProductsHereTitle` | LOW | **NOT_REVIEWED** | لا توجد منتجات هنا | هیچ بەرهەمێک لێرە نییە | — | — | EmptyState داخل قسم فرعي | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 443 | `recentSearches` | LOW | **NOT_REVIEWED** | عمليات البحث الأخيرة | گەڕانە دواییەکان | — | — | search_screen عنوان مجموعة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 444 | `clearAll` | LOW | **NOT_REVIEWED** | مسح الكل | سڕینەوەی هەموو | — | — | زر بجانب عمليات البحث الأخيرة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 445 | `suggestedForYou` | LOW | **NOT_REVIEWED** | مقترحة لك | پێشنیار بۆ تۆ | — | — | عنوان مجموعة الاقتراحات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 446 | `noResultsTitle` | LOW | **NOT_REVIEWED** | لا توجد نتائج | هیچ ئەنجامێک نییە | — | — | EmptyState عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 447 | `browseCategories` | LOW | **NOT_REVIEWED** | تصفّح الأقسام | بەشەکان بگەڕێ | — | — | EmptyState actionLabel | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 448 | `renameCollection` | LOW | **NOT_REVIEWED** | إعادة تسمية المجموعة | گۆڕینی ناوی کۆمەڵە | — | — | حوار إعادة التسمية عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 449 | `collectionName` | LOW | **NOT_REVIEWED** | اسم المجموعة | ناوی کۆمەڵە | — | — | حقل الاسم في حواري الإنشاء والتسمية | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 450 | `deleteCollection` | LOW | **NOT_REVIEWED** | حذف المجموعة | سڕینەوەی کۆمەڵە | — | — | خيار في المُنتقي + عنوان حوار | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 451 | `delete` | LOW | **NOT_REVIEWED** | حذف | سڕینەوە | — | — | زر تأكيد الحذف | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 452 | `rename` | LOW | **NOT_REVIEWED** | إعادة تسمية | گۆڕینی ناو | — | — | خيار في مُنتقي المجموعة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 453 | `newCollection` | LOW | **NOT_REVIEWED** | مجموعة جديدة | کۆمەڵەی نوێ | — | — | زر وعنوان حوار الإنشاء | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 454 | `create` | LOW | **NOT_REVIEWED** | إنشاء | دروستکردن | — | — | زر تأكيد الإنشاء | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 455 | `addToCollection` | LOW | **NOT_REVIEWED** | إضافة إلى مجموعة | زیادکردن بۆ کۆمەڵە | — | — | عنوان الورقة السفلية | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 456 | `add` | LOW | **NOT_REVIEWED** | إضافة | زیادکردن | — | — | زر التبديل في ورقة الإضافة (مقابل إزالة) | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 457 | `collectionEmpty` | LOW | **NOT_REVIEWED** | المجموعة فارغة | کۆمەڵەکە بەتاڵە | — | — | EmptyState عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 458 | `removeFromCollection` | LOW | **NOT_REVIEWED** | إزالة من المجموعة | لابردن لە کۆمەڵە | — | — | حوار تأكيد الإزالة عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 459 | `discountPercentBadge` | LOW | **NOT_REVIEWED** | −{percent}٪ | −{percent}٪ | — | رموز فقط — مطابقة للعربية | شارة الخصم على بطاقة المنتج والتفاصيل | percent | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 460 | `noDescriptionYet` | LOW | **NOT_REVIEWED** | لا يوجد وصف لهذا المنتج بعد. | هێشتا وەسفێک بۆ ئەم بەرهەمە نییە. | — | — | product_detail قسم الوصف | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 461 | `availableOptions` | LOW | **NOT_REVIEWED** | الخيارات المتاحة | هەڵبژاردنە بەردەستەکان | — | — | product_detail:387 عنوان قسم الخيارات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 462 | `product` | LOW | **NOT_REVIEWED** | المنتج | بەرهەم | — | — | product_detail:619 عنوان الشاشة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 463 | `selectedBadge` | LOW | **NOT_REVIEWED** | مختار | هەڵبژێردراو | — | — | شارة «مختار» على بطاقة المنتج | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 464 | `favorites` | LOW | **NOT_REVIEWED** | المفضلة | دڵخوازەکان | — | — | favorites_screen عنوان + تبويب | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 465 | `myCollections` | LOW | **NOT_REVIEWED** | مجموعاتي | کۆمەڵەکانم | — | — | تبويب بجانب المفضلة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 466 | `favoritesEmptyTitle` | LOW | **NOT_REVIEWED** | مفضلتك فارغة | دڵخوازەکانت بەتاڵن | — | — | EmptyState عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 467 | `cartEmptyTitle` | LOW | **NOT_REVIEWED** | السلة فارغة | سەبەتەکە بەتاڵە | — | — | EmptyState عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 468 | `removeProduct` | LOW | **NOT_REVIEWED** | إزالة المنتج | لابردنی بەرهەم | — | — | حوار تأكيد الإزالة عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 469 | `remove` | LOW | **NOT_REVIEWED** | إزالة | لابردن | — | — | زر تأكيد الإزالة + تبديل في ورقة المجموعات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 470 | `viewCart` | LOW | **NOT_REVIEWED** | عرض السلة | سەبەتە ببینە | — | — | إجراء داخل SnackBar الإضافة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 471 | `recipientInfo` | LOW | **NOT_REVIEWED** | معلومات المستلم | زانیاری وەرگر | — | — | order_data عنوان بطاقة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 472 | `phoneHintExample` | LOW | **NOT_REVIEWED** | أدخل رقم الهاتف | ژمارەی مۆبایل بنووسە | — | أُلغيت بادئة 07 الثابتة من الحقل (2026-09-27): الزبون يكتب رقم الموبايل العراقي كاملاً بصيغته المحلية (07XXXXXXXXX، و07 بيده)، فصار النصّ النائب «أدخل رقم الهاتف» بطلب المنتج. الكردية تتبع تسمية الحقل «ژمارەی مۆبایل» وصيغة «تکایە ژمارەی مۆبایل بنووسە». | hint داخل حقل الهاتف (الدخول، إنشاء الحساب، استعادة كلمة المرور، بيانات الطلب) — الرقم كاملاً بلا بادئة مفروضة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 473 | `deliveryAddress` | LOW | **NOT_REVIEWED** | عنوان التوصيل | ناونیشانی گەیاندن | — | — | order_data عنوان بطاقة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 474 | `provinceRequired` | LOW | **NOT_REVIEWED** | يرجى اختيار المحافظة | تکایە پارێزگا هەڵبژێرە | — | — | مُدقّق | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 475 | `chooseZone` | LOW | **NOT_REVIEWED** | اختر المنطقة | ناوچە هەڵبژێرە | — | — | placeholder المُنتقي | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 476 | `fullAddressRequired` | LOW | **NOT_REVIEWED** | يرجى إدخال العنوان الكامل | تکایە ناونیشانی تەواو بنووسە | — | — | مُدقّق | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 477 | `addressTooShort` | LOW | **NOT_REVIEWED** | العنوان قصير جداً | ناونیشانەکە زۆر کورتە | — | — | مُدقّق | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 478 | `quantityCount` | LOW | **NOT_REVIEWED** | الكمية: {count} | بڕ: {count} | — | — | سطر تحت اسم المنتج في الملخّص | count | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 479 | `quantityValue` | LOW | **NOT_REVIEWED** | الكمية {count} | بڕ {count} | — | — | order_review — بلا نقطتين، بخلاف quantityCount | count | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 480 | `delivery` | LOW | **NOT_REVIEWED** | التوصيل | گەیاندن | — | — | سطر التوصيل في ملخّص الأسعار | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 481 | `noProvincesTitle` | LOW | **NOT_REVIEWED** | لا توجد محافظات | هیچ پارێزگایەک نییە | — | — | EmptyState عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 482 | `deliveryInfo` | LOW | **NOT_REVIEWED** | معلومات التوصيل | زانیاری گەیاندن | — | — | order_review عنوان بطاقة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 483 | `priceSummary` | LOW | **NOT_REVIEWED** | ملخّص الأسعار | کورتەی نرخەکان | — | — | order_review عنوان قسم | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 484 | `nextSteps` | LOW | **NOT_REVIEWED** | الخطوات التالية | هەنگاوەکانی داهاتوو | — | — | order_success عنوان قائمة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 485 | `stepPrepareDeliver` | LOW | **NOT_REVIEWED** | التجهيز والتوصيل | ئامادەکردن و گەیاندن | — | — | خطوة 3 | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 486 | `stepNumeral1` | LOW | **NOT_REVIEWED** | ١ | 1 | — | رقم غربيّ في الكردية | رقم الخطوة في دائرة صغيرة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 487 | `stepNumeral2` | LOW | **NOT_REVIEWED** | ٢ | 2 | — | — | رقم الخطوة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 488 | `stepNumeral3` | LOW | **NOT_REVIEWED** | ٣ | 3 | — | — | رقم الخطوة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 489 | `noOrdersTitle` | LOW | **NOT_REVIEWED** | لا توجد طلبات بعد | هێشتا هیچ داواکارییەکت نییە | — | — | EmptyState عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 490 | `orderDetails` | LOW | **NOT_REVIEWED** | تفاصيل الطلب | وردەکاری داواکاری | — | — | order_detail عنوان الشاشة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 491 | `orderNotFoundTitle` | LOW | **NOT_REVIEWED** | الطلب غير موجود | داواکارییەکە نەدۆزرایەوە | — | — | حالة خطأ عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 492 | `orderInfo` | LOW | **NOT_REVIEWED** | معلومات الطلب | زانیاری داواکاری | — | — | order_detail عنوان بطاقة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 493 | `priceSummaryShort` | LOW | **NOT_REVIEWED** | ملخص الأسعار | کورتەی نرخەکان | — | — | order_detail عنوان قسم | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 494 | `photoAdded` | LOW | **NOT_REVIEWED** | تمت إضافة الصورة | وێنەکە زیادکرا | — | — | SnackBar نجاح | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 495 | `editReview` | LOW | **NOT_REVIEWED** | تعديل التقييم | دەستکاری هەڵسەنگاندن | — | — | عنوان الشاشة عند التعديل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 496 | `sendReview` | LOW | **NOT_REVIEWED** | إرسال التقييم | ناردنی هەڵسەنگاندن | — | — | زر الإرسال | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 497 | `addPhoto` | LOW | **NOT_REVIEWED** | إضافة صورة | زیادکردنی وێنە | — | — | زر مُنتقي الصور | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 498 | `photoCountOfMax` | LOW | **NOT_REVIEWED** | {count} من {max} | {count} لە {max} | — | — | عدّاد الصور | count, max | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 499 | `removePhoto` | LOW | **NOT_REVIEWED** | إزالة الصورة | لابردنی وێنە | — | — | tooltip على المصغّرة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 500 | `noPhotosInCategoryTitle` | LOW | **NOT_REVIEWED** | لا توجد صور في هذا القسم بعد | هێشتا هیچ وێنەیەک لەم بەشەدا نییە | — | — | EmptyState عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 501 | `allCategories` | LOW | **NOT_REVIEWED** | كل الأقسام | هەموو بەشەکان | — | — | EmptyState actionLabel | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 502 | `viewProduct` | LOW | **NOT_REVIEWED** | عرض المنتج | بەرهەمەکە ببینە | — | — | زر داخل عارض الصور | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 503 | `today` | LOW | **NOT_REVIEWED** | اليوم | ئەمڕۆ | — | «اليوم» زمنيّة — تختلف عن key=day «الیوم» حقل التاريخ | مجموعة زمنية في قائمة الإشعارات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 504 | `thisWeek` | LOW | **NOT_REVIEWED** | هذا الأسبوع | ئەم هەفتەیە | — | — | مجموعة زمنية | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 505 | `older` | LOW | **NOT_REVIEWED** | أقدم | کۆنتر | — | — | مجموعة زمنية | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 506 | `noNotificationsTitle` | LOW | **NOT_REVIEWED** | لا توجد إشعارات | هیچ ئاگادارکردنەوەیەک نییە | — | — | EmptyState عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 507 | `justNow` | LOW | **NOT_REVIEWED** | الآن | ئێستا | — | — | وقت نسبي < دقيقة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 508 | `lessThanAMinute` | LOW | **NOT_REVIEWED** | أقل من دقيقة | کەمتر لە خولەکێک | — | — | formatRemaining | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 509 | `countWithUnit` | LOW | **NOT_REVIEWED** | {count} {unit} | {count} {unit} | — | — | تركيب العدد بالوحدة | count, unit | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 510 | `pointsLog` | LOW | **NOT_REVIEWED** | سجل النقاط | تۆماری خاڵەکان | — | — | عنوان كتلة السجل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 511 | `noActivityTitle` | LOW | **NOT_REVIEWED** | لا توجد حركات بعد | هێشتا هیچ جووڵەیەک نییە | — | — | EmptyState عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 512 | `claiming` | LOW | **NOT_REVIEWED** | جاري التسجيل… | تۆمار دەکرێت… | — | — | نصّ الزر أثناء الطلب | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 513 | `invalidDay` | LOW | **NOT_REVIEWED** | يوم غير صالح | ڕۆژی نادروست | — | — | مُدقّق | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 514 | `month` | LOW | **NOT_REVIEWED** | الشهر | مانگ | — | — | تسمية حقل الشهر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 515 | `invalidMonth` | LOW | **NOT_REVIEWED** | شهر غير صالح | مانگی نادروست | — | — | مُدقّق | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 516 | `languageAndTheme` | LOW | **NOT_REVIEWED** | اللغة والمظهر | زمان و ڕووکار | — | — | صف الإعدادات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 517 | `notificationSettings` | LOW | **NOT_REVIEWED** | إعدادات الإشعارات | ڕێکخستنی ئاگادارکردنەوەکان | — | — | صف الإعدادات | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 518 | `confirmNewPassword` | LOW | **NOT_REVIEWED** | تأكيد كلمة المرور الجديدة | پشتڕاستکردنەوەی وشەی نهێنی نوێ | — | — | حقل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 519 | `appearance` | LOW | **NOT_REVIEWED** | المظهر | ڕووکار | — | — | عنوان مجموعة المظهر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 520 | `continueLabel` | LOW | **NOT_REVIEWED** | متابعة | بەردەوامبوون | — | — | personalize زر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 521 | `ctaContinue` | LOW | **NOT_REVIEWED** | متابعة | بەردەوامبوون | — | نفس العربية «متابعة» مثل continueLabel — نفس الكردية | onboarding زر الشريحة الوسطى | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 522 | `addBirthday` | LOW | **NOT_REVIEWED** | إضافة تاريخ الميلاد | زیادکردنی ڕۆژی لەدایکبوون | — | — | صف في الحساب | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 523 | `socialTiktokSub` | LOW | **NOT_REVIEWED** | جديد المنتجات والعروض | نوێترین بەرهەم و داشکاندنەکان | — | — | سطر فرعي | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 524 | `socialInstagramSub` | LOW | **NOT_REVIEWED** | صور المنتجات ولقطات المتجر | وێنەی بەرهەمەکان و دیمەنی فرۆشگا | — | — | سطر فرعي | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 525 | `socialWhatsappSub` | LOW | **NOT_REVIEWED** | تواصل مباشر مع خدمة العملاء | پەیوەندی ڕاستەوخۆ لەگەڵ خزمەتگوزاری کڕیاران | — | — | سطر فرعي | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 526 | `profilePhoto` | LOW | **NOT_REVIEWED** | الصورة الشخصية | وێنەی پرۆفایل | — | — | عنوان مُنتقي الصورة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 527 | `pickFromGallery` | LOW | **NOT_REVIEWED** | اختيار من المعرض | هەڵبژاردن لە گەلەری | — | — | خيار في المُنتقي | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 528 | `avatarRemoved` | LOW | **NOT_REVIEWED** | أُزيلت الصورة الشخصية | وێنەی پرۆفایل لابرا | — | — | SnackBar | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 529 | `avatarUpdated` | LOW | **NOT_REVIEWED** | تم تحديث الصورة الشخصية | وێنەی پرۆفایل نوێکرایەوە | — | — | SnackBar | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 530 | `linkComingSoon` | LOW | **NOT_REVIEWED** | الرابط يُضاف لاحقاً | بەستەرەکە دواتر زیاد دەکرێت | — | — | SnackBar لرابط غير مضبوط | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 531 | `linkInvalid` | LOW | **NOT_REVIEWED** | الرابط غير صالح | بەستەرەکە دروست نییە | — | — | SnackBar | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 532 | `onbHighQuality` | LOW | **NOT_REVIEWED** | منتجات بجودة عالية | بەرهەم بە کوالیتی بەرز | — | — | شريحة 2 شارة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 533 | `onbFastSafeDelivery` | LOW | **NOT_REVIEWED** | توصيل سريع وآمن. | گەیاندنی خێرا و پارێزراو. | — | — | شريحة 3 شارة | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 534 | `updateApp` | LOW | **NOT_REVIEWED** | تحديث التطبيق | نوێکردنەوەی ئەپ | — | — | زر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 535 | `yourVersion` | LOW | **NOT_REVIEWED** | نسختك {version} | وەشانی تۆ {version} | — | — | رقاقة معلومات | version | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 536 | `requiredVersion` | LOW | **NOT_REVIEWED** | المطلوبة {version} | پێویست {version} | — | — | رقاقة معلومات | version | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 537 | `latestVersion` | LOW | **NOT_REVIEWED** | الأحدث {version} | نوێترین {version} | — | STEP 70 — سطر النسخ في تنبيه التحديث الاختياري، نظير requiredVersion. | رقاقة معلومات | version | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 538 | `updateAvailableTitle` | LOW | **NOT_REVIEWED** | نسخة جديدة متوفّرة | وەشانێکی نوێ بەردەستە | — | STEP 70 — عنوان تنبيه التحديث الاختياري (يُغلق). | عنوان | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 539 | `updateLater` | LOW | **NOT_REVIEWED** | لاحقاً | دواتر | — | STEP 70 — يُغلق تنبيه التحديث الاختياري لهذا الإصدار. «دواتر» كما في linkComingSoon. | زر | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 540 | `browseCategory` | LOW | **NOT_REVIEWED** | تصفّح القسم | بەشەکە بگەڕێ | — | — | بطاقة القسم حين لا أقسام فرعية | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 541 | `productPhoto` | LOW | **NOT_REVIEWED** | صورة المنتج | وێنەی بەرهەم | — | — | product_photo_slot تسمية دلالية | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 542 | `accountLevel` | LOW | **NOT_REVIEWED** | مستوى الحساب | ئاستی هەژمار | — | — | forgot_password_screen.dart — عنوان حقل المستوى | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 543 | `chooseAccountLevel` | LOW | **NOT_REVIEWED** | اختر مستوى حسابك | ئاستی هەژمارەکەت هەڵبژێرە | — | — | forgot_password_screen.dart — عنوان ورقة الاختيار والعنصر النائب | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 544 | `accountLevelRequired` | LOW | **NOT_REVIEWED** | يرجى اختيار مستوى الحساب | تکایە ئاستی هەژمار هەڵبژێرە | — | — | forgot_password_screen.dart — رسالة التحقق | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 545 | `accountLevelHint` | LOW | **NOT_REVIEWED** | تجده في صفحة نقاط المجرّة أو الحساب | لە لاپەڕەی خاڵەکانی گەلاکسی یان هەژمار دەیدۆزیتەوە | — | «خاڵەکانی گەلاکسی» من المسرد المقفل. | forgot_password_screen.dart — تلميح تحت الحقل | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 546 | `submitRequest` | LOW | **NOT_REVIEWED** | إرسال الطلب | ناردنی داواکاری | — | — | forgot_password_screen.dart — الزرّ الرئيسي | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 547 | `backToLogin` | LOW | **NOT_REVIEWED** | العودة لتسجيل الدخول | گەڕانەوە بۆ چوونەژوورەوە | — | — | account_pending_screen.dart — الزرّ الرئيسي | — | **NEEDS_NATIVE_REVIEW** | PENDING |
+| 548 | `photoUploading` | LOW | **NOT_REVIEWED** | جارٍ رفع الصورة… | وێنەکە بار دەکرێت… | — | وصف المصغّرة أثناء الرفع؛ الحذف «…» محرف واحد. | write_review_screen.dart pending local thumbnail (semantics label) | — | **NEEDS_NATIVE_REVIEW** | PENDING |

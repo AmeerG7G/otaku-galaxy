@@ -435,5 +435,7 @@ export const config = {
      * مفتاح عدم التكرار يمنع تكرار الطلب نفسه؛ هذا يمنع حملاتٍ متتالية مختلفة.
      */
     broadcastMaxPerHour: Number(process.env.RATE_LIMIT_BROADCAST_MAX ?? 10),
+    /** محاولات حذف الحساب لكل حساب في الساعة (STEP 78) — ثابتٌ لا متغيّر بيئة. */
+    accountDeletionMaxPerHour: 5,
   },
 } as const;
