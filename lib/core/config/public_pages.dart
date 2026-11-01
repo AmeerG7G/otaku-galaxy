@@ -2,15 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../l10n/app_strings.dart';
+import 'app_config.dart';
 
 /// صفحات الموقع العامّة التي يفتحها التطبيق (STEP 78).
 ///
-/// ثابتة عمداً لا من إعدادات الخادم: رابط سياسة الخصوصية وحذف الحساب هو
-/// نفسه المسجَّل في Google Play Console، ويجب أن يُفتح ولو تعذّر الوصول إلى
-/// الخادم (شاشة الدخول قبل أي جلسة). الصفحتان على الموقع لا تحتاجان جلسة.
+/// من إعدادات النكهة لا من إعدادات الخادم: يجب أن يُفتح الرابط ولو تعذّر
+/// الوصول إلى الخادم (شاشة الدخول قبل أي جلسة). الصفحتان على الموقع لا
+/// تحتاجان جلسة. الإنتاج على الرابط المسجَّل في Google Play Console، والاختبار
+/// على موقع الاختبار — [AppConfig.publicSiteOrigin].
 abstract final class PublicPages {
-  static const privacyPolicy = 'https://otakugalaxystore.com/privacy-policy';
-  static const deleteAccount = 'https://otakugalaxystore.com/delete-account';
+  static String _origin = AppConfig.production.publicSiteOrigin;
+
+  /// يربط الروابط ببيئة التشغيل. يُستدعى من حقن الاعتماديات.
+  static void configure(AppConfig config) => _origin = config.publicSiteOrigin;
+
+  static String get privacyPolicy => '$_origin/privacy-policy';
+  static String get deleteAccount => '$_origin/delete-account';
 
   /// يُستبدل في الاختبارات بدل `launchUrl` — لا مكوّن منصّة في `flutter test`.
   @visibleForTesting

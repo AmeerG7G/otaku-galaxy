@@ -47,6 +47,16 @@ void main() {
     );
   });
 
+  /// STEP 78.5: نسخة الاختبار كانت تفتح صفحة حذف الحساب على موقع الإنتاج.
+  test('موقع الصفحات العامّة للاختبار ليس موقع الإنتاج', () {
+    expect(
+      AppConfig.staging.publicSiteOrigin,
+      isNot(equals(AppConfig.production.publicSiteOrigin)),
+      reason: 'staging يجب ألّا يفتح سياسة الخصوصية أو حذف الحساب في الإنتاج',
+    );
+    expect(AppConfig.production.publicSiteOrigin, 'https://otakugalaxystore.com');
+  });
+
   test('لكل بيئة اسمها القصير المعتمد', () {
     expect(AppConfig.development.envName, 'dev');
     expect(AppConfig.staging.envName, 'staging');
