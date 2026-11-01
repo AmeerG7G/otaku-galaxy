@@ -196,7 +196,7 @@ otaku-api-prod` و`localhost:4000` — بلا خطوة الحذف (مجلّد ا
 ( set -e
   cd /srv/otaku-galaxy-staging                  # الإنتاج: /srv/otaku-galaxy وفرع prod
   test "$(git rev-parse --abbrev-ref HEAD)" = staging
-  DOMAIN=staging-api.example.com CONF=staging-api.conf   # الإنتاج: api.example.com / api.conf
+  DOMAIN=staging-api.example.com CONF=staging-api.conf   # الإنتاج: api.otakugalaxystore.com / prod-api.conf (+ prod-store.conf، prod-admin.conf)
   AV=/etc/nginx/sites-available/$CONF EN=/etc/nginx/sites-enabled/$CONF
   if ! sudo test -s /etc/letsencrypt/live/$DOMAIN/fullchain.pem; then
     echo "لا شهادة لـ$DOMAIN — نفّذ §٥ أولاً"; false
