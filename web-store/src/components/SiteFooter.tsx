@@ -1,3 +1,4 @@
+import Link from '@/components/Link';
 import type { SocialLinks } from '@/lib/catalog';
 import type { Theme } from '@/lib/theme';
 import { ThemeSwitch } from './ThemeSwitch';
@@ -34,7 +35,8 @@ const SOCIAL: Array<{ key: keyof SocialLinks; label: string; icon: string[] }> =
 /**
  * Footer: the store's configured social links (the admin's settings — an
  * unset one is not shown), the Google Play link when the admin set one, and
- * the theme choice.
+ * the theme choice, and the always-public privacy policy and account-deletion
+ * pages (STEP 78 — the store listing points at both).
  */
 export function SiteFooter({ playStore, social, theme }: { playStore: string | null; social: SocialLinks; theme: Theme }) {
   const links = SOCIAL.filter((entry) => social[entry.key]);
@@ -61,6 +63,10 @@ export function SiteFooter({ playStore, social, theme }: { playStore: string | n
           </a>
         </div>
       ) : null}
+      <nav className="footer-links" aria-label="الخصوصية والحساب">
+        <Link href="/privacy-policy">سياسة الخصوصية</Link>
+        <Link href="/delete-account">حذف الحساب</Link>
+      </nav>
       <ThemeSwitch initial={theme} />
     </footer>
   );

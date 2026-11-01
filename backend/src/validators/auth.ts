@@ -145,6 +145,12 @@ export const changePasswordSchema = z.object({
   newPassword,
 });
 
+/** حذف الحساب (STEP 78): كلمة المرور الآن، وسببٌ اختياري. */
+export const deleteAccountSchema = z.object({
+  password: z.string().min(1, 'أدخل كلمة المرور').max(200),
+  reason: z.string().max(500, 'السبب طويل — 500 حرف على الأكثر').nullish(),
+});
+
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;

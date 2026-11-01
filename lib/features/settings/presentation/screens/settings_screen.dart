@@ -13,6 +13,7 @@ import '../../../auth/presentation/cubit/auth_state.dart';
 import '../../../../core/auth/require_auth.dart';
 import '../../../../core/constants/validation_rules.dart';
 import '../../../../core/config/app_config.dart';
+import '../../../../core/config/public_pages.dart';
 import '../../../app_update/data/installed_version.dart';
 import '../../data/notification_prefs_repository.dart';
 import '../../data/notification_prefs_storage.dart';
@@ -173,6 +174,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           context.router.push(const PersonalizeRoute()),
                     ),
                   ),
+                  const SizedBox(height: 9),
+                  // [STEP 78] حذف الحساب — آخر صفوف «الحساب»، بلون الخطر. يفتح
+                  // صفحة الموقع العامّة (المسجَّلة في Google Play) بعد تأكيدٍ
+                  // يقول إن الحذف يتمّ هناك. لا شيء يُحذف من هذه الشاشة.
+                  OtakuSettingRow(
+                    icon: Icons.delete_forever_outlined,
+                    iconColor: AppColors.error,
+                    labelColor: context.themeColors.errorText,
+                    label: context.strings('deleteAccount'),
+                    onTap: _deleteAccount,
+                  ),
 
                   OtakuGroupLabel(
                     label: context.strings('notificationSettings'),
@@ -209,6 +221,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
     );
+  }
+
+  /// حذف الحساب يتمّ على الموقع: تسجيل دخول ثم كلمة المرور ثم تأكيد. هنا
+  /// يُقال ذلك قبل مغادرة التطبيق، ولا شيء يُحذف من هذه الشاشة.
+  Future<void> _deleteAccount() async {
+    final confirmed = await showOtakuConfirm(
+      context: context,
+      title: context.strings('deleteAccount'),
+      message: context.strings('deleteAccountOpensWebsite'),
+      confirmLabel: context.strings('deleteAccountContinue'),
+      cancelLabel: context.strings('cancel'),
+      destructive: true,
+      titleTranslations: AppStrings.across('deleteAccount'),
+      messageTranslations: AppStrings.across('deleteAccountOpensWebsite'),
+    );
+    if (confirmed != true || !mounted) return;
+    await PublicPages.open(context, PublicPages.deleteAccount);
   }
 
   /// تعديل اسم المستخدم — ورقة سفلية بحقل واحد.

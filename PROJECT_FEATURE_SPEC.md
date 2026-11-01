@@ -12474,3 +12474,108 @@ the column would silently relabel designs and sizes as colours). Both scripts ar
 Kurdish strings for the new kinds are agent drafts (`NEEDS_NATIVE_REVIEW`).
 Open: server messages `VARIANT_REQUIRED` / `VARIANT_UNAVAILABLE` / `VARIANT_OUT_OF_STOCK` still say
 «اللون» (clients prevent the first; the others are rare) — neutral wording is a follow-up.
+
+# STEP 78 — PRIVACY POLICY AND ACCOUNT DELETION (2026-10-31)
+
+**Status:** implemented on branch `feat/account-deletion-privacy` (based on `origin/dev` `824fead`).
+Not merged, not deployed. Migration **091** (089/090 are reserved by STEP 77, PR #21).
+
+**Owner decisions (2026-10-31):**
+
+| # | Decision |
+|---|---|
+| E1 | A confirmed deletion request is carried out **immediately**, in one transaction. There is no admin review queue. |
+| E2 | Orders are kept **whole**, including the delivery phone, the address and everything else on the order row. |
+| E3 | Deletion is **refused while an order is in progress**: any status except `COMPLETED` or `REJECTED` blocks it (`409 ACCOUNT_HAS_ACTIVE_ORDERS`). |
+| E4 | **No fixed retention period** exists yet for retained records. The policy says so instead of inventing one. |
+
+Unchanged rule: no SMS and no OTP (see the admin-managed accounts decision).
+
+## 78.1 Identity verification
+
+`POST /api/auth/me/delete {password, reason?}` requires all of the following:
+- a valid session (`authenticate`: token signature, `token_version`, active account);
+- the password typed now (bcrypt compare, `400 INVALID_CURRENT_PASSWORD` like `changePassword`);
+- `accountDeletionRateLimiter`: 5 attempts per account per hour.
+
+Everything is re-checked under `FOR UPDATE`:
+- A password change or session revocation between the check and the lock refuses with `401 SESSION_REVOKED`.
+- Two concurrent requests produce one deletion; the other gets 401.
+
+Locks are taken in the same order as checkout (cart, then user), so an order racing the deletion either:
+- commits first and blocks the deletion, or
+- finds its cart deleted (`EMPTY_CART`).
+
+Admin accounts are refused (`403 ACCOUNT_DELETION_CUSTOMERS_ONLY`).
+
+No public endpoint takes a phone number for deletion. The website page shows the form only to a signed-in customer, so it reveals nothing about whether an account exists.
+
+## 78.2 What is erased, what is kept
+
+The account row cannot be deleted, because `orders.user_id` is `ON DELETE RESTRICT`. It becomes a **tombstone** instead (migration 091):
+- `role = 'deleted'`, `phone = NULL` (the number is free to register again), `username = 'حساب محذوف'`;
+- no valid password hash; gender, birthday and avatar are cleared;
+- `is_active = false`, `token_version + 1`, `deleted_at`;
+- CHECK `users_deleted_shape`.
+
+Every customer query filters on `role = 'customer'`, so the tombstone drops out of customer lists, audiences, statistics and birthdays without per-query changes. `findAuthState` treats it as absent, so its tokens get `401 UNAUTHORIZED` and the app and website end the session.
+
+**Erased** (`accountDeletionRepo.ERASED_TABLES`, plus special cases):
+- reviews (product ratings are recomputed by trigger), points ledger, favourites, carts, collections;
+- notifications and push outbox, restock subscriptions (product and colour), notification prefs;
+- device tokens, daily activity, admin push rows;
+- `account_requests` by user **or** by phone, the admin push rows that quote those requests (name and phone in the text), and legacy `verification_codes` by phone;
+- loyalty redemptions that were claimed but never used on an order nor delivered (no order to keep them for; otherwise they would sit in the admin gift queue as «حساب محذوف»);
+- the `details` of admin audit rows that target the customer (gender, birthday from/to and reason, internal-account reason) — the action, actor and time stay;
+- the user's avatar and review `media_files` rows, with their files unlinked after commit.
+
+**Kept** (`RETAINED_TABLES`):
+- orders with items and status history (E2);
+- `birthday_discount_usage` and `loyalty_reward_redemptions`, which belong to retained orders;
+- `account_deletions`: reference `DEL-` plus 10 Crockford characters, optional reason (≤ 500), `retained_orders`, `deleted_at`. It holds no phone or name.
+
+Also kept: admin audit rows, anonymous aggregates, server logs and backups.
+
+After deletion, nothing writes back to the tombstone:
+- `userRepo.update` refuses a `deleted` row (401), which covers a profile request authenticated just before the deletion;
+- the rating-reminder job withdraws, and «send now» skips, orders of a non-customer;
+- an admin message cannot target the tombstone id shown on retained orders.
+
+Locks: cart, then the user's reviews, then the user row. Review moderation locks the review and then inserts points (`KEY SHARE` on the user), so this order avoids a deadlock. Open analytics months are marked dirty.
+
+A guard test reads `pg_constraint`: every FK to `users(id)` must be erased, retained or an admin-actor column. A new table fails the test until its fate is decided.
+
+## 78.3 Website (`web-store/`)
+
+Both routes are public:
+- `/privacy-policy`
+- `/delete-account`
+
+Both offer Arabic by default and English with `?lang=en`. The rest of the site stays Arabic-only; English exists only on these two pages, for the store listing and its reviewers.
+
+`/delete-account` behaves as follows:
+- A visitor sees the explanation and a sign-in button, which returns to the page after login.
+- A signed-in customer sees: password, optional reason, an "I understand" checkbox, a second explicit confirmation, then the reference number.
+- `POST /bff/account/delete` has a CSRF origin check, needs a session, forwards only `password` and `reason`, and drops the cookie on success.
+
+Footer links to both pages are on every page, and the account page links to deletion. The text lives in `src/lib/legal-content.ts` and is derived from the code. A test pins the retention constants it quotes (30, 60 and 400 days).
+
+## 78.4 App
+
+- **Settings:** the last row of «الحساب» is a red «حذف الحساب». It shows a confirmation saying deletion happens on the website, then opens `https://otakugalaxystore.com/delete-account` in the browser.
+- **Login:** a «سياسة الخصوصية» text link under the form opens `https://otakugalaxystore.com/privacy-policy`.
+
+Both URLs are constants in `lib/core/config/public_pages.dart`, matching the Play Console entries. The four new keys have Arabic and draft Sorani (`NEEDS_NATIVE_REVIEW`). The app has no English locale.
+
+## 78.5 Open points (owner)
+
+- **No contact channel stated in the policy:** there is no email, legal entity or postal address; it relies on the store's configured contact links.
+- The registration notice mentions «شروط الاستخدام», and no terms page exists.
+- **Not verified in production:** Cloudflare in front of production, FCM enabled (`FCM_PROJECT_ID` is empty in the templates), log rotation, and backup retention.
+- Retention period for orders (E4).
+- Any external courier receiving the address: not in code, not stated.
+- The Kurdish strings and API error lines are drafts awaiting native review.
+- `PATCH /auth/me/password` has no per-account attempt limit (pre-existing). Someone holding a stolen session can guess the password there, which weakens the deletion limiter's purpose. Rate limiters are in-memory per process, as everywhere else.
+- A suspended customer cannot sign in and so cannot self-delete; they must contact the store. This is a product decision.
+- The deletion pages are pinned to the production domain in the app, so staging builds open the production pages.
+- Account deletion leaves no admin dashboard view of `account_deletions`; it can only be looked up by reference in the database.

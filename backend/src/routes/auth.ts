@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authController } from '../controllers/authController.js';
 import { authenticate } from '../middleware/auth.js';
 import {
+  accountDeletionRateLimiter,
   accountRequestRateLimiter,
   authRateLimiter,
   loginRateLimiter,
@@ -31,3 +32,5 @@ authRoutes.post('/forgot-password', floodGuard, accountRequestRateLimiter(), aut
 authRoutes.get('/me', authenticate, authController.me);
 authRoutes.patch('/me', authenticate, authController.updateProfile);
 authRoutes.patch('/me/password', authenticate, authController.changePassword);
+// [STEP 78] حذف الحساب بطلب صاحبه — جلسةٌ وكلمة المرور الآن، وسقفٌ بالحساب.
+authRoutes.post('/me/delete', authenticate, accountDeletionRateLimiter(), authController.deleteAccount);

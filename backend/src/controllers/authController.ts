@@ -1,10 +1,12 @@
 import { trackingService } from '../services/trackingService.js';
 import type { RequestHandler } from 'express';
+import { accountDeletionService } from '../services/accountDeletionService.js';
 import { authService } from '../services/authService.js';
 import { ok } from '../utils/response.js';
 import { parse } from '../utils/zod.js';
 import {
   changePasswordSchema,
+  deleteAccountSchema,
   forgotPasswordSchema,
   loginSchema,
   registerSchema,
@@ -54,5 +56,11 @@ export const authController = {
       input.newPassword,
     );
     return ok(res, result, 'تم تغيير كلمة المرور بنجاح');
+  }) as RequestHandler,
+
+  deleteAccount: (async (req, res) => {
+    const input = parse(deleteAccountSchema, req.body);
+    const result = await accountDeletionService.deleteOwn(req.auth!, input);
+    return ok(res, result, 'تم حذف حسابك');
   }) as RequestHandler,
 };

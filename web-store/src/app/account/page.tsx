@@ -60,6 +60,9 @@ export default async function AccountPage() {
       </nav>
       <p className="hint">لتغيير رقم الهاتف تواصل مع الإدارة.</p>
       <LogoutButton />
+      <p className="hint form-links">
+        <Link href="/delete-account">حذف الحساب</Link>
+      </p>
     </div>
   );
 }
