@@ -196,7 +196,7 @@ otaku-api-prod` و`localhost:4000` — بلا خطوة الحذف (مجلّد ا
 ( set -e
   cd /srv/otaku-galaxy-staging                  # الإنتاج: /srv/otaku-galaxy وفرع prod
   test "$(git rev-parse --abbrev-ref HEAD)" = staging
-  DOMAIN=staging-api.example.com CONF=staging-api.conf   # الإنتاج: api.example.com / api.conf
+  DOMAIN=staging-api.example.com CONF=staging-api.conf   # الإنتاج: api.otakugalaxystore.com / prod-api.conf (+ prod-store.conf، prod-admin.conf)
   AV=/etc/nginx/sites-available/$CONF EN=/etc/nginx/sites-enabled/$CONF
   if ! sudo test -s /etc/letsencrypt/live/$DOMAIN/fullchain.pem; then
     echo "لا شهادة لـ$DOMAIN — نفّذ §٥ أولاً"; false
@@ -383,6 +383,33 @@ compose و`kill_timeout: 15000` في PM2 أطول من ذلك عمداً.
 - [ ] عزل قاعدة الإنتاج عن كل ما سواها
 - [ ] توقيع نسخ المتجرين (Play / App Store)
 - [ ] تفعيل HSTS بعد التأكد من الشهادات
+
+#### توقيع Android للإنتاج (`android/app/build.gradle.kts`)
+- مفتاح الرفع خارج المستودع. `android/key.properties` (في `.gitignore`) يحمل سطرين فقط:
+  `storeFile=<مسار مطلق للمخزن>` و`keyAlias=<الاسم>`. كلمتا المرور في KeePassXC،
+  وتُمرَّران لأمر البناء وحده: `OG_UPLOAD_STORE_PASSWORD` و`OG_UPLOAD_KEY_PASSWORD`.
+- بلا أيٍّ منها يفشل `preProdReleaseBuild` برسالة تسمّي الناقص — لا رجوع إلى مفتاح debug.
+  نكهتا dev/staging تبقيان على مفتاح debug (معرّفهما مختلف ولا تُرفعان إلى Play).
+- التحقّق بعد البناء: `apksigner verify --print-certs` يُظهر شهادة الرفع لا `CN=Android Debug`،
+  و`aapt2 dump badging` يُظهر `com.otakugalaxy.otaku_galaxy` بلا `application-debuggable`.
+- التراجع: حذف `android/key.properties` يعيد الحالة الآمنة (بناء الإنتاج يرفض). المفتاح نفسه
+  لا يُستبدل أبداً بلا Play App Signing — ضياعه يعني تطبيقاً لا يُحدَّث.
+
+#### حساب المالك في قاعدة الإنتاج (`backend/scripts/createOwner.ts`)
+- مرّة واحدة، بعد الهجرات، وقبل أي تسجيل: يرفض إن كان في `users` أي صفّ، وخارج
+  `APP_ENV=prod`، وبلا العلَم `--confirm-empty-production`.
+- المدخل أربعة أسطر على stdin (الرقم، الاسم، كلمة المرور، تأكيدها) — لا argv ولا متغيّر
+  بيئة. يقرؤها غلاف النشر بلا صدى من طرفية المالك ويمرّرها بأنبوب إلى
+  `docker compose run --rm -T migrate npx tsx scripts/createOwner.ts --confirm-empty-production`.
+- يطبع الرقم المعتمد و`is_super_admin=true users=1` فقط. لا يُنسخ أي صفّ من الاختبار المسبق.
+- التراجع: لا شيء آخر في القاعدة بعد، فإعادة المحاولة = حذف الصفّ الوحيد ثم التشغيل
+  ثانيةً — وهذا يحتاج موافقة المالك لأنه كتابة في قاعدة الإنتاج.
+
+#### قوالب nginx للإنتاج (`deploy/nginx/prod-*.conf`)
+- `prod-api.conf` (127.0.0.1:4000، بلا HSTS لأن helmet يرسله)، `prod-store.conf`
+  (127.0.0.1:3000، عامّ ويُفهرس، www → الأصل)، `prod-admin.conf` (ملفات `admin/dist`،
+  noindex + robots + CSP ببصمة السكربت المضمَّن). كلها تضمّن `cloudflare-real-ip.conf`.
+- التراجع: نسخة `/etc/nginx` قبل التثبيت، ثم إزالة الروابط من `sites-enabled` و`nginx -t && reload`.
 
 ### غير جاهز بعد (يحتاج شيفرة لا خادماً)
 - **مخزن مشترك لحدود المعدّل (Redis)** — شرطُ تشغيل أكثر من نسخة.

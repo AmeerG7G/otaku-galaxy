@@ -69,7 +69,9 @@ enum AppConfig {
 
   production._(
     environment: Environment.production,
-    apiBaseUrl: 'https://api.otaku-galaxy.example/api',
+    // المضيف الحقيقي (خطة الإنتاج، 2026-11-01): نسخة Play والـAPK المباشر
+    // تُبنيان بلا `--dart-define`، فلا مجال لنسيان العنوان عند البناء.
+    apiBaseUrl: 'https://api.otakugalaxystore.com/api',
     appName: 'مجرة الأوتاكو',
     // المسجَّل في Google Play Console — لا يتغيّر.
     publicSiteOrigin: 'https://otakugalaxystore.com',
