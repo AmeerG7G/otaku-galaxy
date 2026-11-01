@@ -46,6 +46,7 @@ enum AppConfig {
   development._(
     environment: Environment.development,
     appName: 'مجرة الأوتاكو (تطوير)',
+    publicSiteOrigin: 'https://otakugalaxystore.com',
     enableLogging: true,
   ),
 
@@ -60,6 +61,9 @@ enum AppConfig {
     // صريحاً، لكن نسخة الاختبار لا تحتاجه بعد اليوم.
     apiBaseUrl: 'https://staging-api.otakugalaxystore.com/api',
     appName: 'مجرة الأوتاكو (اختبار)',
+    // صفحتا الخصوصية وحذف الحساب على موقع الاختبار: نسخة الاختبار لا تفتح
+    // موقع الإنتاج ولا تحذف حساباً فيه (STEP 78.5).
+    publicSiteOrigin: 'https://staging-store.otakugalaxystore.com',
     enableLogging: true,
   ),
 
@@ -67,6 +71,8 @@ enum AppConfig {
     environment: Environment.production,
     apiBaseUrl: 'https://api.otaku-galaxy.example/api',
     appName: 'مجرة الأوتاكو',
+    // المسجَّل في Google Play Console — لا يتغيّر.
+    publicSiteOrigin: 'https://otakugalaxystore.com',
     enableLogging: false,
   );
 
@@ -74,6 +80,7 @@ enum AppConfig {
     required this.environment,
     this.apiBaseUrl,
     required this.appName,
+    required this.publicSiteOrigin,
     required this.enableLogging,
   });
 
@@ -85,6 +92,9 @@ enum AppConfig {
 
   /// اسم التطبيق للعرض.
   final String appName;
+
+  /// أصل الموقع الذي تُفتح منه الصفحات العامّة ([PublicPages])، بلا `/` أخيرة.
+  final String publicSiteOrigin;
 
   /// تفعيل التسجيل التفصيلي.
   final bool enableLogging;
