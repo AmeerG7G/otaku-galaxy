@@ -47,6 +47,16 @@ void main() {
     );
   });
 
+  /// STEP 78.5: نسخة الاختبار كانت تفتح صفحة حذف الحساب على موقع الإنتاج.
+  test('موقع الصفحات العامّة للاختبار ليس موقع الإنتاج', () {
+    expect(
+      AppConfig.staging.publicSiteOrigin,
+      isNot(equals(AppConfig.production.publicSiteOrigin)),
+      reason: 'staging يجب ألّا يفتح سياسة الخصوصية أو حذف الحساب في الإنتاج',
+    );
+    expect(AppConfig.production.publicSiteOrigin, 'https://otakugalaxystore.com');
+  });
+
   test('لكل بيئة اسمها القصير المعتمد', () {
     expect(AppConfig.development.envName, 'dev');
     expect(AppConfig.staging.envName, 'staging');
@@ -75,5 +85,11 @@ void main() {
     for (final entry in ['lib/main_staging.dart', 'lib/main_prod.dart', 'lib/main_dev.dart']) {
       expect(File(entry).readAsStringSync(), contains('runOtakuGalaxy(AppConfig.'), reason: entry);
     }
+  });
+
+  test('[STEP 78.5] الحقن يربط الصفحات العامّة بإعدادات النكهة', () {
+    // بلا هذا السطر تبقى الروابط على أصل الإنتاج الافتراضي في كل نكهة.
+    final di = File('lib/core/di/injection_container.dart').readAsStringSync();
+    expect(di, contains('PublicPages.configure(appConfig);'));
   });
 }

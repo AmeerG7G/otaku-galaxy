@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:otaku_galaxy/core/config/app_config.dart';
 import 'package:otaku_galaxy/core/config/public_pages.dart';
 import 'package:otaku_galaxy/core/design_system/design_system.dart';
 import 'package:otaku_galaxy/core/l10n/app_strings.dart';
@@ -29,9 +30,23 @@ void main() {
   });
   tearDown(() => PublicPages.launcher = original);
 
-  test('الرابطان كما في Google Play Console', () {
+  test('الإنتاج: الرابطان كما في Google Play Console', () {
+    PublicPages.configure(AppConfig.production);
     expect(PublicPages.privacyPolicy, 'https://otakugalaxystore.com/privacy-policy');
     expect(PublicPages.deleteAccount, 'https://otakugalaxystore.com/delete-account');
+  });
+
+  test('الاختبار: الرابطان على موقع الاختبار لا الإنتاج', () {
+    addTearDown(() => PublicPages.configure(AppConfig.production));
+    PublicPages.configure(AppConfig.staging);
+    expect(PublicPages.privacyPolicy, 'https://staging-store.otakugalaxystore.com/privacy-policy');
+    expect(PublicPages.deleteAccount, 'https://staging-store.otakugalaxystore.com/delete-account');
+  });
+
+  test('التطوير: بلا تغيير عن السابق', () {
+    addTearDown(() => PublicPages.configure(AppConfig.production));
+    PublicPages.configure(AppConfig.development);
+    expect(PublicPages.privacyPolicy, 'https://otakugalaxystore.com/privacy-policy');
   });
 
   for (final language in AppLanguage.values) {

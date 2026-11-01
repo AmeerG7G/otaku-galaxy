@@ -6,6 +6,7 @@ import 'package:get_it/get_it.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/app_config.dart';
+import '../config/public_pages.dart';
 import '../network/api_client.dart';
 import '../../features/app_update/data/app_version_repository.dart';
 import '../../features/app_update/data/installed_version.dart';
@@ -85,6 +86,8 @@ Future<void> init({AppConfig? config}) async {
     // أصل الوسائط يتبع نفس عنوان الـAPI للبيئة الحالية، فتُحلّ المراجع
     // النسبية (`/uploads/...`) إلى الأصل الذي يراه هذا الجهاز فعلاً.
     configureMediaOrigin(appConfig);
+    // صفحتا الخصوصية وحذف الحساب على موقع البيئة نفسها.
+    PublicPages.configure(appConfig);
 
     // تهيئة الاعتماديات الخارجية (غير المتزامنة).
     await _initExternalDependencies();
