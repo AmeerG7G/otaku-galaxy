@@ -86,4 +86,10 @@ void main() {
       expect(File(entry).readAsStringSync(), contains('runOtakuGalaxy(AppConfig.'), reason: entry);
     }
   });
+
+  test('[STEP 78.5] الحقن يربط الصفحات العامّة بإعدادات النكهة', () {
+    // بلا هذا السطر تبقى الروابط على أصل الإنتاج الافتراضي في كل نكهة.
+    final di = File('lib/core/di/injection_container.dart').readAsStringSync();
+    expect(di, contains('PublicPages.configure(appConfig);'));
+  });
 }
