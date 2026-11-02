@@ -54,6 +54,15 @@ const POINTS_BALANCE = `COALESCE(
   (SELECT SUM(pl.amount) FROM points_ledger pl WHERE pl.user_id = u.id), 0
 )`;
 
+/**
+ * «زبونٌ» في قائمة الإدارة وعدّاداتها: حسابُ زبونٍ **قبلت** الإدارة طلب تسجيله.
+ *
+ * [CRITICAL] التسجيل ينشئ صفَّ `users` قبل الموافقة (معلَّقاً)، والرفض يبقيه كما
+ * هو للسجل — فوجود الصف ليس قبولاً. `phone_verified_at` لا يضعه إلا
+ * `approveAccountRequest`، فهو وحده ما يُدخل الحساب القائمة.
+ */
+const APPROVED_CUSTOMER = "u.role = 'customer' AND u.phone_verified_at IS NOT NULL";
+
 export const CUSTOMER_SORTS = [
   'newest',
   'oldest',
@@ -466,7 +475,7 @@ export const userRepo = {
     db: pg.Pool | pg.PoolClient,
     options: { search?: string; isActive?: boolean } = {},
   ) {
-    const conditions = ["u.role = 'customer'"];
+    const conditions = [APPROVED_CUSTOMER];
     const values: unknown[] = [];
     if (options.search) {
       const fragment = phoneSearchFragment(options.search);
@@ -576,7 +585,7 @@ export const userRepo = {
       sort?: CustomerSort;
     },
   ) {
-    const conditions = ["u.role = 'customer'"];
+    const conditions = [APPROVED_CUSTOMER];
     const values: unknown[] = [];
     const push = (value: unknown) => {
       values.push(value);
