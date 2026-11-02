@@ -461,8 +461,8 @@ void main() {
       expect(_colour('blue'), findsOneWidget);
       expect(_colour('green'), findsNothing);
       expect(find.text('أخضر'), findsNothing);
-      // المعرض الموحّد يبدأ بصورة أول لون — عرضها ليس اختياراً له.
-      expect(_heroUrl(tester), _redImage);
+      // المعرض الموحّد يبدأ بصورة العرض الرئيسية (STEP 80) — ولا لون مختار.
+      expect(_heroUrl(tester), _mainImage);
       expect(find.byKey(const Key('product_selected_color_name')), findsNothing);
       expect(_addButton(tester).onPressed, isNull);
       expect(_addButton(tester).label, AppStrings.arabic('chooseColorFirst'));
@@ -472,6 +472,8 @@ void main() {
     testWidgets('اختيار لون يبدّل الصورة والتوفر، ويحدّ الكمية بمخزونه', (tester) async {
       await _pumpDetail(tester, _variantProduct());
       await _tap(tester, _colour('red'));
+      // صورة الأحمر بعد صورة العرض (STEP 80): المعرض يتحرّك إليها.
+      await tester.pumpAndSettle();
       _drainImageErrors(tester);
 
       expect(_heroUrl(tester), _redImage);
@@ -510,7 +512,7 @@ void main() {
       );
 
       await _tap(tester, _colour('blue'));
-      expect(_heroUrl(tester), _redImage, reason: 'النافد لا يُختار ولا ينقل المعرض');
+      expect(_heroUrl(tester), _mainImage, reason: 'النافد لا يُختار ولا ينقل المعرض');
       expect(find.byKey(const Key('product_selected_color_name')), findsNothing);
       expect(_addButton(tester).onPressed, isNull);
 

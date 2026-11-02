@@ -16,7 +16,10 @@ vi.mock('@/lib/catalog', () => ({
   isUuid: () => true,
   getProduct: async () => state.product,
   listProductReviews: async () => [],
+  listCategories: async () => [],
+  listProducts: async () => ({ items: [], page: 1, limit: 5, total: 0, hasMore: false }),
 }));
+vi.mock('next/headers', () => ({ headers: async () => new Headers({ 'x-nonce': 'test-nonce' }) }));
 vi.mock('@/lib/server-session', () => ({ readSession: async () => null }));
 vi.mock('@/components/AddToCart', () => ({ AddToCart: () => createElement('button', { 'data-add-to-cart': '' }, 'add') }));
 

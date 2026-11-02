@@ -3,15 +3,21 @@ import 'package:flutter/material.dart';
 import '../../../../core/design_system/design_system.dart';
 import '../../../products/domain/entities/product_variant.dart';
 
-/// صور المعرض الموحّد بترتيبه الثابت:
+/// صور المعرض الموحّد بترتيبه الثابت — ترتيب المتجر الإلكتروني نفسه
+/// (`galleryImages` في `web-store/src/lib/gallery.ts`، قرار المالك
+/// 2026-11-02، STEP 79 ثم STEP 80؛ يحلّ محلّ «الألوان أولاً» في STEP 75):
 ///
-/// ١. صورة كل لونٍ من [colours] (الفعّالة كما يراها الزبون) بترتيب الألوان
-///    (`sortOrder`) — لكل لونٍ صورته الأساسية الواحدة (STEP 74).
-/// ٢. ثم صور المنتج العامة [images] كما أرسلها الخادم (`sort_order`).
+/// ١. صور المنتج العامة (صور العرض) [images] كما أرسلها الخادم
+///    (`sort_order`) — الأولى صورة العرض الرئيسية ويُفتح عليها المعرض.
+/// ٢. ثم صورة كل لونٍ من [colours] (الفعّالة كما يراها الزبون) بترتيب
+///    الألوان (`sortOrder`) — لكل لونٍ صورته الأساسية الواحدة (STEP 74).
+///
+/// منتجٌ بلا صور عرض: صور ألوانه وحدها بترتيبها، فيُفتح على أولاها كما كان.
 ///
 /// الصورة تُعرف بمرجعها المخزَّن محلولاً (`resolveMediaUrl` نفسها لصور
 /// المنتج وصور الألوان)، فصورةٌ هي صورة لونٍ ومرفوعةٌ صورةً عامة أيضاً تظهر
-/// مرةً واحدة في موضع اللون. الروابط الفارغة تسقط.
+/// مرةً واحدة في موضع صورة العرض (واختيار اللون يجدها هناك). الروابط
+/// الفارغة تسقط. الترتيب للعرض وحده: لا يمسّ قائمة الألوان ولا اختيارها.
 List<String> productGalleryImages(
   List<String> images, {
   List<ProductVariant> colours = const [],
@@ -19,8 +25,8 @@ List<String> productGalleryImages(
   final seen = <String>{};
   return [
     for (final url in [
-      for (final colour in colours) ?colour.imageUrl,
       ...images,
+      for (final colour in colours) ?colour.imageUrl,
     ])
       if (url.trim().isNotEmpty && seen.add(url.trim())) url.trim(),
   ];
@@ -73,9 +79,11 @@ class _ProductImageGalleryState extends State<ProductImageGallery> {
   );
   late int _index = _focusIndex() ?? 0;
 
+  /// موضع [ProductImageGallery.focusImage] في القائمة — مقصوصاً كما قُصّت
+  /// روابط القائمة في [productGalleryImages].
   int? _focusIndex() {
-    final focus = widget.focusImage;
-    if (focus == null) return null;
+    final focus = widget.focusImage?.trim();
+    if (focus == null || focus.isEmpty) return null;
     final i = widget.images.indexOf(focus);
     return i < 0 ? null : i;
   }

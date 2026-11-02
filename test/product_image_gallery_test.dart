@@ -6,10 +6,14 @@
 // تزامن النقطة النشطة والصورة، الترتيب كما أرسله الخادم، منتج بصورة واحدة
 // أو بلا صور، والصورة التي يفشل تحميلها.
 //
-// المعرض الموحّد (STEP 74 + إصلاح ما بعد Staging 51eae0b): صورة كل لون ثم صور
-// المنتج العامة بلا تكرار؛ تصفّحه لا يختار لوناً واختيار اللون ينقله إلى صورته؛
-// وكل صوره تُطلب في العرض الأول مرةً واحدة — كانت صورة اللون لا تُطلب إلا لحظة
-// اختياره، وبقية الصور لا تُطلب إلا لحظة السحب إليها.
+// المعرض الموحّد (STEP 74 + إصلاح ما بعد Staging 51eae0b): صور اللون والصور
+// العامة في معرضٍ واحد بلا تكرار؛ تصفّحه لا يختار لوناً واختيار اللون ينقله إلى
+// صورته؛ والتحميل المسبق للجارتين وحدهما.
+//
+// ترتيب STEP 80 (ترتيب المتجر الإلكتروني): صور العرض العامة أولاً بترتيبها —
+// ويُفتح المعرض على الرئيسية — ثم صور الألوان بترتيبها. منتجٌ بلا صور عرض: صور
+// ألوانه وحدها. الترتيب للعرض فقط: لا يمسّ الألوان ولا السعر ولا المخزون ولا
+// ما يُرسل إلى السلة.
 
 import 'dart:async';
 import 'dart:io';
@@ -23,6 +27,7 @@ import 'package:otaku_galaxy/core/design_system/design_system.dart';
 import 'package:otaku_galaxy/core/l10n/app_strings.dart';
 import 'package:otaku_galaxy/core/l10n/bilingual_text.dart';
 import 'package:otaku_galaxy/core/l10n/locale_scope.dart';
+import 'package:otaku_galaxy/core/network/media_url.dart';
 import 'package:otaku_galaxy/features/auth/presentation/cubit/auth_cubit.dart';
 import 'package:otaku_galaxy/features/cart/domain/entities/cart_item.dart';
 import 'package:otaku_galaxy/features/cart/domain/entities/cart_sync.dart';
@@ -128,7 +133,7 @@ class _NoReviews implements ReviewRepository {
 }
 
 class _EmptyCart implements CartRepository {
-  final adds = <({String productId, String? variantId})>[];
+  final adds = <({String productId, String? variantId, int quantity})>[];
 
   @override
   Future<List<CartItem>> fetchCart() async => const [];
@@ -136,7 +141,7 @@ class _EmptyCart implements CartRepository {
   Future<CartSnapshot> syncCart() async => const CartSnapshot(items: []);
   @override
   Future<List<CartItem>> addToCart(String productId, {String? optionValue, String? variantId, int quantity = 1}) async {
-    adds.add((productId: productId, variantId: variantId));
+    adds.add((productId: productId, variantId: variantId, quantity: quantity));
     return const [];
   }
   @override
@@ -383,18 +388,32 @@ void main() {
   });
 
   group('ترتيب المعرض الموحّد', () {
-    test('صورة كل لون بترتيب الألوان، ثم الصور العامة بترتيبها', () {
+    test('صور العرض بترتيبها أولاً، ثم صورة كل لون بترتيب الألوان', () {
       expect(
         productGalleryImages(_images, colours: [_variant('red', _redImage), _variant('blue', _blueImage, sort: 1)]),
-        [_redImage, _blueImage, ..._images],
+        [..._images, _redImage, _blueImage],
       );
     });
 
-    test('صورةٌ هي صورة لونٍ ومرفوعةٌ عامةً أيضاً تظهر مرةً واحدة في موضع اللون', () {
+    test('صورةٌ هي صورة لونٍ ومرفوعةٌ عامةً أيضاً تظهر مرةً واحدة في موضع صورة العرض', () {
       expect(
         productGalleryImages([_images[0], _blueImage, _images[1], _images[0]], colours: [_variant('blue', _blueImage)]),
-        [_blueImage, _images[0], _images[1]],
+        [_images[0], _blueImage, _images[1]],
       );
+    });
+
+    test('صورة عرضٍ واحدة: هي الأولى ثم صور الألوان؛ بلا صور عرض: صور الألوان وحدها بترتيبها', () {
+      final colours = [_variant('red', _redImage), _variant('blue', _blueImage, sort: 1)];
+      expect(productGalleryImages([_images[0]], colours: colours), [_images[0], _redImage, _blueImage]);
+      expect(productGalleryImages(const [], colours: colours), [_redImage, _blueImage]);
+    });
+
+    test('الترتيب لا يغيّر المدخلات: قائمتا الصور والألوان كما هما', () {
+      final images = List<String>.unmodifiable(_images);
+      final colours = List<ProductVariant>.unmodifiable([_variant('red', _redImage), _variant('blue', _blueImage, sort: 1)]);
+      productGalleryImages(images, colours: colours);
+      expect(images, _images);
+      expect([for (final c in colours) c.id], ['red', 'blue']);
     });
 
     test('لونان بالصورة نفسها: مرةً واحدة', () {
@@ -443,7 +462,7 @@ void main() {
           _colour('green', 'https://cdn.test/green.png', sort: 2, active: false),
         ],
       ));
-      final expected = [_redImage, _blueImage, _images[0], _images[1]];
+      final expected = [_images[0], _redImage, _images[1], _blueImage];
       for (var i = 0; i < expected.length; i++) {
         expect(_dot(i), findsOneWidget);
       }
@@ -458,6 +477,10 @@ void main() {
 
     testWidgets('تصفّح المعرض لا يختار لوناً، والإضافة تبقى معطّلة', (tester) async {
       final cart = await _pumpDetail(tester, _productJson(variants: _colours()));
+      expect(_heroUrl(tester), _images[0]);
+      await tester.tap(_dot(3));
+      await tester.pumpAndSettle();
+      _drainImageErrors(tester);
       expect(_heroUrl(tester), _redImage);
       expect(_selectedColourName, findsNothing, reason: 'عرض صورة اللون ليس اختياراً له');
       await _swipeNext(tester);
@@ -476,18 +499,19 @@ void main() {
 
     testWidgets('اختيار لون ينقل المعرض إلى صورته؛ التصفّح بعده لا يغيّر اللون المرسَل', (tester) async {
       final cart = await _pumpDetail(tester, _productJson(variants: _colours()));
+      // المعرض: [front، back، detail، أحمر، أزرق].
       await _selectColour(tester, 'blue');
       expect(_heroUrl(tester), _blueImage);
-      expect(_activeDot(tester, 5), 1);
+      expect(_activeDot(tester, 5), 4);
       expect(tester.widget<Text>(_selectedColourName).data, 'blue');
 
-      // يتصفّح إلى صورةٍ عامة وإلى صورة الأحمر — يبقى الأزرق مختاراً.
-      await _swipeNext(tester);
-      expect(_heroUrl(tester), _images[0]);
+      // يتصفّح إلى صورة الأحمر وإلى صورةٍ عامة — يبقى الأزرق مختاراً.
+      await _swipePrevious(tester);
+      expect(_heroUrl(tester), _redImage);
       await tester.tap(_dot(0));
       await tester.pumpAndSettle();
       _drainImageErrors(tester);
-      expect(_heroUrl(tester), _redImage);
+      expect(_heroUrl(tester), _images[0]);
       expect(tester.widget<Text>(_selectedColourName).data, 'blue');
 
       // اختيار الأزرق مرةً ثانية يعيد المعرض إليه.
@@ -496,9 +520,10 @@ void main() {
 
       await _selectColour(tester, 'red');
       expect(_heroUrl(tester), _redImage);
-      expect(_activeDot(tester, 5), 0);
+      expect(_activeDot(tester, 5), 3);
       await _swipeNext(tester);
-      await _swipeNext(tester);
+      await _swipePrevious(tester);
+      await _swipePrevious(tester);
 
       final add = find.byKey(const Key('product_add_to_cart'));
       await tester.ensureVisible(add);
@@ -506,7 +531,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(seconds: 5));
       _drainImageErrors(tester);
-      expect(cart.adds, [(productId: 'p1', variantId: 'red')]);
+      expect(cart.adds, [(productId: 'p1', variantId: 'red', quantity: 1)]);
     });
 
     testWidgets('منتجٌ بألوانٍ بلا صورٍ عامة: صور الألوان وحدها', (tester) async {
@@ -536,19 +561,19 @@ void main() {
   group('تحميل صور المعرض', () {
     testWidgets('العرض الأول يطلب المعروضة وجارتها بلا لمس؛ القفزة لا تطلب ما بينهما؛ كل رابطٍ مرةً واحدة', (tester) async {
       await _withRecordedImages(tester, (http) async {
-        // المعرض: [أحمر، أزرق، front، back، detail].
+        // المعرض: [front، back، detail، أحمر، أزرق].
         await _pumpDetail(tester, _productJson(variants: _colours()));
-        expect(_heroUrl(tester), _redImage);
-        expect(http.requested.toSet(), {_redImage, _blueImage},
-            reason: 'صورة اللون الأول تُطلب في العرض الأول، والتالية جاهزةٌ للسحب');
+        expect(_heroUrl(tester), _images[0]);
+        expect(http.requested.toSet(), {_images[0], _images[1]},
+            reason: 'صورة العرض الرئيسية تُطلب في العرض الأول، والتالية جاهزةٌ للسحب');
 
         // نقطةٌ بعيدة: قفزةٌ إلى الأخيرة — لا تُطلب الصورة التي في الطريق.
         await tester.tap(_dot(4));
         await tester.pumpAndSettle();
         _drainImageErrors(tester);
-        expect(_heroUrl(tester), _images[2]);
-        expect(http.requested, isNot(contains(_images[0])));
-        expect(http.requested.toSet(), {_redImage, _blueImage, _images[1], _images[2]});
+        expect(_heroUrl(tester), _blueImage);
+        expect(http.requested, isNot(contains(_images[2])));
+        expect(http.requested.toSet(), {_images[0], _images[1], _redImage, _blueImage});
 
         // العودة سحباً حتى الأولى، ثم اختيار اللونين: لا طلب مكرّر.
         for (var i = 0; i < 4; i++) {
@@ -565,9 +590,10 @@ void main() {
       await _withRecordedImages(tester, (http) async {
         final colours = [for (var i = 0; i < 6; i++) _colour('c$i', 'https://cdn.test/c$i.png', sort: i)];
         await _pumpDetail(tester, _productJson(variants: colours));
+        // المعرض: ثلاث صور عرض ثم c0..c5 — c5 الأخيرة.
         await _selectColour(tester, 'c5');
         expect(_heroUrl(tester), 'https://cdn.test/c5.png');
-        expect(_activeDot(tester, 9), 5);
+        expect(_activeDot(tester, 9), 8);
         for (final skipped in ['c2', 'c3']) {
           expect(http.requested, isNot(contains('https://cdn.test/$skipped.png')));
         }
@@ -621,6 +647,166 @@ void main() {
       expect(_heroUrl(tester), fresh[1]);
       expect(_activeDot(tester, 2), 1);
       expect(find.byWidgetPredicate((w) => w is ProductPhotoSlot && w.imageUrl == _images[2]), findsNothing);
+    });
+  });
+
+  group('صور العرض أولاً كالمتجر الإلكتروني (STEP 80)', () {
+    Future<void> expectGalleryOrder(WidgetTester tester, List<String> expected) async {
+      for (var i = 0; i < expected.length; i++) {
+        expect(_heroUrl(tester), expected[i], reason: 'الصورة $i');
+        expect(_activeDot(tester, expected.length), i);
+        await _swipeNext(tester);
+      }
+      expect(_dot(expected.length), findsNothing);
+    }
+
+    testWidgets('صور عرضٍ كثيرة وألوانٌ كثيرة: يُفتح على صورة العرض الرئيسية، ثم صور العرض ثم الألوان', (tester) async {
+      await _pumpDetail(tester, _productJson(variants: [
+        ..._colours(),
+        _colour('green', 'https://cdn.test/green.png', sort: 2),
+      ]));
+      expect(_heroUrl(tester), _images[0], reason: 'الصورة الرئيسية أولاً');
+      expect(_selectedColourName, findsNothing, reason: 'لا لون مختار عند الفتح');
+      await expectGalleryOrder(tester, [..._images, _redImage, _blueImage, 'https://cdn.test/green.png']);
+    });
+
+    testWidgets('صورة عرضٍ واحدة: هي الأولى ويُفتح عليها، ثم صور الألوان', (tester) async {
+      await _pumpDetail(tester, _productJson(images: [_images[1]], variants: _colours()));
+      await expectGalleryOrder(tester, [_images[1], _redImage, _blueImage]);
+    });
+
+    testWidgets('بلا صور عرض: صور الألوان بترتيبها ويُفتح على أولاها', (tester) async {
+      await _pumpDetail(tester, _productJson(images: const [], variants: _colours()));
+      await expectGalleryOrder(tester, [_redImage, _blueImage]);
+    });
+
+    testWidgets('منتجٌ بلا ألوان: صور العرض وحدها بترتيبها', (tester) async {
+      await _pumpDetail(tester, _productJson());
+      await expectGalleryOrder(tester, _images);
+    });
+
+    testWidgets('ألوانٌ بلا صور: صور العرض وحدها، واختيار اللون لا يحرّك المعرض', (tester) async {
+      await _pumpDetail(tester, _productJson(variants: [
+        _colour('red', ''),
+        _colour('blue', '   ', sort: 1),
+      ]));
+      expect(_heroUrl(tester), _images[0]);
+      await _swipeNext(tester);
+      await _selectColour(tester, 'blue');
+      expect(tester.widget<Text>(_selectedColourName).data, 'blue');
+      expect(_heroUrl(tester), _images[1], reason: 'لونٌ بلا صورة لا ينقل المعرض');
+      expect(_dot(3), findsNothing);
+    });
+
+    testWidgets('اختيار كل لون يعرض صورته هو ونقطته، ومخزونه هو', (tester) async {
+      final colours = [
+        _colour('red', _redImage, stock: 2),
+        _colour('blue', _blueImage, sort: 1, stock: 3),
+        _colour('green', 'https://cdn.test/green.png', sort: 2, stock: 1),
+        _colour('black', 'https://cdn.test/black.png', sort: 3, stock: 5),
+      ];
+      await _pumpDetail(tester, _productJson(variants: colours));
+      // المعرض: ثلاث صور عرض ثم الألوان بترتيبها — اللون i في الموضع 3 + i.
+      for (final i in [2, 0, 3, 1]) {
+        final colour = colours[i];
+        await _selectColour(tester, colour['id']! as String);
+        expect(_heroUrl(tester), colour['imageUrl']);
+        expect(_activeDot(tester, 7), 3 + i);
+        expect(tester.widget<Text>(_selectedColourName).data, colour['id']);
+        expect(
+          tester.widget<ProductStockPill>(find.byKey(const Key('product_stock_pill'))).stock,
+          colour['stock'],
+        );
+      }
+    });
+
+    testWidgets('التبديل المتكرّر بين الألوان مع التصفّح لا يفكّ تزامن اللون المختار والصورة', (tester) async {
+      await _pumpDetail(tester, _productJson(variants: _colours()));
+      const images = {'red': _redImage, 'blue': _blueImage};
+      for (var round = 0; round < 3; round++) {
+        for (final id in ['blue', 'red', 'blue', 'blue', 'red']) {
+          await _selectColour(tester, id);
+          expect(_heroUrl(tester), images[id], reason: 'جولة $round، $id');
+          expect(tester.widget<Text>(_selectedColourName).data, id);
+        }
+        // تصفّحٌ بعيداً عن صورة اللون — يبقى اللون نفسه مختاراً.
+        await tester.tap(_dot(round));
+        await tester.pumpAndSettle();
+        _drainImageErrors(tester);
+        expect(_heroUrl(tester), _images[round]);
+        expect(tester.widget<Text>(_selectedColourName).data, 'red');
+      }
+    });
+
+    testWidgets('روابط فارغة أو بمسافات أو null أو غير صالحة أو مكرّرة: لا انهيار، والمعرض يتخطّى الفارغ والمكرّر', (tester) async {
+      await _pumpDetail(tester, _productJson(
+        images: ['', '   ', null, 'not-a-url', _images[0], ' ${_images[0]} '],
+        variants: [
+          _colour('red', ''),
+          _colour('blue', 'uploads/blue.png', sort: 1),
+          _colour('green', _images[0], sort: 2),
+        ],
+      ));
+      expect(tester.takeException(), isNull);
+      final expected = [resolveMediaUrl('not-a-url')!, _images[0], resolveMediaUrl('uploads/blue.png')!];
+      await expectGalleryOrder(tester, expected);
+
+      // صورة الأخضر هي صورة عرض — اختياره يجدها في موضعها.
+      await _selectColour(tester, 'green');
+      expect(_heroUrl(tester), _images[0]);
+      expect(_activeDot(tester, 3), 1);
+      await _selectColour(tester, 'blue');
+      expect(_heroUrl(tester), expected[2]);
+      await _selectColour(tester, 'red');
+      expect(tester.widget<Text>(_selectedColourName).data, 'red');
+      expect(_heroUrl(tester), expected[2], reason: 'لونٌ بلا صورة لا ينقل المعرض');
+    });
+
+    testWidgets('ترتيب المعرض لا يمسّ الألوان ولا السعر ولا المخزون ولا السلة', (tester) async {
+      final json = _productJson(variants: _colours());
+      final cart = await _pumpDetail(tester, json);
+      List<String?> texts() => [
+        for (final t in tester.widgetList<Text>(find.byType(Text))) t.data,
+      ];
+      final before = texts();
+      final pillBefore = tester.widget<ProductStockPill>(find.byKey(const Key('product_stock_pill'))).stock;
+
+      // تصفّح المعرض كلّه ذهاباً وإياباً: لا نصّ في الصفحة يتغيّر (السعر،
+      // المخزون، الألوان)، ولا لون يُختار.
+      for (var i = 0; i < 4; i++) {
+        await _swipeNext(tester);
+      }
+      for (var i = 0; i < 4; i++) {
+        await _swipePrevious(tester);
+      }
+      expect(texts(), before);
+      expect(tester.widget<ProductStockPill>(find.byKey(const Key('product_stock_pill'))).stock, pillBefore);
+
+      // ترتيب الألوان في المنتقي بـ`sortOrder` كما كان (الأحمر ثم الأزرق).
+      expect(
+        tester.getCenter(find.byKey(const Key('color_option_red'))).dx,
+        greaterThan(tester.getCenter(find.byKey(const Key('color_option_blue'))).dx),
+        reason: 'RTL: الأول يميناً',
+      );
+
+      // اختيار الأزرق ثم التصفّح إلى صورة الأحمر: المخزون والسلة للأزرق.
+      await _selectColour(tester, 'blue');
+      await _swipePrevious(tester);
+      expect(_heroUrl(tester), _redImage);
+      expect(tester.widget<ProductStockPill>(find.byKey(const Key('product_stock_pill'))).stock, 3);
+      final add = find.byKey(const Key('product_add_to_cart'));
+      await tester.ensureVisible(add);
+      await tester.tap(add, warnIfMissed: false);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 5));
+      _drainImageErrors(tester);
+      expect(cart.adds, [(productId: 'p1', variantId: 'blue', quantity: 1)]);
+
+      // المنتج نفسه: الألوان بترتيبها وأسعارها ومخزونها كما وصلت.
+      final product = Product.fromJson(json);
+      expect([for (final v in product.activeVariants) v.id], ['red', 'blue']);
+      expect([for (final v in product.activeVariants) v.stock], [2, 3]);
+      expect(product.price, 25000);
     });
   });
 }

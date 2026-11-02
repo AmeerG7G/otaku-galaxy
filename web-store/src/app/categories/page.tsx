@@ -1,9 +1,15 @@
 import type { Metadata } from 'next';
 import Link from '@/components/Link';
 import { listCategories } from '@/lib/catalog';
+import { CATEGORIES_DESCRIPTION, CATEGORIES_LABEL, openGraph } from '@/lib/seo';
 
 export const dynamic = 'force-dynamic';
-export const metadata: Metadata = { title: 'الأقسام' };
+export const metadata: Metadata = {
+  title: CATEGORIES_LABEL,
+  description: CATEGORIES_DESCRIPTION,
+  alternates: { canonical: '/categories' },
+  openGraph: openGraph({ title: CATEGORIES_LABEL, description: CATEGORIES_DESCRIPTION, url: '/categories' }),
+};
 
 export default async function CategoriesPage() {
   const categories = await listCategories();
