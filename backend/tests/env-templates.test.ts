@@ -113,6 +113,8 @@ describe('[CRITICAL] قوالب الإنتاج على المضيفات الحق�
       expect(active(conf)).not.toContain('$proxy_add_x_forwarded_for');
       expect(active(conf)).not.toMatch(/staging|example\.com|otaku-galaxy\.example/);
     }
+    // `www` خارج نطاق الإطلاق (قرار المالك 2026-11-02): لا اسم ولا شهادة ولا تحويل.
+    for (const conf of [api, store, admin]) expect(active(conf)).not.toContain('www.otakugalaxystore.com');
     // HSTS من helmet على الـAPI؛ تكراره في nginx كان I-03.
     expect(active(api)).not.toContain('Strict-Transport-Security');
   });
