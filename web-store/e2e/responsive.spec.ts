@@ -107,7 +107,7 @@ test('the home page is the catalog itself — no landing page', async ({ browser
   const context = await contextFor(browser, 360, false);
   const page = await context.newPage();
   await page.goto('/');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('كل المنتجات');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('كل منتجات الأنمي');
   await expect(page.locator('.product-card').first()).toBeVisible();
   // The first product is reachable without scrolling past a hero.
   const top = await page.locator('.product-card').first().evaluate((element) => element.getBoundingClientRect().top);
