@@ -281,6 +281,20 @@ describe('[R-17] الملفات تعزل الاختبار المسبق عن ال
     expect(dockerfile).not.toMatch(/\.env/);
   });
 
+  it('صورة الموقع: كل ملفٍ يُنسخ من سياق البناء إلى طبقة التشغيل يقرؤه `node` أياً كان umask النسخة', () => {
+    // [CRITICAL] (staging e9cb625، 2026-11-02) الغلاف يسحب النسخة بـ`umask 077`؛ COPY يحفظ
+    // وضع الملف، فـ`next.config.ts` المُعاد كتابته وصل 600 لمالكٍ جذر — `node` لا يقرؤه والخادم
+    // يعيد التشغيل بلا توقّف على EACCES. ما يأتي من مرحلة البناء (`--from=`) مستثنى: أوضاعه من البناء.
+    const dockerfile = read('web-store/Dockerfile').replace(/^\s*#.*$/gm, '');
+    const runtime = dockerfile.slice(dockerfile.indexOf(' AS runtime'));
+    const fromContext = runtime.split('\n').filter((line) => /^COPY\s/.test(line) && !/--from=/.test(line));
+    expect(fromContext.length).toBeGreaterThan(0);
+    for (const line of fromContext) {
+      // يقرؤه `node`: ملكيته له، أو وضعٌ صريح يمنح القراءة للجميع.
+      expect(/--chown=node(:node)?\s/.test(line) || /--chmod=0?[0-7][0-7][4-7]\s/.test(line), line).toBe(true);
+    }
+  });
+
   it('nginx الموقع على الاختبار المسبق: مغلق، لا يُفهرس، وعنوان الزبون لا يُزوَّر', () => {
     const conf = read('deploy/nginx/staging-store.conf');
     const code = conf.replace(/#.*$/gm, '');
