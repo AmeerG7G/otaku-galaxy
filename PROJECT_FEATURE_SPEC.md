@@ -12624,3 +12624,31 @@ Shared vectors in `test/fixtures/iraqi_phone_vectors.json` are read by the Flutt
 - `GET /api/catalog/settings` adds `webAppPromo` (`null` when hidden or invalid), re-validated on read. The app ignores the field.
 - Web store: `AppPromoBanner` under the catalog heading on `/`. It is one link opening in a new tab, with no tracking and no artwork.
 - **Open:** the listing `https://play.google.com/store/apps/details?id=com.otakugalaxy.otaku_galaxy` is derived from the `applicationId`. As of 2026-11-02 the first AAB had not been uploaded to Play, so the listing is not verified live. Keep the promotion hidden until the owner confirms the URL.
+
+---
+
+# STEP 80 — APP GALLERY: DISPLAY IMAGES FIRST, AS ON THE WEB STORE (2026-11-02)
+
+**Status:** implemented on branch `feat/app-gallery-display-first` (based on `origin/dev` `fadc8d3`).
+Not merged, not deployed, no APK built. **No migration, no API change.**
+
+**Owner decision (2026-11-02, in chat):** the Flutter product gallery follows the web store's G1 rule
+(STEP 79.1). It supersedes STEP 75's "colour images first" in the app too, so the rule is now the same
+on every client.
+
+- `lib/features/product_detail/presentation/widgets/product_image_gallery.dart` `productGalleryImages`:
+  `images[]` (the product's own display images, server `sort_order`), then the image of every active
+  variant (by `sortOrder`). Each resolved, trimmed media ref appears once. A variant image that was also
+  uploaded as a display image stays in the display image's place, and choosing that variant still finds
+  it. Empty refs are dropped.
+- The page opens on gallery image 1. That is the main display image when one exists. A product with no
+  display image opens on its first variant image, as before. The app still has no default variant
+  choice.
+- Choosing a variant moves the gallery to that variant's image (a jump when it is far). Browsing never
+  chooses a variant. The cart still receives only the chosen `variantId`. Price, stock and the variant
+  list are untouched: the order is for display only.
+- Cover image (`Product.coverImage`) is unchanged.
+- **Stale text, not changed here:** the dashboard gallery preview (`admin/src/components/GalleryPreview.tsx`,
+  Arabic UI text, and `admin/src/utils/gallery.ts`) and a `[NOTE]` in `web-store/src/lib/gallery.ts`
+  still say the app shows variants first. They become wrong once this app build ships. Updating them is
+  a separate change that needs the owner's approval.
