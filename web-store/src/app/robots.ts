@@ -7,6 +7,7 @@ import { PRIVATE_PATHS } from '@/lib/robots';
  * catalogue, product, category and legal pages stay open. Private pages
  * already carry `noindex` themselves; listing them here only saves crawl
  * budget. `/bff/` is the store's own API for the browser and is never content.
+ * The sitemap (`sitemap.ts`) lists the pages worth indexing.
  *
  * Staging never serves this: its nginx answers /robots.txt with `Disallow: /`
  * and sends `X-Robots-Tag: noindex` on every response (deploy/nginx/staging-store.conf).
@@ -17,5 +18,6 @@ export default function robots(): MetadataRoute.Robots {
   return {
     rules: { userAgent: '*', allow: '/', disallow: PRIVATE_PATHS },
     host: siteOrigin(),
+    sitemap: `${siteOrigin()}/sitemap.xml`,
   };
 }
