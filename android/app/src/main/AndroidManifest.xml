@@ -1,5 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- أندرويد 13+: إذن عرض الإشعارات الفورية؛ يُطلب عند الدخول لا عند
+         الإقلاع (STEP 64 §13). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <!-- [CRITICAL] لا HTTP صريح هنا.
          نكهة التطوير وحدها تسمح به عبر بيان خاص بها
          (`src/dev/AndroidManifest.xml`) لأنها تتصل بـ10.0.2.2 محلياً.
@@ -30,6 +33,11 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- قناة الإشعارات الافتراضية لما يعرضه FCM والتطبيق في الخلفية —
+             ينشئها التطبيق (`kPushChannelId`) ويرسل إليها الخادم. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="otaku_default" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

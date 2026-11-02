@@ -1,5 +1,5 @@
-import { resolveMediaUrl } from '../utils/media'
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Alert,
@@ -8,12 +8,12 @@ import {
   Card,
   Flex,
   Form,
-  Image,
   Input,
   InputNumber,
   Modal,
   Popconfirm,
   Space,
+  Switch,
   Table,
   Tag,
   Typography,
@@ -22,6 +22,7 @@ import {
   DeleteOutlined,
   EditOutlined,
   PlusOutlined,
+  UnorderedListOutlined,
   ReloadOutlined,
 } from '@ant-design/icons'
 import {
@@ -31,17 +32,13 @@ import {
   deleteSubcategory,
   listAdminCategories,
   updateCategory,
+  updateSubcategory,
 } from '../api/categoriesApi'
 import { ApiError } from '../api/client'
-import type { AdminCategory } from '../types/categories'
+import type { AdminCategory, AdminSubcategory } from '../types/categories'
 import EmptyState from '../components/EmptyState'
-import ImageUploadField, { isValidImageRef } from '../components/ImageUploadField'
-
-const NO_IMAGE_PLACEHOLDER =
-  'data:image/svg+xml;utf8,' +
-  encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="#f5f5f5"/><text x="32" y="36" font-size="12" text-anchor="middle" fill="#aaa">لا صورة</text></svg>',
-  )
+import KurdishNameField from '../components/KurdishNameField'
+import { kurdishOrNull, kurdishPatch } from '../utils/kurdish'
 
 type EditorMode = 'create' | 'edit' | 'subcategory' | null
 
@@ -50,22 +47,46 @@ interface Editors {
   category?: AdminCategory
 }
 
+interface SubcategoryEditor {
+  category: AdminCategory
+  subcategory: AdminSubcategory
+}
+
+/**
+ * قيم نموذج القسم الرئيسي — بلا صورة.
+ *
+ * [PRODUCT] قرار 2026-09-15: بطاقة القسم في التطبيق نصّيةٌ موسَّطة بلا
+ * صورة، فاللوحة لا تعرض صورةً ولا تطلبها — تمثيلٌ واحد للقسم في الطرفين.
+ * الحقل `imageUrl` باقٍ في عقد الـAPI والقاعدة (اختياري) ولا يُرسَل من هنا،
+ * فما خُزّن سابقاً يبقى كما هو ولا يُمسح بتعديلٍ عرضي.
+ */
 interface CategoryFormValues {
   name: string
-  imageUrl?: string
+  /** اختياري (2026-10-26) — الفارغ يُعرض للزبون الكردي بالعربية. */
+  nameCkb?: string | null
   sortOrder?: number
 }
 
 interface SubcategoryFormValues {
   categoryId: string
   name: string
+  nameCkb?: string | null
   sortOrder?: number
 }
 
+interface SubcategoryEditorFormValues {
+  name: string
+  nameCkb?: string | null
+  sortOrder?: number
+  isActive: boolean
+}
+
 export default function CategoriesPage() {
+  const navigate = useNavigate()
   const { message } = App.useApp()
   const queryClient = useQueryClient()
   const [editor, setEditor] = useState<Editors | null>(null)
+  const [subcategoryEditor, setSubcategoryEditor] = useState<SubcategoryEditor | null>(null)
 
   const categoriesQuery = useQuery({
     queryKey: ['admin-categories'],
@@ -77,7 +98,12 @@ export default function CategoriesPage() {
   }
 
   const createMutation = useMutation({
-    mutationFn: createCategory,
+    mutationFn: (values: CategoryFormValues) =>
+      createCategory({
+        name: values.name,
+        nameCkb: kurdishOrNull(values.nameCkb),
+        sortOrder: values.sortOrder,
+      }),
     onSuccess: (result) => {
       message.success(result.message)
       setEditor(null)
@@ -89,10 +115,10 @@ export default function CategoriesPage() {
   })
 
   const updateMutation = useMutation({
-    mutationFn: (input: { id: string; values: CategoryFormValues }) =>
+    mutationFn: (input: { id: string; values: CategoryFormValues; savedCkb: string | null }) =>
       updateCategory(input.id, {
         name: input.values.name,
-        imageUrl: input.values.imageUrl || null,
+        ...kurdishPatch('nameCkb', input.values.nameCkb, input.savedCkb),
         sortOrder: input.values.sortOrder,
       }),
     onSuccess: (result) => {
@@ -105,8 +131,42 @@ export default function CategoriesPage() {
     },
   })
 
+  /** إيقاف القسم عن الواجهة أو إعادته إليها — بديل الحذف حين يكون مشغولاً. */
+  const toggleMutation = useMutation({
+    mutationFn: (input: { id: string; isActive: boolean }) =>
+      updateCategory(input.id, { isActive: input.isActive }),
+    onSuccess: () => invalidateCategories(),
+    onError: (error: Error) => {
+      message.error(error.message)
+    },
+  })
+
+  const updateSubcategoryMutation = useMutation({
+    mutationFn: (input: { id: string; values: SubcategoryEditorFormValues; savedCkb: string | null }) =>
+      updateSubcategory(input.id, {
+        name: input.values.name,
+        ...kurdishPatch('nameCkb', input.values.nameCkb, input.savedCkb),
+        sortOrder: input.values.sortOrder,
+        isActive: input.values.isActive,
+      }),
+    onSuccess: (result) => {
+      message.success(result.message || 'حُدّث القسم الفرعي')
+      setSubcategoryEditor(null)
+      invalidateCategories()
+    },
+    onError: (error: Error) => {
+      message.error(error.message)
+    },
+  })
+
   const subcategoryMutation = useMutation({
-    mutationFn: createSubcategory,
+    mutationFn: (values: SubcategoryFormValues) =>
+      createSubcategory({
+        categoryId: values.categoryId,
+        name: values.name,
+        nameCkb: kurdishOrNull(values.nameCkb),
+        sortOrder: values.sortOrder,
+      }),
     onSuccess: (result) => {
       message.success(result.message)
       setEditor(null)
@@ -124,7 +184,9 @@ export default function CategoriesPage() {
       void queryClient.invalidateQueries({ queryKey: ['admin-categories'] })
     },
     // رسالة الخادم تشرح ما الذي يمنع الحذف — نعرضها كما هي.
-    onError: (error: Error) => message.error(error.message),
+    onError: (error: Error) => {
+      message.error(error.message)
+    },
   })
 
   const deleteSubcategoryMutation = useMutation({
@@ -133,29 +195,18 @@ export default function CategoriesPage() {
       message.success(result.message || 'حُذف القسم الفرعي')
       void queryClient.invalidateQueries({ queryKey: ['admin-categories'] })
     },
-    onError: (error: Error) => message.error(error.message),
+    onError: (error: Error) => {
+      message.error(error.message)
+    },
   })
 
+  // الأعمدة تطابق بطاقة القسم في التطبيق: اسمٌ وعددٌ موسَّطان، بلا صورة.
   const columns = [
-    {
-      title: 'الصورة',
-      key: 'image',
-      width: 80,
-      render: (_: unknown, category: AdminCategory) => (
-        <Image
-          src={resolveMediaUrl(category.imageUrl) ?? NO_IMAGE_PLACEHOLDER}
-          width={48}
-          height={48}
-          style={{ objectFit: 'cover', borderRadius: 4 }}
-          preview={false}
-          fallback={NO_IMAGE_PLACEHOLDER}
-        />
-      ),
-    },
     {
       title: 'القسم',
       dataIndex: 'name',
       key: 'name',
+      align: 'center' as const,
       render: (value: string) => <Typography.Text strong>{value}</Typography.Text>,
     },
     {
@@ -168,13 +219,27 @@ export default function CategoriesPage() {
       title: 'الحالة',
       dataIndex: 'isActive',
       key: 'isActive',
-      render: (value: boolean) =>
-        value ? <Tag color="green">نشط</Tag> : <Tag color="default">غير نشط</Tag>,
+      width: 110,
+      render: (value: boolean, category: AdminCategory) => (
+        <Switch
+          size="small"
+          checked={value}
+          checkedChildren="نشط"
+          unCheckedChildren="معطل"
+          loading={
+            toggleMutation.isPending && toggleMutation.variables?.id === category.id
+          }
+          onChange={(checked) =>
+            toggleMutation.mutate({ id: category.id, isActive: checked })
+          }
+        />
+      ),
     },
     {
       title: 'الأقسام الفرعية',
       key: 'subcategories',
       width: 160,
+      align: 'center' as const,
       render: (_: unknown, category: AdminCategory) =>
         `${category.subcategories.length} أقسام فرعية`,
     },
@@ -243,12 +308,6 @@ export default function CategoriesPage() {
         </Space>
       </Flex>
 
-      <Alert
-        type="info"
-        showIcon
-        message="الحذف محميّ بالتبعيات"
-        description="يُرفض حذف القسم أو القسم الفرعي ما دام شيء يعتمد عليه، ولا يُحذف أي منتج تبعاً لذلك. إن كان القسم مستعملاً فعطّله بدل حذفه."
-      />
 
       <Card>
         {categoriesQuery.isError ? (
@@ -283,9 +342,32 @@ export default function CategoriesPage() {
               expandedRowRender: (category: AdminCategory) => (
                 <>
                   {category.subcategories.length === 0 ? (
-                    <Typography.Text type="secondary">
-                      لا توجد أقسام فرعية لهذا القسم.
-                    </Typography.Text>
+                    <Space direction="vertical" size={8}>
+                      <Typography.Text type="secondary">
+                        لا توجد أقسام فرعية لهذا القسم.
+                      </Typography.Text>
+                      <Space size={4}>
+                        <Button
+                          size="small"
+                          icon={<UnorderedListOutlined />}
+                          onClick={() =>
+                            navigate(`/products?categoryId=${category.id}`)
+                          }
+                        >
+                          عرض منتجات القسم
+                        </Button>
+                        <Button
+                          size="small"
+                          type="primary"
+                          icon={<PlusOutlined />}
+                          onClick={() =>
+                            navigate(`/products/new?categoryId=${category.id}`)
+                          }
+                        >
+                          إضافة منتج
+                        </Button>
+                      </Space>
+                    </Space>
                   ) : (
                     <Table
                       size="small"
@@ -300,25 +382,91 @@ export default function CategoriesPage() {
                           width: 100,
                         },
                         {
+                          title: 'الحالة',
+                          dataIndex: 'isActive',
+                          key: 'isActive',
+                          width: 110,
+                          render: (value: boolean) =>
+                            value ? (
+                              <Tag color="green">نشط</Tag>
+                            ) : (
+                              <Tag color="default">معطل</Tag>
+                            ),
+                        },
+                        {
+                          // المسار المقصود: قسم ← قسم فرعي ← منتجاته ←
+                          // إضافة منتج بالقسم مختاراً مسبقاً. الرابطان
+                          // يستعملان شاشة المنتجات ونموذجها القائمين — لا
+                          // مسار إنشاء ثانٍ.
+                          title: 'المنتجات',
+                          key: 'products',
+                          width: 220,
+                          render: (
+                            _: unknown,
+                            subcategory: AdminSubcategory,
+                          ) => {
+                            const scope = new URLSearchParams({
+                              categoryId: category.id,
+                              subcategoryId: subcategory.id,
+                            }).toString()
+                            return (
+                              <Space size={4}>
+                                <Button
+                                  size="small"
+                                  icon={<UnorderedListOutlined />}
+                                  onClick={() => navigate(`/products?${scope}`)}
+                                >
+                                  عرض
+                                </Button>
+                                <Button
+                                  size="small"
+                                  type="primary"
+                                  icon={<PlusOutlined />}
+                                  onClick={() =>
+                                    navigate(`/products/new?${scope}`)
+                                  }
+                                >
+                                  إضافة منتج
+                                </Button>
+                              </Space>
+                            )
+                          },
+                        },
+                        {
                           title: '',
                           key: 'actions',
-                          width: 90,
-                          render: (_: unknown, subcategory: { id: string }) => (
-                            <Popconfirm
-                              title="حذف القسم الفرعي؟"
-                              description="يُرفض الحذف إن كانت منتجات مرتبطة به."
-                              okText="حذف"
-                              cancelText="إلغاء"
-                              okButtonProps={{
-                                danger: true,
-                                loading: deleteSubcategoryMutation.isPending,
-                              }}
-                              onConfirm={() =>
-                                deleteSubcategoryMutation.mutate(subcategory.id)
-                              }
-                            >
-                              <Button size="small" danger icon={<DeleteOutlined />} />
-                            </Popconfirm>
+                          width: 140,
+                          render: (
+                            _: unknown,
+                            subcategory: AdminSubcategory,
+                          ) => (
+                            <Space size={4}>
+                              <Button
+                                size="small"
+                                icon={<EditOutlined />}
+                                onClick={() =>
+                                  setSubcategoryEditor({
+                                    category,
+                                    subcategory,
+                                  })
+                                }
+                              />
+                              <Popconfirm
+                                title="حذف القسم الفرعي؟"
+                                description="يُرفض الحذف إن كانت منتجات مرتبطة به."
+                                okText="حذف"
+                                cancelText="إلغاء"
+                                okButtonProps={{
+                                  danger: true,
+                                  loading: deleteSubcategoryMutation.isPending,
+                                }}
+                                onConfirm={() =>
+                                  deleteSubcategoryMutation.mutate(subcategory.id)
+                                }
+                              >
+                                <Button size="small" danger icon={<DeleteOutlined />} />
+                              </Popconfirm>
+                            </Space>
                           ),
                         },
                       ]}
@@ -358,12 +506,16 @@ export default function CategoriesPage() {
           <CategoryEditorForm
             initialValues={{
               name: editor.category.name,
-              imageUrl: editor.category.imageUrl ?? undefined,
+              nameCkb: editor.category.nameCkb ?? '',
               sortOrder: editor.category.sortOrder,
             }}
             submitting={updateMutation.isPending}
             onSubmit={(values) =>
-              updateMutation.mutate({ id: editor.category!.id, values })
+              updateMutation.mutate({
+                id: editor.category!.id,
+                values,
+                savedCkb: editor.category!.nameCkb ?? null,
+              })
             }
             onCancel={() => setEditor(null)}
           />
@@ -383,6 +535,34 @@ export default function CategoriesPage() {
             submitting={subcategoryMutation.isPending}
             onSubmit={(values) => subcategoryMutation.mutate(values)}
             onCancel={() => setEditor(null)}
+          />
+        )}
+      </Modal>
+
+      <Modal
+        open={Boolean(subcategoryEditor)}
+        title={`تعديل قسم فرعي في «${subcategoryEditor?.category.name ?? ''}»`}
+        onCancel={() => setSubcategoryEditor(null)}
+        destroyOnHidden
+        footer={null}
+      >
+        {subcategoryEditor && (
+          <SubcategoryEditorForm
+            initialValues={{
+              name: subcategoryEditor.subcategory.name,
+              nameCkb: subcategoryEditor.subcategory.nameCkb ?? '',
+              sortOrder: subcategoryEditor.subcategory.sortOrder,
+              isActive: subcategoryEditor.subcategory.isActive,
+            }}
+            submitting={updateSubcategoryMutation.isPending}
+            onSubmit={(values) =>
+              updateSubcategoryMutation.mutate({
+                id: subcategoryEditor.subcategory.id,
+                values,
+                savedCkb: subcategoryEditor.subcategory.nameCkb ?? null,
+              })
+            }
+            onCancel={() => setSubcategoryEditor(null)}
           />
         )}
       </Modal>
@@ -422,20 +602,7 @@ function CategoryEditorForm({
       >
         <Input />
       </Form.Item>
-      <Form.Item
-        name="imageUrl"
-        label="صورة القسم (اختيارية)"
-        rules={[
-          {
-            validator: (_rule, value: string) =>
-              !value || isValidImageRef(value)
-                ? Promise.resolve()
-                : Promise.reject(new Error('رابط الصورة غير صالح')),
-          },
-        ]}
-      >
-        <ImageUploadField purpose="category" allowClear />
-      </Form.Item>
+      <KurdishNameField label="اسم القسم" min={2} max={60} />
       <Form.Item name="sortOrder" label="الترتيب">
         <InputNumber min={0} max={1000} style={{ width: '100%' }} precision={0} />
       </Form.Item>
@@ -486,12 +653,64 @@ function SubcategoryForm({
       >
         <Input />
       </Form.Item>
+      <KurdishNameField label="اسم القسم الفرعي" min={2} max={60} />
       <Form.Item name="sortOrder" label="الترتيب">
         <InputNumber min={0} max={1000} style={{ width: '100%' }} precision={0} />
       </Form.Item>
       <Space>
         <Button type="primary" htmlType="submit" loading={submitting}>
           إضافة
+        </Button>
+        <Button onClick={onCancel} disabled={submitting}>
+          إلغاء
+        </Button>
+      </Space>
+    </Form>
+  )
+}
+
+interface SubcategoryEditorFormProps {
+  initialValues: SubcategoryEditorFormValues
+  submitting: boolean
+  onSubmit: (values: SubcategoryEditorFormValues) => void
+  onCancel: () => void
+}
+
+function SubcategoryEditorForm({
+  initialValues,
+  submitting,
+  onSubmit,
+  onCancel,
+}: SubcategoryEditorFormProps) {
+  const [form] = Form.useForm<SubcategoryEditorFormValues>()
+  return (
+    <Form<SubcategoryEditorFormValues>
+      form={form}
+      layout="vertical"
+      initialValues={initialValues}
+      onFinish={onSubmit}
+      style={{ marginTop: 8 }}
+    >
+      <Form.Item
+        name="name"
+        label="اسم القسم الفرعي"
+        rules={[
+          { required: true, message: 'الاسم مطلوب' },
+          { min: 2, max: 60, message: 'الاسم يجب أن يكون بين 2 و 60 حرفاً' },
+        ]}
+      >
+        <Input />
+      </Form.Item>
+      <KurdishNameField label="اسم القسم الفرعي" min={2} max={60} />
+      <Form.Item name="sortOrder" label="الترتيب">
+        <InputNumber min={0} max={1000} style={{ width: '100%' }} precision={0} />
+      </Form.Item>
+      <Form.Item name="isActive" label="ظاهر للعملاء" valuePropName="checked">
+        <Switch />
+      </Form.Item>
+      <Space>
+        <Button type="primary" htmlType="submit" loading={submitting}>
+          حفظ
         </Button>
         <Button onClick={onCancel} disabled={submitting}>
           إلغاء

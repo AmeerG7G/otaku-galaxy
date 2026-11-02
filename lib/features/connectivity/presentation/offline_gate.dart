@@ -1,12 +1,19 @@
 import 'dart:async';
+import '../../../core/l10n/app_strings.dart';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/design_system/design_system.dart';
+import '../../visuals/domain/visual_slot.dart';
+import '../../visuals/presentation/character_artwork.dart';
+import 'reconnect_refetch.dart';
 
 /// يغلّف التطبيق كاملاً؛ عند انقطاع الاتصال يُعرض حاجز بلا وصول لأي محتوى
 /// — للزائر والمسجّل والعائد على حدٍّ سواء (لا شاشة رئيسية فارغة أوفلاين).
+///
+/// وعند عودة الاتصال يُبلغ الشاشات تحته ([ReconnectScope]) لتعيد الجلب — انظر
+/// [ReconnectRefetch].
 class OfflineGate extends StatefulWidget {
   const OfflineGate({super.key, required this.child});
 
@@ -20,53 +27,76 @@ class _OfflineGateState extends State<OfflineGate> {
   bool _offline = false;
   StreamSubscription<List<ConnectivityResult>>? _sub;
 
+  /// عدد مرّات عودة الاتصال — تشترك فيه الشاشات عبر [ReconnectScope].
+  final ValueNotifier<int> _reconnections = ValueNotifier<int>(0);
+
   @override
   void initState() {
     super.initState();
     _check();
-    _sub = Connectivity().onConnectivityChanged.listen((results) {
-      final offline = results.every((r) => r == ConnectivityResult.none);
-      if (mounted) setState(() => _offline = offline);
-    });
+    _sub = Connectivity().onConnectivityChanged.listen(_apply);
   }
 
+  /// فحص الاتصال — عند الإقلاع وعند «إعادة المحاولة».
   Future<void> _check() async {
-    final results = await Connectivity().checkConnectivity();
+    _apply(await Connectivity().checkConnectivity());
+  }
+
+  /// المسار الوحيد لتغيير حالة الاتصال: الفحص وحدث النظام معاً.
+  ///
+  /// [CRITICAL] العودة تُعلَن عند **الانتقال** من «غير متصل» إلى «متصل» وحده.
+  /// كانت «إعادة المحاولة» تُخفي الحاجز فقط، فتنكشف الشاشات بما صنعته أثناء
+  /// الانقطاع ولا يُعاد جلب شيء. والانتقال لا الضغطة هو الحدث: ضغطاتٌ سريعة
+  /// متتالية، أو ضغطةٌ يسبقها حدث النظام بالعودة نفسها، تبقى عودةً واحدة —
+  /// وضغطةٌ والشبكة ما تزال مقطوعة لا شيء.
+  void _apply(List<ConnectivityResult> results) {
+    if (!mounted) return;
     final offline = results.every((r) => r == ConnectivityResult.none);
-    if (mounted) setState(() => _offline = offline);
+    final reconnected = _offline && !offline;
+    setState(() => _offline = offline);
+    if (reconnected) _reconnections.value++;
   }
 
   @override
   void dispose() {
     _sub?.cancel();
+    _reconnections.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        widget.child,
-        if (_offline) _OfflineGateScreen(onRetry: _check),
-      ],
+    return ReconnectScope(
+      reconnections: _reconnections,
+      child: Stack(
+        children: [
+          widget.child,
+          if (_offline) OfflineGateScreen(onRetry: _check),
+        ],
+      ),
     );
   }
 }
 
 /// حاجز انقطاع الاتصال بتصميم Otaku Galaxy v2.
 ///
-/// صفّ هوية أعلى الشاشة، ثم لوحة تحريرية بيضاء برسم شخصية يخرج من حافتها،
-/// ثم مؤشّر حالة نابض وزرّ إعادة محاولة متدرّج — بلا أيقونة دائرية وسط الشاشة.
-class _OfflineGateScreen extends StatefulWidget {
-  const _OfflineGateScreen({required this.onRetry});
+/// صفّ هوية أعلى الشاشة، ثم لوحة بيضاء موسَّطة: رسم الشخصية، فأيقونة انقطاع
+/// الاتصال، فالعنوان والنصّ — كلٌّ في وسط اللوحة (قرار 2026-09-20)؛ ثم مؤشّر
+/// حالة نابض موسَّط وزرّ إعادة محاولة متدرّج.
+///
+/// الرسم **أصلٌ مضمَّن لا فتحة**: هذه الشاشة تُعرض حين لا شبكة، فربطها
+/// بالخادم يعني رسماً غائباً في أسوأ لحظة (انظر `VisualSlots`). منطق الكشف
+/// وإعادة المحاولة في [OfflineGate] لم يُمسّ. عامّةٌ لتُختبر مباشرةً.
+class OfflineGateScreen extends StatefulWidget {
+  const OfflineGateScreen({super.key, required this.onRetry});
 
   final VoidCallback onRetry;
 
   @override
-  State<_OfflineGateScreen> createState() => _OfflineGateScreenState();
+  State<OfflineGateScreen> createState() => _OfflineGateScreenState();
 }
 
-class _OfflineGateScreenState extends State<_OfflineGateScreen>
+class _OfflineGateScreenState extends State<OfflineGateScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _pulse = AnimationController(
     vsync: this,
@@ -117,67 +147,84 @@ class _OfflineGateScreenState extends State<_OfflineGateScreen>
                     padding: const EdgeInsets.fromLTRB(22, 22, 22, 0),
                     child: Row(
                       children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Image.asset(
-                            'assets/branding/otaku-galaxy-logo.jpg',
-                            width: 38,
-                            height: 38,
-                            fit: BoxFit.cover,
-                            alignment: Alignment.topCenter,
-                          ),
-                        ),
+                        // [STAGE 12] كان JPEG مقصوصاً بـ ClipRRect + cover.
+                        // صار يمرّ بمكوّن الشعار الوحيد فلا يمكن أن ينحرف عنه.
+                        const OtakuStoreLogoSimple(size: 38),
                         const SizedBox(width: 11),
-                        Text(
-                          'مجرة الأوتاكو',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontFamily: 'Tajawal',
-                            fontSize: 15.5,
-                            fontWeight: AppDimens.weightExtraBold,
+                        // [CRITICAL] (البوّابة ١٥، 2026-10-17) اسم المتجر نصّ
+                        // ترويسة كاسم الرئيسية: يُصغَّر حتى ٠٫٨ من مقاس التصميم،
+                        // ويحجز سطراً ثانياً بكل لغة إن لم تتّسع ترجمةٌ حتى عنده.
+                        // كان `Text` بلا حدّ في الصفّ: «گەلاکسی ئۆتاکو» يتجاوز
+                        // يميناً ١٧ على ٣٢٠ عند ×٢٫٠ (مصفوفة القياس الموثّقة).
+                        Flexible(
+                          child: BoundedText(
+                            context.strings('brandName'),
+                            maxLines: 2,
+                            floorAtDesignSize: true,
+                            reserveFor: AppStrings.across('brandName'),
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontFamily: AppFonts.heading,
+                              fontFamilyFallback: AppFonts.headingFallback,
+                              fontSize: 15.5,
+                              fontWeight: AppDimens.weightExtraBold,
+                            ),
                           ),
                         ),
                       ],
                     ),
                   ),
+                  // [CRITICAL] (البوّابة ٩، 2026-10-12) موسَّطٌ ما دام يتّسع،
+                  // ويُمرَّر حين لا يتّسع: البطاقة والحالة والزرّ أطول من
+                  // ٣٢٠×٥٦٨ عند ×١٫٣، فكان العمود الموسَّط يتجاوز أسفله (٧٢
+                  // بالعربية) ويقع الزرّ خارج الشاشة بلا وصول. حين يتّسع: كما
+                  // كان تماماً.
                   Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          _OfflineCard(pulse: _pulse),
-                          const SizedBox(height: 20),
-                          Row(
+                    child: LayoutBuilder(
+                      builder: (context, constraints) => SingleChildScrollView(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            minHeight: constraints.maxHeight,
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              FadeTransition(
-                                opacity: _pulse,
-                                child: Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: const BoxDecoration(
-                                    color: AppColors.error,
-                                    shape: BoxShape.circle,
+                              const _OfflineCard(),
+                              const SizedBox(height: 20),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  FadeTransition(
+                                    opacity: _pulse,
+                                    child: Container(
+                                      width: 8,
+                                      height: 8,
+                                      decoration: const BoxDecoration(
+                                        color: AppColors.error,
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
                                   ),
-                                ),
+                                  const SizedBox(width: 9),
+                                  Text(
+                                    context.strings('offlineShort'),
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      fontSize: 12.5,
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(width: 9),
-                              Text(
-                                'غير متصل بالإنترنت',
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  fontSize: 12.5,
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                ),
+                              const SizedBox(height: 22),
+                              AnimePrimaryButton(
+                                label: context.strings('retry'),
+                                onPressed: widget.onRetry,
+                                height: AppDimens.buttonHeightXl,
                               ),
                             ],
                           ),
-                          const SizedBox(height: 22),
-                          AnimePrimaryButton(
-                            label: 'إعادة المحاولة',
-                            onPressed: widget.onRetry,
-                            height: AppDimens.buttonHeightXl,
-                          ),
-                        ],
+                        ),
                       ),
                     ),
                   ),
@@ -191,11 +238,13 @@ class _OfflineGateScreenState extends State<_OfflineGateScreen>
   }
 }
 
-/// لوحة الرسالة — سطح عائم كبير مع رسم شخصية يكسر الحافة السفلية.
+/// لوحة الرسالة — سطح عائم كبير، محتواه كلّه على محور اللوحة.
+///
+/// الرسم فوق، ثم أيقونة انقطاع الاتصال، ثم العنوان والنصّ موسَّطَين. كان
+/// الرسم يكسر الزاوية السفلية والنصّ ملتصقاً بجهة البداية، وكان النصّ يقول
+/// «يحتاج المتجر إلى اتصال» — وهو ما يعرفه القارئ من العنوان.
 class _OfflineCard extends StatelessWidget {
-  const _OfflineCard({required this.pulse});
-
-  final Animation<double> pulse;
+  const _OfflineCard();
 
   @override
   Widget build(BuildContext context) {
@@ -210,56 +259,57 @@ class _OfflineCard extends StatelessWidget {
         boxShadow: colors.shadowFloating,
       ),
       clipBehavior: Clip.antiAlias,
-      child: Stack(
-        children: [
-          PositionedDirectional(
-            bottom: -16,
-            end: -14,
-            child: IgnorePointer(
-              child: Image.asset('assets/art/opt/a-i3.png', width: 126),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(22, 26, 22, 26),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            const CharacterArtwork(
+              slot: VisualSlots.offlineGate,
+              height: 132,
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(22, 30, 22, 26),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.wifi_off_rounded,
-                  size: 54,
-                  color: theme.colorScheme.outline,
-                ),
-                const SizedBox(height: 20),
-                FractionallySizedBox(
-                  widthFactor: 0.78,
-                  child: Text(
-                    'ما بيه اتصال بالإنترنت',
-                    style: theme.textTheme.headlineSmall?.copyWith(
-                      fontFamily: 'Tajawal',
-                      fontSize: 23,
-                      height: 1.35,
-                      fontWeight: AppDimens.weightBlack,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                FractionallySizedBox(
-                  widthFactor: 0.82,
-                  child: Text(
-                    'تحقّق من اتصالك وحاول مرة أخرى — كل شي بالمتجر '
-                    'يحتاج إنترنت.',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontSize: 14,
-                      height: 1.85,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ],
+            const SizedBox(height: 18),
+            Icon(
+              Icons.wifi_off_rounded,
+              size: 54,
+              color: theme.colorScheme.onSurfaceVariant,
             ),
-          ),
-        ],
+            const SizedBox(height: 18),
+            // [CRITICAL] (البوّابة ٨، 2026-10-10) البطاقة موسَّطة ورسمها في
+            // أعلاها: عنوانٌ أو نصٌّ كردي أطول بسطر كان يطيلها ٣١–٤٠ فيصعد
+            // الرسم والأيقونة نصفها. العنوان سطرٌ يُصغَّر أولاً والنصّ فقرة،
+            // وكلاهما يحجز أطول ترجماته.
+            BoundedText(
+              context.strings('offlineTitle'),
+              maxLines: 3,
+              reserveFor: AppStrings.across('offlineTitle'),
+              alignment: Alignment.topCenter,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.headlineSmall?.copyWith(
+                fontFamily: AppFonts.heading,
+                fontFamilyFallback: AppFonts.headingFallback,
+                fontSize: 23,
+                height: 1.35,
+                fontWeight: AppDimens.weightBlack,
+              ),
+            ),
+            const SizedBox(height: 10),
+            BoundedText(
+              context.strings('offlineBody'),
+              maxLines: 12,
+              minScale: 1,
+              reserveFor: AppStrings.across('offlineBody'),
+              alignment: Alignment.topCenter,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontSize: 14,
+                height: 1.85,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

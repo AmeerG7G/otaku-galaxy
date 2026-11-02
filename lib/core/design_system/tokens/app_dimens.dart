@@ -52,6 +52,15 @@ class AppDimens {
   static const double iconHero = 64;
   static const double iconLogo = 80;
 
+  /// نصف قطر زوايا الشعار نسبةً إلى ضلعه — يُطبَّق في `OtakuStoreLogo` بقصٍّ
+  /// على مستوى العرض، لا في ملف الصورة.
+  ///
+  /// ٠٫٢٢ هي نسبة أيقونات النظام (iOS ≈ ٢٢٫٤٪): ٣٦ ← ٨، ٤٦ ← ١٠، ١٢٤ ← ٢٧.
+  /// نسبةٌ لا قيمةٌ ثابتة حتى يبدو الشعار واحداً على كل مقاس، وبعيدةٌ عن
+  /// الدائرة (٠٫٥) فلا تُشوَّه العلامة. الأصل نفسه مربّع بزوايا حادّة ويبقى
+  /// كما هو؛ العمل الفني داخل المنطقة الآمنة فلا يمسّه القصّ.
+  static const double logoCornerRatio = 0.22;
+
   // ===== أحجام الصور والبطاقات (Image & Card Sizes) =====
   static const double avatarXs = 24;
   static const double avatarSm = 32;

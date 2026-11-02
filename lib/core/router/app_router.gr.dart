@@ -11,6 +11,53 @@
 part of 'app_router.dart';
 
 /// generated route for
+/// [AccountPendingScreen]
+class AccountPendingRoute extends PageRouteInfo<AccountPendingRouteArgs> {
+  AccountPendingRoute({
+    Key? key,
+    required AccountRequestKind kind,
+    List<PageRouteInfo>? children,
+  }) : super(
+         AccountPendingRoute.name,
+         args: AccountPendingRouteArgs(key: key, kind: kind),
+         initialChildren: children,
+       );
+
+  static const String name = 'AccountPendingRoute';
+
+  static PageInfo page = PageInfo(
+    name,
+    builder: (data) {
+      final args = data.argsAs<AccountPendingRouteArgs>();
+      return AccountPendingScreen(key: args.key, kind: args.kind);
+    },
+  );
+}
+
+class AccountPendingRouteArgs {
+  const AccountPendingRouteArgs({this.key, required this.kind});
+
+  final Key? key;
+
+  final AccountRequestKind kind;
+
+  @override
+  String toString() {
+    return 'AccountPendingRouteArgs{key: $key, kind: $kind}';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! AccountPendingRouteArgs) return false;
+    return key == other.key && kind == other.kind;
+  }
+
+  @override
+  int get hashCode => key.hashCode ^ kind.hashCode;
+}
+
+/// generated route for
 /// [AccountScreen]
 class AccountRoute extends PageRouteInfo<void> {
   const AccountRoute({List<PageRouteInfo>? children})
@@ -476,68 +523,6 @@ class OrdersRoute extends PageRouteInfo<void> {
 }
 
 /// generated route for
-/// [OtpVerificationScreen]
-class OtpVerificationRoute extends PageRouteInfo<OtpVerificationRouteArgs> {
-  OtpVerificationRoute({
-    Key? key,
-    required String phone,
-    OtpPurpose purpose = OtpPurpose.registration,
-    List<PageRouteInfo>? children,
-  }) : super(
-         OtpVerificationRoute.name,
-         args: OtpVerificationRouteArgs(
-           key: key,
-           phone: phone,
-           purpose: purpose,
-         ),
-         initialChildren: children,
-       );
-
-  static const String name = 'OtpVerificationRoute';
-
-  static PageInfo page = PageInfo(
-    name,
-    builder: (data) {
-      final args = data.argsAs<OtpVerificationRouteArgs>();
-      return OtpVerificationScreen(
-        key: args.key,
-        phone: args.phone,
-        purpose: args.purpose,
-      );
-    },
-  );
-}
-
-class OtpVerificationRouteArgs {
-  const OtpVerificationRouteArgs({
-    this.key,
-    required this.phone,
-    this.purpose = OtpPurpose.registration,
-  });
-
-  final Key? key;
-
-  final String phone;
-
-  final OtpPurpose purpose;
-
-  @override
-  String toString() {
-    return 'OtpVerificationRouteArgs{key: $key, phone: $phone, purpose: $purpose}';
-  }
-
-  @override
-  bool operator ==(Object other) {
-    if (identical(this, other)) return true;
-    if (other is! OtpVerificationRouteArgs) return false;
-    return key == other.key && phone == other.phone && purpose == other.purpose;
-  }
-
-  @override
-  int get hashCode => key.hashCode ^ phone.hashCode ^ purpose.hashCode;
-}
-
-/// generated route for
 /// [PersonalizeScreen]
 class PersonalizeRoute extends PageRouteInfo<void> {
   const PersonalizeRoute({List<PageRouteInfo>? children})
@@ -661,64 +646,6 @@ class RegisterRoute extends PageRouteInfo<void> {
       return const RegisterScreen();
     },
   );
-}
-
-/// generated route for
-/// [ResetPasswordScreen]
-class ResetPasswordRoute extends PageRouteInfo<ResetPasswordRouteArgs> {
-  ResetPasswordRoute({
-    Key? key,
-    required String phone,
-    required String code,
-    List<PageRouteInfo>? children,
-  }) : super(
-         ResetPasswordRoute.name,
-         args: ResetPasswordRouteArgs(key: key, phone: phone, code: code),
-         initialChildren: children,
-       );
-
-  static const String name = 'ResetPasswordRoute';
-
-  static PageInfo page = PageInfo(
-    name,
-    builder: (data) {
-      final args = data.argsAs<ResetPasswordRouteArgs>();
-      return ResetPasswordScreen(
-        key: args.key,
-        phone: args.phone,
-        code: args.code,
-      );
-    },
-  );
-}
-
-class ResetPasswordRouteArgs {
-  const ResetPasswordRouteArgs({
-    this.key,
-    required this.phone,
-    required this.code,
-  });
-
-  final Key? key;
-
-  final String phone;
-
-  final String code;
-
-  @override
-  String toString() {
-    return 'ResetPasswordRouteArgs{key: $key, phone: $phone, code: $code}';
-  }
-
-  @override
-  bool operator ==(Object other) {
-    if (identical(this, other)) return true;
-    if (other is! ResetPasswordRouteArgs) return false;
-    return key == other.key && phone == other.phone && code == other.code;
-  }
-
-  @override
-  int get hashCode => key.hashCode ^ phone.hashCode ^ code.hashCode;
 }
 
 /// generated route for

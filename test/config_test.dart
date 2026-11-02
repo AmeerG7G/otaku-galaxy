@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter_test/flutter_test.dart';
@@ -45,9 +47,73 @@ void main() {
     );
   });
 
+  /// STEP 78.5: نسخة الاختبار كانت تفتح صفحة حذف الحساب على موقع الإنتاج.
+  test('موقع الصفحات العامّة للاختبار ليس موقع الإنتاج', () {
+    expect(
+      AppConfig.staging.publicSiteOrigin,
+      isNot(equals(AppConfig.production.publicSiteOrigin)),
+      reason: 'staging يجب ألّا يفتح سياسة الخصوصية أو حذف الحساب في الإنتاج',
+    );
+    expect(AppConfig.production.publicSiteOrigin, 'https://otakugalaxystore.com');
+  });
+
   test('لكل بيئة اسمها القصير المعتمد', () {
     expect(AppConfig.development.envName, 'dev');
     expect(AppConfig.staging.envName, 'staging');
     expect(AppConfig.production.envName, 'prod');
+  });
+
+  // ── STEP 64 — نسخة الاختبار تعمل بإعداداتها لا بإعدادات التطوير ──
+
+  test('[STEP 64] staging يشير إلى مضيفه الحقيقي بلا dart-define', () {
+    expect(
+      AppConfig.staging.effectiveApiBaseUrl,
+      'https://staging-api.otakugalaxystore.com/api',
+    );
+    expect(AppConfig.staging.usesPlaceholderApi, isFalse);
+    expect(AppConfig.staging.envName, 'staging');
+  });
+
+  // ── الإنتاج — مضيفه الحقيقي، ولا أثر لمضيف اختبار أو تطوير أو نائب ──
+
+  test('[PROD] الإنتاج يشير إلى مضيفه الحقيقي بلا dart-define', () {
+    expect(
+      AppConfig.production.effectiveApiBaseUrl,
+      'https://api.otakugalaxystore.com/api',
+    );
+    expect(AppConfig.production.usesPlaceholderApi, isFalse);
+    expect(AppConfig.production.enableLogging, isFalse);
+  });
+
+  test('[PROD] عناوين الإنتاج لا تحمل مضيف اختبار أو تطوير أو نائباً', () {
+    final forbidden = RegExp(
+      r'staging|\.example|localhost|127\.0\.0\.1|10\.0\.2\.2|192\.168\.|^http:',
+    );
+    for (final url in [
+      AppConfig.production.apiBaseUrl!,
+      AppConfig.production.publicSiteOrigin,
+    ]) {
+      expect(forbidden.hasMatch(url), isFalse, reason: url);
+      expect(Uri.parse(url).host, endsWith('otakugalaxystore.com'), reason: url);
+    }
+  });
+
+  test('[STEP 64][regression] bootstrap يمرّر إعدادات النكهة إلى الحقن', () {
+    // كان `di.init()` بلا إعدادات فيسجّل التطوير لكل نكهة: نسخة staging تقول
+    // `dev` وتخاطب 10.0.2.2. قراءة المصدر لأن bootstrap يشغّل runApp.
+    final bootstrap = File('lib/bootstrap.dart').readAsStringSync();
+    expect(bootstrap, contains('await di.init(config: config);'));
+    expect(bootstrap, isNot(contains('await di.init();')));
+    final common = File('lib/main_common.dart').readAsStringSync();
+    expect(common, contains('config: config)'));
+    for (final entry in ['lib/main_staging.dart', 'lib/main_prod.dart', 'lib/main_dev.dart']) {
+      expect(File(entry).readAsStringSync(), contains('runOtakuGalaxy(AppConfig.'), reason: entry);
+    }
+  });
+
+  test('[STEP 78.5] الحقن يربط الصفحات العامّة بإعدادات النكهة', () {
+    // بلا هذا السطر تبقى الروابط على أصل الإنتاج الافتراضي في كل نكهة.
+    final di = File('lib/core/di/injection_container.dart').readAsStringSync();
+    expect(di, contains('PublicPages.configure(appConfig);'));
   });
 }

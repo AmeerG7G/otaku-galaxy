@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../../tokens/app_breakpoints.dart';
 import '../../tokens/app_colors.dart';
 import '../../tokens/app_dimens.dart';
+import '../../tokens/app_fonts.dart';
+import '../buttons/anime_primary_button.dart';
+import '../inputs/anime_text_field.dart';
+import '../typography/bounded_text.dart';
 
 /// الحاوية الأساسية لكل الأوراق السفلية في Otaku Galaxy v2.
 ///
@@ -14,6 +19,7 @@ class OtakuSheet extends StatelessWidget {
     this.title,
     this.titleSize = 16,
     this.padding = const EdgeInsets.fromLTRB(18, 14, 18, 26),
+    this.titleTranslations = const [],
   });
 
   final Widget child;
@@ -21,57 +27,84 @@ class OtakuSheet extends StatelessWidget {
   final double titleSize;
   final EdgeInsetsGeometry padding;
 
+  /// ترجمات [title] بكل اللغات (`AppStrings.across`).
+  ///
+  /// [CRITICAL] (البوّابة ١٠، 2026-10-12) العنوان عنوانٌ كعناوين الشاشات: سطرٌ
+  /// يُصغَّر أولاً حتى ٠٫٨ من مقاس التصميم، ويحجز سطراً ثانياً بكل لغة إن لم
+  /// تتّسع ترجمةٌ حتى عنده — «ڕێکخستنەوەی وشەی نهێنی» كان يلتفّ على ٣٢٠×١٫٣
+  /// فتطول الورقة ٣٧ بالكردية وحدها. بلا ترجمات: كما كان.
+  final List<String> titleTranslations;
+
+  Widget _title(TextStyle? style) => titleTranslations.isEmpty
+      ? Text(title!, style: style)
+      : BoundedText(
+          title!,
+          maxLines: 2,
+          floorAtDesignSize: true,
+          reserveFor: titleTranslations,
+          alignment: AlignmentDirectional.topStart,
+          style: style,
+        );
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: const BorderRadius.vertical(
-          top: Radius.circular(AppDimens.radiusXl),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.24),
-            blurRadius: 40,
-            offset: const Offset(0, -14),
+    // ورقةٌ بعرض لوحٍ كامل تضع أزرارها على طرفَي الشاشة، وتقطع الصلة بينها
+    // وبين ما فُتحت من أجله. التوسيط مع حدٍّ أعلى يُبقيها ورقةً على كل عرض؛
+    // وعلى الهاتف (أضيق من الحدّ) لا يتغيّر شيء.
+    return ResponsiveContentFrame(
+      maxWidth: kSheetMaxWidth,
+      alignment: Alignment.bottomCenter,
+      heightFactor: 1,
+      child: Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(AppDimens.radiusXl),
           ),
-        ],
-      ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: padding,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // المقبض العلوي.
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 5,
-                  margin: const EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.outlineVariant,
-                    borderRadius: BorderRadius.circular(3),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.24),
+              blurRadius: 40,
+              offset: const Offset(0, -14),
+            ),
+          ],
+        ),
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: padding,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // المقبض العلوي.
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 5,
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.outlineVariant,
+                      borderRadius: BorderRadius.circular(3),
+                    ),
                   ),
                 ),
-              ),
-              if (title != null) ...[
-                Text(
-                  title!,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontFamily: 'Tajawal',
-                    fontWeight: AppDimens.weightExtraBold,
-                    fontSize: titleSize,
+                if (title != null) ...[
+                  _title(
+                    theme.textTheme.titleMedium?.copyWith(
+                      fontFamily: AppFonts.heading,
+                      fontFamilyFallback: AppFonts.headingFallback,
+                      fontWeight: AppDimens.weightExtraBold,
+                      fontSize: titleSize,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
+                  const SizedBox(height: 12),
+                ],
+                Flexible(child: child),
               ],
-              Flexible(child: child),
-            ],
+            ),
           ),
         ),
       ),
@@ -92,8 +125,102 @@ Future<T?> showOtakuSheet<T>({
     isDismissible: isDismissible,
     enableDrag: isDismissible,
     backgroundColor: Colors.transparent,
-    barrierColor: const Color(0xFF0C0718).withValues(alpha: 0.46),
+    barrierColor: AppColors.groundDark.withValues(alpha: 0.46),
     builder: builder,
+  );
+}
+
+/// ورقة إدخال نصّ واحد (اسم، عنوان مجموعة…) تعيد النصّ عند الحفظ.
+///
+/// [CRITICAL] المتحكّم يملكه هذا الودجة ويحرّره في `dispose` — أي **بعد**
+/// زوال الورقة من الشجرة، لا لحظة اكتمال `showModalBottomSheet`. كان كل
+/// مستدعٍ ينشئ `TextEditingController` محلياً ويحرّره في `finally` فور عودة
+/// النتيجة، بينما الحقل ما يزال مركّباً طوال حركة الخروج ويكتب في متحكّمه
+/// عند فقدان التركيز ونزول لوحة المفاتيح؛ النتيجة «used after being disposed»
+/// أثناء البناء، ثم شجرةٌ يتيمة تُسقط أول إخطار موروث تالٍ (شاشة حمراء
+/// عند تبديل المظهر). النصوص تُقرأ بسياق الورقة نفسها لا بسياق المستدعي.
+class OtakuTextPromptSheet extends StatefulWidget {
+  const OtakuTextPromptSheet({
+    super.key,
+    required this.title,
+    required this.saveLabel,
+    this.label,
+    this.hint,
+    this.initialValue,
+    this.prefixIcon,
+  });
+
+  final String title;
+  final String saveLabel;
+  final String? label;
+  final String? hint;
+  final String? initialValue;
+  final IconData? prefixIcon;
+
+  @override
+  State<OtakuTextPromptSheet> createState() => _OtakuTextPromptSheetState();
+}
+
+class _OtakuTextPromptSheetState extends State<OtakuTextPromptSheet> {
+  late final TextEditingController _controller =
+      TextEditingController(text: widget.initialValue ?? '');
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: OtakuSheet(
+        title: widget.title,
+        titleSize: 19,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimeTextField(
+              controller: _controller,
+              label: widget.label,
+              hint: widget.hint,
+              prefixIcon: widget.prefixIcon,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => Navigator.of(context).pop(_controller.text),
+            ),
+            const SizedBox(height: 20),
+            AnimePrimaryButton(
+              label: widget.saveLabel,
+              onPressed: () => Navigator.of(context).pop(_controller.text),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// يعرض [OtakuTextPromptSheet] ويعيد النصّ المحفوظ أو `null` عند الإغلاق.
+Future<String?> showOtakuTextPrompt({
+  required BuildContext context,
+  required String title,
+  required String saveLabel,
+  String? label,
+  String? hint,
+  String? initialValue,
+  IconData? prefixIcon,
+}) {
+  return showOtakuSheet<String>(
+    context: context,
+    builder: (_) => OtakuTextPromptSheet(
+      title: title,
+      saveLabel: saveLabel,
+      label: label,
+      hint: hint,
+      initialValue: initialValue,
+      prefixIcon: prefixIcon,
+    ),
   );
 }
 
@@ -211,6 +338,11 @@ Future<T?> showOtakuPicker<T>({
 /// ورقة تأكيد — البديل الوحيد لـ`AlertDialog` في تصميم v2.
 ///
 /// تُعيد `true` عند التأكيد و`false`/`null` عند الإلغاء.
+///
+/// [titleTranslations] و[messageTranslations]: النصّان بكل اللغات. [CRITICAL]
+/// (البوّابة ١٠، 2026-10-12) العنوان سطرٌ يُصغَّر أولاً والرسالة فقرة، وكلاهما
+/// يحجز أطول ترجماته — رسالةٌ أطول بسطرٍ بلغةٍ كانت تطيل الورقة ١٨–٣٠ وتنقل
+/// زرّيها. بلا ترجمات: كما كان.
 Future<bool?> showOtakuConfirm({
   required BuildContext context,
   required String title,
@@ -218,6 +350,8 @@ Future<bool?> showOtakuConfirm({
   required String confirmLabel,
   String? cancelLabel,
   bool destructive = false,
+  List<String> titleTranslations = const [],
+  List<String> messageTranslations = const [],
 }) {
   return showOtakuSheet<bool>(
     context: context,
@@ -231,22 +365,27 @@ Future<bool?> showOtakuConfirm({
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
+            _confirmText(
               title,
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontFamily: 'Tajawal',
+              titleTranslations,
+              theme.textTheme.titleLarge?.copyWith(
+                fontFamily: AppFonts.heading,
+                fontFamilyFallback: AppFonts.headingFallback,
                 fontWeight: AppDimens.weightBlack,
                 fontSize: 19,
               ),
+              paragraph: false,
             ),
             const SizedBox(height: 8),
-            Text(
+            _confirmText(
               message,
-              style: theme.textTheme.bodyMedium?.copyWith(
+              messageTranslations,
+              theme.textTheme.bodyMedium?.copyWith(
                 fontSize: 13,
                 height: 1.75,
                 color: theme.colorScheme.onSurfaceVariant,
               ),
+              paragraph: true,
             ),
             const SizedBox(height: 20),
             Row(
@@ -278,6 +417,24 @@ Future<bool?> showOtakuConfirm({
     },
   );
 }
+
+/// نصّ ورقة التأكيد: كما كان بلا ترجمات، وإلا فمنطقةٌ تحجز أطولها — عنوانٌ
+/// يُصغَّر أولاً، أو فقرةٌ لا تُصغَّر.
+Widget _confirmText(
+  String text,
+  List<String> translations,
+  TextStyle? style, {
+  required bool paragraph,
+}) => translations.isEmpty
+    ? Text(text, style: style)
+    : BoundedText(
+        text,
+        maxLines: paragraph ? 12 : 3,
+        minScale: paragraph ? 1 : kBoundedTextMinScale,
+        reserveFor: translations,
+        alignment: AlignmentDirectional.topStart,
+        style: style,
+      );
 
 class _SheetAction extends StatelessWidget {
   const _SheetAction({

@@ -3,13 +3,14 @@
 // تحميل أبدية عند الفشل، وأن يُميَّز الفشل عن «لا توجد بيانات».
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:otaku_galaxy/features/points/domain/entities/otaku_level.dart';
 import 'package:otaku_galaxy/features/collections/domain/entities/collection.dart';
 import 'package:otaku_galaxy/features/collections/domain/repositories/collection_repository.dart';
 import 'package:otaku_galaxy/features/collections/presentation/cubit/collections_cubit.dart';
 import 'package:otaku_galaxy/features/notifications/domain/entities/app_notification.dart';
 import 'package:otaku_galaxy/features/notifications/domain/repositories/notification_repository.dart';
 import 'package:otaku_galaxy/features/notifications/presentation/cubit/notifications_cubit.dart';
-import 'package:otaku_galaxy/features/points/domain/entities/points_activity.dart';
+import 'package:otaku_galaxy/features/points/domain/entities/level_reward.dart';
 import 'package:otaku_galaxy/features/points/domain/repositories/points_repository.dart';
 import 'package:otaku_galaxy/features/points/presentation/cubit/points_cubit.dart';
 
@@ -20,9 +21,13 @@ class _Boom implements Exception {
 
 class _FailingPoints implements PointsRepository {
   @override
-  Future<int> fetchBalance() async => throw _Boom();
+  Future<List<OtakuLevel>> fetchLevels() async => throw _Boom();
+
   @override
-  Future<List<PointsActivity>> fetchActivity() async => throw _Boom();
+  Future<PointsSummary> fetchSummary() async => throw _Boom();
+
+  @override
+  Future<LevelReward> claimReward(String levelKey) async => throw _Boom();
 }
 
 class _FailingNotifications implements NotificationRepository {

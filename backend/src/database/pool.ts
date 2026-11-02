@@ -49,6 +49,16 @@ export async function withTransaction<T>(
   fn: (client: pg.PoolClient) => Promise<T>,
 ): Promise<T> {
   const client = await db.connect();
+  // [CRITICAL] المجمّع ينزع مستمع `error` عن العميل ما دام مُستعاراً، فانقطاع
+  // الاتصال من جهة القاعدة أثناء المعاملة (إعادة تشغيل، إنهاء الجلسة، انقطاع
+  // الشبكة) كان حدث `error` بلا مستمع ⇒ استثناءً غير ملتقَط يُسقط الخادم كله
+  // — ما يمنعه المستمع أعلاه للعملاء الخاملين وحدهم. الآن تُرفض المعاملة
+  // وحدها، ويُحرَّر العميل بخطئه فيُتلَف بدل أن يعود إلى المجمّع.
+  let connectionError: Error | undefined;
+  const onConnectionError = (error: Error) => {
+    connectionError = error;
+  };
+  client.on('error', onConnectionError);
   try {
     await client.query('BEGIN');
     const result = await fn(client);
@@ -58,6 +68,7 @@ export async function withTransaction<T>(
     await client.query('ROLLBACK');
     throw error;
   } finally {
-    client.release();
+    client.removeListener('error', onConnectionError);
+    client.release(connectionError);
   }
 }

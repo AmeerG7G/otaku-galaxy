@@ -1,11 +1,81 @@
 import { z } from 'zod';
 import { ORDER_STATUSES } from '../types/order-status.js';
+import { normalizeIraqiPhone } from '../utils/phone.js';
+
+/**
+ * محارف التحكّم والتنسيق غير المرئية مرفوضة في النصّ الحرّ.
+ *
+ * `\n` مسموح داخل العنوان (سطر للمنطقة وسطر للمعلم القريب مثلاً)، أما بقية
+ * محارف التحكّم ومحارف قلب الاتجاه فلا تظهر للعين وتُستعمل لإخفاء محتوى
+ * داخل نصٍّ يبدو طبيعياً على شاشة الموظّف الذي يجهّز الطلب.
+ */
+const ADDRESS_TEXT = /^[^\p{Cc}\p{Cf}\n]*(\n[^\p{Cc}\p{Cf}\n]*)*$/u;
 
 export const createOrderSchema = z.object({
   governorateId: z.string().uuid('اختر محافظة صالحة'),
-  fullAddress: z.string().trim().min(5, 'العنوان قصير جداً').max(300),
-  phone: z.string().regex(/^07\d{9}$/, 'رقم الهاتف غير صالح'),
+  /**
+   * العنوان الكامل — العناوين العراقية وصفية بطبعها («المحلة، الزقاق، أقرب
+   * نقطة دالّة»)، فالحدّ ٣٠٠ حرف يتّسع لها بلا تقتير، والحدّ الأدنى يمنع
+   * «بيتي» وحدها. العربية والترقيم يمرّان كما هما.
+   */
+  fullAddress: z
+    .string()
+    .trim()
+    .min(5, 'العنوان قصير جداً')
+    .max(300, 'العنوان طويل جداً')
+    .regex(ADDRESS_TEXT, 'العنوان يحتوي محارف غير مسموحة'),
+  /** يُطبَّع إلى `+9647XXXXXXXXX` كما في مسارات المصادقة — تنفيذ واحد للتطبيع. */
+  phone: z
+    .string()
+    .refine((v) => normalizeIraqiPhone(v) !== null, {
+      message: 'رقم الهاتف غير صالح — أدخل رقم موبايل عراقي مثل 07XXXXXXXXX',
+    })
+    .transform((v) => normalizeIraqiPhone(v)!),
   /** منطقة التوصيل — إلزامية للمحافظات المقسّمة مناطق (النجف). */
+  zoneId: z.string().uuid('منطقة التوصيل غير صالحة').nullish(),
+  /**
+   * سعر الوحدة الذي تعرضه عربة الزبون المُزامَنة لكل منتج (CA-14، الخيار أ) —
+   * حقلا سطر `GET /cart` نفسيهما (`productId`، `unitPrice`).
+   *
+   * [CRITICAL] **فحصٌ لا مصدر.** الخادم يقارنه بسعر المنتج الحالي داخل معاملة
+   * الإنشاء؛ أي اختلاف ⇒ `409 PRODUCT_PRICE_CHANGED` ولا طلب. لا يدخل اللقطة ولا
+   * المجموع أبداً — السعر المحفوظ سعر القاعدة وحده (§2.9). غيابه (تطبيقٌ أقدم)
+   * يعني «لا توقّع» فيُنشأ الطلب بسعر القاعدة كما كان.
+   */
+  expectedPrices: z
+    .array(
+      z.object({
+        productId: z.string().uuid('معرّف منتج غير صالح'),
+        unitPrice: z.number().nonnegative(),
+        /**
+         * سعر القطعتين الذي راجعه الزبون (085)؛ `null` = لا عرض. الغائب (تطبيقٌ
+         * أقدم) = لا فحص له. بلا هذا كان تعديلُ العرض بين المراجعة والإرسال
+         * يمرّ بصمت: سعر الوحدة نفسه، والمجموع غير الذي رآه.
+         */
+        pairPrice: z.number().positive().nullable().optional(),
+      }),
+    )
+    .optional(),
+  /**
+   * بصمة المعاينة التي راجعها الزبون (`GET /orders/checkout-quote` → `fingerprint`).
+   *
+   * [CRITICAL] **فحصٌ لا مصدر**، كـ`expectedPrices`: الخادم يعيد حسابها من القيم
+   * التي سيحفظها؛ أي اختلاف ⇒ `409 QUOTE_CHANGED` ولا طلب. غيابها (التطبيق
+   * اليوم) = لا فحص.
+   */
+  expectedQuote: z
+    .string()
+    .regex(/^q1:[0-9a-f]{64}$/, 'ملخّص الطلب غير صالح — أعد فتح صفحة الدفع')
+    .optional(),
+});
+
+/**
+ * معاينة الدفع (`GET /orders/checkout-quote`) — المحافظة والمنطقة اختياريتان:
+ * قبل اختيارهما تُعاد الخصومات وحدها، وبعده رسوم التوصيل والإجمالي أيضاً.
+ * لا مبلغ يُقبل من العميل هنا إطلاقاً.
+ */
+export const checkoutQuoteSchema = z.object({
+  governorateId: z.string().uuid('اختر محافظة صالحة').nullish(),
   zoneId: z.string().uuid('منطقة التوصيل غير صالحة').nullish(),
 });
 
@@ -41,8 +111,15 @@ export const updateOrderStatusSchema = z
  */
 export const rescheduleReminderSchema = z
   .object({
-    delayHours: z.coerce.number().min(0).max(24 * 30).optional(),
-    remindAt: z.coerce.date().optional(),
+    // بلا إكراه: `z.coerce.date()` كان يقرأ `null` و`0` بدايةَ العصر (1970)
+    // فيصير التذكير مستحقاً فوراً بدل أن يُرفض؛ اللحظة ISO 8601 بإزاحتها كما
+    // في `restockAt` و`until`.
+    delayHours: z.number().min(0).max(24 * 30).optional(),
+    remindAt: z
+      .string()
+      .datetime({ offset: true, message: 'موعد التذكير غير صالح' })
+      .transform((value) => new Date(value))
+      .optional(),
   })
   .refine(
     (v) => (v.delayHours === undefined) !== (v.remindAt === undefined),

@@ -25,8 +25,6 @@ const MIME_EXTENSIONS: Record<string, string> = {
   'image/webp': '.webp',
 };
 
-export const ALLOWED_IMAGE_MIMES = Object.keys(MIME_EXTENSIONS);
-
 export function extensionFor(mimeType: string) {
   return MIME_EXTENSIONS[mimeType] ?? '';
 }
@@ -86,13 +84,57 @@ class LocalDiskStorage implements StorageDriver {
 
   async remove(storageKey: string) {
     // المفتاح يأتي من قاعدة البيانات؛ نمنع الخروج من جذر التخزين احتياطاً.
-    const absolute = path.resolve(this.rootDir, storageKey);
-    if (!absolute.startsWith(path.resolve(this.rootDir))) return;
+    //
+    // المقارنة بـ `path.relative` لا بـ `startsWith`: الثانية تقارن الحروف لا
+    // حدود المسار، فجذرٌ اسمه `/srv/uploads` كان يقبل `/srv/uploads-backup/x`
+    // — مجلّد شقيق خارج الجذر يبدأ اسمه بالاسم نفسه فحسب. الحارس الذي يُفترض
+    // أن يحبس الحذف داخل الجذر كان يسمح بتجاوزه.
+    const root = path.resolve(this.rootDir);
+    const absolute = path.resolve(root, storageKey);
+    const relative = path.relative(root, absolute);
+    // `''` تعني الجذر نفسه، و`..` تعني خارجه، والمطلق يعني قرصاً آخر.
+    if (relative === '' || relative.startsWith('..') || path.isAbsolute(relative)) {
+      return;
+    }
     await unlink(absolute).catch(() => undefined);
   }
 }
 
 export const uploadsRoot = path.resolve(process.cwd(), config.uploads.directory);
+
+/**
+ * فحص الكتابة عند الإقلاع — مجلّد كل غرضٍ لهذا الشهر، كما يكتب `save`.
+ *
+ * [CRITICAL] (2026-10-26) رفعُ البنرات على الاختبار المسبق فشل بـ`STORAGE_FAILED`
+ * والسبب (`EACCES`/`ENOSPC`…) لا يظهر إلا في سجلّ الحاوية لحظة الرفع. مجلّدٌ لا
+ * يكتبه مستخدم الحاوية (حجمٌ مُركَّب أنشأ الجذرُ بعض مجلّداته) يُفشل غرضاً واحداً
+ * ويترك البقية تعمل، فلا يلاحظه أحد حتى يحاول مسؤولٌ الرفع. الفحص يكتب ملفاً
+ * مؤقتاً ويحذفه في كل مجلّد، ويطبع تحذيراً واحداً لكل غرضٍ فاشل في **السجلّ
+ * وحده** — لا مسار ولا تفاصيل في أي استجابة عامة. لا يمنع الإقلاع: القراءة
+ * (`/uploads`) وبقية الخدمة تعمل، والفشل نفسه يبقى `STORAGE_FAILED` عند الرفع.
+ */
+export async function probeUploadsWritable(
+  purposes: readonly MediaPurpose[],
+  root: string = uploadsRoot,
+  now: Date = new Date(),
+): Promise<Array<{ purpose: MediaPurpose; code: string }>> {
+  const month = `${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+  const failures: Array<{ purpose: MediaPurpose; code: string }> = [];
+  for (const purpose of purposes) {
+    const dir = path.join(root, purpose, month);
+    const probe = path.join(dir, `.write-probe-${randomUUID()}`);
+    try {
+      await mkdir(dir, { recursive: true });
+      await writeFile(probe, '');
+      await unlink(probe);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code ?? 'UNKNOWN';
+      failures.push({ purpose, code });
+      console.warn(`[uploads] NOT writable: purpose=${purpose} month=${month} code=${code} — uploads of this type will fail with STORAGE_FAILED`);
+    }
+  }
+  return failures;
+}
 
 /**
  * الروابط تُخزَّن **نسبية** (`/uploads/...`) لا مطلقة.

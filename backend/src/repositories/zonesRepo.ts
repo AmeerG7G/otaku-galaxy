@@ -5,6 +5,8 @@ export interface ZoneDto {
   id: string;
   governorateId: string;
   name: string;
+  /** الاسم الكردي — تحسمه طبقة الخدمة قبل خروجه للزبون؛ اللوحة تراه كما هو. */
+  nameCkb: string | null;
   deliveryFee: number;
   sortOrder: number;
   isActive: boolean;
@@ -15,6 +17,7 @@ function shapeZone(row: GovernorateZoneRow): ZoneDto {
     id: row.id,
     governorateId: row.governorate_id,
     name: row.name,
+    nameCkb: row.name_ckb,
     deliveryFee: Number(row.delivery_fee),
     sortOrder: row.sort_order,
     isActive: row.is_active,
@@ -49,13 +52,13 @@ export const zoneRepo = {
 
   async create(
     db: pg.Pool | pg.PoolClient,
-    input: { governorateId: string; name: string; deliveryFee: number; sortOrder?: number },
+    input: { governorateId: string; name: string; nameCkb?: string | null; deliveryFee: number; sortOrder?: number },
   ) {
     const { rows } = await db.query<GovernorateZoneRow>(
-      `INSERT INTO governorate_zones (governorate_id, name, delivery_fee, sort_order)
-       VALUES ($1, $2, $3, COALESCE($4, 0))
+      `INSERT INTO governorate_zones (governorate_id, name, name_ckb, delivery_fee, sort_order)
+       VALUES ($1, $2, $3, $4, COALESCE($5, 0))
        RETURNING *`,
-      [input.governorateId, input.name, input.deliveryFee, input.sortOrder ?? null],
+      [input.governorateId, input.name, input.nameCkb ?? null, input.deliveryFee, input.sortOrder ?? null],
     );
     return shapeZone(rows[0]!);
   },
@@ -63,7 +66,7 @@ export const zoneRepo = {
   async update(
     db: pg.Pool | pg.PoolClient,
     id: string,
-    input: { name?: string; deliveryFee?: number; sortOrder?: number; isActive?: boolean },
+    input: { name?: string; nameCkb?: string | null; deliveryFee?: number; sortOrder?: number; isActive?: boolean },
   ) {
     const sets: string[] = [];
     const values: unknown[] = [id];
@@ -72,6 +75,8 @@ export const zoneRepo = {
       sets.push(`${column} = $${values.length}`);
     };
     if (input.name !== undefined) push('name', input.name);
+    // الكردي مستقلّ: الغائب لا يُمسّ، و`null` يمسحه (2026-10-26).
+    if (input.nameCkb !== undefined) push('name_ckb', input.nameCkb);
     if (input.deliveryFee !== undefined) push('delivery_fee', input.deliveryFee);
     if (input.sortOrder !== undefined) push('sort_order', input.sortOrder);
     if (input.isActive !== undefined) push('is_active', input.isActive);

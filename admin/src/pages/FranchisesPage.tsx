@@ -10,7 +10,7 @@ import {
   Input,
   InputNumber,
   Modal,
-  Popconfirm,
+  Select,
   Space,
   Switch,
   Table,
@@ -21,6 +21,7 @@ import { DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined } from '@ant
 import {
   createFranchise,
   deleteFranchise,
+  franchiseUsage,
   listFranchises,
   updateFranchise,
 } from '../api/communityApi'
@@ -28,6 +29,7 @@ import type { Franchise } from '../types/community'
 
 interface FormValues {
   name: string
+  altNames?: string[]
   sortOrder?: number
   isActive?: boolean
 }
@@ -37,7 +39,7 @@ interface FormValues {
  * الملابس والإكسسوارات معاً، ولا يُستخدم كقسم رئيسي.
  */
 export default function FranchisesPage() {
-  const { message } = App.useApp()
+  const { message, modal } = App.useApp()
   const queryClient = useQueryClient()
   const [form] = Form.useForm<FormValues>()
   const [editing, setEditing] = useState<Franchise | null>(null)
@@ -57,11 +59,16 @@ export default function FranchisesPage() {
       if (editing) {
         return updateFranchise(editing.id, {
           name: values.name,
+          altNames: values.altNames ?? [],
           sortOrder: values.sortOrder,
           isActive: values.isActive,
         })
       }
-      return createFranchise({ name: values.name, sortOrder: values.sortOrder })
+      return createFranchise({
+        name: values.name,
+        altNames: values.altNames ?? [],
+        sortOrder: values.sortOrder,
+      })
     },
     onSuccess: async () => {
       message.success(editing ? 'تم التحديث' : 'أُضيف الأنمي')
@@ -70,23 +77,61 @@ export default function FranchisesPage() {
       form.resetFields()
       await invalidate()
     },
-    onError: (error: Error) => message.error(error.message),
+    onError: (error: Error) => {
+      message.error(error.message)
+    },
   })
 
   const removal = useMutation({
     mutationFn: (id: string) => deleteFranchise(id),
-    onSuccess: async () => {
-      message.success('حُذف الأنمي')
+    onSuccess: async (result) => {
+      message.success(
+        result.unlinkedProducts > 0
+          ? `حُذف الأنمي وأُزيل من ${result.unlinkedProducts} منتج — المنتجات باقية`
+          : 'حُذف الأنمي',
+      )
       await invalidate()
+      // المنتجات فقدت هذا الوسم: قوائمها ونماذجها تُقرأ من جديد.
+      await queryClient.invalidateQueries({ queryKey: ['products'] })
+      await queryClient.invalidateQueries({ queryKey: ['product-edit'] })
     },
-    onError: (error: Error) => message.error(error.message),
+    onError: (error: Error) => {
+      message.error(error.message)
+    },
   })
+
+  /**
+   * [STEP 64 §6.2] الحذف متاحٌ دائماً ولو ارتبط الأنمي بمنتجات. التأكيد يقرأ
+   * عدد المنتجات المرتبطة كلها (النشطة والموقوفة) من الخادم لحظة الضغط،
+   * ويقول ما سيحدث: يُزال الوسم وحده، والمنتجات وصورها لا تُحذف.
+   */
+  async function confirmDelete(franchise: Franchise) {
+    let count = franchise.productCount
+    try {
+      count = (await franchiseUsage(franchise.id)).productCount
+    } catch {
+      // العدد تقريبي إن تعذّرت القراءة — الخادم يحذف بالعدد الفعلي على كل حال.
+    }
+    modal.confirm({
+      title: `حذف «${franchise.name}»؟`,
+      content:
+        count > 0
+          ? `سيُزال هذا الأنمي من ${count} منتج. المنتجات وصورها وبياناتها الأخرى لن تُحذف — يُحذف الوسم وحده.`
+          : 'لا منتجات مرتبطة بهذا الأنمي. لا يمكن التراجع عن الحذف.',
+      okText: 'حذف',
+      okButtonProps: { danger: true },
+      cancelText: 'إلغاء',
+      onOk: () => removal.mutateAsync(franchise.id),
+    })
+  }
 
   const toggle = useMutation({
     mutationFn: (input: { id: string; isActive: boolean }) =>
       updateFranchise(input.id, { isActive: input.isActive }),
     onSuccess: invalidate,
-    onError: (error: Error) => message.error(error.message),
+    onError: (error: Error) => {
+      message.error(error.message)
+    },
   })
 
   function openCreate() {
@@ -99,6 +144,7 @@ export default function FranchisesPage() {
     setEditing(franchise)
     form.setFieldsValue({
       name: franchise.name,
+      altNames: franchise.altNames,
       sortOrder: franchise.sortOrder,
       isActive: franchise.isActive,
     })
@@ -111,6 +157,21 @@ export default function FranchisesPage() {
       dataIndex: 'name',
       key: 'name',
       render: (value: string) => <Typography.Text strong>{value}</Typography.Text>,
+    },
+    {
+      title: 'أسماء البحث',
+      dataIndex: 'altNames',
+      key: 'altNames',
+      render: (values: string[]) =>
+        values.length === 0 ? (
+          <Typography.Text type="secondary">—</Typography.Text>
+        ) : (
+          <Space size={4} wrap>
+            {values.map((value) => (
+              <Tag key={value}>{value}</Tag>
+            ))}
+          </Space>
+        ),
     },
     {
       title: 'المنتجات المرتبطة',
@@ -148,28 +209,15 @@ export default function FranchisesPage() {
           <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(franchise)}>
             تعديل
           </Button>
-          <Popconfirm
-            title="حذف الأنمي"
-            description={
-              franchise.productCount > 0
-                ? 'مرتبط بمنتجات — أوقفه بدل حذفه.'
-                : 'لا يمكن التراجع عن الحذف.'
-            }
-            okText="حذف"
-            cancelText="إلغاء"
-            okButtonProps={{ danger: true }}
-            disabled={franchise.productCount > 0}
-            onConfirm={() => removal.mutate(franchise.id)}
+          <Button
+            danger
+            size="small"
+            icon={<DeleteOutlined />}
+            loading={removal.isPending && removal.variables === franchise.id}
+            onClick={() => void confirmDelete(franchise)}
           >
-            <Button
-              danger
-              size="small"
-              icon={<DeleteOutlined />}
-              disabled={franchise.productCount > 0}
-            >
-              حذف
-            </Button>
-          </Popconfirm>
+            حذف
+          </Button>
         </Space>
       ),
     },
@@ -210,7 +258,7 @@ export default function FranchisesPage() {
             columns={columns}
             dataSource={franchisesQuery.data?.items ?? []}
             pagination={false}
-            scroll={{ x: 700 }}
+            scroll={{ x: 820 }}
           />
         )}
       </Card>
@@ -232,6 +280,21 @@ export default function FranchisesPage() {
             rules={[{ required: true, message: 'الاسم مطلوب' }]}
           >
             <Input placeholder="ون بيس" maxLength={80} />
+          </Form.Item>
+          <Form.Item
+            name="altNames"
+            label="أسماء بديلة للبحث"
+            tooltip="يبحث بها العميل عن هذا الأنمي: الاسم العربي، النقحرة، أي تسمية شائعة. الاسم الأساسي مشمول تلقائياً."
+            extra="اكتب الاسم ثم اضغط Enter لإضافته."
+          >
+            <Select
+              mode="tags"
+              open={false}
+              suffixIcon={null}
+              placeholder="قاتل الشياطين، Kimetsu no Yaiba"
+              tokenSeparators={[',']}
+              style={{ width: '100%' }}
+            />
           </Form.Item>
           <Form.Item name="sortOrder" label="الترتيب">
             <InputNumber min={0} style={{ width: '100%' }} placeholder="0" />

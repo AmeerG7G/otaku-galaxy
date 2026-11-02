@@ -10,15 +10,19 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
     required this.success,
     required this.successLight,
     required this.successPale,
+    required this.successText,
     required this.warning,
     required this.warningLight,
     required this.warningPale,
+    required this.warningText,
     required this.error,
     required this.errorLight,
     required this.errorPale,
+    required this.errorText,
     required this.info,
     required this.infoLight,
     required this.infoPale,
+    required this.infoText,
     required this.shadowLight,
     required this.shadowMedium,
     required this.shadowDark,
@@ -40,15 +44,30 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
   final Color success;
   final Color successLight;
   final Color successPale;
+
+  /// صيغة **نصّية** من الأخضر — انظر `AppColors.successText`.
+  ///
+  /// [CRITICAL] `success` مؤشِّر لا لون نصّ: قياسه على السطح الفاتح 2.52:1.
+  /// هذا الرمز هو ما يُستعمل حين يكون اللون لونَ حروفٍ تُقرأ.
+  final Color successText;
   final Color warning;
   final Color warningLight;
   final Color warningPale;
+
+  /// صيغة نصّية من البرتقالي — انظر [successText].
+  final Color warningText;
   final Color error;
   final Color errorLight;
   final Color errorPale;
+
+  /// صيغة نصّية من الأحمر — انظر [successText].
+  final Color errorText;
   final Color info;
   final Color infoLight;
   final Color infoPale;
+
+  /// صيغة نصّية من الأزرق — انظر [successText].
+  final Color infoText;
 
   // Shadows & Glow
   final Color shadowLight;
@@ -73,15 +92,19 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
     success: AppColors.success,
     successLight: AppColors.successLight,
     successPale: AppColors.successPale,
+    successText: AppColors.successText,
     warning: AppColors.warning,
     warningLight: AppColors.warningLight,
     warningPale: AppColors.warningPale,
+    warningText: AppColors.warningText,
     error: AppColors.error,
     errorLight: AppColors.errorLight,
     errorPale: AppColors.errorPale,
+    errorText: AppColors.errorText,
     info: AppColors.info,
     infoLight: AppColors.infoLight,
     infoPale: AppColors.infoPale,
+    infoText: AppColors.infoText,
     shadowLight: AppColors.shadowLight,
     shadowMedium: AppColors.shadowMedium,
     shadowDark: AppColors.shadowDark,
@@ -103,49 +126,53 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
     success: AppColors.successLight,
     successLight: AppColors.successLight,
     successPale: Color(0xFF173D31),
+    successText: AppColors.successLight,
     warning: AppColors.warningLight,
     warningLight: AppColors.warningLight,
     warningPale: Color(0xFF4D3510),
+    warningText: AppColors.warningLight,
     error: AppColors.errorLight,
     errorLight: AppColors.errorLight,
     errorPale: Color(0xFF4A1926),
+    errorText: AppColors.errorLight,
     info: AppColors.infoLight,
     infoLight: AppColors.infoLight,
     infoPale: Color(0xFF162F4A),
+    infoText: AppColors.infoLight,
     shadowLight: Color(0x40000000),
     shadowMedium: Color(0x59000000),
     shadowDark: Color(0x80000000),
-    glowPrimary: Color(0x557C5CFF),
-    glowSecondary: Color(0x55FF3D8F),
-    glowAccent: Color(0x55FFB02E),
+    glowPrimary: Color(0x558B5CF6),
+    glowSecondary: Color(0x55F0459B),
+    glowAccent: Color(0x55F6C144),
     primaryGradient: LinearGradient(
-      colors: [Color(0xFFFF3D8F), Color(0xFFB3A2FF)],
+      colors: [Color(0xFFF0459B), Color(0xFFB79DFA)],
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
     ),
     secondaryGradient: LinearGradient(
-      colors: [Color(0xFFFF7FAE), Color(0xFFFF3D8F)],
+      colors: [Color(0xFFF573B3), Color(0xFFF0459B)],
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
     ),
     accentGradient: LinearGradient(
-      colors: [Color(0xFFFFD98D), Color(0xFFEC914E)],
+      colors: [Color(0xFFF8D177), Color(0xFFE09A3E)],
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
     ),
     surfaceGradient: LinearGradient(
-      colors: [Color(0xFF0B0716), Color(0xFF130C24)],
+      colors: [Color(0xFF0B0718), Color(0xFF120C24)],
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
     ),
     animeHeroGradient: LinearGradient(
-      colors: [Color(0xFFFF3D8F), Color(0xFF7C5CFF), Color(0xFF4EA8FF)],
+      colors: [Color(0xFFF0459B), Color(0xFF8B5CF6), Color(0xFF4FA3F0)],
       stops: [0.0, 0.58, 1.0],
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
     ),
     bannerGradient: LinearGradient(
-      colors: [Color(0xFFFF3D8F), Color(0xFF7C5CFF), Color(0xFF4EA8FF)],
+      colors: [Color(0xFFF0459B), Color(0xFF8B5CF6), Color(0xFF4FA3F0)],
       stops: [0.0, 0.58, 1.0],
       begin: Alignment.centerLeft,
       end: Alignment.centerRight,
@@ -154,13 +181,13 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
 
   /// تدرّج ثابت (فاتح/داكن) لخلفية شاشات المصادقة — من هوية التصميم مباشرة.
   static const LinearGradient authGradientLight = LinearGradient(
-    colors: [Color(0xFFFFD9E7), Color(0xFFE9DCFF), Color(0xFFDBE6FF)],
+    colors: [Color(0xFFFDE0EC), Color(0xFFE9E1FD), Color(0xFFDCE9FC)],
     stops: [0.0, 0.52, 1.0],
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
   );
   static const LinearGradient authGradientDark = LinearGradient(
-    colors: [Color(0xFF3D1C44), Color(0xFF2B1A50), Color(0xFF1A2348)],
+    colors: [Color(0xFF31123F), Color(0xFF241A54), Color(0xFF16234A)],
     stops: [0.0, 0.52, 1.0],
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
@@ -176,18 +203,16 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
 
   /// خلفية حاوية صورة المنتج (--ph) — محايدة دائماً.
   Color get photoSlot =>
-      isDarkScheme ? const Color(0xFF221A3D) : const Color(0xFFEFEAFA);
+      isDarkScheme ? AppColors.surfaceDarkElevated : const Color(0xFFEFEAFA);
 
   /// لون مؤشّر الصورة داخل الحاوية (--ph-ink).
   Color get photoSlotInk =>
-      isDarkScheme ? const Color(0xFF6A5F92) : const Color(0xFFB3A9CF);
+      isDarkScheme ? AppColors.onSurfaceDarkVariant : const Color(0xFFB3A9CF);
 
   /// الظل الناعم (--sh-s) لبطاقات المنتجات والأسطح المرفوعة.
   List<BoxShadow> get shadowSoft => [
     BoxShadow(
-      color: isDarkScheme
-          ? const Color(0x5C000000)
-          : const Color(0x1A4A2C8C),
+      color: isDarkScheme ? const Color(0x5C000000) : const Color(0x1A3B2FA8),
       blurRadius: 20,
       offset: const Offset(0, 8),
     ),
@@ -196,9 +221,7 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
   /// ظل خفيف جداً (--sh-xs) للعناصر الصغيرة العائمة.
   List<BoxShadow> get shadowXSoft => [
     BoxShadow(
-      color: isDarkScheme
-          ? const Color(0x4D000000)
-          : const Color(0x144A2C8C),
+      color: isDarkScheme ? const Color(0x4D000000) : const Color(0x143B2FA8),
       blurRadius: 10,
       offset: const Offset(0, 3),
     ),
@@ -207,9 +230,7 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
   /// ظل عميق (--sh) للأسطح العائمة كشريط التنقل السفلي والأوراق.
   List<BoxShadow> get shadowFloating => [
     BoxShadow(
-      color: isDarkScheme
-          ? const Color(0x80000000)
-          : const Color(0x244A2C8C),
+      color: isDarkScheme ? const Color(0x80000000) : const Color(0x243B2FA8),
       blurRadius: 40,
       offset: const Offset(0, 18),
     ),
@@ -223,15 +244,19 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
     Color? success,
     Color? successLight,
     Color? successPale,
+    Color? successText,
     Color? warning,
     Color? warningLight,
     Color? warningPale,
+    Color? warningText,
     Color? error,
     Color? errorLight,
     Color? errorPale,
+    Color? errorText,
     Color? info,
     Color? infoLight,
     Color? infoPale,
+    Color? infoText,
     Color? shadowLight,
     Color? shadowMedium,
     Color? shadowDark,
@@ -252,15 +277,19 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
       success: success ?? this.success,
       successLight: successLight ?? this.successLight,
       successPale: successPale ?? this.successPale,
+      successText: successText ?? this.successText,
       warning: warning ?? this.warning,
       warningLight: warningLight ?? this.warningLight,
       warningPale: warningPale ?? this.warningPale,
+      warningText: warningText ?? this.warningText,
       error: error ?? this.error,
       errorLight: errorLight ?? this.errorLight,
       errorPale: errorPale ?? this.errorPale,
+      errorText: errorText ?? this.errorText,
       info: info ?? this.info,
       infoLight: infoLight ?? this.infoLight,
       infoPale: infoPale ?? this.infoPale,
+      infoText: infoText ?? this.infoText,
       shadowLight: shadowLight ?? this.shadowLight,
       shadowMedium: shadowMedium ?? this.shadowMedium,
       shadowDark: shadowDark ?? this.shadowDark,
@@ -286,15 +315,19 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
       success: Color.lerp(success, other.success, t)!,
       successLight: Color.lerp(successLight, other.successLight, t)!,
       successPale: Color.lerp(successPale, other.successPale, t)!,
+      successText: Color.lerp(successText, other.successText, t)!,
       warning: Color.lerp(warning, other.warning, t)!,
       warningLight: Color.lerp(warningLight, other.warningLight, t)!,
       warningPale: Color.lerp(warningPale, other.warningPale, t)!,
+      warningText: Color.lerp(warningText, other.warningText, t)!,
       error: Color.lerp(error, other.error, t)!,
       errorLight: Color.lerp(errorLight, other.errorLight, t)!,
       errorPale: Color.lerp(errorPale, other.errorPale, t)!,
+      errorText: Color.lerp(errorText, other.errorText, t)!,
       info: Color.lerp(info, other.info, t)!,
       infoLight: Color.lerp(infoLight, other.infoLight, t)!,
       infoPale: Color.lerp(infoPale, other.infoPale, t)!,
+      infoText: Color.lerp(infoText, other.infoText, t)!,
       shadowLight: Color.lerp(shadowLight, other.shadowLight, t)!,
       shadowMedium: Color.lerp(shadowMedium, other.shadowMedium, t)!,
       shadowDark: Color.lerp(shadowDark, other.shadowDark, t)!,

@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart'
-    show TargetPlatform, defaultTargetPlatform, kDebugMode, kIsWeb;
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 
 /// بيئات التشغيل لتطبيق مجرات الاوتاكو.
 enum Environment {
@@ -39,12 +39,6 @@ enum Environment {
 // flutter run --dart-define=API_BASE_URL=http://192.168.1.x:4000/api
 const String _apiBaseUrlOverride = String.fromEnvironment('API_BASE_URL');
 
-/// تعطيل ملاحظة رمز التجربة صراحةً: `--dart-define=SHOW_DEV_OTP_HINT=false`.
-const bool _devOtpHintAllowed = bool.fromEnvironment(
-  'SHOW_DEV_OTP_HINT',
-  defaultValue: true,
-);
-
 enum AppConfig {
   // [DEV]: يمكن تجاوز العنوان أثناء التطوير دون تعديل الكود:
   // flutter run --dart-define=API_BASE_URL=http://192.168.1.x:4000/api
@@ -52,6 +46,7 @@ enum AppConfig {
   development._(
     environment: Environment.development,
     appName: 'مجرة الأوتاكو (تطوير)',
+    publicSiteOrigin: 'https://otakugalaxystore.com',
     enableLogging: true,
   ),
 
@@ -62,15 +57,24 @@ enum AppConfig {
   // لا رسالة خطأ، فقط بياناتُ عملاء حقيقيين تتغيّر من بناءٍ تجريبي.
   staging._(
     environment: Environment.staging,
-    apiBaseUrl: 'https://staging-api.otaku-galaxy.example/api',
+    // المضيف الحقيقي (STEP 64): `--dart-define=API_BASE_URL` يبقى تجاوزاً
+    // صريحاً، لكن نسخة الاختبار لا تحتاجه بعد اليوم.
+    apiBaseUrl: 'https://staging-api.otakugalaxystore.com/api',
     appName: 'مجرة الأوتاكو (اختبار)',
+    // صفحتا الخصوصية وحذف الحساب على موقع الاختبار: نسخة الاختبار لا تفتح
+    // موقع الإنتاج ولا تحذف حساباً فيه (STEP 78.5).
+    publicSiteOrigin: 'https://staging-store.otakugalaxystore.com',
     enableLogging: true,
   ),
 
   production._(
     environment: Environment.production,
-    apiBaseUrl: 'https://api.otaku-galaxy.example/api',
+    // المضيف الحقيقي (خطة الإنتاج، 2026-11-01): نسخة Play والـAPK المباشر
+    // تُبنيان بلا `--dart-define`، فلا مجال لنسيان العنوان عند البناء.
+    apiBaseUrl: 'https://api.otakugalaxystore.com/api',
     appName: 'مجرة الأوتاكو',
+    // المسجَّل في Google Play Console — لا يتغيّر.
+    publicSiteOrigin: 'https://otakugalaxystore.com',
     enableLogging: false,
   );
 
@@ -78,6 +82,7 @@ enum AppConfig {
     required this.environment,
     this.apiBaseUrl,
     required this.appName,
+    required this.publicSiteOrigin,
     required this.enableLogging,
   });
 
@@ -89,6 +94,9 @@ enum AppConfig {
 
   /// اسم التطبيق للعرض.
   final String appName;
+
+  /// أصل الموقع الذي تُفتح منه الصفحات العامّة ([PublicPages])، بلا `/` أخيرة.
+  final String publicSiteOrigin;
 
   /// تفعيل التسجيل التفصيلي.
   final bool enableLogging;
@@ -111,15 +119,6 @@ enum AppConfig {
   bool get usesPlaceholderApi =>
       _apiBaseUrlOverride.isEmpty &&
       (apiBaseUrl?.contains('otaku-galaxy.example') ?? false);
-
-  /// هل تُعرض ملاحظة «رمز التجربة» في شاشة التحقق؟
-  ///
-  /// الرمز الثابت صار خياراً صريحاً في الخادم (`DEV_OTP_ENABLED`) ومستحيلاً
-  /// في الإنتاج، فعرضُه في الواجهة يجب أن يتبع نفس القيد: بيئة تطوير **و**
-  /// بناء تصحيح. نسخة الإصدار لا تعرضه مهما كانت البيئة، ويمكن إطفاؤه
-  /// صراحةً بـ `--dart-define=SHOW_DEV_OTP_HINT=false` عند الاختبار على جهاز.
-  bool get showDevOtpHint =>
-      kDebugMode && environment.isDevelopment && _devOtpHintAllowed;
 
   /// عنوان قاعدة الـ API الفعلي المستخدم:
   /// 1) تجاوز صريح عبر `--dart-define=API_BASE_URL` (أجهزة حقيقية / شبكة محلية).

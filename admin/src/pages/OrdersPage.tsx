@@ -1,41 +1,39 @@
 import { useMemo } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
-  Alert,
   Button,
   Card,
   Flex,
   Space,
-  Table,
   Tabs,
   Typography,
 } from 'antd'
-import { ReloadOutlined } from '@ant-design/icons'
+import { EyeOutlined, ReloadOutlined } from '@ant-design/icons'
 import { listOrders } from '../api/ordersApi'
-import type { OrderStatus } from '../types/orders'
+import type { AdminOrder, OrderStatus } from '../types/orders'
 import {
-  ORDER_STATUSES,
+  ORDER_STAGES,
   STATUS_LABELS,
   isOrderStatus,
 } from '../constants/orders'
-import { formatCurrency, formatDateTime } from '../utils/format'
+import { formatCurrency, formatDateTime, productCountLabel } from '../utils/format'
 import StatusBadge from '../components/StatusBadge'
 import EmptyState from '../components/EmptyState'
+import { PageHeader } from '../components/ui/PageHeader'
+import { PhoneText } from '../components/ui/PhoneText'
+import { ResponsiveTable } from '../components/ui/ResponsiveTable'
+import { WhatsAppButton } from '../components/ui/WhatsAppButton'
+import { ErrorState } from '../components/ui/States'
+import { useTableState } from '../hooks/useTableState'
 
 const PAGE_LIMIT = 12
 
-function readPage(value: string | null): number {
-  const parsed = Number(value)
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : 1
-}
-
 export default function OrdersPage() {
-  const [searchParams, setSearchParams] = useSearchParams()
+  const { page, setPage, searchParams, setSearchParams } = useTableState()
 
   const statusParam = searchParams.get('status')
   const status = isOrderStatus(statusParam) ? statusParam : undefined
-  const page = readPage(searchParams.get('page'))
 
   const ordersQuery = useQuery({
     queryKey: ['orders', { status: status ?? 'all', page }],
@@ -57,97 +55,153 @@ export default function OrdersPage() {
   }
 
   function changePage(nextPage: number) {
-    const next = new URLSearchParams(searchParams)
-    next.set('page', String(nextPage))
-    setSearchParams(next)
+    setPage(nextPage)
   }
 
+  // التبويبات تتبع مراحل الطلب الفعلية. «تم تأكيده» و«قيد التجهيز» لا
+  // تظهران إلا إن بقي فيهما طلبٌ قديم فعلاً — تبويبٌ دائم بصفر يوحي بمرحلة
+  // لم تعد موجودة.
+  const legacyConfirmed = statusCounts?.CONFIRMED ?? 0
+  const legacyPreparing = statusCounts?.PREPARING ?? 0
+  const tabStatuses: OrderStatus[] = [
+    ...ORDER_STAGES,
+    ...(legacyConfirmed > 0 ? (['CONFIRMED'] as OrderStatus[]) : []),
+    ...(legacyPreparing > 0 ? (['PREPARING'] as OrderStatus[]) : []),
+    'REJECTED',
+  ]
   const tabs = [
     { key: 'all', label: `الكل (${totalCount})` },
-    ...ORDER_STATUSES.map((orderStatus) => ({
+    ...tabStatuses.map((orderStatus) => ({
       key: orderStatus,
       label: `${STATUS_LABELS[orderStatus]} (${statusCounts?.[orderStatus] ?? 0})`,
     })),
   ]
 
+  /** الإجراءات نفسها في صفّ الجدول وبطاقة الهاتف. */
+  function renderActions(order: AdminOrder, block = false) {
+    return (
+      <Flex gap={8} align="center" wrap>
+        <Link to={`/orders/${order.id}`}>
+          <Button size="small" type={block ? 'primary' : 'link'} icon={<EyeOutlined />}>
+            عرض
+          </Button>
+        </Link>
+        {/* زبون الطلب: رقم حسابه، أو رقم التواصل في الطلب لحسابٍ حُذف. */}
+        <WhatsAppButton phone={order.customer?.phone ?? order.phone} />
+      </Flex>
+    )
+  }
+
+  const renderPhone = (order: AdminOrder) => (
+    <PhoneText phone={order.customer?.phone ?? order.phone ?? 'غير متوفر'} />
+  )
+
+  // [CRITICAL] كل عمودٍ بعرضٍ صريح: مجموعها عرضُ الجدول الطبيعي، ودونه يتمرّر
+  // الجدول أفقياً بشريطٍ لاصق (`ResponsiveTable`). رقم الطلب يبقى ظاهراً في
+  // البداية والإجراءات في النهاية مهما مُرِّر — كانت «الحالة» و«التاريخ»
+  // و«الإجراءات» خارج الشاشة على يسار الجدول بلا شريطٍ يصلها.
   const columns = [
     {
       title: 'رقم الطلب',
       dataIndex: 'number',
       key: 'number',
-      width: 120,
+      width: 110,
+      fixed: 'start' as const,
       render: (value: string) => <Typography.Text strong>#{value}</Typography.Text>,
     },
     {
       title: 'الزبون',
       key: 'customer',
-      render: (_: unknown, order: { customer: { name: string } | null }) =>
-        order.customer?.name ?? 'غير متوفر',
+      width: 220,
+      render: (_: unknown, order: AdminOrder) => order.customer?.name ?? 'غير متوفر',
     },
     {
       title: 'الهاتف',
       key: 'customerPhone',
-      render: (_: unknown, order: { customer: { phone: string } | null }) =>
-        order.customer?.phone ?? 'غير متوفر',
+      width: 160,
+      render: (_: unknown, order: AdminOrder) => renderPhone(order),
     },
     {
       title: 'المحافظة',
       dataIndex: 'province',
       key: 'province',
+      width: 140,
     },
     {
       title: 'المنتجات',
       key: 'itemsCount',
-      render: (_: unknown, order: { items: unknown[] }) =>
-        `${order.items.length} منتجات`,
+      width: 110,
+      render: (_: unknown, order: AdminOrder) => productCountLabel(order.items.length),
     },
     {
       title: 'الإجمالي',
       dataIndex: 'total',
       key: 'total',
-      render: (value: number) => <Typography.Text strong>{formatCurrency(value)}</Typography.Text>,
+      width: 140,
+      render: (value: number) => (
+        <Typography.Text strong style={{ whiteSpace: 'nowrap' }}>
+          {formatCurrency(value)}
+        </Typography.Text>
+      ),
     },
     {
       title: 'الحالة',
       dataIndex: 'status',
       key: 'status',
+      width: 130,
       render: (value: OrderStatus) => <StatusBadge status={value} />,
     },
     {
       title: 'التاريخ',
       dataIndex: 'createdAt',
       key: 'createdAt',
-      render: (value: string) => formatDateTime(value),
+      width: 190,
+      render: (value: string) => <span style={{ whiteSpace: 'nowrap' }}>{formatDateTime(value)}</span>,
     },
     {
       title: 'الإجراءات',
       key: 'actions',
-      width: 100,
-      render: (_: unknown, order: { id: string }) => (
-        <Link to={`/orders/${order.id}`}>عرض</Link>
-      ),
+      width: 200,
+      fixed: 'end' as const,
+      render: (_: unknown, order: AdminOrder) => renderActions(order),
     },
   ]
 
+  /** بطاقة الهاتف — أعمدة الجدول كلها وإجراءاته، بلا تمريرٍ جانبي. */
+  function renderCard(order: AdminOrder) {
+    return (
+      <Flex vertical gap={8}>
+        <Flex justify="space-between" align="center" gap={8} wrap>
+          <Typography.Text strong>#{order.number}</Typography.Text>
+          <StatusBadge status={order.status} />
+        </Flex>
+        <Flex justify="space-between" align="center" gap={8} wrap>
+          <Typography.Text>{order.customer?.name ?? 'غير متوفر'}</Typography.Text>
+          {renderPhone(order)}
+        </Flex>
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          {order.province} · {productCountLabel(order.items.length)} · {formatDateTime(order.createdAt)}
+        </Typography.Text>
+        <Typography.Text strong>{formatCurrency(order.total)}</Typography.Text>
+        {renderActions(order, true)}
+      </Flex>
+    )
+  }
+
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Flex align="center" justify="space-between" wrap gap={12}>
-        <div>
-          <Typography.Title level={3} style={{ margin: 0 }}>
-            الطلبات
-          </Typography.Title>
-          <Typography.Text type="secondary">
-            إدارة طلبات المتجر: مراجعتها، تغيير حالتها، وتتبع مراحل التوصيل.
-          </Typography.Text>
-        </div>
-        <Button
-          icon={<ReloadOutlined />}
-          loading={ordersQuery.isFetching}
-          onClick={() => ordersQuery.refetch()}
-        >
-          تحديث
-        </Button>
-      </Flex>
+      <PageHeader
+        title="الطلبات"
+        extra={
+          <Button
+            icon={<ReloadOutlined />}
+            loading={ordersQuery.isFetching}
+            onClick={() => ordersQuery.refetch()}
+          >
+            تحديث
+          </Button>
+        }
+      />
 
       <Card>
         <Tabs
@@ -158,24 +212,18 @@ export default function OrdersPage() {
         />
 
         {ordersQuery.isError ? (
-          <Alert
-            type="error"
-            showIcon
+          <ErrorState
             message="تعذر تحميل الطلبات"
             description={ordersQuery.error.message}
-            action={
-              <Button size="small" onClick={() => ordersQuery.refetch()}>
-                إعادة المحاولة
-              </Button>
-            }
+            onRetry={() => ordersQuery.refetch()}
           />
         ) : (
-          <Table
+          <ResponsiveTable<AdminOrder>
             rowKey="id"
             columns={columns}
+            renderCard={renderCard}
             dataSource={ordersQuery.data?.items ?? []}
             loading={ordersQuery.isPending || ordersQuery.isFetching}
-            scroll={{ x: 1100 }}
             locale={{
               emptyText: (
                 <EmptyState

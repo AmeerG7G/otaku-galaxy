@@ -11,31 +11,65 @@ export const SOCIAL_SETTING_KEYS = [
   'social_tiktok',
   'social_instagram',
   'social_whatsapp',
+  'social_description',
 ] as const;
 
 /**
- * إعدادات الأعمال الرقمية.
+ * رابط المتجر في رسالة مشاركة المنتج (STEP 64).
  *
- * [CRITICAL] هذه إعدادات **تجارية** لا أمنية. أي ثابت أمني (دورات bcrypt،
- * عمر الـJWT، عمر رمز التحقق، حدود المعدّل، سقف حجم الرفع) يبقى في الكود
- * والبيئة عمداً: تحويله إلى إعداد يُحرّره المسؤول من المتصفح يجعل ضعف
- * المنظومة الأمني قابلاً للضبط بنقرة، وهو ما لا يجوز أن يكون ممكناً أصلاً.
+ * المشاركة من التطبيق تحمل اسم المنتج وهذا الرابط وحدهما — لا سعر. الرابط
+ * هنا لا في Flutter كي يغيّره المسؤول بلا إصدار تطبيق. فارغٌ = الاسم وحده.
  */
-export const BUSINESS_SETTING_KEYS = [
-  'points_order_received',
-  'points_review_approved',
-  'points_review_with_photo',
-  'birthday_discount_percent',
-  'order_rating_delay_hours',
+export const SHARE_SETTING_KEYS = ['store_share_url'] as const;
+
+/**
+ * [NOTE] `BUSINESS_SETTING_KEYS` حُذفت بالكامل.
+ *
+ * كانت تحمل خمسة مفاتيح: ثلاثة لقيم نقاط المجرّة (صارت قواعد ثابتة)، ونسبة
+ * خصم الميلاد (صارت ثابتة في `domain/birthday.ts`)، ومهلة فتح التقييم (أُلغيت
+ * أصلاً — التقييم يُفتح بالاستلام). لم يبقَ إعداد أعمال رقمي واحد، فبقاءُ
+ * القائمة فارغةً مع خدمتها ونقطتها في الـAPI يترك باباً مفتوحاً بلا غرفة
+ * خلفه.
+ *
+ * ما بقي في `store_settings` بياناتٌ نصّية لا قيم أعمال: روابط التواصل
+ * وإعدادات نسخة التطبيق.
+ */
+
+/**
+ * إعدادات نسخة التطبيق — يضبطها المسؤول من لوحة التحكم.
+ *
+ * [CRITICAL] وجودها في القاعدة لا في الكود هو كل الفائدة: رفعُ الحدّ الأدنى
+ * المدعوم بعد نشر نسخة جديدة يصير تغييرَ حقلٍ في اللوحة، لا بناءَ خادم
+ * ونشرَه. لو كانت ثابتاً في الكود لاحتاج كل إجبارِ تحديثٍ إصدارَ خادم.
+ *
+ * نصّية لا رقمية: النسخة `1.10.0` ليست رقماً، والرابط ليس رقماً.
+ */
+export const APP_VERSION_SETTING_KEYS = [
+  // STEP 64 (هجرة ٠٦٩): ثلاثة إعدادات لا ستّة — مفعَّل؟ الحدّ الأدنى، رابط
+  // التحديث. أُزيلت: رابطا المتجرين، والرسالتان بلغتين (60.5).
+  //
+  // STEP 70 (قرار المالك 2026-10-24): «أحدث إصدار» ونوع التحديث (اختياري/
+  // إجباري) يعودان؛ الرسالة المخصّصة لا تعود. `app_force_update_enabled` صار
+  // «السياسة مفعّلة» بنوعيها — الاسم أقدم من النوع الاختياري. لا هجرة: الجدول
+  // مفتاح/قيمة، والنوع الفارغ (ما حُفظ قبل STEP 70) يُقرأ «إجباري» كما كان.
+  'app_force_update_enabled',
+  'app_update_mode',
+  'app_latest_version',
+  'app_min_supported_version',
+  'app_update_url',
+  // يزيد مع كل حفظ: الحفظ على نسخةٍ قديمة من السياسة يُرفض (409).
+  'app_update_revision',
 ] as const;
 
 export const SETTING_KEYS = [
   ...SOCIAL_SETTING_KEYS,
-  ...BUSINESS_SETTING_KEYS,
+  ...SHARE_SETTING_KEYS,
+  ...APP_VERSION_SETTING_KEYS,
 ] as const;
 
 export type SocialSettingKey = (typeof SOCIAL_SETTING_KEYS)[number];
-export type BusinessSettingKey = (typeof BUSINESS_SETTING_KEYS)[number];
+export type AppVersionSettingKey = (typeof APP_VERSION_SETTING_KEYS)[number];
+export type ShareSettingKey = (typeof SHARE_SETTING_KEYS)[number];
 export type SettingKey = (typeof SETTING_KEYS)[number];
 
 export type StoreSettings = Record<SettingKey, string>;
@@ -51,11 +85,14 @@ const EMPTY_SETTINGS: StoreSettings = {
   social_tiktok: '',
   social_instagram: '',
   social_whatsapp: '',
-  points_order_received: '',
-  points_review_approved: '',
-  points_review_with_photo: '',
-  birthday_discount_percent: '',
-  order_rating_delay_hours: '',
+  social_description: '',
+  store_share_url: '',
+  app_force_update_enabled: '',
+  app_update_mode: '',
+  app_latest_version: '',
+  app_min_supported_version: '',
+  app_update_url: '',
+  app_update_revision: '',
 };
 
 export const settingsRepo = {

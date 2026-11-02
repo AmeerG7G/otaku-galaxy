@@ -23,3 +23,8 @@ export function resolveMediaUrl(reference: string | null | undefined): string | 
   if (/^https?:\/\//i.test(raw)) return raw
   return `${MEDIA_ORIGIN}${raw.startsWith('/') ? raw : `/${raw}`}`
 }
+
+/** رابط مطلق أو مسار يخدمه الخادم نفسه تحت /uploads. */
+export function isValidImageRef(value: string) {
+  return /^https?:\/\/.+/.test(value) || value.startsWith('/uploads/')
+}

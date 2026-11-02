@@ -21,14 +21,26 @@ function fallbackMessage(status: number): string {
   if (status === 401) return 'الجلسة منتهية — سجّل الدخول مجدداً'
   if (status === 403) return 'لا تملك صلاحية للقيام بهذا الإجراء'
   if (status === 404) return 'العنصر المطلوب غير موجود'
+  // nginx يردّ ٤١٣ بصفحة HTML (`client_max_body_size`) قبل أن يصل الطلب للخادم.
+  if (status === 413) return 'حجم الملف أكبر من الحدّ المسموح'
   if (status >= 500) return 'حدث خطأ غير متوقع في الخادم'
   return 'تعذر إكمال الطلب'
 }
 
+/**
+ * [CRITICAL] `Accept-Language: ar` صريحة على كل طلب.
+ *
+ * مسارات `/admin` مثبَّتة على العربية في الخادم، لكن صفحة التعديل تقرأ خيارات
+ * المنتج من المسار العام `/catalog/products/:id` الذي يحسم لغته من الترويسة —
+ * والمتصفّح يرسل لغة نظامه (أو يسقط الخادم إلى تفضيل المسؤول المحفوظ، وقد
+ * يكون كردياً). خيارٌ كرديٌّ محسوم كان سيُحفظ في العمود العربي. اللوحة عربيةٌ
+ * كلّها، فتقول ذلك في كل طلب. محتوى المنتج نفسه يُقرأ من الحقول الصريحة
+ * (`nameAr`…`descriptionCkb`) مهما كانت اللغة.
+ */
 const client = axios.create({
   baseURL: API_BASE_URL,
   timeout: 15000,
-  headers: { 'Content-Type': 'application/json' },
+  headers: { 'Content-Type': 'application/json', 'Accept-Language': 'ar' },
 })
 
 export { client }
@@ -87,6 +99,15 @@ export async function patch<T>(
   config?: AxiosRequestConfig,
 ): Promise<T> {
   const response = await client.patch<ApiEnvelope<T>>(url, data, config)
+  return response.data.data as T
+}
+
+export async function put<T>(
+  url: string,
+  data?: unknown,
+  config?: AxiosRequestConfig,
+): Promise<T> {
+  const response = await client.put<ApiEnvelope<T>>(url, data, config)
   return response.data.data as T
 }
 

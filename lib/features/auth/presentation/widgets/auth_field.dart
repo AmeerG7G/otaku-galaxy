@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../../core/design_system/design_system.dart';
 
@@ -21,6 +22,8 @@ class AuthField extends StatelessWidget {
     this.onSubmitted,
     this.validator,
     this.trailing,
+    this.inputFormatters,
+    this.prefixText,
   });
 
   final String label;
@@ -29,6 +32,12 @@ class AuthField extends StatelessWidget {
   final bool obscureText;
   final TextInputType? keyboardType;
   final TextInputAction? textInputAction;
+
+  /// تسهيلات كتابة (حروف مسموحة، حدّ طول) — لا تحقّق.
+  final List<TextInputFormatter>? inputFormatters;
+
+  /// نصٌّ ثابت داخل الحقل قبل ما يكتبه المستخدم (بادئة الهاتف `07`).
+  final String? prefixText;
 
   /// أرقام الهاتف تُكتب من اليسار لليمين حتى داخل واجهة عربية.
   final TextDirection? textDirection;
@@ -45,7 +54,10 @@ class AuthField extends StatelessWidget {
 
     final border = OutlineInputBorder(
       borderRadius: BorderRadius.circular(AppDimens.radiusSm),
-      borderSide: BorderSide(color: theme.colorScheme.outlineVariant, width: 1.5),
+      borderSide: BorderSide(
+        color: theme.colorScheme.outlineVariant,
+        width: 1.5,
+      ),
     );
 
     return Column(
@@ -64,6 +76,7 @@ class AuthField extends StatelessWidget {
           controller: controller,
           obscureText: obscureText,
           keyboardType: keyboardType,
+          inputFormatters: inputFormatters,
           textInputAction: textInputAction,
           textDirection: textDirection,
           onFieldSubmitted: onSubmitted,
@@ -77,9 +90,15 @@ class AuthField extends StatelessWidget {
             // النصّ النائب يتبع اتجاه الحقل: أرقام الهاتف تُعرض LTR وإلا
             // ظهرت مقلوبة («٤٥٦٧ ١٢٣ ٠٧٧٠»).
             hintTextDirection: textDirection,
+            prefixText: prefixText,
+            prefixStyle: theme.textTheme.bodyMedium?.copyWith(
+              fontSize: 14.5,
+              fontWeight: FontWeight.w700,
+              color: theme.colorScheme.onSurface,
+            ),
             hintStyle: theme.textTheme.bodyMedium?.copyWith(
               fontSize: 14.5,
-              color: theme.colorScheme.outline,
+              color: theme.colorScheme.onSurfaceVariant,
             ),
             filled: true,
             fillColor: theme.colorScheme.surfaceContainerHighest,
@@ -115,7 +134,7 @@ class AuthField extends StatelessWidget {
             ),
             errorStyle: theme.textTheme.labelSmall?.copyWith(
               fontSize: 11.5,
-              color: context.themeColors.error,
+              color: context.themeColors.errorText,
             ),
           ),
         ),

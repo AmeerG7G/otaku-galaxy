@@ -1,19 +1,27 @@
 import type { RequestHandler } from 'express';
 import { db } from '../database/pool.js';
+import { adminAuditRepo } from '../repositories/adminAuditRepo.js';
 import { franchiseRepo } from '../repositories/franchisesRepo.js';
 import { statsRepo } from '../repositories/statsRepo.js';
 import { notificationsService } from '../services/notificationsService.js';
 import { franchisesService } from '../services/franchisesService.js';
 import { reviewsService } from '../services/reviewsService.js';
 import { settingsService } from '../services/settingsService.js';
+import { appVersionService } from '../services/appVersionService.js';
 import { zoneRepo } from '../repositories/zonesRepo.js';
 import { ok, created, noContent } from '../utils/response.js';
 import { parse } from '../utils/zod.js';
 import { Errors } from '../utils/errors.js';
 import {
+  audiencePreviewSchema,
+  broadcastNotificationSchema,
+  campaignIdParamSchema,
+  campaignListSchema,
   createNotificationSchema,
+  idempotencyKeySchema,
   listReviewsAdminSchema,
   moderateReviewSchema,
+  redemptionIdParamSchema,
   reviewIdParamSchema,
 } from '../validators/community.js';
 import {
@@ -23,17 +31,53 @@ import {
   governorateIdParamSchema,
   updateFranchiseSchema,
   updateSettingsSchema,
+  updateAppVersionSettingsSchema,
   updateZoneSchema,
   zoneIdParamSchema,
 } from '../validators/franchises.js';
-import { adminBusinessSettingsSchema } from '../validators/admin.js';
-import { businessConfigService } from '../services/businessConfigService.js';
+import {
+  adminProductIdSchema,
+  giftClaimsQuerySchema,
+} from '../validators/admin.js';
+import {
+  MAX_REVIEW_PHOTOS,
+  PURCHASE_POINTS_PER_STEP,
+  PURCHASE_STEP_IQD,
+  REVIEW_COMMENT_POINTS,
+  REVIEW_PHOTOS_POINTS,
+  REVIEW_POINTS_CAP_PER_ORDER,
+} from '../domain/galaxyPoints.js';
+import { loyaltyRewardsService } from '../services/loyaltyRewardsService.js';
+import { config } from '../config/index.js';
+import type { Audience, AudienceSegment } from '../repositories/audienceRepo.js';
+
+/**
+ * سجلّ تغيير الإعدادات: المفاتيح التي تغيّرت فقط، بقيمها قبل وبعد. فشلُ
+ * الكتابة يُسجَّل ولا يُفشل حفظاً تمّ فعلاً.
+ */
+async function recordSettingsChange(
+  actorId: string,
+  action: string,
+  before: Record<string, string>,
+  after: Record<string, string>,
+) {
+  const changes: Record<string, { before: string; after: string }> = {};
+  for (const [key, value] of Object.entries(after)) {
+    if (before[key] !== value) changes[key] = { before: before[key] ?? '', after: value };
+  }
+  if (Object.keys(changes).length === 0) return;
+  try {
+    await adminAuditRepo.record(db, { actorId, action, targetType: 'settings', details: { changes } });
+  } catch (error) {
+    console.error('[admin-audit] failed to record settings change', error);
+  }
+}
 
 export const adminExtrasController = {
   /** أرقام لوحة التحكم مجمَّعة على الخادم في استعلام واحد. */
   dashboard: (async (_req, res) => {
     const [stats, lowStock] = await Promise.all([
-      statsRepo.dashboard(db),
+      statsRepo.dashboard(db, config.storeTimezone),
       statsRepo.lowStockProducts(db),
     ]);
     return ok(res, { ...stats, lowStockProducts: lowStock });
@@ -72,6 +116,7 @@ export const adminExtrasController = {
     const body = parse(createFranchiseSchema, req.body);
     return created(res, await franchisesService.create({
       name: body.name,
+      altNames: body.altNames,
       imageUrl: body.imageUrl ?? null,
       sortOrder: body.sortOrder,
     }), 'أُضيف الأنمي');
@@ -83,10 +128,22 @@ export const adminExtrasController = {
     return ok(res, await franchisesService.update(id, body), 'تم التحديث');
   }) as RequestHandler,
 
-  deleteFranchise: (async (req, res) => {
+  /** ما يربطه الأنمي — عددٌ يعرضه تأكيد الحذف قبل الضغط. */
+  franchiseUsage: (async (req, res) => {
     const { id } = parse(franchiseIdParamSchema, req.params);
-    await franchisesService.remove(id);
-    return noContent(res);
+    return ok(res, await franchisesService.usage(id));
+  }) as RequestHandler,
+
+  /**
+   * حذف الأنمي ولو ارتبط بمنتجات: يُفكّ الارتباط وتبقى المنتجات كما هي.
+   * الردّ يحمل عدد المنتجات التي فُكّ ارتباطها، والسجلّ الدلالي يُكتب في
+   * المعاملة نفسها.
+   */
+  deleteFranchise: (async (req, res) => {
+    res.locals.auditHandled = true;
+    const { id } = parse(franchiseIdParamSchema, req.params);
+    const result = await franchisesService.remove(id, req.auth!.id);
+    return ok(res, result, 'حُذف الأنمي — المنتجات باقية');
   }) as RequestHandler,
 
   // ── مناطق التوصيل ──
@@ -136,24 +193,92 @@ export const adminExtrasController = {
     return ok(res, await settingsService.getAll());
   }) as RequestHandler,
 
+  /** السجلّ الدلالي يحمل ما تغيّر قبل/بعد — لا سرّ في هذه المفاتيح. */
   updateSettings: (async (req, res) => {
+    res.locals.auditHandled = true;
     const body = parse(updateSettingsSchema, req.body);
-    return ok(res, await settingsService.update(body), 'حُفظت الإعدادات');
+    const before = await settingsService.getAll();
+    const saved = await settingsService.update(body);
+    await recordSettingsChange(req.auth!.id, 'settings.updated', before, saved);
+    return ok(res, saved, 'حُفظت الإعدادات');
+  }) as RequestHandler,
+
+  // ── نسخة التطبيق (إجبار التحديث) ──
+
+  getAppVersionSettings: (async (_req, res) => {
+    return ok(res, await appVersionService.adminView());
+  }) as RequestHandler,
+
+  /**
+   * ينشر سياسة تحديث التطبيق بلا نشر خادم جديد («إرسال التحديث» في اللوحة).
+   * لا يرفع شيئاً إلى Google Play ولا ينشر إصداراً هناك.
+   *
+   * [CRITICAL] من يملك هذا يملك حجب التطبيق عن كل مستخدميه بحفظةٍ واحدة —
+   * المسار خلف صلاحية «الإعدادات»، والتغيير مسجَّلٌ قبل/بعد مع لقطة السياسة
+   * داخل معاملة الحفظ نفسها.
+   */
+  updateAppVersionSettings: (async (req, res) => {
+    res.locals.auditHandled = true;
+    const body = parse(updateAppVersionSettingsSchema, req.body);
+    return ok(res, await appVersionService.updatePolicy(req.auth!.id, body), 'نُشرت سياسة التحديث');
   }) as RequestHandler,
 
   // ── إشعار يدوي ──
 
   createNotification: (async (req, res) => {
+    res.locals.auditHandled = true;
     const body = parse(createNotificationSchema, req.body);
+    const header = req.get('Idempotency-Key');
+    const result = await notificationsService.createForUser({
+      userId: body.userId,
+      title: body.title,
+      body: body.body,
+      createdBy: req.auth!.id,
+      ...(header ? { idempotencyKey: parse(idempotencyKeySchema, header) } : {}),
+    });
+    return result.replayed ? ok(res, result, 'أُرسل الإشعار مسبقاً') : created(res, result, 'أُرسل الإشعار');
+  }) as RequestHandler,
+
+  /**
+   * بثّ إشعار إلى جمهور: الكل، زبائن محدَّدون، أو شريحة (أعياد ميلاد…).
+   *
+   * الرسالة المُعادة تقول «سجل داخل التطبيق» لا «وصل الإشعار»: لا مزوّد
+   * دفع مربوطاً، وادّعاء التسليم يبني قراراً تجارياً على وهم.
+   */
+  broadcastNotification: (async (req, res) => {
+    const body = parse(broadcastNotificationSchema, req.body);
+    const header = req.get('Idempotency-Key');
+    if (!header) throw Errors.badRequest('مفتاح عدم التكرار مطلوب للبثّ', 'IDEMPOTENCY_KEY_REQUIRED');
+    res.locals.auditHandled = true;
+    const result = await notificationsService.broadcast({
+      audience: toAudience(body),
+      title: body.title,
+      body: body.body,
+      createdBy: req.auth!.id,
+      idempotencyKey: parse(idempotencyKeySchema, header),
+    });
+    if (result.replayed) return ok(res, result, 'هذا البثّ أُرسل مسبقاً — لم يُكرَّر');
     return created(
       res,
-      await notificationsService.createForUser({
-        userId: body.userId,
-        title: body.title,
-        body: body.body,
-      }),
-      'أُرسل الإشعار',
+      result,
+      `أُنشئ الإشعار لـ${result.recipients} زبوناً داخل التطبيق`,
     );
+  }) as RequestHandler,
+
+  /** سجلّ الحملات — أعدادٌ ووصفٌ للجمهور، لا قائمة مستلمين. */
+  listCampaigns: (async (req, res) => {
+    return ok(res, await notificationsService.listCampaigns(parse(campaignListSchema, req.query)));
+  }) as RequestHandler,
+
+  campaignDetail: (async (req, res) => {
+    const { id } = parse(campaignIdParamSchema, req.params);
+    return ok(res, await notificationsService.campaignDetail(id));
+  }) as RequestHandler,
+
+  /** حجم الجمهور قبل الإرسال — يمنع بثّاً أعمى. */
+  audiencePreview: (async (req, res) => {
+    const body = parse(audiencePreviewSchema, req.body);
+    return ok(res, { recipients: await notificationsService.audienceSize(toAudience(body)) });
   }) as RequestHandler,
 
   // ── إعدادات الأعمال ──
@@ -164,20 +289,78 @@ export const adminExtrasController = {
    * تُعاد بوصفها كاملاً (القيمة المحفوظة، الفعّالة، الافتراضية، المدى) حتى
    * تفرّق اللوحة بين «مضبوط على ٢٠» و«غير مضبوط فيعمل بـ٢٠».
    */
-  getBusinessSettings: (async (_req, res) => {
-    return ok(res, { items: await businessConfigService.describe() });
-  }) as RequestHandler,
+  // [NOTE] حُذف `getBusinessSettings` و`updateBusinessSettings`.
+  //
+  // لم يبقَ إعداد أعمال رقمي واحد: قيم نقاط المجرّة ونسبة خصم الميلاد صارت
+  // قواعد ثابتة، ومهلة فتح التقييم أُلغيت (التقييم يُفتح بالاستلام). نقطةٌ
+  // تعرض قائمة فارغة وتقبل الكتابة كانت ستبقى باباً خلفياً لإعادة الضبط.
 
-  updateBusinessSettings: (async (req, res) => {
-    const body = parse(adminBusinessSettingsSchema, req.body);
-    const items = await businessConfigService.update(body);
-    return ok(res, { items }, 'حُفظت إعدادات الأعمال');
-  }) as RequestHandler,
 
   // ── ارتباطات المنتج بالأنمي ──
 
+  // ── قواعد نقاط المجرّة ومزاياها ──
+
+  /**
+   * القواعد والسلّم — **قراءة فقط**.
+   *
+   * [NOTE] حلّ هذا محل أربع نقاط CRUD كان المسؤول يبني بها السلّم كما يشاء.
+   * القواعد صارت قراراً تجارياً ثابتاً في `domain/galaxyPoints.ts`، ولا واجهة
+   * تعدّلها. تُعرض هنا ليقرأها المسؤول لا ليغيّرها — وإخفاؤها كان سيتركه
+   * يجيب زبائنه بالتخمين.
+   */
+  galaxyPointsRules: (async (_req, res) => {
+    return ok(res, {
+      levels: loyaltyRewardsService.rulesForAdmin(),
+      purchase: {
+        stepIqd: PURCHASE_STEP_IQD,
+        pointsPerStep: PURCHASE_POINTS_PER_STEP,
+      },
+      review: {
+        commentPoints: REVIEW_COMMENT_POINTS,
+        photosPoints: REVIEW_PHOTOS_POINTS,
+        maxPhotos: MAX_REVIEW_PHOTOS,
+        capPerOrder: REVIEW_POINTS_CAP_PER_ORDER,
+      },
+    });
+  }) as RequestHandler,
+
+  /** طابور الهدايا: من طالب، بأي مستوى، بأي قيمة، ومتى — وهل سُلّمت. */
+  listGiftClaims: (async (req, res) => {
+    const query = parse(giftClaimsQuerySchema, req.query);
+    return ok(res, await loyaltyRewardsService.listGiftClaims(query));
+  }) as RequestHandler,
+
+  /** تعليم هدية بأنها سُلّمت — فعلٌ صريح، ومرة واحدة. */
+  fulfilGiftClaim: (async (req, res) => {
+    const { id } = parse(redemptionIdParamSchema, req.params);
+    const updated = await loyaltyRewardsService.fulfilGift(req.auth!.id, id);
+    return ok(res, updated, 'سُجّل تسليم الهدية');
+  }) as RequestHandler,
+
   productFranchises: (async (req, res) => {
-    const productId = String(req.params.id);
+    // المعرّف يُتحقَّق منه عند الحدّ كسائر المسارات: نصٌّ ليس UUID كان يصل
+    // الاستعلام فيرميه PostgreSQL (`22P02`) ويخرج ٥٠٠ بدل ٤٠٠.
+    const { id: productId } = parse(adminProductIdSchema, req.params);
     return ok(res, { franchiseIds: await franchiseRepo.franchiseIdsForProduct(db, productId) });
   }) as RequestHandler,
 };
+
+/**
+ * يحوّل الشكل المسطَّح القادم من الشبكة إلى الاتحاد المميَّز الذي تفهمه
+ * طبقة البيانات. التحويل هنا مرة واحدة بدل تكراره في كل مستدعٍ.
+ */
+function toAudience(
+  body:
+    | { audience: 'all' }
+    | { audience: 'users'; userIds: string[] }
+    | { audience: 'segment'; segment: AudienceSegment; windowDays?: number },
+): Audience {
+  switch (body.audience) {
+    case 'users':
+      return { type: 'users', userIds: body.userIds };
+    case 'segment':
+      return { type: 'segment', segment: body.segment, windowDays: body.windowDays };
+    default:
+      return { type: 'all' };
+  }
+}

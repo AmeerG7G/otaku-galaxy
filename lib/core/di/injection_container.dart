@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:developer';
 
 import 'package:flutter/foundation.dart';
@@ -5,9 +6,13 @@ import 'package:get_it/get_it.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/app_config.dart';
+import '../config/public_pages.dart';
 import '../network/api_client.dart';
+import '../../features/app_update/data/app_version_repository.dart';
+import '../../features/app_update/data/installed_version.dart';
 import '../network/media_url.dart';
 import '../router/app_router.dart';
+import '../tracking/tracking_signals.dart';
 import '../../features/auth/data/datasources/auth_local_storage.dart';
 import '../../features/auth/data/repositories/auth_repository_impl.dart';
 import '../../features/auth/domain/repositories/auth_repository.dart';
@@ -16,10 +21,7 @@ import '../../features/auth/domain/usecases/get_me_usecase.dart';
 import '../../features/auth/domain/usecases/login_usecase.dart';
 import '../../features/auth/domain/usecases/forgot_password_usecase.dart';
 import '../../features/auth/domain/usecases/register_usecase.dart';
-import '../../features/auth/domain/usecases/reset_password_usecase.dart';
-import '../../features/auth/domain/usecases/send_otp_usecase.dart';
 import '../../features/auth/domain/usecases/update_profile_usecase.dart';
-import '../../features/auth/domain/usecases/verify_otp_usecase.dart';
 import '../../features/auth/presentation/cubit/auth_cubit.dart';
 import '../../features/birthday/data/birthday_storage.dart';
 import '../../features/cart/data/repositories/cart_repository_impl.dart';
@@ -46,6 +48,7 @@ import '../../features/orders/domain/repositories/order_repository.dart';
 import '../../features/orders/domain/usecases/fetch_my_orders_usecase.dart';
 import '../../features/orders/domain/usecases/fetch_order_details_usecase.dart';
 import '../../features/orders/domain/usecases/place_order_usecase.dart';
+import '../../features/orders/domain/usecases/fetch_checkout_quote_usecase.dart';
 import '../../features/products/data/repositories/governorate_repository_impl.dart';
 import '../../features/products/data/repositories/product_repository_impl.dart';
 import '../../features/products/domain/repositories/governorate_repository.dart';
@@ -60,6 +63,12 @@ import '../../features/products/domain/usecases/search_products_usecase.dart';
 import '../../features/settings/presentation/cubit/locale_cubit.dart';
 import '../../features/settings/presentation/cubit/theme_cubit.dart';
 import '../../features/settings/data/store_settings_repository.dart';
+import '../../features/notifications/data/push_registrar.dart';
+import '../../features/notifications/data/push_token_repository.dart';
+import '../../features/notifications/push/firebase_push.dart';
+import '../../features/notifications/push/push_tap_router.dart';
+import '../../features/restock/data/restock_repository.dart';
+import '../../features/settings/data/notification_prefs_repository.dart';
 import '../../features/settings/data/notification_prefs_storage.dart';
 import '../../features/settings/data/personalize_storage.dart';
 import '../../features/search/data/search_history_storage.dart';
@@ -77,6 +86,8 @@ Future<void> init({AppConfig? config}) async {
     // أصل الوسائط يتبع نفس عنوان الـAPI للبيئة الحالية، فتُحلّ المراجع
     // النسبية (`/uploads/...`) إلى الأصل الذي يراه هذا الجهاز فعلاً.
     configureMediaOrigin(appConfig);
+    // صفحتا الخصوصية وحذف الحساب على موقع البيئة نفسها.
+    PublicPages.configure(appConfig);
 
     // تهيئة الاعتماديات الخارجية (غير المتزامنة).
     await _initExternalDependencies();
@@ -95,6 +106,26 @@ Future<void> init({AppConfig? config}) async {
 
     sl<ThemeCubit>().loadPreference();
     sl<LocaleCubit>().loadPreference();
+
+    // تبديل اللغة من الإعدادات يُدفع إلى الخادم للحساب المسجَّل — وإلّا بقي
+    // عمود `preferred_language` على العربية وبقيت إشعارات الخادم عربيةً.
+    //
+    // [CRITICAL] وما تحمله المكعّبات المشتركة من نصوص خادمية — أسماء منتجات
+    // السلة والمفضلة والتقييمات والمجموعات، تسميات النقاط، الإشعارات — يُعاد
+    // جلبه بلغة الواجهة الجديدة. الشاشات تعيد جلب محتواها بنفسها عبر
+    // `LocaleRefetch`. لا انتظار للمزامنة: الخادم يقرأ `Accept-Language` قبل
+    // العمود، فالجلب صحيح اللغة من أول طلب. الزائر لا يحمل شيئاً من هذه.
+    sl<LocaleCubit>().onLanguageChanged = (_) async {
+      if (sl<AuthCubit>().isLoggedIn) {
+        sl<CartCubit>().load();
+        sl<FavoritesCubit>().load();
+        sl<PointsCubit>().load();
+        sl<NotificationsCubit>().load();
+        sl<ReviewsCubit>().load();
+        sl<CollectionsCubit>().load();
+      }
+      await sl<AuthCubit>().syncPreferredLanguage();
+    };
 
     if (kDebugMode) {
       // [DEBUG]: سجل نجاح التهيئة أثناء التطوير فقط.
@@ -115,10 +146,21 @@ Future<void> init({AppConfig? config}) async {
 /// تهيئة الاعتماديات الخارجية (عمليات غير متزامنة).
 Future<void> _initExternalDependencies() async {
   final sharedPreferences = await SharedPreferences.getInstance();
+
+  // [CRITICAL] تُقرأ النسخة **قبل** بناء `ApiClient` وتُنتظر مرة واحدة.
+  // معترِض الطلبات متزامن فلا يستطيع انتظار قناة المنصّة؛ لو تُركت القراءة
+  // للاحق لخرجت أوائل الطلبات بلا رأس النسخة — وهي بالضبط طلبات الإقلاع.
+  final installedVersion = PackageInfoVersion();
+  try {
+    await installedVersion.version();
+  } catch (_) {
+    // تعذّرت قناة المنصّة: نسخة مجهولة لا تُعلَن ولا تُحجب.
+  }
   final authStorage = AuthLocalStorage();
   await authStorage.load();
   sl
     ..registerLazySingleton<SharedPreferences>(() => sharedPreferences)
+    ..registerLazySingleton<InstalledVersionSource>(() => installedVersion)
     ..registerLazySingleton<AuthLocalStorage>(() => authStorage)
     ..registerLazySingleton<OnboardingStorage>(
       () => OnboardingStorage(sharedPreferences),
@@ -128,7 +170,13 @@ Future<void> _initExternalDependencies() async {
 
 /// تهيئة الاعتماديات الأساسية (المستودعات وحالات الاستخدام).
 void _initCore() {
-  final apiClient = ApiClient(config: sl<AppConfig>());
+  final apiClient = ApiClient(
+    config: sl<AppConfig>(),
+    // قراءة متزامنة من الذاكرة — القيمة مهيّأة في `_initExternal`.
+    appVersionProvider: () => sl<InstalledVersionSource>().cached,
+    // لغة الواجهة مع كل طلب — بها يحسم الخادم المحتوى المترجَم للزائر.
+    languageProvider: () => sl<LocaleCubit>().state.code,
+  );
   // [CRITICAL]: كل مستودع يجب أن يستقبل عميل الـ API المشترك.
   // البناء الافتراضي (`.new` بلا وسائط) كان يُنشئ عميلاً جديداً بلا
   // `tokenProvider`، فتخرج كل الطلبات المحمية بلا ترويسة Authorization
@@ -187,14 +235,59 @@ void _initEngagementFeatures() {
     ..registerLazySingleton<BirthdayStorage>(
       () => BirthdayStorage(api: sl<ApiClient>()),
     )
+    ..registerLazySingleton<AppVersionRepository>(
+      () => AppVersionRepository(
+        sl<ApiClient>(),
+        sl<InstalledVersionSource>(),
+        sl<SharedPreferences>(),
+      ),
+    )
     ..registerLazySingleton<StoreSettingsRepository>(
       () => StoreSettingsRepository(api: sl<ApiClient>()),
+    )
+    // [D3] إشارات القياس التجميعي — مطفأة ما لم يعلن الخادم `tracking.enabled`.
+    ..registerLazySingleton<TrackingSignals>(
+      () => TrackingSignals(
+        api: sl<ApiClient>(),
+        settings: sl<StoreSettingsRepository>(),
+        signedIn: () => sl<AuthLocalStorage>().isLoggedIn,
+      ),
     )
     ..registerLazySingleton<PersonalizeStorage>(
       () => PersonalizeStorage(sl<SharedPreferences>()),
     )
     ..registerLazySingleton<NotificationPrefsStorage>(
       () => NotificationPrefsStorage(sl<SharedPreferences>()),
+    )
+    // الإشعارات الفورية: FCM إن هيّأه `initPushNotifications` (إعداد
+    // `--dart-define`)، وإلا مصدرٌ غير مضبوط تعمل بقية المنظومة حوله بلا
+    // عطل (انظر `PushTokenSource`). يُحلّ عند أوّل دخول — بعد التهيئة.
+    ..registerLazySingleton<PushTokenSource>(
+      () => pushNotificationsReady
+          ? FirebasePushTokenSource()
+          : const UnconfiguredPushTokenSource(),
+    )
+    ..registerLazySingleton<PushTapRouter>(
+      () => PushTapRouter(
+        (route) => sl<AppRouter>().push(route),
+        onOpened: (id) => unawaited(sl<TrackingSignals>().notificationOpened(id)),
+      ),
+    )
+    ..registerLazySingleton<PushTokenRepository>(
+      () => PushTokenRepository(sl<ApiClient>()),
+    )
+    ..registerLazySingleton<PushRegistrar>(
+      () => PushRegistrar(sl<PushTokenSource>(), sl<PushTokenRepository>()),
+    )
+    ..registerLazySingleton<RestockRepository>(
+      () => RestockRepository(sl<ApiClient>()),
+    )
+    // التفضيلات تُقرأ وتُكتب على الخادم؛ التخزين المحلي ذاكرة عرضٍ فقط.
+    ..registerLazySingleton<NotificationPrefsRepository>(
+      () => NotificationPrefsRepository(
+        sl<ApiClient>(),
+        sl<NotificationPrefsStorage>(),
+      ),
     )
     ..registerLazySingleton<SearchHistoryStorage>(
       () => SearchHistoryStorage(sl<SharedPreferences>()),
@@ -225,17 +318,8 @@ void _initAuthFeature() {
     ..registerLazySingleton<RegisterUsecase>(
       () => RegisterUsecase(sl<AuthRepository>()),
     )
-    ..registerLazySingleton<SendOtpUsecase>(
-      () => SendOtpUsecase(sl<AuthRepository>()),
-    )
     ..registerLazySingleton<ForgotPasswordUsecase>(
       () => ForgotPasswordUsecase(sl<AuthRepository>()),
-    )
-    ..registerLazySingleton<VerifyOtpUsecase>(
-      () => VerifyOtpUsecase(sl<AuthRepository>()),
-    )
-    ..registerLazySingleton<ResetPasswordUsecase>(
-      () => ResetPasswordUsecase(sl<AuthRepository>()),
     )
     ..registerLazySingleton<GetMeUsecase>(
       () => GetMeUsecase(sl<AuthRepository>()),
@@ -253,13 +337,14 @@ void _initAuthFeature() {
         localStorage: sl<AuthLocalStorage>(),
         loginUsecase: sl<LoginUsecase>(),
         registerUsecase: sl<RegisterUsecase>(),
-        sendOtpUsecase: sl<SendOtpUsecase>(),
         forgotPasswordUsecase: sl<ForgotPasswordUsecase>(),
-        verifyOtpUsecase: sl<VerifyOtpUsecase>(),
-        resetPasswordUsecase: sl<ResetPasswordUsecase>(),
         getMeUsecase: sl<GetMeUsecase>(),
         updateProfileUsecase: sl<UpdateProfileUsecase>(),
         changePasswordUsecase: sl<ChangePasswordUsecase>(),
+        languageOf: () => sl<LocaleCubit>().state,
+        // [D3/P5] تغيير كلمة المرور يُبطل أجهزة الحساب على الخادم مع التوكن
+        // القديم؛ هذا الجهاز يعيد تسجيل رمزه بالتوكن الجديد.
+        onSessionRenewed: () => sl<PushRegistrar>().onLogin(),
       ),
     );
 }
@@ -295,6 +380,9 @@ void _initOrdersFeature() {
   sl
     ..registerLazySingleton<PlaceOrderUsecase>(
       () => PlaceOrderUsecase(sl<OrderRepository>()),
+    )
+    ..registerLazySingleton<FetchCheckoutQuoteUsecase>(
+      () => FetchCheckoutQuoteUsecase(sl<OrderRepository>()),
     )
     ..registerLazySingleton<FetchMyOrdersUsecase>(
       () => FetchMyOrdersUsecase(sl<OrderRepository>()),

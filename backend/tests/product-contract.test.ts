@@ -37,7 +37,7 @@ describe('عقد المنتج موحّد عبر كل الواجهات', () => {
   let catalog: Awaited<ReturnType<typeof seedTestCatalog>>;
 
   beforeAll(async () => {
-    await purgeTestUsers('077%');
+    await purgeTestUsers();
     catalog = await seedTestCatalog();
 
     // منتج بعرضٍ كامل: سعر سابق + ترويج توصيل + شارتا عرض/مختار.
@@ -71,7 +71,7 @@ describe('عقد المنتج موحّد عبر كل الواجهات', () => {
   afterAll(async () => {
     await db.query('DELETE FROM favorites WHERE product_id = $1', [productId]);
     await db.query('DELETE FROM products WHERE id = $1', [productId]);
-    await purgeTestUsers('077%');
+    await purgeTestUsers();
   });
 
   /** كل سطح يعيد منتجات، مع كيفية انتزاع منتجنا منه. */

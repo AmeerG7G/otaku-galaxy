@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import '../../../../core/l10n/app_strings.dart';
 
 import '../../../../core/design_system/design_system.dart';
+import '../../../visuals/domain/visual_slot.dart';
+import '../../../visuals/presentation/character_artwork.dart';
 
 /// تركيبات شرائح التعريف الثلاث.
 ///
@@ -87,6 +90,8 @@ class OnboardingSlideText extends StatelessWidget {
     this.titleWidthFactor = 0.86,
     this.bodyWidthFactor = 0.88,
     this.gap = 10,
+    this.titleTranslations = const [],
+    this.bodyTranslations = const [],
   });
 
   final String title;
@@ -96,38 +101,60 @@ class OnboardingSlideText extends StatelessWidget {
   final double bodyWidthFactor;
   final double gap;
 
+  /// ترجمات [title] و[body] بكل اللغات (`AppStrings.across`).
+  ///
+  /// [CRITICAL] (البوّابة ٨، 2026-10-10) العنوان سطرٌ يُصغَّر أولاً والنصّ فقرة،
+  /// وكلاهما يحجز ما تحتاجه أطول ترجماته: نصٌّ كردي أطول كان يطيل الشريحة ٥١
+  /// على ٣٢٠×١٫٣ ويرفع رسمها. بلا ترجمات: كما كان.
+  final List<String> titleTranslations;
+  final List<String> bodyTranslations;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final titleStyle = theme.textTheme.headlineMedium?.copyWith(
+      fontFamily: AppFonts.heading,
+      fontFamilyFallback: AppFonts.headingFallback,
+      fontSize: titleSize,
+      height: 1.3,
+      letterSpacing: -0.6,
+      fontWeight: AppDimens.weightBlack,
+      color: theme.colorScheme.onSurface,
+    );
+    final bodyStyle = theme.textTheme.bodyMedium?.copyWith(
+      fontSize: 14.5,
+      height: 1.85,
+      color: theme.colorScheme.onSurfaceVariant,
+    );
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         FractionallySizedBox(
           widthFactor: titleWidthFactor,
-          child: Text(
-            title,
-            style: theme.textTheme.headlineMedium?.copyWith(
-              fontFamily: 'Tajawal',
-              fontSize: titleSize,
-              height: 1.3,
-              letterSpacing: -0.6,
-              fontWeight: AppDimens.weightBlack,
-              color: theme.colorScheme.onSurface,
-            ),
-          ),
+          child: titleTranslations.isEmpty
+              ? Text(title, style: titleStyle)
+              : BoundedText(
+                  title,
+                  maxLines: 4,
+                  reserveFor: titleTranslations,
+                  alignment: AlignmentDirectional.topStart,
+                  style: titleStyle,
+                ),
         ),
         SizedBox(height: gap),
         FractionallySizedBox(
           widthFactor: bodyWidthFactor,
-          child: Text(
-            body,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontSize: 14.5,
-              height: 1.85,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
+          child: bodyTranslations.isEmpty
+              ? Text(body, style: bodyStyle)
+              : BoundedText(
+                  body,
+                  maxLines: 12,
+                  minScale: 1,
+                  reserveFor: bodyTranslations,
+                  alignment: AlignmentDirectional.topStart,
+                  style: bodyStyle,
+                ),
         ),
       ],
     );
@@ -136,21 +163,26 @@ class OnboardingSlideText extends StatelessWidget {
 
 /// رسم تزييني — يختفي بهدوء إن تعذّر تحميله بدل كسر الشاشة.
 class _Art extends StatelessWidget {
-  const _Art({required this.asset, this.height, this.width});
+  const _Art({
+    required this.slot,
+    this.height,
+    this.width,
+  });
 
-  final String asset;
+  /// موضع هذه الشريحة بعينها — لكل شريحة صورتها الثابتة في `CharacterArt`.
+  final String slot;
+
   final double? height;
   final double? width;
 
   @override
   Widget build(BuildContext context) {
+    // أصلٌ مضمَّن في الحزمة: شاشات الترحيب تسبق أول نداء ناجح، فلا تنتظر شبكة.
     return IgnorePointer(
-      child: Image.asset(
-        asset,
+      child: CharacterArtwork(
+        slot: slot,
         height: height,
         width: width,
-        fit: BoxFit.contain,
-        errorBuilder: (_, _, _) => const SizedBox.shrink(),
       ),
     );
   }
@@ -203,15 +235,15 @@ class OnboardingSlideOne extends StatelessWidget {
               start: -64,
               child: _Glow(
                 size: 270,
-                from: Color(0x33FF3D8F),
-                to: Color(0x297C5CFF),
+                from: Color(0x33F0459B),
+                to: Color(0x298B5CF6),
               ),
             ),
             PositionedDirectional(
               top: 6,
               start: -30,
               child: _Art(
-                asset: 'assets/art/opt/gojo-l.png',
+                slot: VisualSlots.onboardingSlideOne,
                 height: constraints.maxHeight * 0.78,
               ),
             ),
@@ -233,7 +265,7 @@ class OnboardingSlideOne extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'منتجات حصرية',
+                        context.strings('onbExclusiveProducts'),
                         style: theme.textTheme.labelLarge?.copyWith(
                           fontSize: 15,
                           height: 1.35,
@@ -243,7 +275,7 @@ class OnboardingSlideOne extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'حقائب، اكسسوارات، ملابس',
+                        context.strings('onbExclusiveProductsSub'),
                         style: theme.textTheme.bodyMedium?.copyWith(
                           fontSize: 15,
                           height: 1.35,
@@ -277,11 +309,11 @@ class OnboardingSlideOne extends StatelessWidget {
                     end: Alignment.bottomCenter,
                   ),
                 ),
-                child: const OnboardingSlideText(
-                  title: 'أهلاً بك في مجرة الأوتاكو',
-                  body:
-                      'متجر عربي متكامل لعشّاق الأنمي: ملابس، إكسسوارات، حقائب '
-                      'وقرطاسية بتصاميم مختارة.',
+                child: OnboardingSlideText(
+                  title: context.strings('onbWelcomeTitle'),
+                  body: context.strings('onbWelcomeBody'),
+                  titleTranslations: AppStrings.across('onbWelcomeTitle'),
+                  bodyTranslations: AppStrings.across('onbWelcomeBody'),
                   titleSize: 30,
                   titleWidthFactor: 0.88,
                   bodyWidthFactor: 0.9,
@@ -320,8 +352,8 @@ class OnboardingSlideTwo extends StatelessWidget {
               child: Center(
                 child: _Glow(
                   size: 300,
-                  from: const Color(0x337C5CFF),
-                  to: const Color(0x244EA8FF),
+                  from: const Color(0x338B5CF6),
+                  to: const Color(0x244FA3F0),
                 ),
               ),
             ),
@@ -342,15 +374,16 @@ class OnboardingSlideTwo extends StatelessWidget {
             ),
 
             // النصّ أعلى الشريحة.
-            const PositionedDirectional(
+            PositionedDirectional(
               top: 30,
               start: 24,
               end: 24,
               child: OnboardingSlideText(
-                title: 'كل ما يخص عالمك، بمكان واحد',
+                title: context.strings('onbWorldTitle'),
                 body:
-                    'منتجات حصرية ومبتكرة تلبي تطلعات كل أوتاكو يبحث عن التميز '
-                    'والفرادة.',
+                    context.strings('onbWorldBody'),
+                titleTranslations: AppStrings.across('onbWorldTitle'),
+                bodyTranslations: AppStrings.across('onbWorldBody'),
               ),
             ),
 
@@ -363,7 +396,7 @@ class OnboardingSlideTwo extends StatelessWidget {
                 // المصدر يحكم هذا الرسم بالعرض (‎132%) ويترك الارتفاع طبيعياً،
                 // فيملأ أسفل الشريحة ويُقصّ من الأعلى.
                 child: _Art(
-                  asset: 'assets/art/opt/trio-l.png',
+                  slot: VisualSlots.onboardingSlideTwo,
                   width: constraints.maxWidth * 1.32,
                 ),
               ),
@@ -382,8 +415,20 @@ class OnboardingSlideTwo extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // فتحة صورة المنتج.
+                    //
+                    // المرجع يترك هنا فتحةً فارغة برمز صورة (`var(--ph)` مع
+                    // إطار متقطّع)، لأنه تلميحٌ مجرَّد لبطاقة المتجر. بطلبٍ
+                    // من المستخدم وُضعت صورة حقيقية مكان الرمز، مع الإبقاء
+                    // على هندسة المرجع حرفياً: ارتفاع ٥٢، نصف قطر ١٣، وعرضٌ
+                    // يملأ محتوى البطاقة (١١٢ − ٩×٢ = ٩٤).
+                    //
+                    // الأصل **مضمَّن** لا شبكي: شاشات الترحيب تسبق أول نداء
+                    // ناجح، وقد تُفتح بلا إنترنت أصلاً — صورةٌ من الشبكة هنا
+                    // تعني بطاقةً فارغة عند أول تشغيل، وهو نقيض الغرض.
                     Container(
                       height: 52,
+                      width: double.infinity,
                       decoration: BoxDecoration(
                         color: context.themeColors.photoSlot,
                         borderRadius: BorderRadius.circular(13),
@@ -391,18 +436,50 @@ class OnboardingSlideTwo extends StatelessWidget {
                           color: theme.colorScheme.outlineVariant,
                         ),
                       ),
-                      child: Center(
-                        child: Icon(
-                          Icons.image_outlined,
-                          size: 20,
-                          color: context.themeColors.photoSlotInk,
+                      // القصّ على نفس نصف القطر — الصورة تتبع حواف الفتحة
+                      // ولا تتجاوزها.
+                      clipBehavior: Clip.antiAlias,
+                      child: Image.asset(
+                        CharacterArt.onboardingProductPhoto,
+                        // `cover` يملأ الفتحة بلا تشويه نسب الصورة؛ الفتحة
+                        // عريضة (٩٤×٥٢) والأصل أقرب للمربّع، فالقصّ رأسي.
+                        fit: BoxFit.cover,
+                        // القطعة المقصودة (القلادة) في وسط الأصل الرأسي، لا
+                        // أعلاه — المحاذاة العلوية كانت تُظهر الخلفية فوقها
+                        // وتقصّها هي بالذات. (الأصل مختار في الخطوة ٣٠
+                        // بقرارٍ مؤكَّد؛ أُبقي عليه هنا ولم يُستبدل.)
+                        alignment: Alignment.center,
+                        filterQuality: FilterQuality.medium,
+                        // أصلٌ حُذف من الحزمة سهواً يجب أن يترك الفتحة كما
+                        // كانت (خلفية ورمز) لا أن يُسقط الشريحة كلها.
+                        errorBuilder: (_, _, _) => Center(
+                          child: Icon(
+                            Icons.image_outlined,
+                            size: 20,
+                            color: context.themeColors.photoSlotInk,
+                          ),
                         ),
                       ),
                     ),
                     const SizedBox(height: 9),
-                    _Bar(widthFactor: 0.8, color: theme.colorScheme.outlineVariant),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: List.generate(
+                        5,
+                        (i) => const Padding(
+                          padding: EdgeInsets.only(right: 2),
+                          child: Icon(
+                            Icons.star_rounded,
+                            size: 14,
+                            color: AppColors.accent,
+                          ),
+                        ),
+                      ),
+                    ),
                     const SizedBox(height: 6),
-                    const _Bar(widthFactor: 0.44, color: AppColors.secondary),
+                    // أطول من صفّ النجوم الخمس (‎٠٫٥٢‎ كانت أقصر منه) كي
+                    // يمتدّ الفاصل تحتها بصرياً لا نصفها فقط.
+                    const _Bar(widthFactor: 0.92, color: AppColors.secondary),
                   ],
                 ),
               ),
@@ -432,7 +509,7 @@ class OnboardingSlideTwo extends StatelessWidget {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      'منتجات بجودة عالية',
+                      context.strings('onbHighQuality'),
                       style: theme.textTheme.labelSmall?.copyWith(
                         fontSize: 11.5,
                         fontWeight: AppDimens.weightSemiBold,
@@ -531,28 +608,30 @@ class OnboardingSlideThree extends StatelessWidget {
               end: -80,
               child: _Glow(
                 size: 300,
-                from: Color(0x334EA8FF),
-                to: Color(0x297C5CFF),
+                from: Color(0x334FA3F0),
+                to: Color(0x298B5CF6),
               ),
             ),
             PositionedDirectional(
               bottom: -10,
-              end: -30,
+              // ملاصقٌ لليسار الفيزيائي (كان بعيداً عنه ٥٠) وأصغر بمقدار
+              // ٪٢٠ كي يبقى كاملاً داخل الشريحة.
+              end: 0,
               child: _Art(
-                asset: 'assets/art/opt/a-i0.png',
-                height: constraints.maxHeight * 0.70,
+                slot: VisualSlots.onboardingSlideThree,
+                height: constraints.maxHeight * 0.756,
               ),
             ),
 
-            const PositionedDirectional(
+            PositionedDirectional(
               top: 28,
               start: 24,
               end: 24,
               child: OnboardingSlideText(
-                title: 'اطلب اليوم، وادفع عند الاستلام',
-                body:
-                    'توصيل لكل المحافظات، والدفع نقداً عند وصول الطلب '
-                    'لباب البيت.',
+                title: context.strings('onbCodTitle'),
+                body: context.strings('onbCodBody'),
+                titleTranslations: AppStrings.across('onbCodTitle'),
+                bodyTranslations: AppStrings.across('onbCodBody'),
                 titleWidthFactor: 0.84,
                 bodyWidthFactor: 0.76,
               ),
@@ -593,7 +672,7 @@ class OnboardingSlideThree extends StatelessWidget {
                         const SizedBox(width: 9),
                         Expanded(
                           child: Text(
-                            'توصيل لكل المحافظات',
+                            context.strings('deliveryAllGovernorates'),
                             style: theme.textTheme.labelMedium?.copyWith(
                               fontSize: 12,
                               height: 1.35,
@@ -611,7 +690,7 @@ class OnboardingSlideThree extends StatelessWidget {
                     ),
                     const SizedBox(height: 11),
                     Text(
-                      'الدفع عند الاستلام، وتأكيد الطلب عبر واتساب.',
+                      context.strings('onbFastSafeDelivery'),
                       style: theme.textTheme.labelSmall?.copyWith(
                         fontSize: 11.5,
                         height: 1.6,

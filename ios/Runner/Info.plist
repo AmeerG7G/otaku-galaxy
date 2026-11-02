@@ -26,6 +26,10 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>نحتاج الوصول إلى صورك لتختار صورة حسابك أو تُرفق صوراً بتقييمك.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>يستعمل التطبيق الكاميرا فقط حين تختار التقاط صورة لحسابك أو لتقييمك.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

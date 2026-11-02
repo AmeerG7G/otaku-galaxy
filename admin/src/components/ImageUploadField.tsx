@@ -10,11 +10,6 @@ const PLACEHOLDER =
     '<svg xmlns="http://www.w3.org/2000/svg" width="72" height="72"><rect width="72" height="72" fill="#f0f0f0"/><text x="36" y="40" font-size="11" text-anchor="middle" fill="#999">لا صورة</text></svg>',
   )
 
-/** رابط مطلق أو مسار يخدمه الخادم نفسه تحت /uploads. */
-export function isValidImageRef(value: string) {
-  return /^https?:\/\/.+/.test(value) || value.startsWith('/uploads/')
-}
-
 interface ImageUploadFieldProps {
   /** قيمة الحقل — يمرّرها Form.Item تلقائياً. */
   value?: string | null

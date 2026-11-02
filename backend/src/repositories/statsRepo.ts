@@ -6,16 +6,25 @@ export interface DashboardStats {
     total: number;
     byStatus: Record<OrderStatus, number>;
   };
+  /**
+   * إيراد المبيعات (STEP 67، D4) — مجموع المنتجات ناقص خصوماتها (ميلاد + مزيّة)،
+   * **بلا رسوم التوصيل**، لطلبات الأعمال وحدها (`analytics_business_orders`، D2)،
+   * بتعريف التحليلات نفسه فيتطابق الرقمان.
+   */
   revenue: {
-    /** إيراد الطلبات المكتملة فقط — المال المحصَّل فعلاً. */
+    /** طلبات مكتملة — منذ البداية. */
     completed: number;
-    /** قيمة الطلبات الجارية (غير المكتملة وغير المرفوضة). */
+    /** طلبات لم تُحسم بعد (لا مكتملة ولا مرفوضة). */
     inProgress: number;
+    /** مكتملة في الشهر الجاري بتقويم المتجر (يوم التسليم). */
     completedThisMonth: number;
   };
   products: { total: number; active: number; lowStock: number; outOfStock: number };
-  customers: { total: number };
+  customers: { total: number; active: number };
   reviews: { pending: number };
+  /** أعياد الميلاد بتقويم المتجر — «اليوم» سؤال عن الزبون لا عن الخادم. */
+  birthdays: { today: number; upcoming7: number; missing: number };
+  notifications: { total: number; last7Days: number };
 }
 
 /** حدّ «قارب على النفاد» — نفس الحد المستخدم في واجهة لوحة التحكم. */
@@ -26,7 +35,12 @@ export const statsRepo = {
    * كل أرقام لوحة التحكم في استعلام واحد مجمَّع على الخادم — أدق وأخف من
    * جلب كل المنتجات والطلبات للمتصفح ثم عدّها هناك.
    */
-  async dashboard(db: pg.Pool | pg.PoolClient): Promise<DashboardStats> {
+  async dashboard(
+    db: pg.Pool | pg.PoolClient,
+    timezone: string,
+  ): Promise<DashboardStats> {
+    const today = '(now() AT TIME ZONE $2)::date';
+    const nextBirthday = `next_birthday(u.birth_day, u.birth_month, ${today})`;
     const { rows } = await db.query<Record<string, string>>(
       `SELECT
          (SELECT COUNT(*)::text FROM orders) AS orders_total,
@@ -36,20 +50,37 @@ export const statsRepo = {
          (SELECT COUNT(*)::text FROM orders WHERE status = 'OUT_FOR_DELIVERY') AS s_delivery,
          (SELECT COUNT(*)::text FROM orders WHERE status = 'COMPLETED') AS s_completed,
          (SELECT COUNT(*)::text FROM orders WHERE status = 'REJECTED') AS s_rejected,
-         (SELECT COALESCE(SUM(total), 0)::text FROM orders WHERE status = 'COMPLETED') AS rev_completed,
-         (SELECT COALESCE(SUM(total), 0)::text FROM orders
+         -- [D4] الإيراد بلا توصيل، لطلبات الأعمال، وحدود الشهر بتوقيت المتجر.
+         -- كان SUM(total) (يشمل رسوم التوصيل) وشهرُه بمنطقة جلسة القاعدة.
+         (SELECT COALESCE(SUM(products_total - discount), 0)::text FROM analytics_business_orders
+           WHERE status = 'COMPLETED') AS rev_completed,
+         (SELECT COALESCE(SUM(products_total - discount), 0)::text FROM analytics_business_orders
            WHERE status NOT IN ('COMPLETED', 'REJECTED')) AS rev_in_progress,
-         (SELECT COALESCE(SUM(total), 0)::text FROM orders
+         (SELECT COALESCE(SUM(products_total - discount), 0)::text FROM analytics_business_orders
            WHERE status = 'COMPLETED'
-             AND created_at >= date_trunc('month', now())) AS rev_month,
+             AND delivered_at >= date_trunc('month', now() AT TIME ZONE $2) AT TIME ZONE $2) AS rev_month,
          (SELECT COUNT(*)::text FROM products) AS products_total,
          (SELECT COUNT(*)::text FROM products WHERE is_active = TRUE) AS products_active,
          (SELECT COUNT(*)::text FROM products
            WHERE is_active = TRUE AND stock > 0 AND stock <= $1) AS products_low,
          (SELECT COUNT(*)::text FROM products WHERE is_active = TRUE AND stock = 0) AS products_out,
-         (SELECT COUNT(*)::text FROM users WHERE role = 'customer') AS customers_total,
-         (SELECT COUNT(*)::text FROM reviews WHERE status = 'pending') AS reviews_pending`,
-      [LOW_STOCK_THRESHOLD],
+         -- الزبائن: حساباتٌ مفعَّلة غير داخلية — لا طلبات تسجيلٍ معلَّقة.
+         (SELECT COUNT(*)::text FROM analytics_business_customers) AS customers_total,
+         (SELECT COUNT(*)::text FROM analytics_business_customers WHERE is_active = TRUE) AS customers_active,
+         (SELECT COUNT(*)::text FROM reviews WHERE status = 'pending') AS reviews_pending,
+         (SELECT COUNT(*)::text FROM users u
+           WHERE u.role = 'customer' AND u.birth_day IS NOT NULL
+             AND ${nextBirthday} = ${today}) AS birthdays_today,
+         (SELECT COUNT(*)::text FROM users u
+           WHERE u.role = 'customer' AND u.birth_day IS NOT NULL
+             AND ${nextBirthday} BETWEEN ${today} AND ${today} + interval '7 days')
+           AS birthdays_upcoming,
+         (SELECT COUNT(*)::text FROM users u
+           WHERE u.role = 'customer' AND u.birth_day IS NULL) AS birthdays_missing,
+         (SELECT COUNT(*)::text FROM notifications) AS notifications_total,
+         (SELECT COUNT(*)::text FROM notifications
+           WHERE created_at >= now() - interval '7 days') AS notifications_week`,
+      [LOW_STOCK_THRESHOLD, timezone],
     );
 
     const row = rows[0]!;
@@ -78,8 +109,20 @@ export const statsRepo = {
         lowStock: n('products_low'),
         outOfStock: n('products_out'),
       },
-      customers: { total: n('customers_total') },
+      customers: {
+        total: n('customers_total'),
+        active: n('customers_active'),
+      },
       reviews: { pending: n('reviews_pending') },
+      birthdays: {
+        today: n('birthdays_today'),
+        upcoming7: n('birthdays_upcoming'),
+        missing: n('birthdays_missing'),
+      },
+      notifications: {
+        total: n('notifications_total'),
+        last7Days: n('notifications_week'),
+      },
     };
   },
 
@@ -89,7 +132,7 @@ export const statsRepo = {
       id: string;
       name: string;
       stock: number;
-      price: string;
+      price: string | null;
       image_url: string | null;
     }>(
       `SELECT p.id, p.name, p.stock, p.price,
@@ -105,7 +148,8 @@ export const statsRepo = {
       id: row.id,
       name: row.name,
       stock: row.stock,
-      price: Number(row.price),
+      // `null` = لم يُعلن سعره بعد (084) — لا صفر.
+      price: row.price === null ? null : Number(row.price),
       imageUrl: row.image_url,
     }));
   },

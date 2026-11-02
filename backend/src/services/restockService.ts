@@ -1,0 +1,342 @@
+import type pg from 'pg';
+import { pickProductName, type AppLocale, type ProductNames } from '../utils/locale.js';
+import { userRepo } from '../repositories/userRepo.js';
+import { PARAM_TEMPLATES } from '../domain/notificationTemplates.js';
+import { db, withTransaction } from '../database/pool.js';
+import { adminEvents } from './adminEvents.js';
+import { productRepo } from '../repositories/catalogRepo.js';
+import { notificationRepo } from '../repositories/notificationsRepo.js';
+import { restockRepo } from '../repositories/restockRepo.js';
+import { config } from '../config/index.js';
+import { Errors } from '../utils/errors.js';
+
+/**
+ * «أخبرني عند توفره» — منطق الاشتراك والإعلام.
+ *
+ * المسارات كلها تعمل على صاحب الجلسة ([requireAuthentication] أعلنها في
+ * التوجيه)، فلا ملكية لتسجيلها هنا. الإشعار عند عودة التوفر يجري داخل
+ * معاملة تحديث المنتج نفسها: إمّا أن يُسجَّل المخزون الجديد مع إشعاراته
+ * وفراغ اشتراكاته أو لا يُسجَّل شيء.
+ */
+export const restockService = {
+  /** اشتراك بمنتج نافد المخزون — مكرَّر آمن وقابل للتكرار.
+   *
+   * الاشتراك يعني «نبّهني عند عودة المخزون»؛ لذلك يُرفض على المنتج المتوفر
+   * لأن الحاجة لم تنشأ أصلاً — طلبٌ بلا معنى يتحول إلى خطأ واضح لا صمت.
+   */
+  async subscribe(userId: string, productId: string) {
+    return withTransaction(async (tx) => {
+      // [CRITICAL] «متوفر؟» يُقرأ بعد `FOR SHARE` على صفّ المنتج. قراءةٌ بلا قفل
+      // كانت تسابق عودة المخزون: حفظ المسؤول (`FOR UPDATE`) أو رفضُ طلبٍ مقبول
+      // (`UPDATE` = NO KEY UPDATE، لا يحجب المفتاح الأجنبي للاشتراك) يُرجع
+      // القطعة ويستهلك المشتركين، والاشتراك الذي قرأ صفراً قبل التزامه يُدرج
+      // بعده — فيبقى على منتجٍ متوفر بلا إشعار، أو يمسحه `clearForProduct` بلا
+      // إشعار (CA-17a، STEP 57). `FOR SHARE` يتعارض مع القفلين كليهما: الاشتراك
+      // ينتظر، ثم يرى المخزون العائد فيُرفض بـ`PRODUCT_IN_STOCK` كما لو وصل بعده.
+      await tx.query('SELECT id FROM products WHERE id = $1 FOR SHARE', [productId]);
+      const product = await productRepo.findById(tx, productId);
+      if (!product) throw Errors.notFound('المنتج غير موجود');
+
+      if (Number(product.stock) > 0) {
+        throw Errors.conflict(
+          'المنتج متوفر حالياً — لا حاجة لإشعار عند توفره',
+          'PRODUCT_IN_STOCK',
+        );
+      }
+
+      const result = await restockRepo.subscribe(tx, userId, productId);
+
+      // تنبيه المسؤول باشتراكٍ **جديد** — الضغط المكرّر لا يرنّ هاتفه ثانيةً.
+      if (!result.alreadySubscribed) {
+        await adminEvents.restockRequest(tx, { id: productId, name: product.nameAr });
+      }
+
+      // موعدٌ محدَّد سلفاً: الزبون الذي اشترك الآن يستحق معرفته فوراً، لا
+      // انتظار دورة جدولة تخبره بما هو مكتوب في القاعدة أصلاً.
+      //
+      // [CRITICAL] مشروط بـ`!alreadySubscribed`. الضغط المتكرّر على الزرّ —
+      // أو إعادة إرسال الطلب بعد انقطاع شبكة — يصل الخادمَ طلباتٍ حقيقية،
+      // وإشعارٌ لكل واحدة منها إزعاجٌ لا خدمة. الاشتراك الجديد وحده يُشعر.
+      if (!result.alreadySubscribed && product.restockAt) {
+        await notifyExpected(tx, {
+          userIds: [userId],
+          productId,
+          productNames: { ar: product.nameAr, ckb: product.nameCkb },
+          restockAt: product.restockAt,
+          updated: false,
+        });
+      }
+
+      return {
+        subscribed: true,
+        alreadySubscribed: result.alreadySubscribed,
+        restockAt: product.restockAt,
+      };
+    });
+  },
+
+  async unsubscribe(userId: string, productId: string) {
+    const removed = await restockRepo.unsubscribe(db, userId, productId);
+    return { subscribed: false, wasSubscribed: removed };
+  },
+
+  async mine(userId: string) {
+    return restockRepo.listMine(db, userId);
+  },
+
+  // ═══ اللون (088، STEP 76 D3) ═══
+
+  /**
+   * اشتراك بلونٍ بعينه — مكرَّر آمن.
+   *
+   * [CRITICAL] «متاح؟» يُقرأ بعد `FOR SHARE` على صفّ اللون — الحارس نفسه الذي
+   * يحرس اشتراك المنتج (CA-17a): حفظ المسؤول ورفضُ طلبٍ مقبول يكتبان مخزون
+   * اللون بـ`UPDATE` (قفل صفّ يتعارض مع `FOR SHARE`)، فإمّا أن ينتظر الاشتراك
+   * ثم يرى اللون عائداً فيُرفض، وإمّا أن ينتظر الحفظ ثم يجد الاشتراك فيُبلّغه.
+   *
+   * لا إشعار «الموعد المتوقَّع» هنا: الموعد في القاعدة للمنتج كله لا للون.
+   */
+  async subscribeVariant(userId: string, productId: string, variantId: string) {
+    return withTransaction(async (tx) => {
+      const { rows } = await tx.query<{
+        product_id: string;
+        variant_active: boolean;
+        stock: number;
+        product_active: boolean;
+        product_name: string;
+        color_name: string;
+      }>(
+        `SELECT v.product_id, v.is_active AS variant_active, v.stock,
+                p.is_active AS product_active, p.name AS product_name, v.color_name
+           FROM product_variants v JOIN products p ON p.id = v.product_id
+          WHERE v.id = $1
+          FOR SHARE OF v`,
+        [variantId],
+      );
+      const variant = rows[0];
+      // لونٌ من منتجٍ آخر يُعامل كلونٍ غير موجود — لا يُكشف لمن هو.
+      if (!variant || variant.product_id !== productId || !variant.product_active) {
+        throw Errors.notFound('اللون المختار غير موجود لهذا المنتج');
+      }
+      // لونٌ موقوف لا يُعرض للزبون ولا يُنتظر.
+      if (!variant.variant_active) {
+        throw Errors.notFound('اللون المختار غير موجود لهذا المنتج');
+      }
+      if (Number(variant.stock) > 0) {
+        throw Errors.conflict('هذا اللون متوفر حالياً — لا حاجة لإشعار عند توفره', 'VARIANT_IN_STOCK');
+      }
+
+      const result = await restockRepo.subscribeVariant(tx, userId, productId, variantId);
+      if (!result.alreadySubscribed) {
+        await adminEvents.restockRequest(tx, {
+          id: productId,
+          name: `${variant.product_name} — ${variant.color_name}`,
+        });
+      }
+      return { subscribed: true, alreadySubscribed: result.alreadySubscribed, variantId };
+    });
+  },
+
+  async unsubscribeVariant(userId: string, productId: string, variantId: string) {
+    const removed = await restockRepo.unsubscribeVariant(db, userId, productId, variantId);
+    return { subscribed: false, wasSubscribed: removed, variantId };
+  },
+
+  async mineVariants(userId: string) {
+    return restockRepo.listMineVariants(db, userId);
+  },
+
+  /** حالة الزبون على منتج — تُرفق بقراءة المنتج له وحده (`viewer`). */
+  async viewerState(userId: string, productId: string) {
+    return restockRepo.viewerState(db, userId, productId);
+  },
+
+  /**
+   * ألوانٌ صارت متاحة — **أيّاً كان المسار** (حفظ المسؤول، رفضُ طلبٍ مقبول،
+   * إعلان السعر، إعادة تفعيل اللون أو المنتج).
+   *
+   * يُستدعى داخل معاملة كل مسارٍ يغيّر مخزون الألوان أو حالتها، بعد الكتابة.
+   * يستهلك اشتراكات الألوان المتاحة ويكتب لكل مشترك إشعار `backInStock` باسم
+   * المنتج واللون بلغته، ولا يمسّ اشتراكات المنتج كله.
+   */
+  async variantsReturned(
+    tx: pg.PoolClient,
+    productId: string,
+    productNames: ProductNames,
+  ): Promise<number> {
+    const consumed = await restockRepo.consumeAvailableVariants(tx, productId);
+    if (consumed.length === 0) return 0;
+
+    const byLocale = await userRepo.groupIdsByLocale(tx, [...new Set(consumed.map((row) => row.userId))]);
+    let created = 0;
+    for (const [locale, ids] of byLocale) {
+      const wanted = new Set(ids);
+      for (const row of consumed) {
+        if (!wanted.has(row.userId)) continue;
+        const colour = locale === 'ckb' ? (row.colorNameCkb ?? row.colorNameAr) : row.colorNameAr;
+        created += await notificationRepo.createMany(tx, {
+          userIds: [row.userId],
+          type: 'backInStock',
+          ...PARAM_TEMPLATES.backInStock[locale](`${pickProductName(productNames, locale)} — ${colour}`),
+          productId,
+        });
+      }
+    }
+    return created;
+  },
+
+  /** طلب التوفر بالألوان من وجهة الإدارة. */
+  async adminVariantDemand() {
+    return restockRepo.adminVariantDemand(db);
+  },
+
+  /** طلبات إعادة التوفر من وجهة الإدارة. */
+  async adminDemand() {
+    return restockRepo.adminDemand(db);
+  },
+
+  /**
+   * إعلام المشتركين بموعد التوفر المتوقَّع بعد ضبطه أو تعديله.
+   *
+   * تُستدعى من مسار تعديل المنتج داخل معاملته، بعد أن يثبت أن الموعد
+   * **تغيّر فعلاً** — لا مع كل حفظ. القرار هناك لأنه يحتاج القيمة السابقة.
+   *
+   * تعيد عدد الإشعارات المكتوبة. صفرٌ يعني «لا مشترك ينتظر» لا فشلاً:
+   * ضبط موعدٍ لمنتج لا ينتظره أحد عملية مشروعة بلا أثر.
+   *
+   * [CRITICAL] لا تُفرّغ الاشتراكات. إشعار الموعد المتوقَّع ليس إشعار
+   * التوفر: الزبون ما زال ينتظر، واشتراكه يجب أن يبقى ليصله `backInStock`
+   * حين يعود المنتج فعلاً — وليصله تعديلُ الموعد إن تغيّر ثانيةً.
+   */
+  async notifyExpectedRestock(
+    tx: pg.PoolClient,
+    input: {
+      productId: string;
+      /** الاسم بلغتيه — كل مشترك يقرؤه بلغته (066). */
+      productNames: ProductNames;
+      restockAt: string;
+      /** هل هذا تعديل لموعد أُعلن سابقاً؟ يغيّر النصّ لا التصنيف. */
+      updated: boolean;
+    },
+  ): Promise<number> {
+    const userIds = await restockRepo.subscriberIds(tx, input.productId);
+    if (userIds.length === 0) return 0;
+    return notifyExpected(tx, { ...input, userIds });
+  },
+
+  /**
+   * عودة المخزون من صفر إلى ما فوق: إنشاء إشعارات `backInStock` لكل
+   * المشتركين وفراغ الاشتراكات — داخل معاملة المنتج نفسها.
+   *
+   * [TRUTH] هذا يُنشئ **سجلات إشعار داخل التطبيق** فقط؛ لا push ولا أجهزة.
+   * الرقم المعاد هو عدد السجلات المكتوبة، ويُحذف الاشتراك بعدها فوراً حتى
+   * لا يتكرر الإشعار للطلب نفسه في كل تحديث لاحق.
+   */
+  async notifyRestocked(
+    tx: pg.PoolClient,
+    productId: string,
+    productNames: ProductNames,
+  ): Promise<number> {
+    const userIds = await restockRepo.subscriberIds(tx, productId);
+    if (userIds.length === 0) return 0;
+
+    // مشتركو المنتج قد يختلفون لغةً — إرسالٌ لكل لغة على حدة.
+    const byLocale = await userRepo.groupIdsByLocale(tx, userIds);
+    let created = 0;
+    for (const [locale, ids] of byLocale) {
+      created += await notificationRepo.createMany(tx, {
+        userIds: ids,
+        type: 'backInStock',
+        // [I18N] اسم المنتج بلغة المستلم لا بالعربية وحدها (066).
+        ...PARAM_TEMPLATES.backInStock[locale](pickProductName(productNames, locale)),
+        productId,
+      });
+    }
+    // الإشعار الواحد يستهلِك الاشتراك: لا تنبيه مكرّر للطلب نفسه.
+    await restockRepo.clearForProduct(tx, productId);
+    return created;
+  },
+
+  /**
+   * المخزون عاد من صفر إلى ما فوق — **أيّاً كان المسار** (§42.5).
+   *
+   * [CRITICAL] العقد معرَّفٌ على انتقال المخزون لا على شاشةٍ بعينها. مساران
+   * يُعيدانه: حفظُ المسؤول، ورفضُ طلبٍ مقبول يُرجع ما استُهلك
+   * (`releaseStockOnRejection`). كان الثاني يُرجع القطعة بصمت: المشترك لا
+   * يُبلَّغ، واشتراكه يبقى على منتجٍ متوفر فيختفي من «طلبات التوفر» في
+   * اللوحة، والموعد المتوقَّع يبقى — ثم يعود «متوقَّع توفره يوم كذا» لحظةَ
+   * تُباع القطعة ثانيةً. تعريفٌ واحد يُستدعى من المسارين داخل معاملة كلٍّ منهما.
+   */
+  async stockReturned(
+    tx: pg.PoolClient,
+    productId: string,
+    productNames: ProductNames,
+  ): Promise<number> {
+    // [CRITICAL] «قريباً — السعر يُعلن لاحقاً» (084): منتجٌ بلا سعر لا يُشترى،
+    // والتطبيق المثبَّت لا يراه أصلاً. «عاد للتوفر» عنه وعدٌ كاذب يستهلك
+    // الاشتراك فلا يُبلَّغ أحدٌ حين يُعلن السعر. التبليغ يُؤجَّل والاشتراكات
+    // تبقى؛ إعلان السعر على مخزونٍ موجود يستدعي هذا من جديد
+    // (`adminService.updateProduct`).
+    const { rows } = await tx.query<{ priced: boolean }>(
+      'SELECT price IS NOT NULL AS priced FROM products WHERE id = $1',
+      [productId],
+    );
+    if (rows[0]?.priced !== true) return 0;
+    const created = await this.notifyRestocked(tx, productId, productNames);
+    // الموعد المتوقَّع تحقّق، فلا معنى لبقائه.
+    await tx.query('UPDATE products SET restock_at = NULL WHERE id = $1', [productId]);
+    return created;
+  },
+};
+
+/**
+ * صياغة موعد التوفر رقمياً `YYYY-MM-DD` — «2026-09-15» في اللغتين.
+ *
+ * [CRITICAL] (STEP 77، طلب المالك 2026-10-31) بلا اسم شهر، ونفس صياغة
+ * التطبيق والمتجر. اليوم بمنطقة المتجر الزمنية لا بـUTC: موعدٌ ضُبط في
+ * العاشرة مساءً ببغداد يقع في اليوم التالي بتوقيت UTC، فيقرأ الزبون يوماً
+ * غير الذي قصده المسؤول. `en-US` يولّد الأرقام غربيةً دائماً.
+ */
+export function formatExpectedRestockDate(iso: string): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: config.storeTimezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(iso));
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === type)?.value ?? '';
+  return `${part('year')}-${part('month')}-${part('day')}`;
+}
+
+/**
+ * كتابة إشعارات الموعد المتوقَّع.
+ *
+ * نصّان لا نوعان: «متوقَّع» و«تعديل الموعد» حدثان يفهمهما الزبون من الجملة،
+ * ويفتحان المنتج نفسه عند الضغط — فلا داعي لتصنيفين في القاعدة.
+ */
+async function notifyExpected(
+  tx: pg.PoolClient,
+  input: {
+    userIds: string[];
+    productId: string;
+    productNames: ProductNames;
+    restockAt: string;
+    updated: boolean;
+  },
+): Promise<number> {
+  const byLocale = await userRepo.groupIdsByLocale(tx, input.userIds);
+  let created = 0;
+  for (const [locale, ids] of byLocale) {
+    const when = formatExpectedRestockDate(input.restockAt);
+    created += await notificationRepo.createMany(tx, {
+      userIds: ids,
+      type: 'restockScheduled',
+      ...PARAM_TEMPLATES[input.updated ? 'restockRescheduled' : 'restockScheduled'][
+        locale
+      ](pickProductName(input.productNames, locale), when),
+      productId: input.productId,
+    });
+  }
+  return created;
+}

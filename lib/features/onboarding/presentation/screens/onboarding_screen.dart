@@ -1,13 +1,16 @@
 import 'package:auto_route/auto_route.dart';
+import '../../../../core/l10n/app_strings.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/design_system/design_system.dart';
 import '../../../../core/di/injection_container.dart';
 import '../../../../core/router/app_router.dart';
+import '../../../settings/data/personalize_storage.dart';
 import '../../data/onboarding_storage.dart';
 import '../widgets/onboarding_slides.dart';
 
-const _ctas = ['يلا نبدأ', 'كمّل', 'ابدأ التسوق'];
+/// مفاتيحُ لا نصوص: القائمة ثابتة على مستوى الملف فلا سياق لها.
+const _ctaKeys = ['ctaLetsStart', 'ctaContinue', 'startShopping'];
 
 /// غسلة لونية خلف كل شريحة — مركزها ولونها من `ob.wash` في مصدر التصميم.
 const _washes = [
@@ -56,23 +59,22 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     super.dispose();
   }
 
+  /// إنهاء التعريف — ثم اختيار اللغة والمظهر مرة واحدة قبل المتجر.
+  ///
+  /// [CRITICAL] الزائر يرى شاشة التخصيص (العربية / كوردي) هنا لا في شاشة
+  /// الدخول وحدها: كانت هذه الدالة تدخل المتجر مباشرةً، فلا يقع اختيار
+  /// اللغة إلا على من فتح «تسجيل الدخول» ثم «تصفّح كزائر». نفس القاعدة التي
+  /// تطبّقها شاشة الدخول: مرة واحدة (`PersonalizeStorage`)، ثم الإعدادات.
   Future<void> _finish() async {
     if (_finishing) return;
     _finishing = true;
     await sl<OnboardingStorage>().markSeen();
     if (!mounted) return;
-    await context.router.replace(const MainNavigationRoute());
-  }
-
-  /// إنهاء التعريف ثم فتح شاشة الدخول فوقها مباشرة (زر «لدي حساب»).
-  Future<void> _finishThenLogin() async {
-    if (_finishing) return;
-    _finishing = true;
-    await sl<OnboardingStorage>().markSeen();
-    if (!mounted) return;
-    await context.router.replace(const MainNavigationRoute());
-    if (!mounted) return;
-    await context.router.push(const LoginRoute());
+    await context.router.replace(
+      sl<PersonalizeStorage>().isDone
+          ? const MainNavigationRoute()
+          : const PersonalizeRoute(),
+    );
   }
 
   void _next() {
@@ -152,11 +154,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           const SizedBox(width: 10),
           Flexible(
             child: Text(
-              'مجرة الأوتاكو',
+              context.strings('brandName'),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.titleSmall?.copyWith(
-                fontFamily: 'Tajawal',
+                fontFamily: AppFonts.heading,
+                fontFamilyFallback: AppFonts.headingFallback,
                 fontSize: 14.5,
                 fontWeight: AppDimens.weightExtraBold,
               ),
@@ -167,7 +170,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
-  /// المؤشّرات ثم الإجراء الرئيسي، ورابط «لدي حساب» في الشريحة الأخيرة فقط.
+  /// المؤشّرات ثم الإجراء الرئيسي الوحيد. الشريحة الأخيرة فيها زر
+  /// «ابدأ التسوق» فقط يدخل المتجر مباشرة (تصفّح كزائر) — بلا رابط
+  /// «لدي حساب»: تسجيل الدخول من شاشة الدخول عند الحاجة.
   Widget _buildFooter(ThemeData theme) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 6, 24, 30),
@@ -195,7 +200,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           ),
           const SizedBox(height: 16),
           AnimePrimaryButton(
-            label: _ctas[_index],
+            label: context.strings(_ctaKeys[_index]),
             onPressed: _next,
             height: AppDimens.buttonHeightXl,
             borderRadius: AppDimens.radiusMd,
@@ -203,22 +208,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             // اليسار الفيزيائي وبنفسجي على اليمين. رمز التطبيق العام
             // معكوس عن هذا، فنمرّر الاتجاه الصحيح لهذه الشاشة.
             gradient: AppColors.ctaGradient,
-          ),
-          const SizedBox(height: 16),
-          // يبقى شاغلاً مساحته في كل الشرائح (كما في المصدر) لكنه غير مرئي
-          // ولا يستقبل نقرات إلا في الشريحة الأخيرة.
-          IgnorePointer(
-            ignoring: !_isLast,
-            child: AnimatedOpacity(
-              duration: AppDimens.durationNormal,
-              opacity: _isLast ? 1 : 0,
-              child: Center(
-                child: AnimeTextButton(
-                  label: 'لدي حساب — تسجيل الدخول',
-                  onPressed: _finishThenLogin,
-                ),
-              ),
-            ),
           ),
         ],
       ),

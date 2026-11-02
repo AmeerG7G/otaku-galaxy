@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../core/l10n/app_strings.dart';
 
 import '../../../../core/design_system/design_system.dart';
 import '../../../../core/utils/formatters.dart';
@@ -46,7 +47,8 @@ class _DeliveryConfirmationBody extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // العنوان والرسم جنباً إلى جنب كما في المرجع.
+          // العنوان بعرض الورقة. كان بجانبه رسم شخصية كما في المرجع (الصورة
+          // 22)، وأُزيل مع الصورة (2026-09-28).
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -55,17 +57,28 @@ class _DeliveryConfirmationBody extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      'هل استلمت طلبك؟',
+                    // [CRITICAL] (البوّابة ٨، 2026-10-10) السؤال سطرٌ يُصغَّر أولاً
+                    // والتوضيح فقرة، وكلاهما يحجز أطول ترجماته: الكردية أطول
+                    // بسطر على ٣٢٠×١٫٣ فكانت أزرار الورقة تنزل.
+                    BoundedText(
+                      context.strings('receivedOrderQuestion'),
+                      maxLines: 3,
+                      reserveFor: AppStrings.across('receivedOrderQuestion'),
+                      alignment: AlignmentDirectional.topStart,
                       style: theme.textTheme.titleLarge?.copyWith(
-                        fontFamily: 'Tajawal',
+                        fontFamily: AppFonts.heading,
+                        fontFamilyFallback: AppFonts.headingFallback,
                         fontWeight: AppDimens.weightBlack,
                         fontSize: 20,
                       ),
                     ),
                     const SizedBox(height: 7),
-                    Text(
-                      'نريد التأكد من وصول طلبك إليك',
+                    BoundedText(
+                      context.strings('receivedOrderNote'),
+                      maxLines: 12,
+                      minScale: 1,
+                      reserveFor: AppStrings.across('receivedOrderNote'),
+                      alignment: AlignmentDirectional.topStart,
                       style: theme.textTheme.bodySmall?.copyWith(
                         fontSize: 12.5,
                         height: 1.6,
@@ -73,14 +86,6 @@ class _DeliveryConfirmationBody extends StatelessWidget {
                       ),
                     ),
                   ],
-                ),
-              ),
-              const SizedBox(width: 10),
-              IgnorePointer(
-                child: Image.asset(
-                  'assets/art/opt/a-i6.png',
-                  width: 74,
-                  errorBuilder: (_, _, _) => const SizedBox(width: 74),
                 ),
               ),
             ],
@@ -101,7 +106,7 @@ class _DeliveryConfirmationBody extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    'قيد التوصيل',
+                    context.strings('statusDelivering'),
                     style: theme.textTheme.bodyMedium?.copyWith(
                       fontSize: 13.5,
                       fontWeight: AppDimens.weightBold,
@@ -110,13 +115,14 @@ class _DeliveryConfirmationBody extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  formatPrice(order.total),
+                  formatPrice(context, order.total),
                   textDirection: TextDirection.ltr,
                   style: theme.textTheme.titleSmall?.copyWith(
-                    fontFamily: 'Tajawal',
+                    fontFamily: AppFonts.heading,
+                    fontFamilyFallback: AppFonts.headingFallback,
                     fontWeight: AppDimens.weightExtraBold,
                     fontSize: 14.5,
-                    color: colors.error,
+                    color: colors.errorText,
                   ),
                 ),
               ],
@@ -126,18 +132,16 @@ class _DeliveryConfirmationBody extends StatelessWidget {
           const SizedBox(height: 18),
 
           AnimePrimaryButton(
-            label: 'نعم، استلمت الطلب',
+            label: context.strings('yesIReceived'),
             height: AppDimens.buttonHeightXl,
-            onPressed: () => Navigator.of(
-              context,
-            ).pop(DeliveryConfirmationChoice.received),
+            onPressed: () =>
+                Navigator.of(context).pop(DeliveryConfirmationChoice.received),
           ),
           const SizedBox(height: 10),
           AnimeOutlinedButton(
-            label: 'لم أستلمه بعد',
-            onPressed: () => Navigator.of(
-              context,
-            ).pop(DeliveryConfirmationChoice.notYet),
+            label: context.strings('notReceivedYet'),
+            onPressed: () =>
+                Navigator.of(context).pop(DeliveryConfirmationChoice.notYet),
           ),
         ],
       ),

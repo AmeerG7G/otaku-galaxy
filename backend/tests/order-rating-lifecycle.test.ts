@@ -4,7 +4,6 @@ import { dispatchDueRatingReminders } from '../src/jobs/ratingReminderJob.js';
 import {
   api,
   createAdminUser,
-  fastForwardRatingWindow,
   registerAndLogin,
   registerUploadedPhoto,
   seedTestCatalog,
@@ -16,6 +15,26 @@ import {
  * الغرض إثبات أن الحالة الحقيقية في قاعدة البيانات هي المرجع في كل خطوة —
  * لا حالة محلية في التطبيق ولا مؤقّت في الواجهة.
  */
+/**
+ * يُزحزح موعد **تذكير** التقييم إلى الماضي فيصير مستحقاً الآن.
+ *
+ * حلّ محل `fastForwardRatingWindow` المشتركة: تلك كانت تفتح التقييم، وقد صار
+ * يُفتح بتأكيد الاستلام بلا انتظار. ما بقي يحتاج زحزحة هو جدولة الإشعار.
+ */
+async function fastForwardReminder(orderId: string, hours = 25) {
+  const { rowCount } = await db.query(
+    `UPDATE orders
+        SET dispatched_at = dispatched_at - make_interval(hours => $2),
+            delivered_at = delivered_at - make_interval(hours => $2),
+            rating_reminder_at = rating_reminder_at - make_interval(hours => $2)
+      WHERE id = $1 AND dispatched_at IS NOT NULL`,
+    [orderId, hours],
+  );
+  if ((rowCount ?? 0) === 0) {
+    throw new Error(`fastForwardReminder: الطلب ${orderId} لم يخرج للتوصيل بعد`);
+  }
+}
+
 describe('order → delivery → rating lifecycle', () => {
   let catalog: Awaited<ReturnType<typeof seedTestCatalog>>;
   let adminToken: string;
@@ -54,7 +73,9 @@ describe('order → delivery → rating lifecycle', () => {
   }
 
   async function advanceTo(orderId: string, target: string) {
-    const path = ['CONFIRMED', 'PREPARING', 'OUT_FOR_DELIVERY', 'COMPLETED'];
+    // البرنامج الزمني الجديد: الموافقة تُنقِل الطلب مباشرةً إلى «قيد التوصيل»،
+    // فلا مرحلة «تجهيز» بينهما. PREPARING حالة وقديمة يحتفظ بها الأرشيف فقط.
+    const path = ['OUT_FOR_DELIVERY', 'COMPLETED'];
     for (const status of path) {
       await api
         .patch(`/api/admin/orders/${orderId}/status`)
@@ -65,18 +86,24 @@ describe('order → delivery → rating lifecycle', () => {
     }
   }
 
-  // ── نافذة التقييم ──
+  // ── أهلية التقييم: الاستلام يفتحها، بلا مهلة ──
 
-  it('a fresh order carries no delivery or rating window', async () => {
+  it('a fresh order is not reviewable and carries no delivery stamp', async () => {
     const { order } = await placeOrder(catalog.productIds[0]!);
 
     expect(order.status).toBe('PENDING_ADMIN_CONFIRMATION');
     expect(order.deliveredAt).toBeNull();
-    expect(order.ratingAvailableAt).toBeNull();
-    expect(order.ratingAvailable).toBe(false);
+    expect(order.canReview).toBe(false);
   });
 
-  it('delivery opens a rating window in the future, not immediately', async () => {
+  /**
+   * [CRITICAL] الاستلام يفتح التقييم في اللحظة نفسها.
+   *
+   * كان هذا الاختبار يثبّت العكس: «نافذة في المستقبل لا لحظةَ التسليم»،
+   * بمهلة ١٦ ساعة يضبطها المسؤول من اللوحة. صار الزبون الذي أكّد استلامه
+   * يقيّم فوراً — سؤالُه عن رأيه بعد أن ينسى الطلب لا يخدم أحداً.
+   */
+  it('receipt opens the review immediately — no waiting window', async () => {
     const { user, orderId } = await placeOrder(catalog.productIds[0]!);
     await advanceTo(orderId, 'COMPLETED');
 
@@ -87,44 +114,42 @@ describe('order → delivery → rating lifecycle', () => {
 
     expect(detail.body.data.status).toBe('COMPLETED');
     expect(detail.body.data.deliveredAt).not.toBeNull();
-    expect(detail.body.data.ratingAvailableAt).not.toBeNull();
-    // المهلة الافتراضية يوم كامل — التقييم ليس متاحاً لحظة الاستلام.
-    expect(detail.body.data.ratingAvailable).toBe(false);
+    expect(detail.body.data.canReview).toBe(true);
 
-    const delivered = new Date(detail.body.data.deliveredAt as string).getTime();
-    const available = new Date(detail.body.data.ratingAvailableAt as string).getTime();
-    expect(available - delivered).toBeGreaterThanOrEqual(23 * 60 * 60 * 1000);
+    // ولم يعد يُرسل موعد فتحٍ أصلاً — لم يبقَ للمفهوم وجود في العقد.
+    expect(detail.body.data.ratingAvailableAt).toBeUndefined();
+    expect(detail.body.data.ratingAvailable).toBeUndefined();
   });
 
-  it('refuses a rating submitted before the window opens', async () => {
+  it('refuses a review for an order whose receipt was not confirmed', async () => {
     const productId = catalog.productIds[0]!;
     const { user, orderId } = await placeOrder(productId);
-    await advanceTo(orderId, 'COMPLETED');
+    await advanceTo(orderId, 'OUT_FOR_DELIVERY');
 
     const tooEarly = await api
       .post('/api/reviews')
       .set('Authorization', `Bearer ${user.token}`)
       .send({ orderId, productId, rating: 5, comment: 'ممتاز' });
 
-    expect(tooEarly.status).toBe(409);
-    expect(tooEarly.body.error.code).toBe('RATING_NOT_YET_AVAILABLE');
+    expect(tooEarly.status).toBe(400);
+    expect(tooEarly.body.error.code).toBe('ORDER_NOT_COMPLETED');
 
     // ولا يُنشأ أي تقييم في القاعدة.
     const { rows } = await db.query('SELECT 1 FROM reviews WHERE order_id = $1', [orderId]);
     expect(rows).toHaveLength(0);
   });
 
-  it('accepts the rating once the window has opened', async () => {
+  it('accepts the review right after the customer confirms receipt', async () => {
     const productId = catalog.productIds[0]!;
     const { user, orderId } = await placeOrder(productId);
-    await advanceTo(orderId, 'COMPLETED');
-    await fastForwardRatingWindow(orderId);
+    await advanceTo(orderId, 'OUT_FOR_DELIVERY');
 
-    const detail = await api
-      .get(`/api/orders/${orderId}`)
+    const confirmed = await api
+      .post(`/api/orders/${orderId}/confirm-receipt`)
       .set('Authorization', `Bearer ${user.token}`)
       .expect(200);
-    expect(detail.body.data.ratingAvailable).toBe(true);
+    // الردّ نفسه يحمل الأهلية — التطبيق لا يحتاج نداءً ثانياً ليعرف.
+    expect(confirmed.body.data.canReview).toBe(true);
 
     await api
       .post('/api/reviews')
@@ -147,7 +172,7 @@ describe('order → delivery → rating lifecycle', () => {
       .set('Authorization', `Bearer ${user.token}`)
       .expect(200);
     expect(detail.body.data.deliveredAt).toBeNull();
-    expect(detail.body.data.ratingAvailable).toBe(false);
+    expect(detail.body.data.canReview).toBe(false);
 
     const attempt = await api
       .post('/api/reviews')
@@ -157,12 +182,12 @@ describe('order → delivery → rating lifecycle', () => {
     expect(attempt.body.error.code).toBe('ORDER_NOT_COMPLETED');
   });
 
-  it('does not move the rating window when COMPLETED is re-applied', async () => {
+  it('does not move the delivery stamp or reminder when COMPLETED is re-applied', async () => {
     const { orderId } = await placeOrder(catalog.productIds[0]!);
     await advanceTo(orderId, 'COMPLETED');
 
-    const first = await db.query<{ delivered_at: Date; rating_available_at: Date }>(
-      'SELECT delivered_at, rating_available_at FROM orders WHERE id = $1',
+    const first = await db.query<{ delivered_at: Date; rating_reminder_at: Date }>(
+      'SELECT delivered_at, rating_reminder_at FROM orders WHERE id = $1',
       [orderId],
     );
 
@@ -172,17 +197,17 @@ describe('order → delivery → rating lifecycle', () => {
       .send({ status: 'COMPLETED' })
       .expect(200);
 
-    const second = await db.query<{ delivered_at: Date; rating_available_at: Date }>(
-      'SELECT delivered_at, rating_available_at FROM orders WHERE id = $1',
+    const second = await db.query<{ delivered_at: Date; rating_reminder_at: Date }>(
+      'SELECT delivered_at, rating_reminder_at FROM orders WHERE id = $1',
       [orderId],
     );
     expect(second.rows[0]!.delivered_at).toEqual(first.rows[0]!.delivered_at);
-    expect(second.rows[0]!.rating_available_at).toEqual(first.rows[0]!.rating_available_at);
+    expect(second.rows[0]!.rating_reminder_at).toEqual(first.rows[0]!.rating_reminder_at);
   });
 
   // ── جدولة تذكير التقييم ──
 
-  it('sends a rating reminder only when the window is due, and only once', async () => {
+  it('sends a rating reminder only when it is due, and only once', async () => {
     const { user, orderId } = await placeOrder(catalog.productIds[0]!);
     await advanceTo(orderId, 'COMPLETED');
 
@@ -196,12 +221,12 @@ describe('order → delivery → rating lifecycle', () => {
       );
     };
 
-    // لم تحن المهلة بعد: لا تذكير.
+    // لم يحن موعد التذكير بعد: لا إشعار — والتقييم مفتوح أصلاً منذ الاستلام.
     await dispatchDueRatingReminders();
     expect(await unreadBefore()).toHaveLength(0);
 
-    // حان الموعد.
-    await fastForwardRatingWindow(orderId);
+    // حان موعد التذكير.
+    await fastForwardReminder(orderId);
     await dispatchDueRatingReminders();
     expect(await unreadBefore()).toHaveLength(1);
 
@@ -240,8 +265,6 @@ describe('order → delivery → rating lifecycle', () => {
     }[];
     expect(history.map((h) => h.status)).toEqual([
       'PENDING_ADMIN_CONFIRMATION',
-      'CONFIRMED',
-      'PREPARING',
       'OUT_FOR_DELIVERY',
     ]);
     for (const entry of history) {
@@ -257,7 +280,7 @@ describe('order → delivery → rating lifecycle', () => {
     const productId = catalog.productIds[0]!;
     const { user, orderId } = await placeOrder(productId);
     await advanceTo(orderId, 'COMPLETED');
-    await fastForwardRatingWindow(orderId);
+    await fastForwardReminder(orderId);
 
     const forged = await api
       .post('/api/reviews')
@@ -267,7 +290,7 @@ describe('order → delivery → rating lifecycle', () => {
         productId,
         rating: 5,
         comment: 'صورة من خارج المتجر',
-        photoUrl: 'https://attacker.example/tracking-pixel.png',
+        photoUrls: ['https://attacker.example/tracking-pixel.png'],
       });
 
     expect(forged.status).toBe(400);
@@ -278,15 +301,17 @@ describe('order → delivery → rating lifecycle', () => {
     const productId = catalog.productIds[1]!;
     const { user, orderId } = await placeOrder(productId);
     await advanceTo(orderId, 'COMPLETED');
-    await fastForwardRatingWindow(orderId);
+    await fastForwardReminder(orderId);
 
     const photoUrl = await registerUploadedPhoto(user.userId);
     const created = await api
       .post('/api/reviews')
       .set('Authorization', `Bearer ${user.token}`)
-      .send({ orderId, productId, rating: 4, comment: 'حلو', photoUrl })
+      .send({ orderId, productId, rating: 4, comment: 'حلو', photoUrls: [photoUrl] })
       .expect(201);
 
+    expect(created.body.data.photoUrls).toEqual([photoUrl]);
+    // الحقل المشتقّ للعرض يتبع أول صورة.
     expect(created.body.data.photoUrl).toBe(photoUrl);
   });
 
@@ -358,7 +383,7 @@ describe('order → delivery → rating lifecycle', () => {
 
     it('filters by status', async () => {
       const { orderId } = await placeOrder(catalog.productIds[0]!);
-      await advanceTo(orderId, 'CONFIRMED');
+      await advanceTo(orderId, 'OUT_FOR_DELIVERY');
 
       const pending = await api
         .get('/api/admin/orders?status=PENDING_ADMIN_CONFIRMATION&limit=50')
@@ -368,12 +393,12 @@ describe('order → delivery → rating lifecycle', () => {
         (pending.body.data.items as { id: string }[]).some((o) => o.id === orderId),
       ).toBe(false);
 
-      const confirmed = await api
-        .get('/api/admin/orders?status=CONFIRMED&limit=50')
+      const outForDelivery = await api
+        .get('/api/admin/orders?status=OUT_FOR_DELIVERY&limit=50')
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
       expect(
-        (confirmed.body.data.items as { id: string }[]).some((o) => o.id === orderId),
+        (outForDelivery.body.data.items as { id: string }[]).some((o) => o.id === orderId),
       ).toBe(true);
     });
 
@@ -454,7 +479,7 @@ describe('admin-controlled delivery reminder', () => {
       })
       .expect(201);
     const orderId = created.body.data.id as string;
-    for (const status of ['CONFIRMED', 'PREPARING', 'OUT_FOR_DELIVERY', 'COMPLETED']) {
+    for (const status of ['OUT_FOR_DELIVERY', 'COMPLETED']) {
       await api
         .patch(`/api/admin/orders/${orderId}/status`)
         .set('Authorization', `Bearer ${adminToken}`)
@@ -474,15 +499,15 @@ describe('admin-controlled delivery reminder', () => {
     );
   };
 
-  it('defaults to 24 hours after delivery', async () => {
+  it('defaults to 16 hours after delivery', async () => {
     const { orderId } = await deliveredOrder();
-    const { rows } = await db.query<{ delivered_at: Date; rating_available_at: Date }>(
-      'SELECT delivered_at, rating_available_at FROM orders WHERE id = $1',
+    const { rows } = await db.query<{ delivered_at: Date; rating_reminder_at: Date }>(
+      'SELECT delivered_at, rating_reminder_at FROM orders WHERE id = $1',
       [orderId],
     );
     const gap =
-      rows[0]!.rating_available_at.getTime() - rows[0]!.delivered_at.getTime();
-    expect(Math.round(gap / 3_600_000)).toBe(24);
+      rows[0]!.rating_reminder_at.getTime() - rows[0]!.delivered_at.getTime();
+    expect(Math.round(gap / 3_600_000)).toBe(16);
   });
 
   it('admin can shorten the delay and the scheduler honours the new time', async () => {
@@ -527,25 +552,24 @@ describe('admin-controlled delivery reminder', () => {
   });
 
   /**
-   * [SCENARIO D] الإدارة تغيّر التوقيت — والطرفان يتبعان القيمة المحفوظة.
+   * [CRITICAL] جدولة التذكير لا تمسّ أهلية التقييم.
    *
-   * الاختبارات أعلاه تثبت أن **الجدولة** تتبع الموعد الجديد. هذا يثبت
-   * النصف الآخر: ما يقرؤه التطبيق (`ratingAvailableAt` و`ratingAvailable`)
-   * هو نفس الصفّ الذي تقرؤه الجدولة — فلا يمكن أن يفتح أحدهما التقييم
-   * بينما يراه الآخر مغلقاً.
+   * كان هذا الاختبار (SCENARIO D) يثبّت أن التطبيق والجدولة يقرآن نفس
+   * الطابع، فيفتح التقييمَ ما يفتح التذكير. صار الاثنان منفصلين: التقييم
+   * يُفتح بالاستلام، والتذكير موعد إشعار لا غير. فالمطلوب إثباته الآن هو
+   * **الاستقلال**: تأجيل التذكير ٤٨ ساعة يجب ألّا يُغلق تقييماً مفتوحاً.
    */
-  it('SCENARIO D — تعديل الإدارة ينعكس على ما يقرؤه التطبيق، لا الجدولة وحدها', async () => {
+  it('rescheduling the reminder never changes review eligibility', async () => {
     const { user, orderId } = await deliveredOrder();
 
     const before = await api
       .get(`/api/orders/${orderId}`)
       .set('Authorization', `Bearer ${user.token}`)
       .expect(200);
-    expect(before.body.data.ratingAvailable).toBe(false);
-    const originalStamp = before.body.data.ratingAvailableAt as string;
-    expect(originalStamp).toBeTruthy();
+    // الطلب مستلَم، فالتقييم مفتوح من الآن.
+    expect(before.body.data.canReview).toBe(true);
 
-    // الإدارة تؤجّل إلى 48 ساعة.
+    // الإدارة تؤجّل التذكير إلى ٤٨ ساعة.
     await api
       .patch(`/api/admin/orders/${orderId}/reminder`)
       .set('Authorization', `Bearer ${adminToken}`)
@@ -556,40 +580,30 @@ describe('admin-controlled delivery reminder', () => {
       .get(`/api/orders/${orderId}`)
       .set('Authorization', `Bearer ${user.token}`)
       .expect(200);
+    // التقييم ما زال مفتوحاً — التأجيل يخصّ الإشعار وحده.
+    expect(deferred.body.data.canReview).toBe(true);
+    // ولحظة الاستلام لم تتحرّك.
+    expect(deferred.body.data.deliveredAt).toBe(before.body.data.deliveredAt);
 
-    // التطبيق يرى الموعد الجديد، ولا يزال مغلقاً.
-    expect(deferred.body.data.ratingAvailableAt).not.toBe(originalStamp);
-    expect(deferred.body.data.ratingAvailable).toBe(false);
-
-    // والقيمة التي يراها التطبيق هي حرفياً القيمة المخزَّنة التي تقرؤها الجدولة.
-    const { rows } = await db.query<{ rating_available_at: Date; delivered_at: Date }>(
-      'SELECT rating_available_at, delivered_at FROM orders WHERE id = $1',
-      [orderId],
-    );
-    expect(new Date(deferred.body.data.ratingAvailableAt as string).toISOString()).toBe(
-      rows[0]!.rating_available_at.toISOString(),
-    );
-    // ولحظة الاستلام لم تتحرّك: التعديل يخصّ موعد التقييم لا تاريخ التسليم.
-    expect(new Date(deferred.body.data.deliveredAt as string).toISOString()).toBe(
-      rows[0]!.delivered_at.toISOString(),
-    );
+    // والجدولة تتبع الموعد الجديد: لا تذكير الآن.
     await dispatchDueRatingReminders();
     expect(await remindersFor(user.token, orderId)).toHaveLength(0);
 
-    // الإدارة تقدّمه إلى الآن — الطرفان يفتحان معاً.
+    // الإدارة تقدّمه إلى الآن — يصل التذكير، والتقييم كما هو مفتوح.
     await api
       .patch(`/api/admin/orders/${orderId}/reminder`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ delayHours: 0 })
       .expect(200);
 
-    const open = await api
+    await dispatchDueRatingReminders();
+    expect(await remindersFor(user.token, orderId)).toHaveLength(1);
+
+    const after = await api
       .get(`/api/orders/${orderId}`)
       .set('Authorization', `Bearer ${user.token}`)
       .expect(200);
-    expect(open.body.data.ratingAvailable).toBe(true);
-    await dispatchDueRatingReminders();
-    expect(await remindersFor(user.token, orderId)).toHaveLength(1);
+    expect(after.body.data.canReview).toBe(true);
   });
 
   it('"send now" delivers exactly one notification, however many times it is pressed', async () => {
@@ -620,10 +634,10 @@ describe('admin-controlled delivery reminder', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
 
-    // حتى لو صار الموعد المجدول مستحقاً بعدها. نُزحزح العمودين معاً عبر
-    // المساعد لأن القيد `rating_available_at >= delivered_at` يمنع تحريك
-    // النافذة وحدها إلى الماضي — وهو قيد صحيح نحترمه بدل الالتفاف عليه.
-    await fastForwardRatingWindow(orderId);
+    // حتى لو صار الموعد المجدول مستحقاً بعدها. نُزحزح الأعمدة معاً عبر
+    // المساعد لأن القيد `rating_reminder_at >= dispatched_at` يمنع تحريك
+    // الموعد وحده إلى الماضي — وهو قيد صحيح نحترمه بدل الالتفاف عليه.
+    await fastForwardReminder(orderId);
     await dispatchDueRatingReminders();
     await dispatchDueRatingReminders();
     expect(await remindersFor(user.token, orderId)).toHaveLength(1);
@@ -751,7 +765,7 @@ describe('pending delivery confirmation + birthday registry', () => {
       })
       .expect(201);
     const orderId = created.body.data.id as string;
-    for (const next of ['CONFIRMED', 'PREPARING', 'OUT_FOR_DELIVERY', 'COMPLETED']) {
+    for (const next of ['OUT_FOR_DELIVERY', 'COMPLETED']) {
       await api
         .patch(`/api/admin/orders/${orderId}/status`)
         .set('Authorization', `Bearer ${adminToken}`)
@@ -814,7 +828,7 @@ describe('pending delivery confirmation + birthday registry', () => {
         .expect(201);
       const id = created.body.data.id as string;
       ids.push(id);
-      for (const next of ['CONFIRMED', 'PREPARING', 'OUT_FOR_DELIVERY']) {
+      for (const next of ['OUT_FOR_DELIVERY']) {
         await api
           .patch(`/api/admin/orders/${id}/status`)
           .set('Authorization', `Bearer ${adminToken}`)
@@ -912,7 +926,15 @@ describe('pending delivery confirmation + birthday registry', () => {
  * لحظة ضغطه «استلمت الطلب» — فيبدأ المؤقّت من عنده. هذه المجموعة تثبّت أن
  * المرجع صار فعل الإدارة (الإرسال للتوصيل) وأن تأكيد العميل لا يحرّكه.
  */
-describe('rating window is anchored to dispatch, never to the customer tap', () => {
+/**
+ * التقييم يُفتح بتأكيد الاستلام — وموعد التذكير يبقى مربوطاً بالإرسال.
+ *
+ * كان هذا الوصف: «نافذة التقييم مربوطة بالإرسال لا بضغطة العميل»، وهي
+ * قاعدة صحيحة لمشكلةٍ أُلغيت: لم تعد هناك نافذة تُنتظر. ما بقي مربوطاً
+ * بالإرسال هو **موعد التذكير**، وما صار مربوطاً بضغطة العميل هو **فتح
+ * التقييم** — وهو المقصود من التغيير كلّه.
+ */
+describe('review opens on receipt; the reminder stays anchored to dispatch', () => {
   let catalog: Awaited<ReturnType<typeof seedTestCatalog>>;
   let adminToken: string;
 
@@ -942,7 +964,7 @@ describe('rating window is anchored to dispatch, never to the customer tap', () 
       })
       .expect(201);
     const orderId = created.body.data.id as string;
-    for (const s of ['CONFIRMED', 'PREPARING', 'OUT_FOR_DELIVERY']) {
+    for (const s of ['OUT_FOR_DELIVERY']) {
       await api
         .patch(`/api/admin/orders/${orderId}/status`)
         .set('Authorization', `Bearer ${adminToken}`)
@@ -956,83 +978,54 @@ describe('rating window is anchored to dispatch, never to the customer tap', () 
     const { rows } = await db.query<{
       dispatched_at: Date | null;
       delivered_at: Date | null;
-      rating_available_at: Date | null;
+      rating_reminder_at: Date | null;
     }>(
-      'SELECT dispatched_at, delivered_at, rating_available_at FROM orders WHERE id = $1',
+      'SELECT dispatched_at, delivered_at, rating_reminder_at FROM orders WHERE id = $1',
       [orderId],
     );
     return rows[0]!;
   };
 
-  it('sets the window the moment the order goes out for delivery', async () => {
+  it('schedules the reminder the moment the order goes out for delivery', async () => {
     const { orderId } = await dispatched();
     const s = await stamps(orderId);
 
     expect(s.dispatched_at).not.toBeNull();
-    // لم يؤكّد العميل بعد — ومع ذلك الموعد محدَّد.
+    // لم يؤكّد العميل بعد — ومع ذلك موعد التذكير محدَّد.
     expect(s.delivered_at).toBeNull();
-    expect(s.rating_available_at).not.toBeNull();
+    expect(s.rating_reminder_at).not.toBeNull();
 
-    const gap =
-      s.rating_available_at!.getTime() - s.dispatched_at!.getTime();
-    expect(Math.round(gap / 3_600_000)).toBe(24);
+    const gap = s.rating_reminder_at!.getTime() - s.dispatched_at!.getTime();
+    expect(Math.round(gap / 3_600_000)).toBe(16);
   });
 
-  it('SCENARIO A — confirming shortly after dispatch does not restart the 24h', async () => {
-    const { user, orderId } = await dispatched();
-    const before = await stamps(orderId);
-
-    // «مرّ نصف ساعة» منذ الإرسال.
-    await db.query(
-      `UPDATE orders
-          SET dispatched_at = dispatched_at - interval '30 minutes',
-              rating_available_at = rating_available_at - interval '30 minutes'
-        WHERE id = $1`,
-      [orderId],
-    );
-
-    const confirmed = await api
-      .post(`/api/orders/${orderId}/confirm-receipt`)
-      .set('Authorization', `Bearer ${user.token}`)
-      .expect(200);
-
-    const after = await stamps(orderId);
-    // الموعد لم يتحرّك عن مرجعه؛ فقط أُزيح معه في المحاكاة.
-    expect(
-      Math.round(
-        (after.rating_available_at!.getTime() - after.dispatched_at!.getTime()) /
-          3_600_000,
-      ),
-    ).toBe(24);
-    // والفارق عن لحظة التأكيد أقلّ من المهلة — أي أن التأكيد لم يُعِد الحساب.
-    const fromConfirm =
-      after.rating_available_at!.getTime() - after.delivered_at!.getTime();
-    expect(fromConfirm).toBeLessThan(24 * 3_600_000);
-    expect(confirmed.body.data.ratingAvailable).toBe(false);
-    expect(before.rating_available_at).not.toBeNull();
-  });
-
-  it('SCENARIO B — a window that already elapsed unlocks rating on confirmation', async () => {
+  /**
+   * [CRITICAL] المتطلَّب الأساسي لهذه الخطوة.
+   *
+   * الطلب خرج للتوصيل قبل دقائق، فموعد التذكير ما يزال بعيداً (١٦ ساعة).
+   * ومع ذلك يفتح تأكيدُ الاستلام التقييمَ في اللحظة نفسها: لا انتظار،
+   * ولا مهلة، ولا علاقة بموعد التذكير.
+   */
+  it('[CRITICAL] confirming receipt opens the review at once, reminder notwithstanding', async () => {
     const productId = catalog.productIds[0]!;
     const { user, orderId } = await dispatched();
 
-    // أُرسل للتوصيل قبل ٢٥ ساعة، فالنافذة مضت قبل أن يؤكّد.
-    await db.query(
-      `UPDATE orders
-          SET dispatched_at = dispatched_at - interval '25 hours',
-              rating_available_at = rating_available_at - interval '25 hours'
-        WHERE id = $1`,
-      [orderId],
-    );
+    const beforeConfirm = await api
+      .get(`/api/orders/${orderId}`)
+      .set('Authorization', `Bearer ${user.token}`)
+      .expect(200);
+    expect(beforeConfirm.body.data.canReview).toBe(false);
 
     const confirmed = await api
       .post(`/api/orders/${orderId}/confirm-receipt`)
       .set('Authorization', `Bearer ${user.token}`)
       .expect(200);
+    expect(confirmed.body.data.canReview).toBe(true);
 
-    expect(confirmed.body.data.ratingAvailable).toBe(true);
+    // موعد التذكير ما يزال في المستقبل — وهذا لا يمنع التقييم.
+    const s = await stamps(orderId);
+    expect(s.rating_reminder_at!.getTime()).toBeGreaterThan(Date.now());
 
-    // وقابل للتقييم فوراً، بلا انتظار.
     await api
       .post('/api/reviews')
       .set('Authorization', `Bearer ${user.token}`)
@@ -1040,7 +1033,7 @@ describe('rating window is anchored to dispatch, never to the customer tap', () 
       .expect(201);
   });
 
-  it('the confirmation stamps delivery without touching the window', async () => {
+  it('the confirmation stamps delivery without touching the reminder', async () => {
     const { user, orderId } = await dispatched();
     const before = await stamps(orderId);
 
@@ -1051,11 +1044,11 @@ describe('rating window is anchored to dispatch, never to the customer tap', () 
 
     const after = await stamps(orderId);
     expect(after.delivered_at).not.toBeNull();
-    expect(after.rating_available_at).toEqual(before.rating_available_at);
+    expect(after.rating_reminder_at).toEqual(before.rating_reminder_at);
     expect(after.dispatched_at).toEqual(before.dispatched_at);
   });
 
-  it('re-applying OUT_FOR_DELIVERY does not move the window either', async () => {
+  it('re-applying OUT_FOR_DELIVERY does not move the reminder', async () => {
     const { orderId } = await dispatched();
     const before = await stamps(orderId);
 
@@ -1067,96 +1060,51 @@ describe('rating window is anchored to dispatch, never to the customer tap', () 
 
     const after = await stamps(orderId);
     expect(after.dispatched_at).toEqual(before.dispatched_at);
-    expect(after.rating_available_at).toEqual(before.rating_available_at);
+    expect(after.rating_reminder_at).toEqual(before.rating_reminder_at);
   });
 
   /**
-   * المهلة القابلة للضبط (§21.6) تسري على الطلبات الجديدة وحدها.
+   * تأكيد الاستلام المتكرّر آمن: الحالة لا تتحرّك ولا الطوابع.
    *
-   * يربط هذا البند ٣ (توقيت الإدارة) ببند ٤ (الجدولة): تغيير الإعداد يجب
-   * أن يُنتج نافذةً جديدة للطلب التالي، وألّا يمسّ نافذةً مثبَّتة سلفاً —
-   * وإلّا انقلب عدّاد عميلٍ ينتظر بلا أن يفعل شيئاً.
+   * الثانية تُرفض بـ409 `ALREADY_CONFIRMED` — وهي الصيغة التي اعتمدها
+   * المشروع أصلاً في `confirm-receipt`؛ لا نغيّرها هنا.
    */
-  it('المهلة المضبوطة تسري على الطلب التالي ولا تمسّ طلباً قائماً', async () => {
-    // طلب أُرسل للتوصيل بالمهلة الافتراضية.
-    const existing = await dispatched();
-    const beforeChange = (await stamps(existing.orderId)).rating_available_at!;
-
-    try {
-      await api
-        .patch('/api/admin/settings/business')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({ order_rating_delay_hours: 1 })
-        .expect(200);
-
-      // الطلب القائم لم يتحرّك موعده.
-      expect((await stamps(existing.orderId)).rating_available_at!.toISOString()).toBe(
-        beforeChange.toISOString(),
-      );
-
-      // طلب جديد يأخذ المهلة الجديدة (ساعة واحدة من لحظة الإرسال).
-      const fresh = await dispatched();
-      const s = await stamps(fresh.orderId);
-      const gapHours =
-        (s.rating_available_at!.getTime() - s.dispatched_at!.getTime()) / 3_600_000;
-      expect(Math.round(gapHours)).toBe(1);
-
-      // والتطبيق يقرأ نفس القيمة.
-      const seen = await api
-        .get(`/api/orders/${fresh.orderId}`)
-        .set('Authorization', `Bearer ${fresh.user.token}`)
-        .expect(200);
-      expect(new Date(seen.body.data.ratingAvailableAt as string).toISOString()).toBe(
-        s.rating_available_at!.toISOString(),
-      );
-    } finally {
-      // إفراغ الإعداد يعيد الافتراضي — لا نترك أثراً على بقية الاختبارات.
-      await db.query(
-        "DELETE FROM store_settings WHERE key = 'order_rating_delay_hours'",
-      );
-    }
-  });
-
-  it('SCENARIO D — scheduler and the API read the same timestamp', async () => {
+  it('repeated receipt confirmation is safe and leaves eligibility open', async () => {
     const { user, orderId } = await dispatched();
+
     await api
       .post(`/api/orders/${orderId}/confirm-receipt`)
       .set('Authorization', `Bearer ${user.token}`)
       .expect(200);
+    const first = await stamps(orderId);
 
-    // قبل حلول الموعد: لا التطبيق يفتح التقييم ولا الجدولة ترسل.
-    const locked = await api
+    const again = await api
+      .post(`/api/orders/${orderId}/confirm-receipt`)
+      .set('Authorization', `Bearer ${user.token}`);
+    expect(again.status).toBe(409);
+    expect(again.body.error.code).toBe('ALREADY_CONFIRMED');
+
+    const after = await stamps(orderId);
+    expect(after.delivered_at).toEqual(first.delivered_at);
+
+    const detail = await api
       .get(`/api/orders/${orderId}`)
       .set('Authorization', `Bearer ${user.token}`)
       .expect(200);
-    expect(locked.body.data.ratingAvailable).toBe(false);
-    await dispatchDueRatingReminders();
-    let notes = await api
-      .get('/api/notifications')
-      .set('Authorization', `Bearer ${user.token}`)
-      .expect(200);
-    expect(
-      (notes.body.data.items as { orderId: string | null; title: string }[]).filter(
-        (n) => n.orderId === orderId && n.title.includes('شلونها'),
-      ),
-    ).toHaveLength(0);
+    expect(detail.body.data.canReview).toBe(true);
+  });
 
-    // بعد حلول الموعد: كلاهما يتفق.
-    await fastForwardRatingWindow(orderId);
-    const open = await api
-      .get(`/api/orders/${orderId}`)
-      .set('Authorization', `Bearer ${user.token}`)
-      .expect(200);
-    expect(open.body.data.ratingAvailable).toBe(true);
-    await dispatchDueRatingReminders();
-    notes = await api
-      .get('/api/notifications')
-      .set('Authorization', `Bearer ${user.token}`)
-      .expect(200);
-    expect(
-      (notes.body.data.items as { orderId: string | null; title: string }[]).filter(
-        (n) => n.orderId === orderId && n.title.includes('شلونها'),
-      ),
-    ).toHaveLength(1);
+  /** [CRITICAL] لا أحد يؤكّد استلام طلب غيره، ولا يفتح تقييمه. */
+  it('[CRITICAL] a stranger cannot confirm receipt to unlock someone else review', async () => {
+    const { orderId } = await dispatched();
+    const stranger = await registerAndLogin();
+
+    const attempt = await api
+      .post(`/api/orders/${orderId}/confirm-receipt`)
+      .set('Authorization', `Bearer ${stranger.token}`);
+    expect(attempt.status).toBe(404);
+
+    const s = await stamps(orderId);
+    expect(s.delivered_at).toBeNull();
   });
 });

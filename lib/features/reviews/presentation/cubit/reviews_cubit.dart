@@ -65,7 +65,7 @@ class ReviewsCubit extends Cubit<ReviewsState> {
     required String productName,
     required int rating,
     required String comment,
-    String? photoUrl,
+    List<String> photoUrls = const [],
   }) async {
     await _reviews.submitReview(
       orderId: orderId,
@@ -73,7 +73,7 @@ class ReviewsCubit extends Cubit<ReviewsState> {
       productName: productName,
       rating: rating,
       comment: comment,
-      photoUrl: photoUrl,
+      photoUrls: photoUrls,
     );
     await load();
   }
@@ -82,15 +82,14 @@ class ReviewsCubit extends Cubit<ReviewsState> {
     String reviewId, {
     required int rating,
     required String comment,
-    String? photoUrl,
+    List<String> photoUrls = const [],
   }) async {
     await _reviews.resubmitReview(
       reviewId,
       rating: rating,
       comment: comment,
-      photoUrl: photoUrl,
+      photoUrls: photoUrls,
     );
     await load();
   }
-
 }

@@ -1,9 +1,13 @@
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
 import '../../tokens/app_dimens.dart';
+import '../../tokens/app_fonts.dart';
 import '../../tokens/app_theme_colors.dart';
+import '../../../../features/visuals/presentation/character_artwork.dart';
+import '../typography/bounded_text.dart';
 
 /// نمط ترويسة الشاشة في تصميم Otaku Galaxy v2.
 enum OtakuHeaderVariant {
@@ -21,24 +25,32 @@ enum OtakuHeaderVariant {
 }
 
 /// ترويسة الشاشات في Otaku Galaxy v2 — تحلّ محل `AppBar` تماماً.
-///
-/// لا يوجد في التصميم أي شريط تطبيق مادي: الشاشات تبدأ بترويسة
-/// مؤلَّفة من زر رجوع مربّع مستدير، عنوان بخط Tajawal ثقيل، وسطر
-/// وصفي، مع هالة لونية أو رسم شخصية تزييني خلف المحتوى.
-class OtakuScreenHeader extends StatelessWidget {
-  const OtakuScreenHeader({
-    super.key,
-    required this.title,
-    this.subtitle,
-    this.onBack,
-    this.actions = const [],
-    this.trailing,
-    this.artwork,
-    this.gradient,
-    this.variant = OtakuHeaderVariant.plain,
-    this.leading,
-    this.bottom,
-  });
+  ///
+  /// لا يوجد في التصميم أي شريط تطبيق مادي: الشاشات تبدأ بترويسة
+  /// مؤلَّفة من زر رجوع مربّع مستدير، عنوان بخط Tajawal ثقيل، وسطر
+  /// وصفي، مع هالة لونية أو رسم شخصية تزييني خلف المحتوى.
+  class OtakuScreenHeader extends StatelessWidget {
+    const OtakuScreenHeader({
+      super.key,
+      required this.title,
+      this.subtitle,
+      this.onBack,
+      this.actions = const [],
+      this.trailing,
+      this.artwork,
+      this.artworkSlot,
+      this.artworkWidth,
+      this.artworkEnd,
+    this.artworkBelowStatusBar = false,
+    this.textClearOfArtwork = false,
+    this.artworkCutAt,
+      this.gradient,
+      this.variant = OtakuHeaderVariant.plain,
+      this.leading,
+      this.bottom,
+      this.titleTranslations = const [],
+      this.subtitleTranslations = const [],
+    });
 
   /// ترويسة متدرّجة اللون — تُستخدم لشاشات الأقسام وصفحات البطل.
   const OtakuScreenHeader.gradient({
@@ -50,8 +62,16 @@ class OtakuScreenHeader extends StatelessWidget {
     this.actions = const [],
     this.trailing,
     this.artwork,
+    this.artworkSlot,
+    this.artworkWidth,
+    this.artworkEnd,
+    this.artworkBelowStatusBar = false,
+    this.textClearOfArtwork = false,
+    this.artworkCutAt,
     this.leading,
     this.bottom,
+    this.titleTranslations = const [],
+    this.subtitleTranslations = const [],
   }) : variant = OtakuHeaderVariant.gradient;
 
   /// ترويسة تبويب رئيسي — عنوان بحجم ٢٦ بلا زر رجوع.
@@ -62,7 +82,15 @@ class OtakuScreenHeader extends StatelessWidget {
     this.actions = const [],
     this.trailing,
     this.artwork,
+    this.artworkSlot,
+    this.artworkWidth,
+    this.artworkEnd,
+    this.artworkBelowStatusBar = false,
+    this.textClearOfArtwork = false,
+    this.artworkCutAt,
     this.bottom,
+    this.titleTranslations = const [],
+    this.subtitleTranslations = const [],
   }) : variant = OtakuHeaderVariant.tab,
        onBack = null,
        leading = null,
@@ -76,10 +104,18 @@ class OtakuScreenHeader extends StatelessWidget {
     this.actions = const [],
     this.trailing,
     this.artwork,
+    this.artworkSlot,
+    this.artworkWidth,
+    this.artworkEnd,
+    this.artworkBelowStatusBar = false,
+    this.textClearOfArtwork = false,
+    this.artworkCutAt,
     this.leading,
     this.bottom,
+    this.titleTranslations = const [],
   }) : variant = OtakuHeaderVariant.compact,
        subtitle = null,
+       subtitleTranslations = const [],
        gradient = null;
 
   final String title;
@@ -95,6 +131,60 @@ class OtakuScreenHeader extends StatelessWidget {
   /// رسم شخصية تزييني خلف الترويسة.
   final String? artwork;
 
+  /// مفتاح موضع الرسم (`VisualSlots`) — صورته الثابتة في `CharacterArt`.
+  ///
+  /// حين يُمرَّر يحدّد الموضعُ صورته ولا يلزم [artwork] (المسار المباشر لرسمٍ
+  /// ليس موضعاً). المقاس والموضع كما هما.
+  final String? artworkSlot;
+
+  /// رسمٌ يُعرض: موضعٌ بصورته الثابتة، أو مسارٌ مباشر.
+  bool get _hasArtwork => artworkSlot != null || artwork != null;
+
+  /// عرض الرسم التزييني (الشخصية). الافتراضي [defaultArtworkWidth].
+  final double? artworkWidth;
+
+  /// إزاحة الرسم من جهة النهاية (RTL: اليسار). الافتراضي [defaultArtworkEnd].
+  final double? artworkEnd;
+
+  /// يبدأ الرسم تحت شريط الحالة لا فوقه.
+  ///
+  /// الافتراضي `false`: الرسم يبدأ ١٤ فوق حافة الترويسة العليا كما في المرجع
+  /// — وحين تكون الترويسة أعلى الشاشة (بلا `SafeArea` خارجها) يقع رأس
+  /// الشخصية تحت أيقونات البطارية والشبكة ويُقصّ طرفه عند حافة الشاشة. `true`
+  /// يضع حافة الرسم العليا عند أسفل شريط الحالة تماماً
+  /// (`MediaQuery.paddingOf(context).top`)، فلا تداخل ولا قصّ من الأعلى. تختاره
+  /// الشاشة التي تحتاجه؛ لا يتغيّر شيءٌ لغيرها.
+  final bool artworkBelowStatusBar;
+
+  /// عمود العنوان والسطر الوصفي لا يدخل تحت صندوق الرسم.
+  ///
+  /// [CRITICAL] (2026-10-12) الافتراضي `false`: العمود بعرض الترويسة كلّه
+  /// والرسم خلفه، فعنوانٌ طويل يُرسم على وجه الشخصية («تقييم منتجات طلبك»:
+  /// الكردي عند كل مقاس، والعربي عند ٣٢٠ × ١٫٣). `true` يُنهي العمود عند
+  /// الجزء الظاهر من صندوق الرسم ([artworkWidth] + [artworkEnd] من حافة
+  /// النهاية)، فيُصغَّر النصّ داخل ما بقي ثم يأخذ سطره التالي — بقواعد
+  /// `BoundedText` نفسها، وبكل لغة (الترجمات تحجز الأسطر نفسها). تختاره
+  /// الشاشة التي يقع رسمها بجوار نصّها؛ لا يتغيّر شيءٌ لغيرها.
+  final bool textClearOfArtwork;
+
+  /// موضع حافة الرسم المقصوصة من الأسفل — نسبةٌ من ارتفاعه (الصورة 43: الصف
+  /// 766 من 820). `null`: لا قصّ يُخفى، والرسم يبقى حيث يضعه [artworkBelowStatusBar].
+  ///
+  /// [CRITICAL] (2026-10-12) القصّ يُخفيه أسفل الترويسة، فترويسةٌ تطول أبعد منه
+  /// (خطٌّ مكبَّر، نصٌّ بجوار الرسم في سطرين) كانت تُظهره خطّاً أفقياً عبر
+  /// الشخصية. بالنسبة يتبع الرسم أسفل الترويسة حين تطول، فيبقى القصّ عند حافتها
+  /// أو تحتها — ولا يصعد فوق موضعه (تحت شريط الحالة) حين تقصر.
+  final double? artworkCutAt;
+
+  /// عرض الرسم حين لا تحدّد الشاشة [artworkWidth].
+  static const double defaultArtworkWidth = 126;
+
+  /// إزاحة الرسم من جهة النهاية حين لا تحدّد الشاشة [artworkEnd].
+  static const double defaultArtworkEnd = -40;
+
+  /// حافة الرسم العليا الافتراضية — ١٤ فوق حافة الترويسة.
+  static const double defaultArtworkTop = -14;
+
   final Gradient? gradient;
   final OtakuHeaderVariant variant;
 
@@ -104,16 +194,40 @@ class OtakuScreenHeader extends StatelessWidget {
   /// محتوى إضافي أسفل العنوان داخل الترويسة.
   final Widget? bottom;
 
+  /// ترجمات [title] و[subtitle] بكل اللغات (`AppStrings.across` / `gAcross`).
+  ///
+  /// [CRITICAL] (البوّابة ٧، 2026-10-10) عنوانٌ لا يتّسع لسطره حتى عند الحدّ
+  /// كان يطيل الترويسة بلغته وحدها (عنوان «تقييم منتجات طلبك» الكردي: +٣٣ على
+  /// ٣٢٠×١٫٣). بالترجمات تحجز المنطقة سطرها الثاني بكل لغة. بلا ترجمات: كما
+  /// كان (يُصغَّر ثم يطول).
+  final List<String> titleTranslations;
+  final List<String> subtitleTranslations;
+
   bool get _onGradient => variant == OtakuHeaderVariant.gradient;
 
-  /// ستارة داكنة رقيقة تحت نص الترويسة المتدرّجة.
+  /// أقصى ما يأخذه [trailing] في الترويسة المضغوطة من عرض السطر.
   ///
-  /// النص الأبيض على التدرّج هو توقيع تصميم v2، لكن بعض تدرّجات الأقسام
-  /// فاتحة (الكهرماني) فتهبط نسبة التباين إلى 1.83:1 ويصير العنوان شبه
-  /// غير مقروء. الستارة تُخفّض إضاءة التدرّج بقدر يرفع الأسوأ إلى 3.46:1
-  /// (فوق حدّ WCAG AA للنص الكبير) مع إبقاء اللون حيّاً والحبر أبيض في
-  /// كل الأقسام — أفضل من تبديل لون الحبر الذي يجعل الترويسات غير متسقة.
-  static const double _gradientScrim = 0.28;
+  /// [CRITICAL] كان الإجراء الجانبي يأخذ عرض تسميته كاملاً ويُعطى العنوان
+  /// ما يبقى: «هەمووی وەک خوێندراوە نیشان بکە» الكردية تركت للعنوان بضع
+  /// بكسلات فالتفّ حرفاً حرفاً (+٢٠٨ عند ×١٫٣). الحدّ للمساحة لا للغة:
+  /// تسميةٌ أقصر منه لا تتغيّر، وأطول منه تُصغَّر داخله (`AnimeTextButton`).
+  static const double compactTrailingMaxFraction = 0.45;
+
+  // [CRITICAL] لا ستارة داكنة فوق التدرّج — أُزيلت عمداً.
+  //
+  // كانت `ColoredBox(Colors.black @ 0.28)` تملأ الترويسة فوق تدرّج القسم،
+  // فيظهر لون القسم داخل ترويسته أغمقَ وأبهتَ من اللون نفسه خارجها (في
+  // بطاقة القسم وشريط الرئيسية). التدرّج الآن هو تدرّج الهوية كما هو،
+  // مطابقاً لمصدر التصميم الذي لا يعرف هذه الستارة أصلاً:
+  // `catHeadStyle: background:${grad}` وحده (المرجع، سطر ٤٣٤٥).
+  //
+  // [NOTE] الستارة كانت مضافةً لسبب: التباين. الحبر أبيض، وأفتحُ تدرّجات
+  // الأقسام (الكهرماني `#FFB02E`) يعطي مع الأبيض **1.83:1**، وكانت الستارة
+  // ترفعه إلى **3.46:1** أي فوق حدّ WCAG AA للنص الكبير (3:1). بإزالتها
+  // يعود الأسوأ إلى 1.83:1 — دون الحدّ. القرار صريح من صاحب المنتج
+  // (اللون الحيّ أولى)، والمرجع نفسه على هذا. ولو أُريد التباين لاحقاً بلا
+  // إعادة التبهيت فالمخرج ظلٌّ على النصّ أو ستارةٌ محصورة خلف سطر العنوان
+  // وحده، لا طبقةٌ تغطّي التدرّج كلّه.
 
   @override
   Widget build(BuildContext context) {
@@ -135,18 +249,11 @@ class OtakuScreenHeader extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(gradient: gradient),
-      clipBehavior: gradient != null || artwork != null
+      clipBehavior: gradient != null || _hasArtwork
           ? Clip.hardEdge
           : Clip.none,
       child: Stack(
         children: [
-          // ستارة القراءة — تسبق الهالة والمحتوى.
-          if (_onGradient)
-            Positioned.fill(
-              child: ColoredBox(
-                color: Colors.black.withValues(alpha: _gradientScrim),
-              ),
-            ),
           // هالة بيضاء ناعمة خلف الترويسة المتدرّجة.
           if (_onGradient)
             PositionedDirectional(
@@ -161,17 +268,26 @@ class OtakuScreenHeader extends StatelessWidget {
                 ),
               ),
             ),
-          // رسم تزييني باهت خلف الترويسة العادية.
-          if (artwork != null)
-            PositionedDirectional(
-              top: -14,
-              end: -40,
-              child: IgnorePointer(
-                child: Opacity(
-                  opacity: 0.16,
-                  child: Image.asset(artwork!, width: 126),
+          // رسم الشخصية خلف الترويسة — بلا شفافية (قرار 2026-09-15): كان
+          // يُرسم بـ١٦٪ كما في المرجع لرسمٍ مضمَّن، فبدت الشخصيةُ التي يرفعها
+          // المسؤول باهتةً كأنها معطوبة. تُعرض الآن كصورتها الأصلية.
+          if (_hasArtwork && artworkCutAt != null)
+            Positioned.fill(
+              child: CustomSingleChildLayout(
+                delegate: _ArtworkAboveBottom(
+                  top: _artworkTop(context),
+                  end: artworkEnd ?? defaultArtworkEnd,
+                  cutAt: artworkCutAt!,
+                  textDirection: Directionality.of(context),
                 ),
+                child: _artworkImage(),
               ),
+            )
+          else if (_hasArtwork)
+            PositionedDirectional(
+              top: _artworkTop(context),
+              end: artworkEnd ?? defaultArtworkEnd,
+              child: _artworkImage(),
             ),
           Padding(
             padding: padding,
@@ -210,10 +326,26 @@ class OtakuScreenHeader extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text(
+                              // [CRITICAL] العنوان والسطر الوصفي منطقتا سطرٍ واحد
+                              // (`BoundedText`): نصٌّ أطول يُصغَّر داخل سطره حتى
+                              // ٠٫٨ بدل أن يلتفّ فيُطيل الترويسة ويدفع الشاشة
+                              // كلها — بكل لغة. سطرٌ ثانٍ فقط حين لا يتّسع حتى
+                              // عند الحدّ. الحدّ من مقاس التصميم ([PRODUCT]
+                              // 2026-10-05): عند ×١٫٣ لا يصغر عن ٠٫٨ من مقاسه
+                              // بلا تكبير — كتسميات الأزرار.
+                              // ثلاثة أسطر حدّاً (2026-10-12): عنوانٌ بجوار رسمه
+                              // ([textClearOfArtwork]) يأخذ عرضاً أضيق — الكردي
+                              // «تقييم منتجات طلبك» لا يتّسع لسطرين بجوار الوجه
+                              // عند ٣٢٠ × ١٫٣ حتى عند حدّه. ما اتّسع لسطرين بقي.
+                              BoundedText(
                                 title,
+                                maxLines: 3,
+                                floorAtDesignSize: true,
+                                reserveFor: titleTranslations,
+                                alignment: AlignmentDirectional.topStart,
                                 style: theme.textTheme.titleLarge?.copyWith(
-                                  fontFamily: 'Tajawal',
+                                  fontFamily: AppFonts.heading,
+                                  fontFamilyFallback: AppFonts.headingFallback,
                                   fontWeight: AppDimens.weightBlack,
                                   fontSize: switch (variant) {
                                     OtakuHeaderVariant.gradient => 25,
@@ -236,8 +368,12 @@ class OtakuScreenHeader extends StatelessWidget {
                                     _ => 2,
                                   },
                                 ),
-                                Text(
+                                BoundedText(
                                   subtitle!,
+                                  maxLines: 3,
+                                  floorAtDesignSize: true,
+                                  reserveFor: subtitleTranslations,
+                                  alignment: AlignmentDirectional.topStart,
                                   style: theme.textTheme.bodySmall?.copyWith(
                                     fontSize: switch (variant) {
                                       OtakuHeaderVariant.gradient => 12.5,
@@ -253,6 +389,10 @@ class OtakuScreenHeader extends StatelessWidget {
                           ),
                         ),
                         ?trailing,
+                        // ما يظهر من صندوق الرسم ([textClearOfArtwork]).
+                        if (_textEndClearance(padding) case final clearance
+                            when clearance > 0)
+                          SizedBox(width: clearance),
                       ],
                     ),
                   ],
@@ -266,7 +406,37 @@ class OtakuScreenHeader extends StatelessWidget {
     );
   }
 
-  Widget _buildCompactRow(BuildContext context, Color onInk) {
+  double _artworkTop(BuildContext context) => artworkBelowStatusBar
+      ? MediaQuery.paddingOf(context).top
+      : defaultArtworkTop;
+
+  Widget _artworkImage() => IgnorePointer(
+    child: artworkSlot == null
+        ? Image.asset(artwork!, width: artworkWidth ?? defaultArtworkWidth)
+        : CharacterArtwork(
+            slot: artworkSlot!,
+            width: artworkWidth ?? defaultArtworkWidth,
+          ),
+  );
+
+  /// ما يُترك من نهاية عمود النصّ للرسم: الجزء الظاهر من صندوقه بعد حشوة
+  /// الترويسة. صفرٌ بلا رسم أو بلا [textClearOfArtwork].
+  double _textEndClearance(EdgeInsets padding) {
+    if (!textClearOfArtwork || !_hasArtwork) return 0;
+    final visible =
+        (artworkWidth ?? defaultArtworkWidth) +
+        (artworkEnd ?? defaultArtworkEnd);
+    // `padding` فيزيائية متناظرة الجانبين في كل الأنماط.
+    return math.max(0, visible - padding.left);
+  }
+
+  Widget _buildCompactRow(BuildContext context, Color onInk) =>
+      LayoutBuilder(
+        builder: (context, constraints) =>
+            _compactRow(context, onInk, constraints.maxWidth),
+      );
+
+  Widget _compactRow(BuildContext context, Color onInk, double rowWidth) {
     final theme = Theme.of(context);
     return Row(
       children: [
@@ -276,10 +446,14 @@ class OtakuScreenHeader extends StatelessWidget {
           OtakuHeaderButton.back(onTap: onBack!, onGradient: _onGradient),
         if (onBack != null || leading != null) const SizedBox(width: 12),
         Expanded(
-          child: Text(
+          child: BoundedText(
             title,
+            maxLines: 2,
+            floorAtDesignSize: true,
+            reserveFor: titleTranslations,
             style: theme.textTheme.titleLarge?.copyWith(
-              fontFamily: 'Tajawal',
+              fontFamily: AppFonts.heading,
+              fontFamilyFallback: AppFonts.headingFallback,
               fontWeight: AppDimens.weightExtraBold,
               fontSize: 19,
               height: 1.3,
@@ -288,10 +462,55 @@ class OtakuScreenHeader extends StatelessWidget {
           ),
         ),
         for (final action in actions) ...[const SizedBox(width: 8), action],
-        ?trailing,
+        if (trailing != null)
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: rowWidth * compactTrailingMaxFraction,
+            ),
+            child: trailing,
+          ),
       ],
     );
   }
+}
+
+/// رسم الترويسة عند [top] من حافتها و[end] من نهايتها — وأدنى من ذلك حين
+/// تطول الترويسة، حتى لا يعلو قصّه ([cutAt] من ارتفاعه) فوق أسفلها.
+class _ArtworkAboveBottom extends SingleChildLayoutDelegate {
+  const _ArtworkAboveBottom({
+    required this.top,
+    required this.end,
+    required this.cutAt,
+    required this.textDirection,
+  });
+
+  final double top;
+  final double end;
+  final double cutAt;
+  final TextDirection textDirection;
+
+  // بلا قيود كـ`PositionedDirectional` بجهتين: الرسم بمقاسه الذي يطلبه.
+  @override
+  BoxConstraints getConstraintsForChild(BoxConstraints constraints) =>
+      const BoxConstraints();
+
+  @override
+  Offset getPositionForChild(Size size, Size childSize) => Offset(
+    textDirection == TextDirection.rtl
+        ? end
+        : size.width - end - childSize.width,
+    // رسمٌ لم تُفكّ صورته بعد بلا ارتفاع ولا قصّ يُخفى: موضعه المعتاد.
+    childSize.isEmpty
+        ? top
+        : math.max(top, size.height - childSize.height * cutAt),
+  );
+
+  @override
+  bool shouldRelayout(_ArtworkAboveBottom old) =>
+      old.top != top ||
+      old.end != end ||
+      old.cutAt != cutAt ||
+      old.textDirection != textDirection;
 }
 
 /// زر أيقوني مربّع مستدير (٣٨×٣٨، نصف قطر ١٣) داخل ترويسات v2.

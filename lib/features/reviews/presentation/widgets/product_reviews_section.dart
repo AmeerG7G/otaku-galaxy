@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../core/l10n/app_strings.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/design_system/design_system.dart';
@@ -6,6 +7,7 @@ import '../../../community/presentation/screens/community_screen.dart';
 import '../../domain/entities/review.dart';
 import '../../domain/repositories/review_repository.dart';
 import 'star_rating.dart';
+import '../../../visuals/domain/visual_slot.dart';
 
 /// قسم تقييمات العملاء وصورهم داخل تفاصيل المنتج.
 ///
@@ -63,9 +65,10 @@ class _ProductReviewsSectionState extends State<ProductReviewsSection> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '⭐ تقييمات العملاء',
+          context.strings('customerReviews'),
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontFamily: 'Tajawal',
+            fontFamily: AppFonts.heading,
+            fontFamilyFallback: AppFonts.headingFallback,
             fontSize: 16.5,
             fontWeight: AppDimens.weightExtraBold,
           ),
@@ -78,7 +81,7 @@ class _ProductReviewsSectionState extends State<ProductReviewsSection> {
           if (_withPhotos.isNotEmpty) ...[
             SizedBox(height: AppDimens.space6),
             Text(
-              '📸 صور العملاء',
+              context.strings('customerPhotos'),
               style: Theme.of(context).textTheme.titleSmall?.copyWith(
                 fontWeight: AppDimens.weightBold,
               ),
@@ -134,7 +137,8 @@ class _RatingSummary extends StatelessWidget {
                 average.toStringAsFixed(1),
                 textDirection: TextDirection.ltr,
                 style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  fontFamily: 'Tajawal',
+                  fontFamily: AppFonts.heading,
+                  fontFamilyFallback: AppFonts.headingFallback,
                   fontSize: 32,
                   height: 1,
                   fontWeight: AppDimens.weightBlack,
@@ -147,7 +151,7 @@ class _RatingSummary extends StatelessWidget {
           const SizedBox(width: 18),
           Expanded(
             child: Text(
-              '$count تقييم من عملاء اشتروا هذا المنتج',
+              context.strings.p('reviewsFromBuyersCount', {'count': '$count'}),
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
                 height: AppDimens.lineHeightRelaxed,
@@ -222,9 +226,9 @@ class _ReviewCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(AppDimens.radiusFull),
                 ),
                 child: Text(
-                  '✓ اشترى هذا المنتج',
+                  context.strings('verifiedBuyer'),
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: colors.success,
+                    color: colors.successText,
                     fontWeight: AppDimens.weightBold,
                   ),
                 ),
@@ -262,13 +266,16 @@ class _ReviewCard extends StatelessWidget {
 class _EmptyReviews extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return const OtakuEditorialPanel(
-      title: 'ما بيه تقييمات لهذا المنتج',
-      body: 'كون أول واحد يشارك تجربته بعد استلام طلبه.',
-      artwork: 'assets/art/opt/a-i1.png',
+    return OtakuEditorialPanel(
+      title: context.strings('noReviewsTitle'),
+      body: context.strings('noReviewsBody'),
+      titleTranslations: AppStrings.across('noReviewsTitle'),
+      bodyTranslations: AppStrings.across('noReviewsBody'),
+      artworkSlot: VisualSlots.productReviews,
       margin: EdgeInsets.zero,
       minHeight: 150,
-      artHeight: 120,
+      // الرسم 26 أكبر بـ30% (120 × 1.3 = 156)؛ المرساة (أسفل/نهاية) كما هي.
+      artHeight: 156,
       contentWidthFactor: 0.7,
     );
   }

@@ -53,11 +53,11 @@ describe('عقد مرجع الوسائط — الرفع', () => {
   let adminToken: string;
 
   beforeAll(async () => {
-    await purgeTestUsers('077%');
+    await purgeTestUsers();
     adminToken = await createAdminUser();
   });
   afterAll(async () => {
-    await purgeTestUsers('077%');
+    await purgeTestUsers();
   });
 
   const PURPOSES = ['product', 'category', 'banner', 'avatar', 'franchise'] as const;
@@ -106,7 +106,7 @@ describe('عقد مرجع الوسائط — كل سطح يعيد التمثيل
   let catalog: Awaited<ReturnType<typeof seedTestCatalog>>;
 
   beforeAll(async () => {
-    await purgeTestUsers('077%');
+    await purgeTestUsers();
     adminToken = await createAdminUser();
     const session = await registerAndLogin();
     customerToken = session.token;
@@ -127,7 +127,7 @@ describe('عقد مرجع الوسائط — كل سطح يعيد التمثيل
   });
 
   afterAll(async () => {
-    await purgeTestUsers('077%');
+    await purgeTestUsers();
   });
 
   it('كتالوج المنتجات (قائمة + تفاصيل + بحث)', async () => {
@@ -255,11 +255,11 @@ describe('عقد مرجع الوسائط — الكتابة مقيّدة', () =>
   let customerToken: string;
 
   beforeAll(async () => {
-    await purgeTestUsers('077%');
+    await purgeTestUsers();
     customerToken = (await registerAndLogin()).token;
   });
   afterAll(async () => {
-    await purgeTestUsers('077%');
+    await purgeTestUsers();
   });
 
   it('الصورة الشخصية ترفض أي أصل خارجي', async () => {

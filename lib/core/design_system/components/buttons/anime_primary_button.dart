@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../../tokens/app_colors.dart';
 import '../../tokens/app_dimens.dart';
 import '../../tokens/app_theme_colors.dart';
+import '../typography/bounded_text.dart';
 import 'button_enums.dart';
 
 class AnimePrimaryButton extends StatelessWidget {
@@ -18,6 +18,7 @@ class AnimePrimaryButton extends StatelessWidget {
     this.gradient,
     this.glowEnabled = true,
     this.borderRadius,
+    this.horizontalPadding = AppDimens.space7,
   });
 
   final String label;
@@ -34,6 +35,11 @@ class AnimePrimaryButton extends StatelessWidget {
   /// شاشات التصميم التي تطلب r-m (٢٢) تمرّره صراحةً.
   final double? borderRadius;
 
+  /// حشوة التسمية الأفقية. الافتراضي ٢٤؛ صفٌّ ضيّق (زرٌّ بجوار المجموع في
+  /// شريطٍ سفلي) يمرّر أقلّ ليتّسع لتسميته. التسمية موسَّطة، فتسميةٌ تتّسع لا
+  /// يتغيّر موضعها بتغيّر الحشوة.
+  final double horizontalPadding;
+
   @override
   Widget build(BuildContext context) {
     final colors = context.themeColors;
@@ -41,13 +47,20 @@ class AnimePrimaryButton extends StatelessWidget {
     final effectiveHeight = height ?? AppDimens.buttonHeightLg;
     final radius = borderRadius ?? AppDimens.radiusLg;
 
+    // المعطَّل بألوان المظهر (Material 3: حاوية `onSurface` ١٢٪ وحبر ٣٨٪) لا
+    // بلونٍ ثابت واحد للمظهرين — كان `AppColors.onSurfaceDisabled` بنفسجياً
+    // رمادياً في الداكن والفاتح معاً فلا ينتمي لأيّهما.
+    final scheme = Theme.of(context).colorScheme;
+    final disabledFill = scheme.onSurface.withValues(alpha: 0.12);
+    final disabledInk = scheme.onSurface.withValues(alpha: 0.38);
+
     return SizedBox(
       width: expanded ? double.infinity : null,
       height: effectiveHeight,
       child: DecoratedBox(
         decoration: BoxDecoration(
           gradient: onPressed != null ? effectiveGradient : null,
-          color: onPressed == null ? AppColors.onSurfaceDisabled : null,
+          color: onPressed == null ? disabledFill : null,
           borderRadius: BorderRadius.circular(radius),
           boxShadow: glowEnabled && onPressed != null
               ? [
@@ -64,10 +77,12 @@ class AnimePrimaryButton extends StatelessWidget {
           onPressed: loading ? null : onPressed,
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.transparent,
+            disabledBackgroundColor: Colors.transparent,
             foregroundColor: Colors.white,
+            disabledForegroundColor: disabledInk,
             shadowColor: Colors.transparent,
             elevation: 0,
-            padding: EdgeInsets.symmetric(horizontal: AppDimens.space7),
+            padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(radius),
             ),
@@ -92,7 +107,21 @@ class AnimePrimaryButton extends StatelessWidget {
   }
 
   Widget _buildContent(BuildContext context) {
-    if (icon == null) return Text(label);
+    // [CRITICAL] التسمية سطرٌ واحد في منطقةٍ محدودة (`BoundedText`): أطول من
+    // الزرّ تُصغَّر بدل أن تلتفّ أو تتجاوز (كان الزرّ يتجاوز ٦٢ بكسل بالكردية
+    // على ٣٢٠×١٫٣). الحدّ ٠٫٨ من مقاس التصميم ([PRODUCT] 2026-10-05): عند
+    // ×١٫٣ نحو ٠٫٦٢ من المكبَّر. تسميةٌ تتّسع لا تتغيّر.
+    //
+    // (2026-10-12) تسميةٌ لا تتّسع لسطرٍ حتى عند الحدّ تأخذ سطراً ثانياً
+    // موسَّطاً — داخل ارتفاع الزرّ الثابت وحده (`BoundedText` لا يطول أبعد مما
+    // يمنحه الأب)، كما كان `Text` يلتفّ قبل البوّابة ٤؛ وإلا فتُبلَّغ.
+    final text = BoundedText(
+      label,
+      floorAtDesignSize: true,
+      maxLines: 2,
+      textAlign: TextAlign.center,
+    );
+    if (icon == null) return text;
 
     final iconWidget = Icon(icon, size: AppDimens.iconMd);
 
@@ -103,14 +132,14 @@ class AnimePrimaryButton extends StatelessWidget {
           children: [
             iconWidget,
             SizedBox(width: AppDimens.space3),
-            Text(label),
+            Flexible(child: text),
           ],
         );
       case IconPosition.end:
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(label),
+            Flexible(child: text),
             SizedBox(width: AppDimens.space3),
             iconWidget,
           ],

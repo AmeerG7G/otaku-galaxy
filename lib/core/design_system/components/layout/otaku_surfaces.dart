@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../typography/bounded_text.dart';
 import '../../tokens/app_colors.dart';
 import '../../tokens/app_dimens.dart';
+import '../../tokens/app_fonts.dart';
 import '../../tokens/app_theme_colors.dart';
+import '../../../../features/visuals/presentation/character_artwork.dart';
 
 /// عنوان قسم داخل الشاشة — Tajawal ثقيل بحجم ١٧.
 class OtakuSectionTitle extends StatelessWidget {
@@ -30,7 +33,8 @@ class OtakuSectionTitle extends StatelessWidget {
             child: Text(
               title,
               style: theme.textTheme.titleMedium?.copyWith(
-                fontFamily: 'Tajawal',
+                fontFamily: AppFonts.heading,
+                fontFamilyFallback: AppFonts.headingFallback,
                 fontWeight: AppDimens.weightExtraBold,
                 fontSize: 17,
                 height: 1.3,
@@ -107,16 +111,29 @@ class OtakuEditorialPanel extends StatelessWidget {
     required this.title,
     this.body,
     this.artwork,
+    this.artworkSlot,
     this.action,
     this.margin = const EdgeInsets.fromLTRB(18, 26, 18, 0),
     this.contentWidthFactor = 0.62,
     this.artHeight = 104,
     this.minHeight = 0,
+    this.titleTranslations = const [],
+    this.bodyTranslations = const [],
   });
 
   final String title;
   final String? body;
   final String? artwork;
+
+  /// مفتاح موضع الرسم (`VisualSlots`) — صورته الثابتة في `CharacterArt`.
+  ///
+  /// حين يُمرَّر يحدّد الموضعُ صورته ولا يلزم [artwork] (المسار المباشر لرسمٍ
+  /// ليس موضعاً). المقاس والموضع كما هما.
+  final String? artworkSlot;
+
+  /// رسمٌ يُعرض: موضعٌ بصورته الثابتة، أو مسارٌ مباشر.
+  bool get _hasArtwork => artworkSlot != null || artwork != null;
+
   final Widget? action;
   final EdgeInsetsGeometry margin;
 
@@ -125,9 +142,30 @@ class OtakuEditorialPanel extends StatelessWidget {
   final double artHeight;
   final double minHeight;
 
+  /// ترجمات [title] و[body] بكل اللغات (`AppStrings.across` / `gAcross`).
+  ///
+  /// [CRITICAL] (البوّابة ٧، 2026-10-10) اللوحة بارتفاع نصّها، ورسمها مثبَّتٌ
+  /// بأسفلها: عنوانٌ أو فقرةٌ كردية أطول بسطر كانت تطيلها وتُنزل الرسم وما
+  /// تحتها. بالترجمات يصير العنوان سطراً يُصغَّر أولاً والفقرة تحجز أسطر
+  /// أطولها — اللوحة بارتفاعٍ واحد في كل لغة. بلا ترجمات: كما كانت.
+  final List<String> titleTranslations;
+  final List<String> bodyTranslations;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final titleStyle = theme.textTheme.titleMedium?.copyWith(
+      fontFamily: AppFonts.heading,
+      fontFamilyFallback: AppFonts.headingFallback,
+      fontWeight: AppDimens.weightExtraBold,
+      fontSize: 15.5,
+      height: 1.5,
+    );
+    final bodyStyle = theme.textTheme.bodySmall?.copyWith(
+      fontSize: 12,
+      height: 1.7,
+      color: theme.colorScheme.onSurfaceVariant,
+    );
     return Padding(
       padding: margin,
       child: Container(
@@ -140,12 +178,17 @@ class OtakuEditorialPanel extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: Stack(
           children: [
-            if (artwork != null)
+            if (_hasArtwork)
               PositionedDirectional(
                 bottom: -12,
                 end: -10,
                 child: IgnorePointer(
-                  child: Image.asset(artwork!, height: artHeight),
+                  child: artworkSlot == null
+                      ? Image.asset(artwork!, height: artHeight)
+                      : CharacterArtwork(
+                          slot: artworkSlot!,
+                          height: artHeight,
+                        ),
                 ),
               ),
             Padding(
@@ -153,30 +196,34 @@ class OtakuEditorialPanel extends StatelessWidget {
               child: Align(
                 alignment: AlignmentDirectional.centerStart,
                 child: FractionallySizedBox(
-                  widthFactor: artwork == null ? 1.0 : contentWidthFactor,
+                  widthFactor: _hasArtwork ? contentWidthFactor : 1.0,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        title,
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontFamily: 'Tajawal',
-                          fontWeight: AppDimens.weightExtraBold,
-                          fontSize: 15.5,
-                          height: 1.5,
+                      if (titleTranslations.isEmpty)
+                        Text(title, style: titleStyle)
+                      else
+                        BoundedText(
+                          title,
+                          maxLines: 3,
+                          reserveFor: titleTranslations,
+                          alignment: AlignmentDirectional.topStart,
+                          style: titleStyle,
                         ),
-                      ),
                       if (body != null) ...[
                         const SizedBox(height: 6),
-                        Text(
-                          body!,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            fontSize: 12,
-                            height: 1.7,
-                            color: theme.colorScheme.onSurfaceVariant,
+                        if (bodyTranslations.isEmpty)
+                          Text(body!, style: bodyStyle)
+                        else
+                          BoundedText(
+                            body!,
+                            maxLines: 12,
+                            minScale: 1,
+                            reserveFor: bodyTranslations,
+                            alignment: AlignmentDirectional.topStart,
+                            style: bodyStyle,
                           ),
-                        ),
                       ],
                       if (action != null) ...[
                         const SizedBox(height: 14),
@@ -202,6 +249,7 @@ class OtakuStatusPill extends StatelessWidget {
     required this.color,
     this.showDot = true,
     this.fontSize = 10.5,
+    this.labelTranslations = const [],
   });
 
   final String label;
@@ -209,37 +257,89 @@ class OtakuStatusPill extends StatelessWidget {
   final bool showDot;
   final double fontSize;
 
+  /// ترجمات [label] بكل اللغات. الكبسولة تلتفّ على تسميتها؛ حين يحدّها أبٌ
+  /// تُصغَّر التسمية حتى ٠٫٨، وتحجز سطراً ثانياً — بكل لغة — حيث لا تتّسع
+  /// إحدى ترجماتها حتى عنده (`BoundedText.reserveFor`).
+  final List<String> labelTranslations;
+
   @override
   Widget build(BuildContext context) {
+    final style = Theme.of(context).textTheme.labelSmall?.copyWith(
+      fontSize: fontSize,
+      height: 1.2,
+      fontWeight: AppDimens.weightBold,
+      color: color,
+    );
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(AppDimens.radiusFull),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (showDot) ...[
-            Container(
-              width: 6,
-              height: 6,
-              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-            ),
-            const SizedBox(width: 5),
-          ],
-          Text(
-            label,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              fontSize: fontSize,
-              height: 1.2,
-              fontWeight: AppDimens.weightBold,
-              color: color,
-            ),
-          ),
-        ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final available = constraints.maxWidth - (showDot ? 11 : 0);
+          // التسمية تتّسع بمقاسها، وكل ترجمةٍ تتّسع لسطرٍ عند الحدّ الأدنى (فلا
+          // سطر محجوز): النصّ كما كان (`Text` بلا حدّ) — بكسلاً بكسل. وإلا
+          // فمنطقةٌ مرنة تُصغَّر أو تحجز على العرض المتاح.
+          final fitsAsIs =
+              !constraints.hasBoundedWidth ||
+              (_naturalWidth(context, label, style) <= available &&
+                  labelTranslations.every(
+                    (t) =>
+                        _naturalWidth(context, t, style) *
+                            kBoundedTextMinScale <=
+                        available,
+                  ));
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (showDot) ...[
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: color,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 5),
+              ],
+              if (fitsAsIs)
+                Text(label, style: style)
+              else
+                Flexible(
+                  child: BoundedText(
+                    label,
+                    maxLines: 2,
+                    reserveFor: labelTranslations,
+                    style: style,
+                  ),
+                ),
+            ],
+          );
+        },
       ),
     );
+  }
+
+  static double _naturalWidth(
+    BuildContext context,
+    String text,
+    TextStyle? style,
+  ) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: DefaultTextStyle.of(context).style.merge(style),
+      ),
+      textScaler: MediaQuery.textScalerOf(context),
+      textDirection: Directionality.of(context),
+      maxLines: 1,
+    )..layout();
+    final width = painter.width;
+    painter.dispose();
+    return width;
   }
 }
 
@@ -349,7 +449,7 @@ class OtakuGroupLabel extends StatelessWidget {
           fontSize: 11.5,
           fontWeight: AppDimens.weightBold,
           letterSpacing: 0.7,
-          color: theme.colorScheme.outline,
+          color: theme.colorScheme.onSurfaceVariant,
         ),
       ),
     );
@@ -443,7 +543,7 @@ class OtakuSettingRow extends StatelessWidget {
                   ? Icons.arrow_forward_ios_rounded
                   : Icons.arrow_back_ios_new_rounded,
               size: 13,
-              color: theme.colorScheme.outline,
+              color: theme.colorScheme.onSurfaceVariant,
             ),
           ],
         ],

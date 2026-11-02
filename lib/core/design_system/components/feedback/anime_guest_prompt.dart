@@ -1,11 +1,18 @@
 import 'package:flutter/material.dart';
+import '../../../l10n/app_strings.dart';
 
 import '../../tokens/app_dimens.dart';
 import '../../tokens/app_theme_colors.dart';
 import '../buttons/anime_primary_button.dart';
+import '../layout/scroll_insets.dart';
+import '../typography/bounded_text.dart';
 
 /// بطاقة «أنت تتصفح كزائر» بتصميم Otaku Galaxy v2 — لوحة مستديرة موسّطة
-/// مع هالة لونية ورسم شخصية يخرج من الحافة، وزر تسجيل دخول واضح.
+/// مع هالة لونية وزر تسجيل دخول واضح.
+///
+/// [PRODUCT] بلا رسم شخصية (2026-09-28). كان رسمٌ يخرج من الزاوية السفلية
+/// خلف زرّ الدخول، بموضعٍ لكل شاشة (`cart_guest_prompt_character`،
+/// `favorites_guest_prompt_character`)؛ أزاله المالك مع كل رسمٍ مجاورٍ للأزرار.
 class AnimeGuestPrompt extends StatelessWidget {
   const AnimeGuestPrompt({
     super.key,
@@ -13,14 +20,22 @@ class AnimeGuestPrompt extends StatelessWidget {
     required this.body,
     required this.onLogin,
     this.icon = Icons.person_outline,
-    this.artwork = 'assets/art/opt/a-i0.png',
+    this.titleTranslations = const [],
+    this.bodyTranslations = const [],
   });
 
   final String title;
   final String body;
   final VoidCallback onLogin;
   final IconData icon;
-  final String? artwork;
+
+  /// ترجمات [title] و[body] بكل اللغات (`AppStrings.across`/`gAcross`).
+  ///
+  /// [CRITICAL] (2026-10-05) العنوان سطرٌ يُصغَّر أولاً، والنصّ فقرة؛ كلاهما
+  /// يحجز ما تحتاجه أطول ترجماته (`BoundedText.reserveFor`) فلا تطول البطاقة
+  /// ولا ينزل زرّ الدخول بتغيّر اللغة (كان العنوان الكردي يلتفّ: +٣٩).
+  final List<String> titleTranslations;
+  final List<String> bodyTranslations;
 
   @override
   Widget build(BuildContext context) {
@@ -28,7 +43,9 @@ class AnimeGuestPrompt extends StatelessWidget {
 
     return Center(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(18),
+        // ما يغطّي أسفل الجسم (الشريط العائم في السلة) يدخل الحشوة: البطاقة
+        // تتوسّط المساحة المرئية، وزرّ الدخول لا يقع تحت الشريط.
+        padding: context.scrollPadding(const EdgeInsets.all(18)),
         child: Container(
           width: double.infinity,
           decoration: BoxDecoration(
@@ -59,16 +76,6 @@ class AnimeGuestPrompt extends StatelessWidget {
                   ),
                 ),
               ),
-              if (artwork != null)
-                PositionedDirectional(
-                  bottom: -14,
-                  start: -26,
-                  child: Image.asset(
-                    artwork!,
-                    height: 132,
-                    fit: BoxFit.contain,
-                  ),
-                ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
                 child: Column(
@@ -91,8 +98,11 @@ class AnimeGuestPrompt extends StatelessWidget {
                       child: Icon(icon, color: Colors.white, size: 27),
                     ),
                     const SizedBox(height: AppDimens.space5),
-                    Text(
+                    BoundedText(
                       title,
+                      maxLines: 2,
+                      reserveFor: titleTranslations,
+                      alignment: Alignment.topCenter,
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                         fontSize: 20,
@@ -100,8 +110,12 @@ class AnimeGuestPrompt extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: AppDimens.space3),
-                    Text(
+                    BoundedText(
                       body,
+                      maxLines: 8,
+                      minScale: 1,
+                      reserveFor: bodyTranslations,
+                      alignment: Alignment.topCenter,
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         height: 1.8,
@@ -110,7 +124,7 @@ class AnimeGuestPrompt extends StatelessWidget {
                     ),
                     const SizedBox(height: AppDimens.space6),
                     AnimePrimaryButton(
-                      label: 'تسجيل الدخول',
+                      label: context.strings('login'),
                       onPressed: onLogin,
                       height: AppDimens.buttonHeightXl,
                     ),

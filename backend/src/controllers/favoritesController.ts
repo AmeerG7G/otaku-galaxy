@@ -1,5 +1,7 @@
 import type { RequestHandler } from 'express';
 import { favoritesService } from '../services/favoritesService.js';
+import { wantsUnpriced } from './catalogController.js';
+import { resolveLocale } from '../utils/locale.js';
 import { ok } from '../utils/response.js';
 import { parse } from '../utils/zod.js';
 import { addFavoriteSchema, favoriteParamSchema } from '../validators/cart.js';
@@ -13,7 +15,7 @@ export const favoritesController = {
       page: (req.query as PaginationQuery).page,
       limit: (req.query as PaginationQuery).limit,
     });
-    const data = await favoritesService.list(req.auth!.id, page, limit);
+    const data = await favoritesService.list(req.auth!.id, page, limit, resolveLocale(req), wantsUnpriced(req));
     return ok(res, data);
   }) as RequestHandler,
 

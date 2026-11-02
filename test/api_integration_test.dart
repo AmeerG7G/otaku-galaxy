@@ -1,13 +1,17 @@
 @Tags(['integration'])
 library;
 
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otaku_galaxy/core/network/api_client.dart';
 import 'package:otaku_galaxy/core/errors/app_exception.dart';
+import 'package:otaku_galaxy/features/auth/domain/entities/auth_session.dart';
 import 'package:otaku_galaxy/features/auth/data/repositories/auth_repository_impl.dart';
 import 'package:otaku_galaxy/features/auth/domain/repositories/auth_repository.dart';
 import 'package:otaku_galaxy/features/cart/data/repositories/cart_repository_impl.dart';
+import 'package:otaku_galaxy/features/cart/domain/entities/cart_sync.dart';
 import 'package:otaku_galaxy/features/cart/domain/repositories/cart_repository.dart';
 import 'package:otaku_galaxy/features/cart/presentation/cubit/cart_cubit.dart';
 import 'package:otaku_galaxy/features/cart/presentation/cubit/cart_state.dart';
@@ -27,7 +31,6 @@ import 'package:otaku_galaxy/features/products/domain/repositories/product_repos
 /// ضد الخادم المحلي. يُتخطى تلقائياً إذا كان الخادم متوقفاً.
 void main() {
   const base = 'http://localhost:4000/api';
-  const otp = '123456';
 
   late ApiClient api;
   late AuthRepository auth;
@@ -39,6 +42,14 @@ void main() {
 
   final phone =
       '077${(DateTime.now().millisecondsSinceEpoch % 100000000).toString().padLeft(8, '0')}';
+
+  /// الصيغة المعتمدة على الخادم بعد التطبيع (`+9647XXXXXXXXX`).
+  ///
+  /// [CRITICAL] الخادم يطبّع كل رقم إلى E.164 قبل تخزينه، فما يعود من
+  /// `/auth/me` ليس ما أُرسل حرفياً. توقّعُ الصيغة المحلية هنا كان يقيس
+  /// «هل يعيد الخادم ما أعطيتَه» بدل «هل يعيد الرقم نفسه بصيغته المعتمدة»
+  /// — والأول ينكسر مع كل تطبيع صحيح.
+  final canonicalPhone = '+964${phone.substring(1)}';
   const password = 'Test@12345';
 
   setUpAll(() async {
@@ -58,12 +69,42 @@ void main() {
     orders = OrderRepositoryImpl(api: api);
 
     try {
-      await auth.register(
+      final receipt = await auth.register(
         username: 'فحص تكاملي',
         phone: phone,
         password: password,
+        gender: 'male',
       );
-      await auth.verifyOtp(phone, otp);
+      // لا رمز: الحساب يُفعَّل بموافقة الإدارة عبر المسار الإداري الحقيقي.
+      // بلا مسؤولٍ مزروع لا يمكن تفعيل أي حساب، فتُتخطّى السويت كلّها —
+      // وهذا هو السلوك المطلوب لا عيباً في الاختبار.
+      // [CRITICAL] بيانات المسؤول من بيئة البذر نفسها (`SEED_ADMIN_PHONE`/
+      // `SEED_ADMIN_PASSWORD`، كما في اختبار الموقع). كانت ثابتةً هنا
+      // (`07700000000`/`admin123`) والبذر يرفض كلمة مرورٍ دون ١٢ حرفاً، فلم
+      // يكن بالإمكان زرع هذا المسؤول أصلاً وتُتخطّى السويت كلها دائماً.
+      final adminPhone = Platform.environment['SEED_ADMIN_PHONE'] ?? '';
+      final adminPassword = Platform.environment['SEED_ADMIN_PASSWORD'] ?? '';
+      if (adminPhone.isEmpty || adminPassword.isEmpty) {
+        markTestSkipped(
+          'SEED_ADMIN_PHONE و SEED_ADMIN_PASSWORD غير مضبوطين — '
+          'اضبطهما بقيم db:seed ثم أعد التشغيل',
+        );
+        return;
+      }
+      final adminApi = ApiClient(dio: Dio(BaseOptions(baseUrl: base)));
+      final AuthSession adminSession;
+      try {
+        adminSession = await AuthRepositoryImpl(api: adminApi)
+            .login(adminPhone, adminPassword);
+      } on AppException catch (e) {
+        markTestSkipped(
+          'لا مسؤول مزروع في قاعدة التطوير (${e.message}) — '
+          'شغّل db:seed مع SEED_ADMIN_PHONE و SEED_ADMIN_PASSWORD',
+        );
+        return;
+      }
+      adminApi.tokenProvider = () => adminSession.token;
+      await adminApi.post('/admin/account-requests/${receipt.id}/approve');
       final session = await auth.login(phone, password);
       api.tokenProvider = () => session.token;
     } catch (e) {
@@ -79,7 +120,7 @@ void main() {
 
   test('التسجيل/التفعيل/الدخول ثم جلب الملف الشخصي', () async {
     final me = await auth.me();
-    expect(me.phone, phone);
+    expect(me.phone, canonicalPhone);
   });
 
   test('الرئيسية والتصنيفات والمحافظات والبحث وتفاصيل المنتج', () async {
@@ -101,7 +142,7 @@ void main() {
 
     final someProducts = await products.fetchProducts(page: 1, limit: 1);
     expect(someProducts.items, isNotEmpty);
-    final sample = someProducts.items.first.name.trim();
+    final sample = someProducts.items.first.nameAr.trim();
     final term = sample.length >= 3 ? sample.substring(0, 3) : sample;
     final search = await products.searchProducts(term, limit: 5);
     expect(
@@ -157,16 +198,28 @@ void main() {
 
         // الفلترة تتم عبر subcategoryId الذي يصدّره الخادم مع المنتجات،
         // مع رجوع لاسم القسم الفرعي عند غياب المعرّف (توافق قديم).
+        // التصنيف المعتمد يحمل مجموعاتٍ فرعية بلا منتجات بعد (البذر نفسه:
+        // «سلاسل مفاتيح»، «حقائب كتف») — فالمقياس أن الفلترة تُسند كل منتج
+        // إلى مجموعته، لا أن كل مجموعةٍ ممتلئة.
+        var filled = 0;
         for (final sub in category.subcategories) {
           final subId = category.subcategoryIds[sub];
           final subItems = subId != null
               ? items.where((p) => p.subcategoryId == subId).toList()
               : items.where((p) => p.subcategory == sub).toList();
+          if (subItems.isNotEmpty) filled++;
+        }
+        expect(
+          filled,
+          greaterThan(0),
+          reason: 'لا مجموعة فرعية في القسم "$target" تُسند إليها منتجاته',
+        );
+        final ids = category.subcategoryIds.values.toSet();
+        for (final p in items.where((p) => p.subcategoryId != null)) {
           expect(
-            subItems,
-            isNotEmpty,
-            reason:
-                'المجموعة الفرعية "$sub" في القسم "$target" يجب أن تحتوي منتجات',
+            ids,
+            contains(p.subcategoryId),
+            reason: 'منتج "${p.id}" في مجموعةٍ فرعية لا يعرضها القسم "$target"',
           );
         }
       }
@@ -392,6 +445,178 @@ void main() {
     expect(failures, isEmpty, reason: failures.join(' | '));
   }, timeout: const Timeout(Duration(minutes: 2)));
 
+  /// CA-14 (STEP 59) عبر الخادم الحقيقي: المسؤول يغيّر السعر ثم المخزون، والسلة
+  /// الحيّة تتبعهما عبر `GET /cart` نفسه (Dio + المستودع + الكيوبت)، ويُبلَّغ
+  /// الزبون برسالة واحدة لكل مزامنة؛ وإرسالٌ بعد تعطيل المنتج يُرفض بـ409.
+  test('[CA-14] السلة الحيّة تتبع السعر والمخزون على الخادم، والإرسال شبكة أمان', () async {
+    final adminApi = ApiClient(dio: Dio(BaseOptions(baseUrl: base)));
+    final AuthSession adminSession;
+    try {
+      final seeded = _seedAdmin();
+      if (seeded == null) throw const AppException('SEED_ADMIN_PHONE/SEED_ADMIN_PASSWORD غير مضبوطين');
+      adminSession = await AuthRepositoryImpl(api: adminApi).login(seeded.phone, seeded.password);
+    } on AppException catch (e) {
+      markTestSkipped('لا مسؤول مزروع (${e.message})');
+      return;
+    }
+    adminApi.tokenProvider = () => adminSession.token;
+
+    Product? product;
+    for (var page = 1; page <= 5 && product == null; page++) {
+      final result = await products.fetchProducts(page: page, limit: 50);
+      for (final p in result.items) {
+        // بلا خيارات: السطر يُضاف بـ`optionValue: null` (انظر `_pickInStockProduct`).
+        if (p.stock >= 2 &&
+            ((await products.fetchProductDetails(p.id)).options ?? const []).isEmpty) {
+          product = p;
+          break;
+        }
+      }
+      if (!result.hasMore) break;
+    }
+    if (product == null) {
+      markTestSkipped('لا منتج بمخزون ٢ على الأقل');
+      return;
+    }
+    final target = product;
+    Future<void> admin(Map<String, dynamic> body) =>
+        adminApi.patch('/admin/products/${target.id}', body: body);
+
+    final cubit = CartCubit(CartRepositoryImpl(api: api));
+    final notices = <CartSyncNotice>[];
+    final sub = cubit.notices.listen(notices.add);
+    try {
+      await cubit.load();
+      for (final item in [...cubit.state.items]) {
+        await cubit.remove(item.product.id);
+      }
+      await cubit.add(target, quantity: 2);
+
+      await admin({'price': target.price + 1000});
+      var notice = await cubit.sync();
+      expect(notice?.priceChanged, isTrue);
+      expect(cubit.state.items.single.product.price, target.price + 1000);
+      expect(cubit.state.total, (target.price + 1000) * 2);
+
+      await admin({'stock': 1});
+      notice = await cubit.sync();
+      expect(notice?.quantityReduced, isTrue);
+      expect(cubit.state.items.single.quantity, 1);
+
+      await admin({'stock': 0});
+      notice = await cubit.sync();
+      expect(notice?.itemRemoved, isTrue);
+      expect(cubit.state, isA<CartEmpty>());
+      await Future<void>.delayed(Duration.zero);
+      expect(notices, hasLength(3), reason: 'رسالة واحدة لكل مزامنة غيّرت شيئاً');
+
+      // شبكة الأمان: منتجٌ عُطِّل بعد آخر مزامنة يرفض الإرسال — لا إسقاط صامت.
+      await admin({'stock': target.stock});
+      await cubit.add(target);
+      await cubit.sync();
+      await admin({'isActive': false});
+      final gov = (await governorates.fetchGovernorates()).first;
+      await expectLater(
+        orders.placeOrder(OrderData(
+          governorateId: gov.id,
+          province: gov.name,
+          deliveryCost: gov.deliveryFee,
+          fullAddress: 'شارع الاختبار — مجرة 7',
+          phone: '07700000000',
+          items: const [],
+        )),
+        throwsA(isA<AppException>()
+            .having((e) => e.statusCode, 'statusCode', 409)
+            .having((e) => e.code, 'code', 'PRODUCT_UNAVAILABLE')),
+      );
+      notice = await cubit.sync();
+      expect(notice?.itemRemoved, isTrue, reason: 'المزامنة التالية تُزيله وتبلّغ به');
+    } finally {
+      await sub.cancel();
+      await admin({'price': target.price, 'stock': target.stock, 'isActive': true});
+      final left = await cart.fetchCart();
+      for (final line in left) {
+        if (line.lineId != null) await cart.removeFromCart(line.lineId!);
+      }
+      await cubit.close();
+    }
+  });
+
+  /// CA-14 الخيار (أ) عبر الخادم الحقيقي — السيناريو المطلوب حرفياً: الزبون يرى
+  /// X، المسؤول يغيّره إلى Y، الإرسال يحمل X ⇒ `409 PRODUCT_PRICE_CHANGED` بلا طلب،
+  /// ثم المزامنة تُظهر Y مع رسالة السعر، وإعادة الإرسال تمرّ بـY.
+  test('[CA-14 option A] سعرٌ تغيّر بعد المراجعة: 409 بلا طلب، ثم مزامنة تُظهر الجديد وإعادةٌ تنجح', () async {
+    final adminApi = ApiClient(dio: Dio(BaseOptions(baseUrl: base)));
+    final AuthSession adminSession;
+    try {
+      final seeded = _seedAdmin();
+      if (seeded == null) throw const AppException('SEED_ADMIN_PHONE/SEED_ADMIN_PASSWORD غير مضبوطين');
+      adminSession = await AuthRepositoryImpl(api: adminApi).login(seeded.phone, seeded.password);
+    } on AppException catch (e) {
+      markTestSkipped('لا مسؤول مزروع (${e.message})');
+      return;
+    }
+    adminApi.tokenProvider = () => adminSession.token;
+
+    final target = await _pickInStockProduct(products);
+    final x = target.price;
+    final y = x + 2000;
+    Future<void> admin(Map<String, dynamic> body) =>
+        adminApi.patch('/admin/products/${target.id}', body: body);
+    final gov = (await governorates.fetchGovernorates()).first;
+    OrderData checkoutFrom(CartCubit cubit) => OrderData(
+      governorateId: gov.id,
+      province: gov.name,
+      deliveryCost: gov.deliveryFee,
+      fullAddress: 'شارع الاختبار — مجرة 7',
+      phone: '07700000000',
+      items: cubit.state.items,
+    );
+
+    final cubit = CartCubit(CartRepositoryImpl(api: api));
+    final notices = <CartSyncNotice>[];
+    final sub = cubit.notices.listen(notices.add);
+    try {
+      await cubit.load();
+      for (final item in [...cubit.state.items]) {
+        await cubit.remove(item.product.id);
+      }
+      await cubit.add(target);
+      await cubit.sync();
+      expect(cubit.state.items.single.product.price, x, reason: 'الزبون يرى X');
+      final reviewed = checkoutFrom(cubit);
+      final ordersBefore = (await orders.fetchMyOrders()).length;
+
+      await admin({'price': y});
+
+      await expectLater(
+        orders.placeOrder(reviewed),
+        throwsA(isA<AppException>()
+            .having((e) => e.statusCode, 'statusCode', 409)
+            .having((e) => e.code, 'code', 'PRODUCT_PRICE_CHANGED')),
+      );
+      expect((await orders.fetchMyOrders()).length, ordersBefore, reason: 'لا طلب');
+
+      final notice = await cubit.sync();
+      expect(notice?.priceChanged, isTrue, reason: 'الزبون يُبلَّغ');
+      expect(cubit.state.items.single.product.price, y, reason: 'السلة تعرض Y');
+      await Future<void>.delayed(Duration.zero);
+      expect(notices.where((n) => n.priceChanged), hasLength(1));
+
+      final retried = await orders.placeOrder(checkoutFrom(cubit));
+      expect(retried.id, isNotEmpty, reason: 'إعادة الإرسال تمرّ بالسعر الجديد');
+      expect(retried.productsTotal, y);
+    } finally {
+      await sub.cancel();
+      await admin({'price': target.price, 'stock': target.stock, 'isActive': true});
+      final left = await cart.fetchCart();
+      for (final line in left) {
+        if (line.lineId != null) await cart.removeFromCart(line.lineId!);
+      }
+      await cubit.close();
+    }
+  });
+
   test('الطلب: إنشاء → قائمة → تفاصيل مع حالة "بانتظار التأكيد"', () async {
     final product = await _pickInStockProduct(products);
     await cart.addToCart(product.id, quantity: 1);
@@ -427,19 +652,43 @@ void main() {
     'دخول المدير المعتمد (seed) عبر طبقة التطبيق وجلب الملف الإداري',
     () async {
       // بيانات المدير المعرّفة في backend/scripts/seed.ts (بيئة تطوير محلية).
-      const adminPhone = '07700000000';
-      const adminPassword = 'admin123';
+      //
+      // [NOTE] الرقم يُرسل بالصيغة المحلية كما يكتبه المستخدم، ويعود من
+      // الخادم بالصيغة المعتمدة — والتطبيع هو ما يجعل الاثنين رقماً واحداً.
+      final seeded = _seedAdmin();
+      if (seeded == null) {
+        markTestSkipped('SEED_ADMIN_PHONE و SEED_ADMIN_PASSWORD غير مضبوطين');
+        return;
+      }
+      final adminPhone = seeded.phone;
+      final adminPassword = seeded.password;
+      // الصيغة التي يخزّنها الخادم (E.164) لرقمٍ محلي `07…`.
+      final canonicalAdminPhone =
+          adminPhone.startsWith('0') ? '+964${adminPhone.substring(1)}' : adminPhone;
 
       final adminApi = ApiClient(dio: Dio(BaseOptions(baseUrl: base)));
       final adminAuth = AuthRepositoryImpl(api: adminApi);
 
-      final session = await adminAuth.login(adminPhone, adminPassword);
+      // [NOTE] `scripts/seed.ts` لم يعد يُنشئ مسؤولاً بكلمة مرور مخبوزة؛
+      // صار يتطلّب `SEED_ADMIN_PHONE` و`SEED_ADMIN_PASSWORD` صراحةً — وهو
+      // التشديد الصحيح. فحين لا يكون مسؤولٌ مزروعاً، يُتخطّى هذا الفحص بدل
+      // أن يفشل على بيانات اعتماد قرّر المشروع ألّا يُنشئها.
+      final AuthSession session;
+      try {
+        session = await adminAuth.login(adminPhone, adminPassword);
+      } on AppException catch (e) {
+        markTestSkipped(
+          'لا مسؤول مزروع في قاعدة التطوير (${e.message}) — '
+          'شغّل db:seed مع SEED_ADMIN_PHONE و SEED_ADMIN_PASSWORD',
+        );
+        return;
+      }
       expect(session.token, isNotEmpty);
 
       adminApi.tokenProvider = () => session.token;
       final me = await adminAuth.me();
       expect(me.role, 'admin');
-      expect(me.phone, adminPhone);
+      expect(me.phone, canonicalAdminPhone);
     },
   );
 }
@@ -461,13 +710,28 @@ Future<bool> _backendUp() async {
 }
 
 /// يعيد أول منتج متوفر في المخزون (تتجنب عروض المخزون الصفري التي ترفضها السلة).
+/// منتجٌ متوفر **بلا خيارات** — تضيفه هذه الفحوص بـ`optionValue: null`.
+///
+/// [CRITICAL] منذ صار الخادم يطابق خيار السطر بخيارات المنتج الحقيقية
+/// (`INVALID_PRODUCT_OPTION`)، منتجٌ له خيارات يحتاج قيمةً لكل خيار. القائمة
+/// لا تحمل الخيارات، فتُقرأ من التفاصيل كما يفعل التطبيق نفسه.
 Future<Product> _pickInStockProduct(ProductRepository repo) async {
   for (var page = 1; page <= 5; page++) {
     final result = await repo.fetchProducts(page: page, limit: 50);
     for (final product in result.items) {
-      if (product.stock > 0) return product;
+      if (product.stock <= 0) continue;
+      final detail = await repo.fetchProductDetails(product.id);
+      if ((detail.options ?? const []).isEmpty) return product;
     }
     if (!result.hasMore) break;
   }
-  throw StateError('لا يوجد منتج متوفر في المخزون');
+  throw StateError('لا يوجد منتج متوفر في المخزون بلا خيارات');
+}
+
+/// المسؤول المزروع (`db:seed`) من البيئة نفسها التي زرعته — لا بيانات ثابتة.
+({String phone, String password})? _seedAdmin() {
+  final phone = Platform.environment['SEED_ADMIN_PHONE'] ?? '';
+  final password = Platform.environment['SEED_ADMIN_PASSWORD'] ?? '';
+  if (phone.isEmpty || password.isEmpty) return null;
+  return (phone: phone, password: password);
 }

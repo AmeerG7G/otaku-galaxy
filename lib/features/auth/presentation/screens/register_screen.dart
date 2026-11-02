@@ -1,13 +1,20 @@
 import 'package:auto_route/auto_route.dart';
+import '../../../../core/l10n/app_strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../../core/constants/validation_rules.dart';
 import '../../../../core/design_system/design_system.dart';
 import '../../../../core/errors/app_exception.dart';
+import '../../../../core/l10n/gender.dart' show AppGender, GenderedStrings;
 import '../../../../core/router/app_router.dart';
-import '../cubit/auth_cubit.dart';
+import '../../../../core/utils/iraqi_phone.dart';
+import '../../domain/entities/account_request.dart';
+import '../cubit/auth_cubit.dart' show AuthCubit;
 import '../widgets/auth_field.dart';
 import '../widgets/auth_scaffold.dart';
+import '../../../visuals/domain/visual_slot.dart';
+import '../../../settings/presentation/cubit/locale_cubit.dart';
 
 @RoutePage()
 class RegisterScreen extends StatefulWidget {
@@ -26,6 +33,16 @@ class _RegisterScreenState extends State<RegisterScreen>
 
   bool _obscure = true;
   bool _loading = false;
+
+  /// اختيار الجنس — لا قيمة افتراضية.
+  ///
+  /// [CRITICAL] البدء بـ`null` لا بـ`male`. قيمةٌ مختارة سلفاً تجعل نصف
+  /// الحسابات تُنشأ باختيارٍ لم يقصده أصحابها لأنهم لم ينتبهوا لحقلٍ يبدو
+  /// مملوءاً.
+  AppGender? _gender;
+
+  /// تظهر رسالة «اختر الجنس» بعد أول محاولة إرسال لا قبلها.
+  bool _submitted = false;
 
   late final AnimationController _animationController;
   late final Animation<double> _fadeAnimation;
@@ -78,18 +95,26 @@ class _RegisterScreenState extends State<RegisterScreen>
   }
 
   Future<void> _register() async {
-    if (!_formKey.currentState!.validate()) return;
+    setState(() => _submitted = true);
+    // `Form` لا يعرف البطاقتين، فيُفحص الاختيار صراحةً. والخادم يرفض التسجيل
+    // بلا جنس على أي حال — هذا الفحص للتجربة لا للأمان.
+    final gender = _gender;
+    if (!_formKey.currentState!.validate() || gender == null) return;
 
     setState(() => _loading = true);
     try {
       await context.read<AuthCubit>().register(
         username: _usernameController.text.trim(),
-        phone: _phoneController.text.trim(),
+        phone:
+            normalizeIraqiPhone(_phoneController.text) ?? _phoneController.text.trim(),
         password: _passwordController.text,
+        gender: gender.value!,
       );
       if (!mounted) return;
-      context.router.push(
-        OtpVerificationRoute(phone: _phoneController.text.trim()),
+      // لا شاشة رمز: الطلب قيد مراجعة الإدارة. `replace` لا `push` حتى لا
+      // يعود الزبون بالسهم إلى استمارةٍ أُرسلت فعلاً.
+      context.router.replace(
+        AccountPendingRoute(kind: AccountRequestKind.registration),
       );
     } catch (e) {
       if (!mounted) return;
@@ -101,126 +126,173 @@ class _RegisterScreenState extends State<RegisterScreen>
 
   /// يعرض رسالة الخطأ الواضحة من الخادم عند توفّرها، مع رسالة عامة غير ذلك.
   String _messageOf(Object e) {
-    if (e is AppException && e.message.trim().isNotEmpty) return e.message;
-    return 'حدث خطأ غير متوقع، يرجى المحاولة مرة أخرى';
+    if (e is AppException) {
+      final text = e.localizedMessage(context);
+      if (text.trim().isNotEmpty) return text;
+    }
+    return context.strings('unexpectedError');
   }
 
   @override
   Widget build(BuildContext context) {
-
     return FadeTransition(
       opacity: _fadeAnimation,
       child: SlideTransition(
         position: _slideAnimation,
         child: AuthScaffold(
-          title: 'إنشاء حساب',
-          subtitle: 'خطوة وحدة وتصير من سكّان مجرة الأوتاكو.',
-          artwork: 'assets/art/opt/a-i0.png',
+          title: context.strings('register'),
+          // المخاطَب مجهول بالضرورة في هذه الشاشة: لم يُنشأ الحساب بعد ولم
+          // يُسأل عن جنسه، فالصيغة المحايدة هي الصحيحة هنا لا المذكّرة.
+          // `ofLocale` لا `of`: الثانية تعرف الجنس ولا تعرف اللغة فتُرجع
+          // العربية دائماً — فكانت هذه الجملة عربيةً في واجهةٍ كردية.
+          subtitle: GenderedStrings.galaxyResident.ofLocale(
+            AppGender.unknown,
+            context.language,
+          ),
+          subtitleTranslations: [
+            for (final l in AppLanguage.values)
+              GenderedStrings.galaxyResident.ofLocale(AppGender.unknown, l),
+          ],
+          artworkSlot: VisualSlots.registerHeader,
           artworkHeight: 178,
           artworkWidth: 150,
           artworkBottom: -8,
           form: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // حقل اسم المستخدم
-                      AuthField(
-                        controller: _usernameController,
-                        label: 'اسم المستخدم',
-                        hint: 'عمر الطيار',
-                        textInputAction: TextInputAction.next,
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'يرجى إدخال اسم المستخدم';
-                          }
-                          if (value.trim().length < 3) {
-                            return 'اسم المستخدم قصير جداً';
-                          }
-                          return null;
-                        },
-                      ),
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // حقل اسم المستخدم
+                AuthField(
+                  controller: _usernameController,
+                  label: context.strings('username'),
+                  hint: context.strings('usernameHintExample'),
+                  textInputAction: TextInputAction.next,
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return context.strings('usernameRequired');
+                    }
+                    if (value.trim().length < kUsernameMinLength) {
+                      return context.strings('usernameTooShort');
+                    }
+                    return null;
+                  },
+                ),
 
-                      const SizedBox(height: 15),
+                const SizedBox(height: 15),
 
-                      // حقل رقم الهاتف
-                      AuthField(
-                        controller: _phoneController,
-                        label: 'رقم الهاتف',
-                        hint: '0770 123 4567',
-                        textDirection: TextDirection.ltr,
-                        keyboardType: TextInputType.phone,
-                        textInputAction: TextInputAction.next,
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'يرجى إدخال رقم الهاتف';
-                          }
-                          if (value.trim().length < 10) {
-                            return 'رقم الهاتف غير صحيح';
-                          }
-                          return null;
-                        },
-                      ),
+                // حقل رقم الهاتف
+                AnimeTextField(
+                  controller: _phoneController,
+                  label: context.strings('phoneNumber'),
+                  hint: context.strings('phoneHintExample'),
+                  prefixIcon: Icons.phone_outlined,
+                  textDirection: TextDirection.ltr,
+                  keyboardType: TextInputType.phone,
+                  // الرقم كاملاً كما يكتبه الزبون (`07701234567`) — لا بادئة `07` ثابتة ولا مُدرَجة؛
+                  // المُنسّق يُبقي الأرقام وحدها، والحكم لقاعدة الموبايل العراقي ثم للخادم.
+                  inputFormatters: const [IraqiPhoneInputFormatter()],
+                  textInputAction: TextInputAction.next,
+                  maxLength: kIraqiLocalPhoneLength,
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return context.strings('phoneRequiredShort');
+                    }
+                    if (!isValidIraqiLocalPhone(value)) {
+                      return context.strings('phoneInvalid');
+                    }
+                    return null;
+                  },
+                ),
 
-                      const SizedBox(height: 15),
+                const SizedBox(height: 15),
 
-                      // حقل كلمة المرور
-                      AuthField(
-                        controller: _passwordController,
-                        label: 'كلمة المرور',
-                        hint: '••••••••',
-                        obscureText: _obscure,
-                        textInputAction: TextInputAction.done,
-                        onSubmitted: (_) => _register(),
-                        trailing: IconButton(
-                          icon: Icon(
-                            _obscure
-                                ? Icons.visibility_outlined
-                                : Icons.visibility_off_outlined,
-                            size: AppDimens.iconMd,
-                            color: Theme.of(context).colorScheme.outline,
-                          ),
-                          onPressed: () => setState(() => _obscure = !_obscure),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'يرجى إدخال كلمة المرور';
-                          }
-                          if (value.length < 6) {
-                            return 'كلمة المرور قصيرة جداً (6 أحرف على الأقل)';
-                          }
-                          return null;
-                        },
-                      ),
+                // حقل كلمة المرور
+                AuthField(
+                  controller: _passwordController,
+                  label: context.strings('password'),
+                  hint: '••••••••',
+                  obscureText: _obscure,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => _register(),
+                  trailing: IconButton(
+                    icon: Icon(
+                      _obscure
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined,
+                      size: AppDimens.iconMd,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                    onPressed: () => setState(() => _obscure = !_obscure),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return context.strings('passwordRequired');
+                    }
+                    // الحدّ نفسه الذي يفرضه الخادم — لا ٦ التي كان يقبلها
+                    // التطبيق ويرفضها الخادم بعد الإرسال.
+                    if (value.length < kPasswordMinLength) {
+                      return context.strings('passwordMinLength');
+                    }
+                    return null;
+                  },
+                ),
 
-                      SizedBox(height: AppDimens.space5),
+                const SizedBox(height: 15),
 
-                      // زر إنشاء الحساب
-                      AnimePrimaryButton(
-                        label: 'إرسال رمز التحقق',
-                        onPressed: _register,
-                        loading: _loading,
-                        height: AppDimens.buttonHeightXl,
-                        borderRadius: AppDimens.radiusMd,
-                        gradient: AppColors.ctaGradient,
-                      ),
+                // اختيار الجنس — بطاقتان بأيقونتين، بلا حقل نصّي.
+                GenderSelector(
+                  value: _gender,
+                  onChanged: (value) => setState(() => _gender = value),
+                  errorText: _submitted && _gender == null
+                      ? context.strings('genderRequired')
+                      : null,
+                ),
 
-                      SizedBox(height: AppDimens.space3),
+                SizedBox(height: AppDimens.space5),
 
-                      Text(
-                        'بإنشائك حساباً فأنت توافق على شروط الاستخدام وسياسة الخصوصية.',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          height: 1.7,
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
+                // زر إنشاء الحساب
+                AnimePrimaryButton(
+                  // لا رمز يُرسل: الزرّ يسمّي ما يحدث فعلاً — طلب إنشاء حساب.
+                  label: context.strings('submitRequest'),
+                  onPressed: _register,
+                  loading: _loading,
+                  height: AppDimens.buttonHeightXl,
+                  borderRadius: AppDimens.radiusMd,
+                  gradient: AppColors.ctaGradient,
+                ),
+
+                SizedBox(height: AppDimens.space3),
+
+                // [CRITICAL] (البوّابة ٨، 2026-10-10) فقرةٌ تحجز أسطر أطول
+                // صيغها — بكل لغة وكل جنس، فلا تطول بطاقة النموذج بتغيّر
+                // اللغة (+١٩–٢٤ بالكردية) ولا باختيار الجنس.
+                BoundedText(
+                  // بلغة الواجهة — لا `of` التي تُرجع العربية دائماً.
+                  GenderedStrings.termsNotice.ofLocale(
+                    _gender ?? AppGender.unknown,
+                    context.language,
+                  ),
+                  maxLines: 12,
+                  minScale: 1,
+                  reserveFor: [
+                    for (final g in AppGender.values)
+                      for (final l in AppLanguage.values)
+                        GenderedStrings.termsNotice.ofLocale(g, l),
+                  ],
+                  alignment: Alignment.topCenter,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    height: 1.7,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
+              ],
+            ),
+          ),
           footer: Center(
             child: AnimeTextButton(
-              label: 'عندك حساب؟ تسجيل الدخول',
+              label: context.strings('haveAccountLogin'),
               onPressed: () => Navigator.of(context).pop(),
             ),
           ),

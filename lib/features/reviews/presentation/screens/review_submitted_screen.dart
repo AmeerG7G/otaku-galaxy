@@ -1,9 +1,12 @@
 import 'package:auto_route/auto_route.dart';
+import '../../../../core/l10n/app_strings.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/design_system/design_system.dart';
 import '../../../../core/router/app_router.dart';
 import '../widgets/star_rating.dart';
+import '../../../visuals/domain/visual_slot.dart';
+import '../../../visuals/presentation/character_artwork.dart';
 
 /// تأكيد إرسال التقييم — «بانتظار المراجعة».
 ///
@@ -64,22 +67,28 @@ class ReviewSubmittedScreen extends StatelessWidget {
                     padding: const EdgeInsets.fromLTRB(22, 34, 22, 12),
                     child: Column(
                       children: [
-                        Image.asset(
-                          'assets/art/opt/a-i4.png',
+                        const CharacterArtwork(
+                          slot: VisualSlots.reviewSubmitted,
                           width: 172,
                           fit: BoxFit.contain,
                         ),
                         const SizedBox(height: 8),
                         OtakuStatusPill(
-                          label: 'بانتظار المراجعة',
+                          label: context.strings('awaitingReview'),
                           color: colors.warning,
                           fontSize: 12.5,
                         ),
                         const SizedBox(height: 14),
                         ConstrainedBox(
                           constraints: const BoxConstraints(maxWidth: 270),
-                          child: Text(
-                            'سيتم مراجعة تقييمك قبل نشره.',
+                          // فقرة تحجز أسطر أطول ترجماتها (البوّابة ٧): الكردية
+                          // سطران فكانت البطاقة تحتها تنزل ٢٧.
+                          child: BoundedText(
+                            context.strings('reviewWillBeChecked'),
+                            maxLines: 8,
+                            minScale: 1,
+                            reserveFor: AppStrings.across('reviewWillBeChecked'),
+                            alignment: Alignment.topCenter,
                             textAlign: TextAlign.center,
                             style: theme.textTheme.bodyMedium?.copyWith(
                               fontSize: 14,
@@ -105,14 +114,14 @@ class ReviewSubmittedScreen extends StatelessWidget {
                   child: Column(
                     children: [
                       AnimePrimaryButton(
-                        label: 'متابعة تقييم المنتجات',
+                        label: context.strings('continueRatingProducts'),
                         height: AppDimens.buttonHeightXl,
                         // `true` تُعيد تحميل قائمة التقييم التي دفعتنا هنا.
                         onPressed: () => context.router.maybePop(true),
                       ),
                       const SizedBox(height: 10),
                       AnimeTextButton(
-                        label: 'طلباتي',
+                        label: context.strings('myOrders'),
                         // `navigate` تعيد استخدام «طلباتي» إن كانت في المكدّس
                         // بدل تكديس نسخة ثانية منها.
                         onPressed: () =>

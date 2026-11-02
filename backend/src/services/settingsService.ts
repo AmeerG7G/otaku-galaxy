@@ -1,5 +1,7 @@
+import { config } from '../config/index.js';
 import { db } from '../database/pool.js';
 import { settingsRepo, type StoreSettings } from '../repositories/settingsRepo.js';
+import { resetAppVersionCache } from './appVersionService.js';
 
 export const settingsService = {
   /** إعدادات المتجر العامة — يقرأها تطبيق العميل بلا مصادقة. */
@@ -10,7 +12,12 @@ export const settingsService = {
         tiktok: settings.social_tiktok,
         instagram: settings.social_instagram,
         whatsapp: settings.social_whatsapp,
+        description: settings.social_description,
       },
+      // رابط المتجر في رسالة مشاركة المنتج — فارغٌ = الاسم وحده (STEP 64).
+      share: { storeUrl: settings.store_share_url },
+      // [D3] التطبيق لا يرسل أي إشارة تتبّع إلا والخادم يقول إنه مُشغَّل.
+      tracking: { enabled: config.analytics.trackingEnabled },
     };
   },
 
@@ -19,6 +26,10 @@ export const settingsService = {
   },
 
   async update(values: Partial<StoreSettings>) {
-    return settingsRepo.setMany(db, values);
+    const saved = await settingsRepo.setMany(db, values);
+    // إعدادات النسخة مخبّأة ثلاثين ثانية لأن الوسيط يقرؤها كل طلب؛ إبطالها
+    // هنا يجعل تغيير الحدّ الأدنى من اللوحة يسري فوراً لا بعد انتهاء المدة.
+    resetAppVersionCache();
+    return saved;
   },
 };

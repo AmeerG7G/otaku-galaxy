@@ -5,10 +5,7 @@ class ApiEndpoints {
   // المصادقة.
   static const String login = '/auth/login';
   static const String register = '/auth/register';
-  static const String sendOtp = '/auth/resend-code';
-  static const String verifyOtp = '/auth/verify';
   static const String forgotPassword = '/auth/forgot-password';
-  static const String resetPassword = '/auth/reset-password';
   static const String me = '/auth/me';
   static const String changePassword = '/auth/me/password';
 
@@ -28,11 +25,12 @@ class ApiEndpoints {
   static const String cartItem = '/cart/';
   static const String orders = '/orders';
   static const String orderDetails = '/orders/';
-  static const String cancelOrder = '/orders/';
   /// تأكيد العميل استلام طلبه: ‎/orders/{id}/confirm-receipt
   static const String confirmReceiptSuffix = '/confirm-receipt';
   /// الطلب المنتظر تأكيد استلامه — يقرؤه التطبيق عند كل فتح.
   static const String pendingConfirmation = '/orders/pending-confirmation';
+  /// ملخّص الدفع بأرقام الخادم قبل التأكيد (خصم الميلاد ومزيّة المستوى).
+  static const String checkoutQuote = '/orders/checkout-quote';
 
   // التقييمات (عميل).
   static const String reviews = '/reviews';
@@ -46,6 +44,18 @@ class ApiEndpoints {
   // نقاط المجرّة.
   static const String points = '/points';
 
+  /// سلّم المستويات وحده — عامّ، يُقرأ قبل تسجيل الدخول (استمارة نسيان
+  /// كلمة المرور تسأل الزبون عن مستواه).
+  static const String loyaltyLevels = '/catalog/loyalty-levels';
+
+  /// المطالبة بمزيّة مستوى — مفتاح المستوى في المسار، ولا حمولة.
+  ///
+  /// المفتاح معرّف إنجليزي مستقر (`explorer`, `champion`…) لا اسم معروض:
+  /// الأسماء تُصرَّف بجنس القارئ، ومسارٌ يحمل اسماً معروضاً ينكسر أول مرة
+  /// تُغيَّر صياغة.
+  static String claimReward(String levelKey) =>
+      '/points/rewards/$levelKey/claim';
+
   // المجموعات.
   static const String collections = '/collections';
   static const String collectionItem = '/collections/';
@@ -53,6 +63,12 @@ class ApiEndpoints {
   // الإشعارات.
   static const String notifications = '/notifications';
   static const String notificationsReadAll = '/notifications/read-all';
+
+  /// لمسة إشعار الدفع التي فتحت التطبيق (D3) — يُعدّ والقياس مُشغَّل فقط.
+  static String notificationOpened(String id) => '/notifications/$id/opened';
+
+  // إشارات القياس التجميعي (D3).
+  static const String trackingShare = '/tracking/share';
 
   // عيد الميلاد.
   static const String birthday = '/birthday';
@@ -62,6 +78,10 @@ class ApiEndpoints {
 
   // إعدادات المتجر العامة (روابط التواصل).
   static const String storeSettings = '/catalog/settings';
+
+  // إعدادات نسخة التطبيق (إجبار التحديث) — عام، وخارج فحص النسخة عمداً
+  // حتى تستطيع النسخة المحجوبة قراءة سبب الحجب ورابط المتجر.
+  static const String appVersion = '/catalog/app-version';
 
   // رفع صور تقييمات العملاء.
   static const String uploads = '/uploads';

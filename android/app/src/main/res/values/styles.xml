@@ -13,6 +13,19 @@
 
          This Theme is only used starting with V2 of Flutter's Android embedding. -->
     <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
-        <item name="android:windowBackground">?android:colorBackground</item>
+        <!--
+          [CRITICAL] نفس لون نافذة الإقلاع لا `?android:colorBackground`.
+
+          `NormalTheme` تُطبَّق على النافذة فور بدء العملية وتبقى **خلف**
+          واجهة فلاتر؛ و`LaunchTheme` تُزال حين يرسم المحرّك أول إطار.
+          بين الاثنتين نافذةٌ يملؤها هذا اللون: `?android:colorBackground`
+          يُحَلّ أبيضَ مع `Theme.Light` وأسودَ مع `Theme.Black`، فيرى
+          المستخدم ومضةً بيضاء (أو سوداء) قبل ظهور شاشة البداية — وهي
+          الومضة المُبلَّغ عنها. اللون الثابت يجعل الانتقال غير مرئي.
+
+          شاشة البداية فاتحة في الوضعين (`SplashBackdrop`)، فاللون واحد
+          في الملفّين عمداً — انظر `values/colors.xml`.
+        -->
+        <item name="android:windowBackground">@color/brand_launch_background</item>
     </style>
 </resources>

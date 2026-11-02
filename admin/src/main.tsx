@@ -1,28 +1,40 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider } from '@tanstack/react-query'
 import { App as AntApp, ConfigProvider } from 'antd'
 import arEG from 'antd/locale/ar_EG'
 import App from './App'
+import { watchSessionForWebPush } from './push/webPush'
+import { createQueryClient } from './queryClient'
+import { lightThemeConfig } from './theme'
+import { darkThemeConfig } from './theme/ThemeProvider'
+import { ThemeProvider } from './theme/ThemeProvider'
+import { useTheme } from './theme/ThemeProvider'
 import './index.css'
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 1,
-      refetchOnWindowFocus: false,
-    },
-  },
-})
+const queryClient = createQueryClient()
+
+// [SECURITY] نهاية الجلسة بأي طريق (٤٠١، إيقاف، انتهاء) تُلغي إشعارات هذا المتصفّح.
+watchSessionForWebPush()
+
+function ThemedApp() {
+  const { theme } = useTheme()
+  const antdTheme = theme === 'dark' ? darkThemeConfig : lightThemeConfig
+  return (
+    <ConfigProvider direction="rtl" locale={arEG} theme={antdTheme}>
+      <AntApp>
+        <App />
+      </AntApp>
+    </ConfigProvider>
+  )
+}
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <ConfigProvider direction="rtl" locale={arEG}>
-        <AntApp>
-          <App />
-        </AntApp>
-      </ConfigProvider>
+      <ThemeProvider>
+        <ThemedApp />
+      </ThemeProvider>
     </QueryClientProvider>
   </StrictMode>,
 )
