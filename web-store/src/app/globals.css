@@ -495,6 +495,15 @@ textarea {
   color: var(--on-surface-variant);
 }
 
+.field-error {
+  font-size: 0.875rem;
+  color: var(--error-text);
+}
+
+.field input[aria-invalid='true'] {
+  border-color: var(--error-text);
+}
+
 .card {
   background: var(--surface);
   border: 1px solid var(--outline);
@@ -1550,4 +1559,81 @@ textarea {
   align-items: center;
   min-height: var(--tap);
   color: var(--on-surface-variant);
+}
+
+/* ── «Download the app» card (admin-managed, catalog home) ── */
+
+.app-promo {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin-block-end: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  color: var(--on-brand);
+  box-shadow: var(--shadow);
+}
+
+.app-promo--violet {
+  background: linear-gradient(135deg, #5a2ea6, #6d3bc0 55%, #a1266a);
+}
+
+.app-promo--night {
+  background: linear-gradient(135deg, #0f0b24, #241b52);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.app-promo__icon {
+  width: 36px;
+  height: 36px;
+}
+
+.app-promo__text {
+  min-width: 0;
+}
+
+.app-promo__title {
+  margin: 0;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.app-promo__subtitle {
+  margin: 0;
+  font-size: 0.875rem;
+  opacity: 0.88;
+}
+
+.app-promo__cta {
+  grid-column: 1 / -1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap);
+  padding-inline: var(--space-5);
+  border-radius: 999px;
+  background: var(--on-brand);
+  color: #4a2390;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.app-promo__cta:hover {
+  background: #f1edff;
+}
+
+.app-promo__cta:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (min-width: 600px) {
+  .app-promo {
+    grid-template-columns: auto 1fr auto;
+  }
+
+  .app-promo__cta {
+    grid-column: auto;
+  }
 }

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import type { LoyaltyLevel } from '@/lib/types';
 import { bff } from './client-api';
+import { PhoneField, usePhoneField } from './PhoneField';
 import { useHydrated } from './use-hydrated';
 
 type Feedback = { kind: 'error' | 'success' | 'info'; text: string } | null;
@@ -31,16 +32,18 @@ export function LoginForm({ returnTo }: { returnTo: string }) {
   const hydrated = useHydrated();
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<Feedback>(null);
+  const phone = usePhoneField();
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
     const form = new FormData(event.currentTarget);
+    if (!phone.check()) return;
     setBusy(true);
     setFeedback(null);
     const result = await bff('/bff/session', {
       method: 'POST',
-      body: { phone: value(form, 'phone'), password: String(form.get('password') ?? '') },
+      body: { phone: phone.submitValue, password: String(form.get('password') ?? '') },
     });
     if (result.ok) {
       router.replace(returnTo);
@@ -55,10 +58,7 @@ export function LoginForm({ returnTo }: { returnTo: string }) {
     <form className="card narrow" method="post" onSubmit={submit} noValidate>
       <h1>تسجيل الدخول</h1>
       <FeedbackAlert feedback={feedback} />
-      <div className="field">
-        <label htmlFor="phone">رقم الهاتف</label>
-        <input id="phone" name="phone" className="ltr" type="tel" inputMode="tel" autoComplete="tel" placeholder="07XXXXXXXXX" required />
-      </div>
+      <PhoneField label="رقم الهاتف" value={phone.value} onChange={phone.onChange} error={phone.error} />
       <div className="field">
         <label htmlFor="password">كلمة المرور</label>
         <input id="password" name="password" type="password" autoComplete="current-password" required />
@@ -97,18 +97,20 @@ export function RegisterForm() {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Feedback>(null);
+  const phone = usePhoneField();
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
     const form = new FormData(event.currentTarget);
+    if (!phone.check()) return;
     setBusy(true);
     setFeedback(null);
     const result = await bff('/bff/register', {
       method: 'POST',
       body: {
         username: value(form, 'username'),
-        phone: value(form, 'phone'),
+        phone: phone.submitValue,
         password: String(form.get('password') ?? ''),
         gender: value(form, 'gender'),
       },
@@ -145,10 +147,7 @@ export function RegisterForm() {
         <label htmlFor="username">الاسم</label>
         <input id="username" name="username" autoComplete="name" minLength={2} maxLength={40} required />
       </div>
-      <div className="field">
-        <label htmlFor="phone">رقم الهاتف</label>
-        <input id="phone" name="phone" className="ltr" type="tel" inputMode="tel" autoComplete="tel" placeholder="07XXXXXXXXX" required />
-      </div>
+      <PhoneField label="رقم الهاتف" value={phone.value} onChange={phone.onChange} error={phone.error} />
       <div className="field">
         <label htmlFor="password">كلمة المرور</label>
         <input id="password" name="password" type="password" autoComplete="new-password" minLength={8} required />
@@ -174,17 +173,19 @@ export function ForgotPasswordForm({ levels }: { levels: LoyaltyLevel[] }) {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Feedback>(null);
+  const phone = usePhoneField();
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
     const form = new FormData(event.currentTarget);
+    if (!phone.check()) return;
     setBusy(true);
     setFeedback(null);
     const result = await bff('/bff/forgot-password', {
       method: 'POST',
       body: {
-        phone: value(form, 'phone'),
+        phone: phone.submitValue,
         username: value(form, 'username'),
         gender: value(form, 'gender'),
         levelKey: value(form, 'levelKey'),
@@ -217,10 +218,7 @@ export function ForgotPasswordForm({ levels }: { levels: LoyaltyLevel[] }) {
       <h1>نسيت كلمة المرور</h1>
       <p className="hint">أرسل بيانات حسابك، وتتحقق منها الإدارة عبر واتساب ثم تعيّن لك كلمة مرور جديدة.</p>
       <FeedbackAlert feedback={feedback} />
-      <div className="field">
-        <label htmlFor="phone">رقم الهاتف المسجَّل</label>
-        <input id="phone" name="phone" className="ltr" type="tel" inputMode="tel" autoComplete="tel" placeholder="07XXXXXXXXX" required />
-      </div>
+      <PhoneField label="رقم الهاتف المسجَّل" value={phone.value} onChange={phone.onChange} error={phone.error} />
       <div className="field">
         <label htmlFor="username">الاسم في الحساب</label>
         <input id="username" name="username" autoComplete="name" maxLength={40} required />

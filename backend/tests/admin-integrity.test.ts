@@ -95,6 +95,22 @@ describe('admin product PATCH integrity', () => {
     expect(details.options.map((o) => o.name)).toEqual(['اللون']);
   });
 
+  it('PATCH images keeps the configured order exactly — the first is the main display image', async () => {
+    // Not alphabetical, not upload order: the array order is the only order.
+    const productId = extraProducts[3];
+    const order = ['https://img.test/z-main.png', 'https://img.test/a-second.png', 'https://img.test/m-third.png'];
+    for (const images of [order, [order[2]!, order[0]!, order[1]!]]) {
+      const res = await api
+        .patch(`/api/admin/products/${productId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ images });
+      expect(res.status).toBe(200);
+      expect(res.body.data.images).toEqual(images);
+      expect((await readDetails(productId)).images).toEqual(images);
+      expect((await api.get(`/api/catalog/products/${productId}`).expect(200)).body.data.images).toEqual(images);
+    }
+  });
+
   it('PATCH with options only replaces options and keeps images', async () => {
     const productId = extraProducts[2];
     const res = await api
