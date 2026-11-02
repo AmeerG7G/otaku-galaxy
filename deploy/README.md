@@ -407,7 +407,7 @@ compose و`kill_timeout: 15000` في PM2 أطول من ذلك عمداً.
 
 #### قوالب nginx للإنتاج (`deploy/nginx/prod-*.conf`)
 - `prod-api.conf` (127.0.0.1:4000، بلا HSTS لأن helmet يرسله)، `prod-store.conf`
-  (127.0.0.1:3000، عامّ ويُفهرس، www → الأصل)، `prod-admin.conf` (ملفات `admin/dist`،
+  (127.0.0.1:3000، عامّ ويُفهرس، الاسم `otakugalaxystore.com` وحده — www خارج النطاق)، `prod-admin.conf` (ملفات `admin/dist`،
   noindex + robots + CSP ببصمة السكربت المضمَّن). كلها تضمّن `cloudflare-real-ip.conf`.
 - التراجع: نسخة `/etc/nginx` قبل التثبيت، ثم إزالة الروابط من `sites-enabled` و`nginx -t && reload`.
 
