@@ -51,6 +51,21 @@ describe('AppPromoBanner', () => {
     expect(html).not.toContain('<script>');
     expect(html).toContain('&lt;script&gt;');
     expect(html).toContain('حمّل التطبيق الآن');
-    expect(html).not.toMatch(/<img|onclick|ping=/i);
+    expect(html).not.toMatch(/onclick|ping=/i);
+  });
+
+  it("artwork is local only: Google's badge inside the link, the app screenshot decorative", () => {
+    const promo = toAppPromo({ title: '', subtitle: '', cta: '', url: PLAY, style: 'night' })!;
+    const html = renderToStaticMarkup(createElement(AppPromoBanner, { promo }));
+    const images = [...html.matchAll(/<img [^>]*>/g)].map(([tag]) => tag);
+    expect(images).toHaveLength(2);
+    for (const tag of images) {
+      expect(tag).toMatch(/ src="\/app-promo\/[a-z-]+\.(png|webp)"/);
+      expect(tag).toMatch(/ width="\d+" height="\d+"/);
+    }
+    const link = html.slice(html.indexOf('<a '), html.indexOf('</a>'));
+    expect(link).toContain('src="/app-promo/google-play-badge-ar.png"');
+    expect(link).toContain('alt="احصل عليه من Google Play"');
+    expect(html).toMatch(/<div class="app-promo__phone" aria-hidden="true">[\s\S]*alt=""/);
   });
 });

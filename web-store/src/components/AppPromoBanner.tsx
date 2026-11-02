@@ -1,29 +1,49 @@
 import type { AppPromo } from '@/lib/app-promo';
 
+/** Google's official Arabic «Get it on Google Play» badge, unmodified (`public/app-promo/`). */
+const PLAY_BADGE = { src: '/app-promo/google-play-badge-ar.png', width: 646, height: 250 } as const;
+
+/** A real screenshot of the app's home screen, at the phone's 390×844 viewport. */
+const APP_SCREEN = { src: '/app-promo/app-home-ar.webp', width: 480, height: 1039 } as const;
+
 /**
- * The admin's «download the app» card on the catalog home: one link to the
- * app's Google Play listing (opens in a new tab), no tracking, no artwork —
- * a phone glyph only. Not sticky and not a dialog, so it never covers the
- * catalog. Rendered only when the API sends an enabled promotion.
+ * The admin's «download the app» card on the catalog home: the admin's texts
+ * beside a phone showing the real app, and one link to the app's Google Play
+ * listing (opens in a new tab), no tracking. Both images are local files with
+ * fixed dimensions, so nothing shifts while they load. Not sticky and not a
+ * dialog, so it never covers the catalog. Rendered only when the API sends an
+ * enabled promotion.
  */
 export function AppPromoBanner({ promo }: { promo: AppPromo }) {
   return (
     <aside className={`app-promo app-promo--${promo.style}`} aria-labelledby="app-promo-title">
-      <svg className="app-promo__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-        <rect x="6" y="2" width="12" height="20" rx="3" fill="none" stroke="currentColor" strokeWidth="1.8" />
-        <path d="M12 7v7m0 0-3-3m3 3 3-3" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-        <circle cx="12" cy="18.5" r="1" fill="currentColor" />
-      </svg>
       <div className="app-promo__text">
         <p id="app-promo-title" className="app-promo__title">
           {promo.title}
         </p>
         <p className="app-promo__subtitle">{promo.subtitle}</p>
+        <a className="app-promo__cta" href={promo.url} target="_blank" rel="noopener noreferrer">
+          <span className="app-promo__cta-label">{promo.cta}</span>
+          {/* eslint-disable-next-line @next/next/no-img-element -- Google's badge is served exactly as published, never re-encoded */}
+          <img
+            className="app-promo__badge"
+            src={PLAY_BADGE.src}
+            width={PLAY_BADGE.width}
+            height={PLAY_BADGE.height}
+            alt="احصل عليه من Google Play"
+            decoding="async"
+          />
+          <span className="visually-hidden"> (يفتح في نافذة جديدة)</span>
+        </a>
       </div>
-      <a className="app-promo__cta" href={promo.url} target="_blank" rel="noopener noreferrer">
-        {promo.cta}
-        <span className="visually-hidden"> — Google Play (يفتح في نافذة جديدة)</span>
-      </a>
+      <div className="app-promo__phone" aria-hidden="true">
+        <div className="app-promo__device">
+          <div className="app-promo__screen">
+            {/* eslint-disable-next-line @next/next/no-img-element -- a fixed-size local file; no optimizer needed */}
+            <img src={APP_SCREEN.src} width={APP_SCREEN.width} height={APP_SCREEN.height} alt="" decoding="async" />
+          </div>
+        </div>
+      </div>
     </aside>
   );
 }

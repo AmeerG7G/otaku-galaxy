@@ -1600,32 +1600,63 @@ textarea {
   color: var(--on-surface-variant);
 }
 
-/* ── «Download the app» card (admin-managed, catalog home) ── */
+
+/*
+ * ── «Download the app» card (admin-managed, catalog home) ──
+ *
+ * The admin's texts and Google's badge beside a phone showing the real app.
+ * Always a dark night-sky card (both admin styles), so its white text keeps
+ * the same contrast in the light and the dark theme. Two columns at every
+ * width: the phone shrinks with the viewport instead of stacking under the
+ * text, so the catalog stays near the top on a phone. The phone is never
+ * cropped; images carry their dimensions, so nothing shifts while loading.
+ */
 
 .app-promo {
+  --promo-phone: clamp(92px, 25vw, 172px);
+  --promo-badge: clamp(136px, 21vw, 196px);
+  --promo-glow: rgba(139, 92, 246, 0.5);
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: minmax(0, 1fr) var(--promo-phone);
   align-items: center;
-  gap: var(--space-2) var(--space-3);
+  gap: clamp(12px, 3vw, 40px);
   margin-block-end: var(--space-4);
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-md);
+  padding: clamp(16px, 3.4vw, 36px) clamp(16px, 4.4vw, 56px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-lg);
   color: var(--on-brand);
-  box-shadow: var(--shadow);
-}
-
-.app-promo--violet {
-  background: linear-gradient(135deg, #5a2ea6, #6d3bc0 55%, #a1266a);
+  box-shadow: 0 18px 44px rgba(24, 10, 64, 0.28);
 }
 
 .app-promo--night {
-  background: linear-gradient(135deg, #0f0b24, #241b52);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: linear-gradient(150deg, #0b0820 0%, #150f3a 55%, #22164f 100%);
 }
 
-.app-promo__icon {
-  width: 36px;
-  height: 36px;
+.app-promo--violet {
+  --promo-glow: rgba(240, 69, 155, 0.42);
+  background: linear-gradient(150deg, #160b3a 0%, #2f1773 50%, #5a2ea6 100%);
+}
+
+/* A sparse star field; the phone carries its own soft light (below). */
+.app-promo::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+  inset: 0;
+  opacity: 0.7;
+  background:
+    radial-gradient(1px 1px at 8% 18%, #ffffff, transparent),
+    radial-gradient(1px 1px at 22% 72%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(1.5px 1.5px at 37% 34%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(1px 1px at 51% 86%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(1px 1px at 63% 12%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(1.5px 1.5px at 76% 58%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(1px 1px at 88% 28%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(1px 1px at 94% 80%, rgba(255, 255, 255, 0.8), transparent);
 }
 
 .app-promo__text {
@@ -1634,45 +1665,152 @@ textarea {
 
 .app-promo__title {
   margin: 0;
-  font-weight: 700;
-  line-height: 1.4;
+  font-size: clamp(1.125rem, 0.85rem + 1.6vw, 2rem);
+  font-weight: 800;
+  line-height: 1.35;
+  text-wrap: balance;
 }
 
 .app-promo__subtitle {
-  margin: 0;
-  font-size: 0.875rem;
-  opacity: 0.88;
+  max-width: 34ch;
+  margin: var(--space-2) 0 0;
+  color: rgba(241, 237, 255, 0.84);
+  font-size: clamp(0.875rem, 0.8rem + 0.35vw, 1.0625rem);
+  line-height: 1.7;
+  text-wrap: pretty;
 }
 
+/* The CTA text and the badge are one link: both open the listing. */
 .app-promo__cta {
-  grid-column: 1 / -1;
   display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: var(--tap);
-  padding-inline: var(--space-5);
-  border-radius: 999px;
-  background: var(--on-brand);
-  color: #4a2390;
-  font-weight: 700;
+  flex-direction: column;
+  align-items: flex-start;
+  margin-block-start: clamp(12px, 2vw, 22px);
+  border-radius: var(--radius-sm);
+  color: var(--on-brand);
   text-decoration: none;
 }
 
-.app-promo__cta:hover {
-  background: #f1edff;
+.app-promo__cta-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent);
+  font-size: clamp(0.875rem, 0.82rem + 0.25vw, 1rem);
+  font-weight: 700;
+}
+
+/* «←» in RTL: points from the text towards the badge's reading direction. */
+.app-promo__cta-label::after {
+  content: '←';
+  font-weight: 400;
+}
+
+/* Google's file carries its own clear space; pulled in so the drawn badge lines up with the text. */
+.app-promo__badge {
+  display: block;
+  width: var(--promo-badge);
+  height: auto;
+  margin-inline-start: calc(var(--promo-badge) * -0.065);
+  margin-block: calc(var(--promo-badge) * -0.03) calc(var(--promo-badge) * -0.06);
+}
+
+.app-promo__cta:hover .app-promo__cta-label {
+  text-decoration: underline;
+  text-underline-offset: 4px;
 }
 
 .app-promo__cta:focus-visible {
   outline: 3px solid var(--accent);
-  outline-offset: 2px;
+  outline-offset: 4px;
 }
 
-@media (min-width: 600px) {
+/* ── The phone: a titanium-dark frame around the real app screenshot ── */
+
+.app-promo__phone {
+  position: relative;
+  width: var(--promo-phone);
+}
+
+.app-promo__phone::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: -35% -90%;
+  pointer-events: none;
+  background:
+    radial-gradient(closest-side, var(--promo-glow), transparent 70%),
+    radial-gradient(closest-side at 40% 65%, rgba(109, 59, 192, 0.4), transparent 85%);
+}
+
+.app-promo__device {
+  position: relative;
+  padding: calc(var(--promo-phone) * 0.038);
+  border-radius: calc(var(--promo-phone) * 0.17);
+  background: linear-gradient(145deg, #4a4363 0%, #15121f 32%, #0b0a12 68%, #3a3352 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.22),
+    0 0 0 1px rgba(0, 0, 0, 0.55),
+    0 22px 44px rgba(4, 2, 18, 0.55),
+    0 0 56px rgba(139, 92, 246, 0.32);
+}
+
+/* The camera island, in the status-bar strip above the app (never over its content). */
+.app-promo__device::before {
+  content: '';
+  position: absolute;
+  z-index: 1;
+  inset-block-start: calc(var(--promo-phone) * 0.067);
+  left: 50%;
+  width: 30%;
+  height: calc(var(--promo-phone) * 0.075);
+  border-radius: 999px;
+  background: #050409;
+  transform: translateX(-50%);
+}
+
+/* Side button. */
+.app-promo__device::after {
+  content: '';
+  position: absolute;
+  inset-block-start: 22%;
+  inset-inline-end: -2px;
+  width: 3px;
+  height: 11%;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #4a4363, #1d1a29);
+}
+
+.app-promo__screen {
+  overflow: hidden;
+  padding-block-start: calc(var(--promo-phone) * 0.13);
+  border-radius: calc(var(--promo-phone) * 0.135);
+  /* The app's own light background (the screenshot's), continued under the island. */
+  background: #f7f5fc;
+}
+
+.app-promo__screen img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 480 / 1039;
+}
+
+/* Wide screens: text and phone stay together in the middle instead of at the card's two ends. */
+@media (min-width: 900px) {
   .app-promo {
-    grid-template-columns: auto 1fr auto;
+    grid-template-columns: minmax(0, 34rem) var(--promo-phone);
+    justify-content: center;
+    column-gap: clamp(48px, 7vw, 112px);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .app-promo__badge {
+    transition: transform 0.18s ease;
   }
 
-  .app-promo__cta {
-    grid-column: auto;
+  .app-promo__cta:hover .app-promo__badge {
+    transform: translateY(-1px);
   }
 }
