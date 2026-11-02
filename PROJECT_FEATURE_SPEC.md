@@ -12579,3 +12579,48 @@ Both URLs are constants in `lib/core/config/public_pages.dart`, matching the Pla
 - A suspended customer cannot sign in and so cannot self-delete; they must contact the store. This is a product decision.
 - The deletion pages are pinned to the production domain in the app, so staging builds open the production pages.
 - Account deletion leaves no admin dashboard view of `account_deletions`; it can only be looked up by reference in the database.
+
+# STEP 79 — WEB STORE: DISPLAY IMAGES FIRST, APP PHONE RULE, GOOGLE PLAY PROMOTION (2026-11-02)
+
+**Status:** implemented on branch `feat/web-store-images-phone-play` (based on `origin/dev` `306a41c`).
+Not merged, not deployed. **No migration.** The Flutter app's behaviour is unchanged.
+
+**Owner decisions (2026-11-02, in chat):**
+
+| # | Decision |
+|---|---|
+| G1 | Web-store gallery: the product's own display images (`images[]`, configured order — the first is the main display image) come **before** every variant image. Supersedes STEP 75's "colour images first" for the web store. |
+| G2 | The Flutter app is the single source of truth for phone validation; the web store and API follow it. |
+| G3 | A Google Play promotion on the public web store, managed from the dashboard (show/hide without deleting, texts, look, destination). Google Play listing only — no APK, no other store. |
+
+## 79.1 Gallery (G1)
+
+- `web-store/src/lib/gallery.ts` `galleryImages`: `images[]`, then the image of every customer-visible variant (by `sortOrder`), each media ref once. A variant image also uploaded as a display image stays in the display image's place; choosing that variant still finds it.
+- The product page opens on the main display image. A product with no display image opens on its pre-selected variant, as before. Choosing a variant still moves the gallery to its image.
+- Cover (cards, link previews) is unchanged: the first display image, else the first visible variant's image.
+- Dashboard preview (`admin/src/utils/gallery.ts` `customerGallery`) shows the web-store order and says that the app still shows variants first.
+- **Open:** the app's `productGalleryImages` still puts variants first. Changing it was out of scope.
+- The dashboard has no reorder control for display images; their order is the upload/list order, saved as `sort_order` = array index.
+
+## 79.2 Phone (G2)
+
+The rules come from `lib/core/utils/iraqi_phone.dart` and are used identically in login, register, forgot password and checkout:
+- field = digits only, Eastern digits converted, at most 11;
+- valid = `^07[5-9]\d{8}$`;
+- sent as E.164;
+- messages «يرجى إدخال رقم الهاتف» / «رقم الهاتف غير صحيح».
+
+The web store copies this rule in `web-store/src/lib/phone.ts`, used by `components/PhoneField.tsx`. The API already enforced the same rule (`backend/src/utils/phone.ts`, migration 037); nothing changed there.
+
+Shared vectors in `test/fixtures/iraqi_phone_vectors.json` are read by the Flutter, web and backend tests.
+
+## 79.3 Google Play promotion (G3)
+
+- Store settings keys `web_app_promo_{enabled,title,subtitle,cta,url,style}` (key/value, no migration). The `banners` table was not reused: its image is mandatory, it has no external-link destination, and every banner is shown in the app's home.
+- `PATCH /api/admin/settings` (permission `settings`, audited):
+  - the URL must be the production app's Play listing (`officialPlayStoreUrl`);
+  - showing the promotion without a URL → `400 VALIDATION_ERROR`;
+  - hiding it never fails and keeps the texts and the URL.
+- `GET /api/catalog/settings` adds `webAppPromo` (`null` when hidden or invalid), re-validated on read. The app ignores the field.
+- Web store: `AppPromoBanner` under the catalog heading on `/`. It is one link opening in a new tab, with no tracking and no artwork.
+- **Open:** the listing `https://play.google.com/store/apps/details?id=com.otakugalaxy.otaku_galaxy` is derived from the `applicationId`. As of 2026-11-02 the first AAB had not been uploaded to Play, so the listing is not verified live. Keep the promotion hidden until the owner confirms the URL.

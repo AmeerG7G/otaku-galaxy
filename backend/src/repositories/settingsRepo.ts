@@ -23,6 +23,22 @@ export const SOCIAL_SETTING_KEYS = [
 export const SHARE_SETTING_KEYS = ['store_share_url'] as const;
 
 /**
+ * إعلان «حمّل التطبيق من Google Play» في المتجر الإلكتروني — يضبطه المسؤول من
+ * «إعدادات المتجر». مفتاح/قيمة كباقي الإعدادات، فلا هجرة.
+ *
+ * `web_app_promo_enabled`: `'true'` يُظهره، وأي قيمة أخرى (ومنها الفارغ =
+ * لم يُضبط بعد) تخفيه مع إبقاء نصوصه ورابطه محفوظة.
+ */
+export const WEB_APP_PROMO_SETTING_KEYS = [
+  'web_app_promo_enabled',
+  'web_app_promo_title',
+  'web_app_promo_subtitle',
+  'web_app_promo_cta',
+  'web_app_promo_url',
+  'web_app_promo_style',
+] as const;
+
+/**
  * [NOTE] `BUSINESS_SETTING_KEYS` حُذفت بالكامل.
  *
  * كانت تحمل خمسة مفاتيح: ثلاثة لقيم نقاط المجرّة (صارت قواعد ثابتة)، ونسبة
@@ -65,11 +81,13 @@ export const SETTING_KEYS = [
   ...SOCIAL_SETTING_KEYS,
   ...SHARE_SETTING_KEYS,
   ...APP_VERSION_SETTING_KEYS,
+  ...WEB_APP_PROMO_SETTING_KEYS,
 ] as const;
 
 export type SocialSettingKey = (typeof SOCIAL_SETTING_KEYS)[number];
 export type AppVersionSettingKey = (typeof APP_VERSION_SETTING_KEYS)[number];
 export type ShareSettingKey = (typeof SHARE_SETTING_KEYS)[number];
+export type WebAppPromoSettingKey = (typeof WEB_APP_PROMO_SETTING_KEYS)[number];
 export type SettingKey = (typeof SETTING_KEYS)[number];
 
 export type StoreSettings = Record<SettingKey, string>;
@@ -93,6 +111,12 @@ const EMPTY_SETTINGS: StoreSettings = {
   app_min_supported_version: '',
   app_update_url: '',
   app_update_revision: '',
+  web_app_promo_enabled: '',
+  web_app_promo_title: '',
+  web_app_promo_subtitle: '',
+  web_app_promo_cta: '',
+  web_app_promo_url: '',
+  web_app_promo_style: '',
 };
 
 export const settingsRepo = {

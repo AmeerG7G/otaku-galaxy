@@ -13,9 +13,10 @@ import type { ProductVariant } from './types';
  * `e2e/gallery.spec.ts`; this file pins the order, the bounds and the first
  * render.
  *
- * Unified gallery (post-Staging 51eae0b): every visible colour's image, then the
- * general images, once each — the chosen colour only focuses its image, and
- * browsing never chooses a colour.
+ * Unified gallery (post-Staging 51eae0b), order changed by the owner on
+ * 2026-11-02: the product's display images first (configured order, the first is
+ * the main one), then every visible colour's image, once each — the chosen
+ * colour only focuses its image, and browsing never chooses a colour.
  */
 
 const images = ['http://api.test/uploads/product/front.png', 'http://api.test/uploads/product/back.png', 'http://api.test/uploads/product/detail.png'];
@@ -47,10 +48,12 @@ describe('galleryImages', () => {
     expect(galleryImages([])).toEqual([]);
   });
 
-  it('every colour image in colour order, then the general images, each once', () => {
-    expect(galleryImages(images, [red, blue])).toEqual([red.imageUrl, blue.imageUrl, ...images]);
-    // A colour image also uploaded as a general image stays in the colour's place.
-    expect(galleryImages([images[0]!, blue.imageUrl, images[1]!], [red, blue])).toEqual([red.imageUrl, blue.imageUrl, images[0], images[1]]);
+  it('every display image in its configured order, then every colour image in colour order, each once', () => {
+    expect(galleryImages(images, [red, blue])).toEqual([...images, red.imageUrl, blue.imageUrl]);
+    // One display image: it leads, the colours follow.
+    expect(galleryImages([images[1]!], [red, blue])).toEqual([images[1], red.imageUrl, blue.imageUrl]);
+    // A colour image also uploaded as a display image stays in the display image's place.
+    expect(galleryImages([images[0]!, blue.imageUrl, images[1]!], [red, blue])).toEqual([images[0], blue.imageUrl, images[1], red.imageUrl]);
     expect(galleryImages([], [red, { ...blue, imageUrl: red.imageUrl }])).toEqual([red.imageUrl]);
     expect(galleryImages(images, [{ imageUrl: '' }, { imageUrl: '  ' }])).toEqual(images);
     expect(galleryImages(images, [red, blue])).toEqual(galleryImages(images, [red, blue]));
@@ -67,7 +70,10 @@ describe('coverImage / colourImageIndex', () => {
 
   it("finds a colour's image in the gallery; none for no colour or a missing image", () => {
     const list = galleryImages(images, [red, blue]);
-    expect(colourImageIndex(list, blue)).toBe(1);
+    expect(colourImageIndex(list, red)).toBe(3);
+    expect(colourImageIndex(list, blue)).toBe(4);
+    // Its image also uploaded as a display image: found in the display image's place.
+    expect(colourImageIndex(galleryImages([images[0]!, blue.imageUrl], [red, blue]), blue)).toBe(1);
     expect(colourImageIndex(list, null)).toBeNull();
     expect(colourImageIndex(list, { imageUrl: 'http://api.test/uploads/other.png' })).toBeNull();
   });
@@ -117,22 +123,32 @@ describe('ProductGallery first render', () => {
     expect(html).not.toContain('gallery__nav');
   });
 
-  it("with colours: every visible colour's image and the general images are thumbnails; the pre-selected colour is shown", () => {
-    // `green` is inactive — never shown. Red is out of stock, so blue is pre-selected (the store's existing rule).
+  it('with colours: the display images lead the thumbnails and the main display image opens the page', () => {
+    // `green` is inactive — never shown. Red is out of stock, so blue is pre-selected (the store's existing rule),
+    // but the page still opens on the main display image.
     const html = render(images, [{ ...red, stock: 0 }, blue, green]);
     const [main, ...thumbs] = srcs(html);
-    expect(thumbs).toEqual([red.imageUrl, blue.imageUrl, ...images]);
-    expect(main).toBe(blue.imageUrl);
-    expect(html).toContain('alt="هودي — أزرق"');
-    expect(html).toMatch(/aria-label="هودي — أزرق"[^>]*aria-current="true"/);
+    expect(thumbs).toEqual([...images, red.imageUrl, blue.imageUrl]);
+    expect(main).toBe(images[0]);
+    expect(html).toContain('alt="هودي — صورة 1 من 5"');
+    expect(html).toMatch(/aria-label="هودي — صورة 1"[^>]*aria-current="true"/);
+    expect(html).toContain('aria-label="هودي — أزرق"');
     expect(html).toContain('aria-label="هودي — أحمر"');
     expect(html).not.toContain(green.imageUrl);
   });
 
-  it('with colours and no general images: the colour images alone', () => {
+  it('one display image and colours: the display image first and shown', () => {
+    const html = render([images[2]!], [red, blue]);
+    const [main, ...thumbs] = srcs(html);
+    expect(main).toBe(images[2]);
+    expect(thumbs).toEqual([images[2], red.imageUrl, blue.imageUrl]);
+  });
+
+  it('with colours and no display images: the colour images alone, opening on the pre-selected colour', () => {
     const html = render([], [red, blue]);
     const [main, ...thumbs] = srcs(html);
     expect(main).toBe(red.imageUrl);
     expect(thumbs).toEqual([red.imageUrl, blue.imageUrl]);
+    expect(srcs(render([], [{ ...red, stock: 0 }, blue]))[0]).toBe(blue.imageUrl);
   });
 });
