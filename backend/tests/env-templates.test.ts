@@ -110,6 +110,10 @@ describe('[CRITICAL] قوالب الإنتاج على المضيفات الحق�
     expect(active(admin)).toContain('auth_basic           "Otaku Galaxy admin";');
     expect(active(admin)).toContain('auth_basic_user_file /etc/nginx/prod-admin.htpasswd;');
     expect(active(admin)).toMatch(/location = \/robots\.txt \{\s*auth_basic off;/);
+    // الاسم بنقطة أخيرة أصلٌ آخر يرفضه CORS: يُحوَّل إلى الاسم الصحيح، لا يُضاف إلى CORS.
+    expect(active(admin)).toContain(
+      'if ($http_host ~ "\\.(:[0-9]+)?$") {\n        return 301 https://admin.otakugalaxystore.com$request_uri;',
+    );
 
     for (const conf of [api, store, admin]) {
       expect(active(conf)).toContain('include /etc/nginx/snippets/cloudflare-real-ip.conf;');
