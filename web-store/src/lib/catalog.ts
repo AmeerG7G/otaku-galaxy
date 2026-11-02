@@ -1,6 +1,7 @@
 import { cache } from 'react';
 import { apiFetch } from './api';
 import { playStoreUrl } from './app-link';
+import { toAppPromo, type AppPromo } from './app-promo';
 import { mediaOrigin } from './config';
 import { resolveMediaUrl } from './media';
 import { NO_SOCIAL_LINKS, toSocialLinks, type SocialLinks } from './social-links';
@@ -112,6 +113,12 @@ export function isUuid(value: string): boolean {
 
 export type { SocialLinks } from './social-links';
 
+/** `/catalog/settings` once per request — the footer links and the app promotion both read it. */
+const getPublicSettings = cache(async () => {
+  const { data } = await apiFetch<{ social?: Record<string, unknown>; webAppPromo?: unknown }>('/catalog/settings');
+  return data;
+});
+
 /**
  * The store's social links from the admin settings (`/catalog/settings`), the
  * same the app's account screen shows. Only the configured ones are returned;
@@ -119,9 +126,20 @@ export type { SocialLinks } from './social-links';
  */
 export const getSocialLinks = cache(async (): Promise<SocialLinks> => {
   try {
-    const { data } = await apiFetch<{ social?: Record<string, unknown> }>('/catalog/settings');
-    return toSocialLinks(data.social);
+    return toSocialLinks((await getPublicSettings()).social);
   } catch {
     return NO_SOCIAL_LINKS;
+  }
+});
+
+/**
+ * The admin's «download the app» promotion, or null (off, not configured, an
+ * API older than the setting, or any failure) — the catalog then shows as before.
+ */
+export const getAppPromo = cache(async (): Promise<AppPromo | null> => {
+  try {
+    return toAppPromo((await getPublicSettings()).webAppPromo);
+  } catch {
+    return null;
   }
 });

@@ -52,3 +52,13 @@ export function canonicalPlayStoreUrl(raw: unknown): string | null {
   if (!PACKAGE_PATTERN.test(id) || !(APP_PACKAGE_IDS as readonly string[]).includes(id)) return null;
   return `https://play.google.com/store/apps/details?id=${id}`;
 }
+
+/**
+ * رابط صفحة **تطبيق الإنتاج** على Google Play أو `null` — وجهة إعلان «حمّل
+ * التطبيق» في المتجر الإلكتروني. أضيق من [canonicalPlayStoreUrl]: نسختا
+ * dev/staging ليستا تطبيقاً منشوراً للزبائن، فلا يُعلَن عنهما للجمهور.
+ */
+export function officialPlayStoreUrl(raw: unknown): string | null {
+  const url = canonicalPlayStoreUrl(raw);
+  return url !== null && new URL(url).searchParams.get('id') === APP_PACKAGE_IDS[0] ? url : null;
+}

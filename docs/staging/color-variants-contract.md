@@ -125,6 +125,10 @@ A colour's stock going 0 → n while the product total was 0 triggers the existi
 
 ## 5a. Customer gallery (decision 2026-10-31, supersedes "the chosen colour's image leads")
 
+> **Web store, 2026-11-02 (spec STEP 79, G1):** the web store and the dashboard preview now show the
+> general (display) images **first**, then the colour images; the page opens on the first display image.
+> The app below is unchanged (colours first) until the owner decides otherwise.
+
 The API is unchanged: the product already carries both image sources, and the gallery is derived
 from them in each client by the same rule (`productGalleryImages` in the app, `galleryImages` in
 the web store, `customerGallery` in the dashboard preview). Nothing is merged or copied in the

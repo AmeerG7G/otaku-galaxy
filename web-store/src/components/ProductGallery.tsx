@@ -7,10 +7,10 @@ import { useVariantSelection } from './VariantSelection';
 
 /**
  * The product page gallery: the main image, previous/next buttons, a swipe on
- * touch screens, and one thumbnail button per image. Every visible colour's
- * image comes first (STEP 74), then the product's general images, without a
- * repeat (`galleryImages`). One image (or none) renders as before — no buttons,
- * no thumbnails.
+ * touch screens, and one thumbnail button per image. The product's display
+ * images come first (the main one opens the page), then every visible
+ * colour's image, without a repeat (`galleryImages`). One image (or none)
+ * renders as before — no buttons, no thumbnails.
  *
  * [CRITICAL] Browsing never chooses a colour: the gallery only reads the
  * selection. Choosing a colour (the radio buttons) moves the gallery to that
@@ -22,7 +22,9 @@ export function ProductGallery({ images, alt }: { images: string[]; alt: string 
   const colours = customerVariants({ variants: selection?.variants });
   const list = galleryImages(images, colours);
   const selectedId = selection?.selected?.id ?? null;
-  const [active, setActive] = useState(() => colourImageIndex(list, selection?.selected) ?? 0);
+  // The page opens on the main display image; a product with no display image
+  // opens on its pre-selected colour, as before.
+  const [active, setActive] = useState(() => (galleryImages(images).length > 0 ? 0 : (colourImageIndex(list, selection?.selected) ?? 0)));
   const [shownSelectedId, setShownSelectedId] = useState(selectedId);
   const [failed, setFailed] = useState<ReadonlySet<string>>(() => new Set());
   // A ref, not state: `touchend` must see the `touchstart` even within one render.

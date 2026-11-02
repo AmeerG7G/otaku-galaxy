@@ -1,7 +1,8 @@
 import { z } from 'zod';
+import { WEB_APP_PROMO_STYLES } from '../services/settingsService.js';
 import { optionalKurdish } from './admin.js';
 import { isValidVersionString } from '../services/appVersionService.js';
-import { canonicalPlayStoreUrl } from '../utils/playStoreUrl.js';
+import { canonicalPlayStoreUrl, officialPlayStoreUrl } from '../utils/playStoreUrl.js';
 
 /**
  * المرادفات: أسماء بديلة يطابقها بحث العميل («قاتل الشياطين» لـDemon Slayer).
@@ -119,6 +120,23 @@ export const updateSettingsSchema = z.object({
   social_description: z.string().trim().max(60).optional(),
   // رابط المتجر في رسالة مشاركة المنتج (STEP 64) — http(s) أو فارغ.
   store_share_url: optionalUrl.optional(),
+  // إعلان «حمّل التطبيق» في المتجر الإلكتروني. التفعيل مع رابطٍ غير مضبوط
+  // يُرفض في `settingsService.update` بعد دمج المحفوظ.
+  web_app_promo_enabled: z.boolean({ error: 'حدّد إظهار إعلان التطبيق أو إخفاءه' }).transform(String).optional(),
+  web_app_promo_title: z.string().trim().max(60, 'عنوان الإعلان طويل — 60 حرفاً على الأكثر').optional(),
+  web_app_promo_subtitle: z.string().trim().max(120, 'وصف الإعلان طويل — 120 حرفاً على الأكثر').optional(),
+  web_app_promo_cta: z.string().trim().max(30, 'نص الزر طويل — 30 حرفاً على الأكثر').optional(),
+  web_app_promo_url: z
+    .string()
+    .trim()
+    .max(300)
+    .refine(
+      (value) => value === '' || officialPlayStoreUrl(value) !== null,
+      'الصق رابط صفحة التطبيق على Google Play: https://play.google.com/store/apps/details?id=com.otakugalaxy.otaku_galaxy',
+    )
+    .transform((value) => (value === '' ? '' : officialPlayStoreUrl(value)!))
+    .optional(),
+  web_app_promo_style: z.enum(WEB_APP_PROMO_STYLES, { error: 'اختر شكل الإعلان' }).optional(),
 });
 
 // ── نسخة التطبيق ──

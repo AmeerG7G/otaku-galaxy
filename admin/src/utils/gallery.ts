@@ -12,29 +12,41 @@ export type GalleryEntry =
   | { kind: 'general'; ref: string; position: number }
 
 export interface CustomerGallery {
-  /** المعرض كما يراه الزبون في التطبيق والمتجر، بترتيبه. */
+  /** المعرض كما يراه الزبون في المتجر الإلكتروني، بترتيبه. */
   entries: GalleryEntry[]
-  /** صورٌ عامة هي نفسها صورة لونٍ — تظهر مرةً واحدة في موضع اللون. */
+  /** صورٌ عامة هي نفسها صورة لونٍ — تظهر مرةً واحدة في موضع الصورة العامة. */
   duplicates: Array<{ position: number; colourNames: string[] }>
   /** ألوانٌ موقوفة — صورها لا تظهر للزبون. */
   inactiveColours: number
 }
 
 /**
- * المعرض الموحّد للزبون — القاعدة نفسها في التطبيق (`productGalleryImages`)
- * والمتجر (`galleryImages`):
+ * معرض الزبون في المتجر الإلكتروني (`galleryImages`) — قرار المالك 2026-11-02
+ * بدل «صور الألوان أولاً» (STEP 75):
  *
- * ١. صورة كل لونٍ نشط بترتيب الألوان (ترتيب القائمة = `sortOrder`).
- * ٢. ثم الصور العامة بترتيبها (`sort_order`).
+ * ١. الصور العامة (صور العرض) بترتيبها (`sort_order`) — الأولى هي الصورة الرئيسية.
+ * ٢. ثم صورة كل لونٍ نشط بترتيب الألوان (ترتيب القائمة = `sortOrder`).
  *
- * الصورة تُعرف بمرجعها محلولاً كما يحلّه العميلان، فصورةٌ عامة هي نفسها صورة
- * لونٍ لا تتكرّر — تُعَدّ في [CustomerGallery.duplicates] ولا تُحذف من المنتج.
+ * الصورة تُعرف بمرجعها محلولاً كما يحلّه العميل، فصورة لونٍ هي نفسها صورةٌ
+ * عامة لا تتكرّر — تبقى في موضع الصورة العامة وتُعَدّ في
+ * [CustomerGallery.duplicates]، ولا تُحذف من المنتج.
+ *
+ * [NOTE] تطبيق الجوّال (`productGalleryImages`) ما زال يعرض صور الألوان أولاً.
  */
 export function customerGallery(images: readonly (string | null | undefined)[], colours: readonly GalleryColour[]): CustomerGallery {
   const byKey = new Map<string, GalleryEntry>()
   const entries: GalleryEntry[] = []
   const duplicates: CustomerGallery['duplicates'] = []
   let inactiveColours = 0
+
+  images.forEach((raw, position) => {
+    const ref = raw?.trim()
+    const key = resolveMediaUrl(ref)
+    if (!ref || !key || byKey.has(key)) return
+    const entry: GalleryEntry = { kind: 'general', ref, position }
+    byKey.set(key, entry)
+    entries.push(entry)
+  })
 
   for (const colour of colours) {
     if (colour.isActive === false) {
@@ -50,31 +62,23 @@ export function customerGallery(images: readonly (string | null | undefined)[], 
       if (name) existing.colourNames.push(name)
       continue
     }
+    if (existing?.kind === 'general') {
+      const duplicate = duplicates.find((entry) => entry.position === existing.position)
+      if (!duplicate) duplicates.push({ position: existing.position, colourNames: name ? [name] : [] })
+      else if (name) duplicate.colourNames.push(name)
+      continue
+    }
     const entry: GalleryEntry = { kind: 'colour', ref, colourNames: name ? [name] : [] }
     byKey.set(key, entry)
     entries.push(entry)
   }
 
-  images.forEach((raw, position) => {
-    const ref = raw?.trim()
-    const key = resolveMediaUrl(ref)
-    if (!ref || !key) return
-    const existing = byKey.get(key)
-    if (existing) {
-      if (existing.kind === 'colour') duplicates.push({ position, colourNames: existing.colourNames })
-      return
-    }
-    const entry: GalleryEntry = { kind: 'general', ref, position }
-    byKey.set(key, entry)
-    entries.push(entry)
-  })
-
   return { entries, duplicates, inactiveColours }
 }
 
 /**
- * صورة المنتج في القوائم والبطاقات: أولى الصور العامة كما كانت، وإلا صورة أول
- * لونٍ نشط — كما في التطبيق والمتجر، فلا تُرفع صورة اللون مرةً ثانية.
+ * صورة المنتج في القوائم والبطاقات: أولى الصور العامة (الصورة الرئيسية)، وإلا
+ * صورة أول لونٍ نشط — كما في التطبيق والمتجر، فلا تُرفع صورة اللون مرةً ثانية.
  */
 export function productCover(images: readonly string[], colours: readonly GalleryColour[] = []): string | null {
   const general = images.find((ref) => ref.trim() !== '')

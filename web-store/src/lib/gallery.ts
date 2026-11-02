@@ -2,22 +2,26 @@ import type { Product, ProductVariant } from './types';
 import { customerVariants } from './variants';
 
 /**
- * The product page's one gallery, in a fixed order (same rule as the app's
- * `productGalleryImages`):
+ * The product page's one gallery, in a fixed order (owner decision 2026-11-02,
+ * supersedes STEP 75's "colours first"):
  *
- * 1. the image of every colour the customer can see (`customerVariants`: active
- *    ones, by `sortOrder`) — each colour has exactly one image (STEP 74);
- * 2. then the product's general images exactly as the API sent them (`sort_order`).
+ * 1. the product's own display images exactly as the API sent them
+ *    (`images`, `sort_order` — the first is the main display image);
+ * 2. then the image of every colour/option the customer can see
+ *    (`customerVariants`: active ones, by `sortOrder`) — one image each (STEP 74).
  *
  * An image is identified by its stored media reference (resolved the same way
  * for product and colour images), so an image that is a colour's image and was
- * also uploaded as a general image appears once, in the colour's place. Empty
- * refs are dropped.
+ * also uploaded as a display image appears once, in the display image's place
+ * (choosing that colour still finds it there). Empty refs are dropped.
+ *
+ * [NOTE] The app's `productGalleryImages` still puts the colours first; it is
+ * not changed with this rule.
  */
 export function galleryImages(images: readonly string[], colours: readonly Pick<ProductVariant, 'imageUrl'>[] = []): string[] {
   const seen = new Set<string>();
   const list: string[] = [];
-  for (const raw of [...colours.map((colour) => colour.imageUrl ?? ''), ...images]) {
+  for (const raw of [...images, ...colours.map((colour) => colour.imageUrl ?? '')]) {
     const url = raw.trim();
     if (url !== '' && !seen.has(url)) {
       seen.add(url);

@@ -9,6 +9,7 @@ import type {
   ModerateReviewPayload,
   ReviewStatus,
   StoreSettings,
+  WebAppPromoInput,
   ZoneCreatePayload,
   ZoneUpdatePayload,
 } from '../types/community'
@@ -86,6 +87,6 @@ export function fetchSettings(): Promise<StoreSettings> {
   return get<StoreSettings>('/admin/settings')
 }
 
-export function updateSettings(payload: Partial<StoreSettings>) {
+export function updateSettings(payload: Partial<StoreSettings> | WebAppPromoInput) {
   return patch<StoreSettings>('/admin/settings', payload)
 }

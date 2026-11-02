@@ -251,7 +251,7 @@ describe('ProductEditPage — تعديل الألوان', () => {
     expect(screen.getByLabelText('المخزون الكلّي')).toHaveValue('7')
   })
 
-  it('معاينة المعرض: صور الألوان ثم العامة، والمكرّرة تُذكر ولا تُحذف', async () => {
+  it('معاينة المعرض: الصور العامة ثم صور الألوان، والمكرّرة تُذكر ولا تُحذف', async () => {
     vi.mocked(getProductForEdit).mockResolvedValue({
       draft: { ...structuredClone(variantDraft), images: ['/uploads/product/front.png', '/uploads/product/blue.png'] },
       optionsLoaded: true,
@@ -260,7 +260,7 @@ describe('ProductEditPage — تعديل الألوان', () => {
     await screen.findByRole('button', { name: 'حفظ التعديلات' })
     const preview = within(screen.getByTestId('gallery-preview'))
     const items = preview.getAllByTestId('gallery-preview-item')
-    expect(items.map((item) => item.textContent)).toEqual(['1اللون: أحمر', '2اللون: أزرق', '3صورة عامة'])
+    expect(items.map((item) => item.textContent)).toEqual(['1صورة عامة', '2صورة عامة', '3اللون: أحمر'])
     expect(preview.getByTestId('gallery-preview-duplicate')).toHaveTextContent('الصورة العامة 2 هي نفسها صورة اللون «أزرق»')
   })
 
