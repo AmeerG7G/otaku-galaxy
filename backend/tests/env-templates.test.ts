@@ -106,6 +106,10 @@ describe('[CRITICAL] قوالب الإنتاج على المضيفات الحق�
     expect(active(admin)).toContain('X-Robots-Tag "noindex, nofollow, noarchive" always');
     expect(active(api)).toContain('X-Robots-Tag "noindex, nofollow, noarchive" always');
     expect(active(admin)).toContain('return 200 "User-agent: *\\nDisallow: /\\n";');
+    // بوّابة اللوحة (قرار المالك 2026-11-02): Basic Auth بملف الإنتاج، و`robots.txt` خارجها.
+    expect(active(admin)).toContain('auth_basic           "Otaku Galaxy admin";');
+    expect(active(admin)).toContain('auth_basic_user_file /etc/nginx/prod-admin.htpasswd;');
+    expect(active(admin)).toMatch(/location = \/robots\.txt \{\s*auth_basic off;/);
 
     for (const conf of [api, store, admin]) {
       expect(active(conf)).toContain('include /etc/nginx/snippets/cloudflare-real-ip.conf;');
