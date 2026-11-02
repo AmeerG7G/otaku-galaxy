@@ -11,6 +11,7 @@ import {
 import { fetchSettings, updateSettings } from '../api/communityApi'
 import type { StoreSettings } from '../types/community'
 import { PageHeader } from '../components/ui/PageHeader'
+import WebAppPromoCard from '../components/WebAppPromoCard'
 
 /**
  * روابط التواصل التي يفتحها تطبيق العميل. الحقل الفارغ يعني «غير مضبوط»،
@@ -114,6 +115,8 @@ export default function SettingsPage() {
           واحد، فلا بطاقة له. */}
 
       <ShareUrlCard settings={settingsQuery.data} loading={settingsQuery.isPending} />
+
+      <WebAppPromoCard settings={settingsQuery.data} loading={settingsQuery.isPending} />
 
       {/* [NOTE] إجبار التحديث انتقل إلى صفحته «تحديث التطبيق» (STEP 70). */}
     </Space>

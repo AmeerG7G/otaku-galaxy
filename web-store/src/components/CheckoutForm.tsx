@@ -6,7 +6,9 @@ import { useEffect, useState } from 'react';
 import { formatIqd } from '@/lib/format';
 import type { CheckoutQuote, Governorate, QuoteIssue, Zone } from '@/lib/types';
 import { lineColorName } from '@/lib/variants';
+import { isValidIraqiLocalPhone } from '@/lib/phone';
 import { bff } from './client-api';
+import { PhoneField, usePhoneField } from './PhoneField';
 
 const CART_CONFLICTS = new Set([
   'PRODUCT_PRICE_CHANGED',
@@ -58,7 +60,7 @@ export function CheckoutForm({
   const zones = zonesFor?.governorateId === governorateId ? zonesFor.items : null;
   const [zoneId, setZoneId] = useState('');
   const [fullAddress, setFullAddress] = useState('');
-  const [phone, setPhone] = useState(defaultPhone);
+  const phone = usePhoneField(defaultPhone);
   const [quote, setQuote] = useState<CheckoutQuote | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -99,7 +101,7 @@ export function CheckoutForm({
   }, [governorateId, zoneId, needsZone, quoteVersion]);
 
   const addressOk = fullAddress.trim().length >= 5;
-  const phoneOk = /^(\+?964|0)?7\d{9}$/.test(phone.replace(/[\s-]/g, ''));
+  const phoneOk = isValidIraqiLocalPhone(phone.value);
   const nameOf = (productId: string) => productNames[productId] ?? 'منتج';
   // A fingerprint exists only when the quote is submittable: destination
   // priced, cart not empty, nothing the API would refuse.
@@ -116,7 +118,7 @@ export function CheckoutForm({
         governorateId,
         zoneId: needsZone ? zoneId : null,
         fullAddress: fullAddress.trim(),
-        phone: phone.replace(/[\s-]/g, ''),
+        phone: phone.submitValue,
         expectedPrices,
         expectedQuote: quote!.fingerprint,
         idempotencyKey,
@@ -195,21 +197,7 @@ export function CheckoutForm({
           />
           {fullAddress && !addressOk ? <span className="hint">العنوان قصير جداً</span> : null}
         </div>
-        <div className="field">
-          <label htmlFor="phone">رقم الهاتف</label>
-          <input
-            id="phone"
-            className="ltr"
-            type="tel"
-            inputMode="tel"
-            autoComplete="tel"
-            value={phone}
-            onChange={(event) => setPhone(event.target.value)}
-            placeholder="07XXXXXXXXX"
-            required
-          />
-          {phone && !phoneOk ? <span className="hint">أدخل رقم موبايل عراقي مثل 07XXXXXXXXX</span> : null}
-        </div>
+        <PhoneField label="رقم الهاتف" value={phone.value} onChange={phone.onChange} onBlur={phone.check} error={phone.error} />
       </section>
 
       <aside className="card summary" aria-label="ملخص الطلب" aria-live="polite">

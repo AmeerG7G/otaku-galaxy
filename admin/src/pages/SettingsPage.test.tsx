@@ -83,4 +83,66 @@ describe('إعدادات المتجر', () => {
       social_whatsapp: '+9647701234567',
     })
   })
+
+  describe('إعلان التطبيق في المتجر الإلكتروني', () => {
+    const PLAY = 'https://play.google.com/store/apps/details?id=com.otakugalaxy.otaku_galaxy'
+    const promoCard = () => card('إعلان التطبيق في المتجر الإلكتروني')
+
+    it('المحفوظ يُعرض، والحفظ يرسل الإعلان كاملاً بتفعيلٍ منطقي ورابطٍ قانوني', async () => {
+      vi.mocked(fetchSettings).mockResolvedValue({
+        social_tiktok: '',
+        social_instagram: '',
+        social_whatsapp: '',
+        social_description: '',
+        store_share_url: '',
+        web_app_promo_enabled: 'false',
+        web_app_promo_title: 'حمّل تطبيقنا',
+        web_app_promo_subtitle: '',
+        web_app_promo_cta: '',
+        web_app_promo_url: PLAY,
+        web_app_promo_style: 'night',
+      })
+      const user = userEvent.setup()
+      renderPage()
+      await screen.findByDisplayValue('حمّل تطبيقنا')
+      const scope = within(promoCard())
+      expect(scope.getByText('الإعلان مخفيّ عن زوّار المتجر.')).toBeInTheDocument()
+      expect(within(scope.getByTestId('web-app-promo-preview')).getByText('حمّل التطبيق الآن')).toBeInTheDocument()
+      await user.click(scope.getByRole('switch'))
+      await user.click(scope.getByRole('button', { name: /حفظ/ }))
+      await waitFor(() => expect(updateSettings).toHaveBeenCalledTimes(1))
+      expect(vi.mocked(updateSettings).mock.calls[0][0]).toEqual({
+        web_app_promo_enabled: true,
+        web_app_promo_title: 'حمّل تطبيقنا',
+        web_app_promo_subtitle: '',
+        web_app_promo_cta: '',
+        web_app_promo_url: PLAY,
+        web_app_promo_style: 'night',
+      })
+    })
+
+    it('لا يُظهَر بلا رابط، ولا يُقبل رابط APK أو متجر آخر أو نسخة staging', async () => {
+      const user = userEvent.setup()
+      renderPage()
+      await screen.findByDisplayValue('https://otakugalaxystore.com')
+      const scope = within(promoCard())
+      await user.click(scope.getByRole('switch'))
+      await user.click(scope.getByRole('button', { name: /حفظ/ }))
+      expect(await scope.findByText('أدخل رابط التطبيق على Google Play قبل إظهار الإعلان')).toBeInTheDocument()
+
+      const url = scope.getByPlaceholderText(PLAY)
+      for (const bad of [
+        'https://otakugalaxystore.com/otaku-galaxy.apk',
+        'https://apps.apple.com/app/id123',
+        `${PLAY}.staging`,
+      ]) {
+        await user.clear(url)
+        await user.click(url)
+        await user.paste(bad)
+        await user.click(scope.getByRole('button', { name: /حفظ/ }))
+        expect(await scope.findByText('الرابط ليس صفحة تطبيق مجرة الأوتاكو على Google Play')).toBeInTheDocument()
+      }
+      expect(updateSettings).not.toHaveBeenCalled()
+    })
+  })
 })

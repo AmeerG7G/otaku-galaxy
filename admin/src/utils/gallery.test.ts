@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { customerGallery, productCover } from './gallery'
 
 /**
- * المعرض الموحّد في اللوحة — القاعدة نفسها في التطبيق والمتجر: صورة كل لونٍ نشط
- * بترتيب الألوان، ثم الصور العامة بترتيبها، بلا تكرار.
+ * معاينة المعرض في اللوحة — قاعدة المتجر الإلكتروني (قرار المالك 2026-11-02):
+ * الصور العامة بترتيبها، ثم صورة كل لونٍ نشط بترتيب الألوان، بلا تكرار.
  */
 const red = { colorName: 'أحمر', imageUrl: '/uploads/product/red.png', isActive: true }
 const blue = { colorName: 'أزرق', imageUrl: '/uploads/product/blue.png', isActive: true }
@@ -11,19 +11,21 @@ const front = '/uploads/product/front.png'
 const back = '/uploads/product/back.png'
 
 describe('customerGallery', () => {
-  it('صور الألوان بترتيبها ثم الصور العامة بترتيبها', () => {
+  it('الصور العامة بترتيبها ثم صور الألوان بترتيبها', () => {
     expect(customerGallery([front, back], [red, blue]).entries).toEqual([
-      { kind: 'colour', ref: red.imageUrl, colourNames: ['أحمر'] },
-      { kind: 'colour', ref: blue.imageUrl, colourNames: ['أزرق'] },
       { kind: 'general', ref: front, position: 0 },
       { kind: 'general', ref: back, position: 1 },
+      { kind: 'colour', ref: red.imageUrl, colourNames: ['أحمر'] },
+      { kind: 'colour', ref: blue.imageUrl, colourNames: ['أزرق'] },
     ])
+    // صورة عامة واحدة: هي الأولى، والألوان بعدها.
+    expect(customerGallery([back], [red]).entries.map((entry) => entry.ref)).toEqual([back, red.imageUrl])
   })
 
-  it('صورةٌ عامة هي صورة لون: مرةً واحدة، وتُعَدّ مكرّرة ولا تُحذف', () => {
-    const gallery = customerGallery([front, blue.imageUrl, back], [red, blue])
-    expect(gallery.entries.map((entry) => entry.ref)).toEqual([red.imageUrl, blue.imageUrl, front, back])
-    expect(gallery.duplicates).toEqual([{ position: 1, colourNames: ['أزرق'] }])
+  it('صورةٌ عامة هي صورة لون: مرةً واحدة في موضعها العام، وتُعَدّ مكرّرة ولا تُحذف', () => {
+    const gallery = customerGallery([front, blue.imageUrl, back], [red, blue, { colorName: 'كحلي', imageUrl: blue.imageUrl }])
+    expect(gallery.entries.map((entry) => entry.ref)).toEqual([front, blue.imageUrl, back, red.imageUrl])
+    expect(gallery.duplicates).toEqual([{ position: 1, colourNames: ['أزرق', 'كحلي'] }])
   })
 
   it('المرجع النسبي والمطلق للملف نفسه صورةٌ واحدة — كما يحلّهما العميلان', () => {

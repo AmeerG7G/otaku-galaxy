@@ -90,6 +90,25 @@ export interface StoreSettings {
   social_description: string
   /** رابط المتجر في رسالة مشاركة المنتج من التطبيق (STEP 64 §19). */
   store_share_url: string
+  /** إعلان «حمّل التطبيق» في المتجر الإلكتروني: `'true'` ظاهر، وغيره مخفيّ. */
+  web_app_promo_enabled?: string
+  web_app_promo_title?: string
+  web_app_promo_subtitle?: string
+  web_app_promo_cta?: string
+  /** صفحة تطبيق الإنتاج على Google Play وحدها، بشكلها القانوني. */
+  web_app_promo_url?: string
+  /** `violet` (الافتراضي) أو `night`. */
+  web_app_promo_style?: string
+}
+
+/** ما يُرسَل لحفظ الإعلان — التفعيل قيمةٌ منطقية لا نصّ. */
+export interface WebAppPromoInput {
+  web_app_promo_enabled: boolean
+  web_app_promo_title: string
+  web_app_promo_subtitle: string
+  web_app_promo_cta: string
+  web_app_promo_url: string
+  web_app_promo_style: 'violet' | 'night'
 }
 
 export type OrderStatusKey =

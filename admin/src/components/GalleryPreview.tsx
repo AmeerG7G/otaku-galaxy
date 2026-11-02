@@ -4,8 +4,8 @@ import { resolveMediaUrl } from '../utils/media'
 import { NO_IMAGE_PLACEHOLDER } from './ui/placeholder'
 
 /**
- * معاينة معرض المنتج كما يراه الزبون: صورة كل لونٍ نشط ثم الصور العامة، بلا
- * تكرار ([customerGallery]). للقراءة فقط — لا تغيّر شيئاً في النموذج.
+ * معاينة معرض المنتج كما يراه الزبون في المتجر الإلكتروني: الصور العامة ثم صورة
+ * كل لونٍ نشط، بلا تكرار ([customerGallery]). للقراءة فقط — لا تغيّر شيئاً في النموذج.
  */
 export default function GalleryPreview() {
   const form = Form.useFormInstance()
@@ -16,7 +16,7 @@ export default function GalleryPreview() {
   return (
     <Flex vertical gap={12} data-testid="gallery-preview">
       <Typography.Text type="secondary">
-        صورة كل لونٍ تظهر في المعرض تلقائياً ولا حاجة لرفعها مرةً ثانية بين الصور العامة. ترتيب المعرض: صور الألوان بترتيبها، ثم الصور العامة بترتيبها. تصفّح الزبون للمعرض لا يختار له لوناً.
+        صورة كل لونٍ تظهر في المعرض تلقائياً ولا حاجة لرفعها مرةً ثانية بين الصور العامة. ترتيب المعرض في المتجر الإلكتروني: الصور العامة بترتيبها (الأولى هي الصورة الرئيسية)، ثم صور الألوان بترتيبها. تطبيق الجوّال ما زال يعرض صور الألوان أولاً. تصفّح الزبون للمعرض لا يختار له لوناً.
       </Typography.Text>
       {entries.length === 0 ? (
         <Typography.Text type="secondary" data-testid="gallery-preview-empty">
