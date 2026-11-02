@@ -45,14 +45,21 @@ ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1
 WORKDIR /app
 
-COPY package.json package-lock.json .npmrc ./
+# `--chmod=0444`: Node reads /app/package.json at runtime as `node` — see below.
+COPY --chmod=0444 package.json package-lock.json .npmrc ./
 RUN npm ci --omit=dev && npm cache clean --force
 
 # Only `.next` is the server's to write (its runtime cache); dependencies and
 # config stay root-owned and read-only to the `node` user. A `chown -R /app`
 # here duplicated every dependency file into another layer.
+#
+# [CRITICAL] `--chmod=0444`: COPY keeps the file mode from the build context,
+# and the VPS deploy wrapper checks out under `umask 077`, so a `next.config.ts`
+# the checkout rewrote arrives as 600 root-owned — unreadable to `node`, and the
+# server restart-loops on EACCES (staging e9cb625, 2026-11-02). Root-owned and
+# world-readable keeps it read-only for `node` whatever the checkout's umask.
 COPY --from=builder --chown=node:node /app/.next ./.next
-COPY next.config.ts ./
+COPY --chmod=0444 next.config.ts ./
 
 USER node
 
