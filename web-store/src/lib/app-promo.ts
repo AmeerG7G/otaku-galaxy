@@ -1,4 +1,5 @@
 import { playStoreUrl } from './app-link';
+import { resolveMediaUrl } from './media';
 
 /** The production app's id — the only listing the promotion may open (`android/app/build.gradle.kts`). */
 export const OFFICIAL_APP_ID = 'com.otakugalaxy.otaku_galaxy';
@@ -18,6 +19,8 @@ export interface AppPromo {
   cta: string;
   url: string;
   style: AppPromoStyle;
+  /** The admin's uploaded promotion image, resolved against the media origin; null = the built-in phone. */
+  image: string | null;
 }
 
 const text = (value: unknown, max: number, fallback: string) => {
@@ -29,9 +32,13 @@ const text = (value: unknown, max: number, fallback: string) => {
  * The admin's «download the app» promotion from `/catalog/settings`
  * (`webAppPromo`), or `null` to hide it: the API sends `null` when it is off or
  * has no link. The link is checked again here — only the production app's
- * Google Play listing is ever linked (no APK, no other store).
+ * Google Play listing is ever linked (no APK, no other store). The image, too:
+ * only a relative upload reference, served from the media origin.
  */
-export function toAppPromo(raw: unknown): AppPromo | null {
+/** Only an upload of the API's own (`/uploads/…` jpg/png/webp) — the same rule the API applies. */
+const UPLOADED_IMAGE = /^\/uploads\/(?:[A-Za-z0-9_-]+\/)+[A-Za-z0-9_-]+\.(?:jpe?g|png|webp)$/i;
+
+export function toAppPromo(raw: unknown, mediaOrigin = ''): AppPromo | null {
   if (!raw || typeof raw !== 'object') return null;
   const promo = raw as Record<string, unknown>;
   const url = playStoreUrl(promo.url);
@@ -42,5 +49,9 @@ export function toAppPromo(raw: unknown): AppPromo | null {
     cta: text(promo.cta, 30, APP_PROMO_DEFAULTS.cta),
     url,
     style: promo.style === 'night' ? 'night' : 'violet',
+    image:
+      typeof promo.imageUrl === 'string' && UPLOADED_IMAGE.test(promo.imageUrl) && mediaOrigin
+        ? resolveMediaUrl(promo.imageUrl, mediaOrigin)
+        : null,
   };
 }

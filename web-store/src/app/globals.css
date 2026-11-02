@@ -1692,17 +1692,15 @@ textarea {
 }
 
 .app-promo__cta-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
   color: var(--accent);
   font-size: clamp(0.875rem, 0.82rem + 0.25vw, 1rem);
   font-weight: 700;
 }
 
-/* «←» in RTL: points from the text towards the badge's reading direction. */
+/* «←» in RTL: points from the text towards the badge's reading direction.
+   Inline after a no-break space, so it never wraps onto a line of its own. */
 .app-promo__cta-label::after {
-  content: '←';
+  content: '\00a0←';
   font-weight: 400;
 }
 
@@ -1803,6 +1801,37 @@ textarea {
     justify-content: center;
     column-gap: clamp(48px, 7vw, 112px);
   }
+}
+
+/* ── The admin's uploaded image, in place of the phone ── */
+
+/* A wider column than the phone: the upload is a square composition. */
+.app-promo--art {
+  --promo-phone: clamp(100px, 33vw, 380px);
+}
+
+.app-promo__art {
+  position: relative;
+  width: var(--promo-phone);
+}
+
+/* The same soft light as behind the phone; transparent uploads sit on it. */
+.app-promo__art::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: -20%;
+  pointer-events: none;
+  background: radial-gradient(closest-side, var(--promo-glow), transparent 72%);
+}
+
+/* Square box whatever the upload's shape: contained, never cropped, never shifting. */
+.app-promo__art img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  object-fit: contain;
 }
 
 @media (prefers-reduced-motion: no-preference) {

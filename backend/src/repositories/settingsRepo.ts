@@ -36,6 +36,9 @@ export const WEB_APP_PROMO_SETTING_KEYS = [
   'web_app_promo_cta',
   'web_app_promo_url',
   'web_app_promo_style',
+  // صورة الإعلان (اختيارية): مرجعٌ يعيده مسار الرفع (`/uploads/...`) أو فارغ =
+  // الصورة الافتراضية في المتجر. المسؤول يستبدلها من البطاقة نفسها.
+  'web_app_promo_image',
 ] as const;
 
 /**
@@ -117,6 +120,7 @@ const EMPTY_SETTINGS: StoreSettings = {
   web_app_promo_cta: '',
   web_app_promo_url: '',
   web_app_promo_style: '',
+  web_app_promo_image: '',
 };
 
 export const settingsRepo = {

@@ -3,6 +3,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Alert, App, Button, Card, Flex, Form, Input, Radio, Switch, Typography } from 'antd'
 import { LinkOutlined, SaveOutlined } from '@ant-design/icons'
 import { updateSettings } from '../api/communityApi'
+import ImageUploadField from './ImageUploadField'
+import { useCan } from '../hooks/useAdminProfile'
 import type { StoreSettings, WebAppPromoInput } from '../types/community'
 import { canonicalPlayStoreUrl, PRODUCTION_PACKAGE_ID } from '../types/appVersion'
 
@@ -35,6 +37,8 @@ export default function WebAppPromoCard({ settings, loading }: { settings?: Stor
   const { message } = App.useApp()
   const queryClient = useQueryClient()
   const [form] = Form.useForm<WebAppPromoInput>()
+  // الرفع مسار الإدارة نفسه (`POST /admin/uploads`) بحارسه كما هو: المنتجات أو البنرات.
+  const canUpload = useCan('products', 'banners')
 
   useEffect(() => {
     if (!settings) return
@@ -45,6 +49,7 @@ export default function WebAppPromoCard({ settings, loading }: { settings?: Stor
       web_app_promo_cta: settings.web_app_promo_cta ?? '',
       web_app_promo_url: settings.web_app_promo_url ?? '',
       web_app_promo_style: settings.web_app_promo_style === 'night' ? 'night' : 'violet',
+      web_app_promo_image: settings.web_app_promo_image ?? '',
     })
   }, [settings, form])
 
@@ -57,6 +62,7 @@ export default function WebAppPromoCard({ settings, loading }: { settings?: Stor
         web_app_promo_cta: (values.web_app_promo_cta ?? '').trim(),
         web_app_promo_url: (values.web_app_promo_url ?? '').trim(),
         web_app_promo_style: values.web_app_promo_style === 'night' ? 'night' : 'violet',
+        web_app_promo_image: (values.web_app_promo_image ?? '').trim(),
       }),
     onSuccess: async () => {
       message.success('حُفظ إعلان التطبيق')
@@ -121,6 +127,19 @@ export default function WebAppPromoCard({ settings, loading }: { settings?: Stor
               { label: 'ليلي', value: 'night' },
             ]}
           />
+        </Form.Item>
+
+        <Form.Item
+          name="web_app_promo_image"
+          label="صورة الإعلان (اختيارية)"
+          extra={
+            canUpload
+              ? 'مربّعة 1080×1080، ويُفضَّل PNG أو WebP بخلفية شفافة. بلا صورة يعرض المتجر صورته الافتراضية.'
+              : 'رفع الصور يتطلّب صلاحية المنتجات أو البنرات.'
+          }
+          normalize={(value: string | null) => value ?? ''}
+        >
+          <ImageUploadField purpose="banner" allowClear disabled={!canUpload} />
         </Form.Item>
 
         <Typography.Text type="secondary">معاينة:</Typography.Text>
