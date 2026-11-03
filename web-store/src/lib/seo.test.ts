@@ -19,7 +19,9 @@ import {
   serializeJsonLd,
   websiteJsonLd,
 } from './seo';
-import type { Product } from './types';
+import { galleryImages } from './gallery';
+import type { Product, ProductVariant } from './types';
+import { customerVariants } from './variants';
 
 /**
  * Search metadata describes the page and nothing more: canonical URLs drop
@@ -116,6 +118,35 @@ describe('Product JSON-LD', () => {
     expect(keys).toEqual(['@context', '@id', '@type', 'category', 'description', 'image', 'name', 'offers', 'url'].sort());
     const offer = productJsonLd(ORIGIN, product()).offers as Record<string, unknown>;
     expect(Object.keys(offer).sort()).toEqual(['@type', 'availability', 'price', 'priceCurrency', 'seller', 'url'].sort());
+  });
+
+  it('images are the page gallery’s: general images, then each shown colour’s image — once each', () => {
+    const colour = (id: string, imageUrl: string, sortOrder: number, isActive = true): ProductVariant => ({
+      id,
+      colorName: id,
+      colorNameAr: id,
+      colorNameCkb: null,
+      colorHex: null,
+      imageUrl,
+      stock: 1,
+      isActive,
+      sortOrder,
+    }) as ProductVariant;
+    const variants = [
+      colour('blue', 'https://media/b.jpg', 2),
+      colour('red', 'https://media/r.jpg', 1),
+      colour('hidden', 'https://media/h.jpg', 0, false),
+      colour('dup', 'https://media/a.jpg', 3),
+      colour('blank', '  ', 4),
+    ];
+    // Colour images only (5 of 6 live products on 2026-11-03): still has images, in colour order, no inactive one.
+    const colourOnly = product({ images: [], variants });
+    expect(productJsonLd(ORIGIN, colourOnly).image).toEqual(['https://media/r.jpg', 'https://media/b.jpg', 'https://media/a.jpg']);
+    // General images first; a colour image that is also a general image appears once, in the general place.
+    const both = product({ images: ['https://media/a.jpg', 'https://media/g.jpg'], variants });
+    expect(productJsonLd(ORIGIN, both).image).toEqual(['https://media/a.jpg', 'https://media/g.jpg', 'https://media/r.jpg', 'https://media/b.jpg']);
+    // Exactly what the gallery on the page shows — never an image the page does not.
+    expect(productJsonLd(ORIGIN, both).image).toEqual(galleryImages(both.images, customerVariants(both)));
   });
 
   it('an empty description and no images are left out, not filled in', () => {

@@ -137,6 +137,8 @@ describe('الهجرة 086 — دالّتا البحث تؤهّلان public.sea
 describe.skipIf(missing !== null)('الهجرة 086 — pg_dump ← pg_restore --exit-on-error', () => {
   let workDir = '';
   let restored: pg.Pool | undefined;
+  /** Errors the restored pool reported on an idle client — anything but the expected teardown termination. */
+  const unexpectedPoolErrors: Error[] = [];
 
   beforeAll(async () => {
     workDir = await mkdtemp(path.join(tmpdir(), 'og-restore-'));
@@ -147,6 +149,7 @@ describe.skipIf(missing !== null)('الهجرة 086 — pg_dump ← pg_restore -
     await restored?.end();
     await db.query(`DROP DATABASE IF EXISTS ${TARGET_DB} WITH (FORCE)`);
     if (workDir) await rm(workDir, { recursive: true, force: true });
+    expect(unexpectedPoolErrors).toEqual([]);
   });
 
   it('[CRITICAL] نسخة قاعدة مهاجَرة تُستعاد في قاعدةٍ فارغة بلا خطأ، وفهرسا البحث صالحان', async () => {
@@ -157,6 +160,14 @@ describe.skipIf(missing !== null)('الهجرة 086 — pg_dump ← pg_restore -
     await run('pg_restore', ['--exit-on-error', `--dbname=${urlFor(TARGET_DB)}`, dump]);
 
     restored = new pg.Pool({ connectionString: urlFor(TARGET_DB), max: 2 });
+    // [CRITICAL] (CI run 41537519222) `end()` can resolve while an idle client is still
+    // closing; `DROP DATABASE … WITH (FORCE)` then terminates it (57P01) and pg-pool
+    // re-emits that on the pool. With no listener it was an uncaught exception that
+    // failed the whole backend job though every test passed. Only that termination is
+    // expected here — any other idle-client error fails this file in `afterAll`.
+    restored.on('error', (error: Error & { code?: string }) => {
+      if (error.code !== '57P01') unexpectedPoolErrors.push(error);
+    });
     const { rows } = await restored.query<{ name: string; valid: boolean; ready: boolean }>(
       `SELECT c.relname AS name, i.indisvalid AS valid, i.indisready AS ready
          FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid
