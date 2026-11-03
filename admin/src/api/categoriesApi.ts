@@ -75,3 +75,26 @@ export async function deleteSubcategory(id: string): Promise<{ message: string }
   )
   return { message: response.data.message ?? '' }
 }
+
+/**
+ * حفظ ترتيب الأقسام الرئيسية كلها — القائمة كاملةً بترتيبها الجديد.
+ *
+ * الخادم يرفض بـ409 (`ORDER_STALE`) إن تغيّرت القائمة منذ تحميلها، وبـ400
+ * إن حوت معرّفاً غريباً؛ فالصفحة تعيد التحميل وتعرض الرسالة.
+ */
+export async function reorderCategories(ids: string[]): Promise<{ message: string }> {
+  const response = await client.put<ApiEnvelope<unknown>>('/admin/categories/order', { ids })
+  return { message: response.data.message ?? '' }
+}
+
+/** ترتيب فرعيّات قسمٍ واحد — لا ينقل فرعياً إلى قسمٍ آخر. */
+export async function reorderSubcategories(
+  categoryId: string,
+  ids: string[],
+): Promise<{ message: string }> {
+  const response = await client.put<ApiEnvelope<unknown>>(
+    `/admin/categories/${categoryId}/subcategories/order`,
+    { ids },
+  )
+  return { message: response.data.message ?? '' }
+}

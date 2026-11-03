@@ -541,9 +541,11 @@ export const categoryRepo = {
     input: { name: string; nameCkb?: string | null; imageUrl?: string | null; sortOrder?: number },
   ): Promise<CategoryRow> {
     const { rows } = await db.query<CategoryRow>(
+      // بلا ترتيبٍ صريح يُلحق بآخر القائمة — الترتيب يُغيَّر بالسحب لا برقمٍ يُكتب.
       `INSERT INTO categories (name, name_ckb, image_url, sort_order)
-       VALUES ($1, $2, $3, $4) RETURNING *`,
-      [input.name, input.nameCkb ?? null, input.imageUrl ?? null, input.sortOrder ?? 0],
+       VALUES ($1, $2, $3, COALESCE($4, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM categories)))
+       RETURNING *`,
+      [input.name, input.nameCkb ?? null, input.imageUrl ?? null, input.sortOrder ?? null],
     );
     return rows[0]!;
   },
@@ -618,8 +620,10 @@ export const subcategoryRepo = {
   ) {
     const { rows } = await db.query<{ id: string; name: string; nameCkb: string | null }>(
       `INSERT INTO subcategories (category_id, name, name_ckb, sort_order)
-       VALUES ($1, $2, $3, $4) RETURNING id, name, name_ckb AS "nameCkb"`,
-      [input.categoryId, input.name, input.nameCkb ?? null, input.sortOrder ?? 0],
+       VALUES ($1, $2, $3, COALESCE($4, (SELECT COALESCE(MAX(sort_order), 0) + 1
+                                           FROM subcategories WHERE category_id = $1)))
+       RETURNING id, name, name_ckb AS "nameCkb"`,
+      [input.categoryId, input.name, input.nameCkb ?? null, input.sortOrder ?? null],
     );
     return rows[0]!;
   },
