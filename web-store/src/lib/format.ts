@@ -6,9 +6,23 @@
  * website and in the app. These helpers only format; every amount shown at
  * checkout comes from the server.
  */
+
+import type { Governorate } from './types';
+
 export function formatIqd(amount: number): string {
   // A no-break space keeps the amount and its currency on one line on narrow screens.
   return `${Math.round(amount).toFixed(0)}\u00A0د.ع`;
+}
+
+/**
+ * The delivery price shown for a governorate in the picker: its zone range when it has
+ * zones («3000–4000 د.ع» for Najaf — a zone fee replaces the flat fee, BR-05), else its fee.
+ */
+export function governorateFeeLabel(governorate: Pick<Governorate, 'deliveryFee' | 'zoneFeeMin' | 'zoneFeeMax'>): string {
+  const { zoneFeeMin: min, zoneFeeMax: max } = governorate;
+  if (min == null || max == null) return formatIqd(governorate.deliveryFee);
+  if (min === max) return formatIqd(min);
+  return `${Math.round(min).toFixed(0)}–${Math.round(max).toFixed(0)}\u00A0د.ع`;
 }
 
 /** «قطعتان بـ7000 د.ع» — the two-piece offer label; `null` when the product has none. */

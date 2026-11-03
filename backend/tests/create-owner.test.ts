@@ -142,7 +142,8 @@ describe.skipIf(!canCreateDb)('createOwner — قاعدة مهاجَرة فار�
     expect(after.rows).toEqual(before.rows);
   });
 
-  it('لا يكتب إلا في users: كل جدول آخر فارغ ما عدا سجلّ الهجرات والإعدادات', async () => {
+  // المحافظات ومنطقتا النجف بيانات تشغيلٍ تُنشئها الهجرة ٠٩٢ نفسها، لا `createOwner`.
+  it('لا يكتب إلا في users: كل جدول آخر فارغ ما عدا سجلّ الهجرات والإعدادات والمحافظات', async () => {
     const { rows } = await target!.query<{ tablename: string }>(
       `SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY 1`,
     );
@@ -151,7 +152,7 @@ describe.skipIf(!canCreateDb)('createOwner — قاعدة مهاجَرة فار�
       const { rows: count } = await target!.query<{ n: string }>(`SELECT count(*)::text AS n FROM "${tablename}"`);
       if (count[0]!.n !== '0') nonEmpty.push(tablename);
     }
-    expect(nonEmpty.sort()).toEqual(['schema_migrations', 'store_settings', 'users']);
+    expect(nonEmpty.sort()).toEqual(['governorate_zones', 'governorates', 'schema_migrations', 'store_settings', 'users']);
   });
 
   it('كلمة مرور قصيرة تُرفض في قاعدةٍ فارغة بلا صفّ', async () => {
