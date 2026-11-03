@@ -130,11 +130,19 @@ class _StubGovernorates implements GovernorateRepository {
   @override
   Future<List<Governorate>> fetchGovernorates() async => const [
     Governorate(id: 'g1', name: 'بغداد', deliveryFee: 5000),
+    // رسم النجف المسطّح لا يُعرض ولا يُحتسب ما دامت لها مناطق (الهجرة ٠٩٢).
+    Governorate(id: 'g-najaf', name: 'النجف', deliveryFee: 6000),
   ];
 
-  /// بلا مناطق — المحافظة غير مقسّمة، وهو المسار الأبسط في الشاشة.
+  /// بغداد بلا مناطق — المسار الأبسط؛ النجف بمنطقتيها المعتمدتين.
   @override
-  Future<List<DeliveryZone>> fetchZones(String governorateId) async => const [];
+  Future<List<DeliveryZone>> fetchZones(String governorateId) async =>
+      governorateId == 'g-najaf'
+      ? const [
+          DeliveryZone(id: 'z-in', name: 'داخل قضاء النجف', deliveryFee: 3000),
+          DeliveryZone(id: 'z-out', name: 'خارج قضاء النجف', deliveryFee: 4000),
+        ]
+      : const [];
 }
 
 class _StubCart implements CartRepository {
@@ -385,6 +393,82 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(OrderReviewScreen), findsOneWidget);
+    });
+  });
+
+  // ═══════════════ النجف: مدى السعر ثم منطقة إلزامية (2026-11-03) ═══════════════
+
+  group('[CRITICAL] النجف — «3000–4000 د.ع» في القائمة ومنطقتان إلزاميتان', () {
+    Future<void> fillFields(WidgetTester tester) async {
+      await tester.enterText(find.byType(TextFormField).first, '07701234567');
+      await tester.enterText(find.byType(TextFormField).last, 'النجف، حي السعد، قرب الجامع');
+      await tester.pumpAndSettle();
+    }
+
+    /// يفتح ورقة المحافظات من صفّها (`shown`: ما يعرضه الصفّ الآن) ويختار [name].
+    Future<void> chooseGovernorate(WidgetTester tester, String name, {String shown = 'اختر المحافظة'}) async {
+      await tester.tap(find.text(shown).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(name).last);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('القائمة: النجف بمداه وبغداد برسمها — لا 6000 للنجف', (tester) async {
+      await _pumpData(tester);
+      await tester.tap(find.text('اختر المحافظة'));
+      await tester.pumpAndSettle();
+      expect(find.text('3000–4000 د.ع'), findsOneWidget);
+      expect(find.text(_price(5000)), findsOneWidget);
+      expect(find.text(_price(6000)), findsNothing);
+    });
+
+    testWidgets('اختيار النجف يُظهر المنطقتين برسمهما، ولا مراجعة بلا منطقة', (tester) async {
+      await _pumpData(tester);
+      await fillFields(tester);
+      await chooseGovernorate(tester, 'النجف');
+
+      expect(find.text('اختر المنطقة'), findsOneWidget);
+      await tester.tap(find.widgetWithText(AnimePrimaryButton, 'مراجعة الطلب'));
+      await tester.pumpAndSettle();
+      expect(find.byType(OrderReviewScreen), findsNothing);
+
+      await tester.tap(find.text('اختر المنطقة'));
+      await tester.pumpAndSettle();
+      expect(find.text('داخل قضاء النجف'), findsOneWidget);
+      expect(find.text('خارج قضاء النجف'), findsOneWidget);
+      expect(find.text(_price(3000)), findsOneWidget);
+      expect(find.text(_price(4000)), findsOneWidget);
+      await tester.tap(find.text('خارج قضاء النجف'));
+      await tester.pumpAndSettle();
+      // الرسم المحتسب رسم المنطقة المختارة — في صفّها وفي ملخّص الأسعار، ولا أثر لـ6000.
+      expect(find.text('خارج قضاء النجف'), findsOneWidget);
+      expect(find.text(_price(4000)), findsWidgets);
+      expect(find.text(_price(6000)), findsNothing);
+
+      await tester.tap(find.widgetWithText(AnimePrimaryButton, 'مراجعة الطلب'));
+      await tester.pumpAndSettle();
+      expect(find.byType(OrderReviewScreen), findsOneWidget);
+      expect(find.text('النجف — خارج قضاء النجف'), findsOneWidget);
+    });
+
+    testWidgets('الانتقال من النجف إلى بغداد يُسقط المنطقة، والعودة تطلبها من جديد', (tester) async {
+      await _pumpData(tester);
+      await fillFields(tester);
+      await chooseGovernorate(tester, 'النجف');
+      await tester.tap(find.text('اختر المنطقة'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('داخل قضاء النجف'));
+      await tester.pumpAndSettle();
+
+      await chooseGovernorate(tester, 'بغداد', shown: 'النجف');
+      expect(find.text('داخل قضاء النجف'), findsNothing);
+      expect(find.text('اختر المنطقة'), findsNothing);
+      expect(find.text(_price(5000)), findsWidgets);
+      expect(find.text(_price(3000)), findsNothing);
+
+      await chooseGovernorate(tester, 'النجف', shown: 'بغداد');
+      expect(find.text('اختر المنطقة'), findsOneWidget);
+      expect(find.text('داخل قضاء النجف'), findsNothing);
     });
   });
 

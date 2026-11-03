@@ -175,10 +175,31 @@ export const bannerRepo = {
   },
 };
 
+/**
+ * مدى رسوم المناطق النشطة للمحافظة — `null` حين لا مناطق لها.
+ *
+ * [CRITICAL] محافظةٌ لها مناطق نشطة (النجف: 3000 و4000) لا يُحتسب رسمها
+ * المسطّح (BR-05)، فقائمة المحافظات تعرض هذا المدى لا `deliveryFee`. المدى
+ * من الخادم كي تعرض اللوحة والمتجر والتطبيق الرقمين نفسيهما بلا جلبٍ لكل محافظة.
+ */
+const ZONE_FEE_RANGE = `(SELECT MIN(z.delivery_fee) FROM governorate_zones z
+                          WHERE z.governorate_id = g.id AND z.is_active) AS zone_fee_min,
+                        (SELECT MAX(z.delivery_fee) FROM governorate_zones z
+                          WHERE z.governorate_id = g.id AND z.is_active) AS zone_fee_max`;
+
+type ZoneFeeRange = { zone_fee_min: string | null; zone_fee_max: string | null };
+
+function zoneFeeRange(row: ZoneFeeRange) {
+  return {
+    zoneFeeMin: row.zone_fee_min === null ? null : Number(row.zone_fee_min),
+    zoneFeeMax: row.zone_fee_max === null ? null : Number(row.zone_fee_max),
+  };
+}
+
 export const governorateRepo = {
   async listActive(db: pg.Pool | pg.PoolClient) {
-    const { rows } = await db.query<GovernorateRow>(
-      `SELECT * FROM governorates WHERE is_active = TRUE ORDER BY sort_order, name`,
+    const { rows } = await db.query<GovernorateRow & ZoneFeeRange>(
+      `SELECT g.*, ${ZONE_FEE_RANGE} FROM governorates g WHERE g.is_active = TRUE ORDER BY g.sort_order, g.name`,
     );
     // `nameCkb` يخرج من هنا وتحسمه الخدمة (`localizeNamed`) — كان مفقوداً
     // فلم تجد الخدمة ما تختاره وبقيت المحافظات عربيةً في الواجهة الكردية.
@@ -187,14 +208,15 @@ export const governorateRepo = {
       name: row.name,
       nameCkb: row.name_ckb,
       deliveryFee: Number(row.delivery_fee),
+      ...zoneFeeRange(row),
       isActive: row.is_active,
     }));
   },
 
   /** كل المحافظات للأدمن — النشطة والمعطَّلة، الإدارة تحتاج رؤيتهما معاً. */
   async listAll(db: pg.Pool | pg.PoolClient) {
-    const { rows } = await db.query<GovernorateRow>(
-      `SELECT * FROM governorates ORDER BY is_active DESC, sort_order, name`,
+    const { rows } = await db.query<GovernorateRow & ZoneFeeRange>(
+      `SELECT g.*, ${ZONE_FEE_RANGE} FROM governorates g ORDER BY g.is_active DESC, g.sort_order, g.name`,
     );
     return rows.map((row) => ({
       id: row.id,
@@ -202,6 +224,7 @@ export const governorateRepo = {
       // اللوحة تعدّل الاسم الكردي (اختياري، 2026-10-26) فتحتاج قيمته المحفوظة.
       nameCkb: row.name_ckb,
       deliveryFee: Number(row.delivery_fee),
+      ...zoneFeeRange(row),
       isActive: row.is_active,
     }));
   },

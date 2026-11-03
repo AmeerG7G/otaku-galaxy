@@ -1057,10 +1057,15 @@ class _OrderDataScreenState extends State<OrderDataScreen> with LocaleRefetch {
                 final zoneRange = _governorateZonePriceRange[governorate.id];
                 String trailing;
                 if (zoneRange != null) {
-                  // صيغة السعر الموحّدة (`priceIqd`) لطرفي المدى — لا نصّ
-                  // عربي مضمَّن ولا وحدة قبل المبلغ.
-                  trailing =
-                      '${formatPrice(zoneRange.$1)} - ${formatPrice(zoneRange.$2)}';
+                  // «3000–4000 د.ع» (2026-11-03): المدى مبلغٌ واحد في صيغة
+                  // `priceIqd` — وحدةٌ واحدة بعد الطرفين، لا «3000 د.ع - 4000 د.ع».
+                  // منطقتان بالرسم نفسه تُعرضان مبلغاً واحداً.
+                  trailing = zoneRange.$1 == zoneRange.$2
+                      ? formatPrice(zoneRange.$1)
+                      : context.strings.p('priceIqd', {
+                          'amount':
+                              '${zoneRange.$1.toStringAsFixed(0)}–${zoneRange.$2.toStringAsFixed(0)}',
+                        });
                 } else {
                   trailing = formatPrice(governorate.deliveryFee);
                 }

@@ -289,6 +289,8 @@ describe('Phase 3 — vertical privilege escalation (every admin endpoint)', () 
     ['get', () => '/api/admin/categories'],
     ['post', () => '/api/admin/categories', { name: 'x', imageUrl: '/uploads/x.png' }],
     ['patch', () => `/api/admin/categories/${U}`, { name: 'x' }],
+    ['put', () => '/api/admin/categories/order', { ids: [U] }],
+    ['put', () => `/api/admin/categories/${U}/subcategories/order`, { ids: [U] }],
     ['delete', () => `/api/admin/categories/${U}`],
     ['post', () => '/api/admin/subcategories', { categoryId: U, name: 'x' }],
     ['patch', () => `/api/admin/subcategories/${U}`, { name: 'x' }],

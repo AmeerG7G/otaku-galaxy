@@ -225,3 +225,28 @@ button,
 .tnum {
   font-variant-numeric: tabular-nums;
 }
+/* نصٌّ للقارئ الصوتي وحده — رأس عمود مقبض السحب. */
+.og-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.og-drag-handle:focus-visible {
+  outline: 2px solid var(--og-drag-indicator, #1677ff);
+  outline-offset: 1px;
+}
+
+.og-drag-handle:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+tr[data-dragging] .og-drag-handle {
+  cursor: grabbing;
+}

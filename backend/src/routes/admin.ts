@@ -64,6 +64,8 @@ adminRoutes.post('/products/:id/costs', requireSuperAdmin, productCostsControlle
 
 adminRoutes.get('/categories', can('categories', 'products', 'banners'), adminController.listCategories);
 adminRoutes.post('/categories', can('categories'), adminController.createCategory);
+adminRoutes.put('/categories/order', can('categories'), adminController.reorderCategories);
+adminRoutes.put('/categories/:id/subcategories/order', can('categories'), adminController.reorderSubcategories);
 adminRoutes.patch('/categories/:id', can('categories'), adminController.updateCategory);
 adminRoutes.delete('/categories/:id', can('categories'), adminController.deleteCategory);
 adminRoutes.post('/subcategories', can('categories'), adminController.createSubcategory);
