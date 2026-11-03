@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
+import { galleryImages } from './gallery';
 import type { SocialLinks } from './social-links';
 import type { Category, Product } from './types';
+import { customerVariants } from './variants';
 
 /**
  * Search metadata and structured data for the public catalogue: canonical
@@ -155,6 +157,7 @@ export function productJsonLd(origin: string, product: Product, category?: Pick<
   const url = absoluteUrl(origin, productCanonical(product.id));
   const description = product.description.trim();
   const reviewCount = product.reviewCount ?? 0;
+  const images = galleryImages(product.images, customerVariants(product));
   return {
     '@context': SCHEMA,
     '@type': 'Product',
@@ -162,7 +165,9 @@ export function productJsonLd(origin: string, product: Product, category?: Pick<
     name: product.name,
     url,
     ...(description ? { description } : {}),
-    ...(product.images.length > 0 ? { image: product.images } : {}),
+    // The page gallery's own list: general images, then each shown colour's image, once each.
+    // A product with colour images only still has images (2026-11-03: 5 of 6 live products).
+    ...(images.length > 0 ? { image: images } : {}),
     ...(category ? { category: category.name } : {}),
     // Price not announced yet («السعر قريباً»): the page sells nothing, so no Offer.
     ...(product.price !== null
