@@ -272,7 +272,13 @@ class _OrderReviewScreenState extends State<OrderReviewScreen>
     return _sectionCard(
       title: context.strings('deliveryInfo'),
       children: [
-        _infoRow(context.strings('province'), data.province),
+        // المنطقة المختارة (النجف) جزءٌ من الوجهة ورسمها هو المحتسب — تُعرض معها.
+        _infoRow(
+          context.strings('province'),
+          data.zoneName == null || data.zoneName!.isEmpty
+              ? data.province
+              : '${data.province} — ${data.zoneName}',
+        ),
         _infoRow(context.strings('fullAddress'), data.fullAddress),
         _infoRow(
           context.strings('phoneNumber'),

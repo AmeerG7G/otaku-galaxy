@@ -120,6 +120,9 @@ export interface Governorate {
   id: string;
   name: string;
   deliveryFee: number;
+  /** Fee range of the active zones; `null` when the governorate has none (its flat fee applies). */
+  zoneFeeMin?: number | null;
+  zoneFeeMax?: number | null;
   isActive: boolean;
 }
 

@@ -525,6 +525,20 @@ export const adminSubcategoryUpdateSchema = z.object({
 
 export const adminSubcategoryIdSchema = idSchema;
 
+/**
+ * ترتيبٌ كامل لأقسامٍ أو لفرعيّات قسمٍ واحد — بالسحب في اللوحة (2026-11-03).
+ *
+ * القائمة **كلها** بترتيبها الجديد، لا موضعٌ مفرد: الخادم يقارنها بالمجموعة
+ * الفعلية تحت قفل، فلا يُحفظ ترتيبٌ مبنيّ على قائمةٍ قديمة. المكرَّر مرفوض هنا.
+ */
+export const adminOrderedIdsSchema = z.object({
+  ids: z
+    .array(z.string().uuid('معرّف غير صالح'), { error: 'قائمة الترتيب غير صالحة' })
+    .min(1, 'قائمة الترتيب فارغة')
+    .max(1000, 'قائمة الترتيب طويلة جداً')
+    .refine((ids) => new Set(ids).size === ids.length, 'معرّفٌ مكرّر في قائمة الترتيب'),
+});
+
 /** ترشيح الإشعارات في لوحة التحكم. */
 export const adminNotificationQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
