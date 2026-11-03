@@ -53,6 +53,8 @@ const EXPECTED: Record<string, Guard> = {
   'patch /offers/:id': ['offers', 'products'],
   'get /categories': ['categories', 'products', 'banners'],
   'post /categories': ['categories'],
+  'put /categories/order': ['categories'],
+  'put /categories/:id/subcategories/order': ['categories'],
   'patch /categories/:id': ['categories'],
   'delete /categories/:id': ['categories'],
   'post /subcategories': ['categories'],

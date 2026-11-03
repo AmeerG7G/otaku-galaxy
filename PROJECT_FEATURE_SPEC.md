@@ -12624,3 +12624,71 @@ Shared vectors in `test/fixtures/iraqi_phone_vectors.json` are read by the Flutt
 - `GET /api/catalog/settings` adds `webAppPromo` (`null` when hidden or invalid), re-validated on read. The app ignores the field.
 - Web store: `AppPromoBanner` under the catalog heading on `/`. It is one link opening in a new tab, with no tracking and no artwork.
 - **Open:** the listing `https://play.google.com/store/apps/details?id=com.otakugalaxy.otaku_galaxy` is derived from the `applicationId`. As of 2026-11-02 the first AAB had not been uploaded to Play, so the listing is not verified live. Keep the promotion hidden until the owner confirms the URL.
+
+
+---
+
+# STEP 81 — GOVERNORATES IN THE MIGRATION CHAIN, NAJAF FEE RANGE, DRAG-AND-DROP CATEGORY ORDER (2026-11-03)
+
+**Status:** implemented on branch `feat/governorates-category-order` (based on `origin/dev` `b7e831a`).
+
+## 81.1 Root cause: Production had no governorates
+
+No migration ever inserted the governorates or their fees. They lived only in `backend/scripts/seed.ts`,
+which also seeds the demo catalog and is never run on Production. Production was built from migrations
+only (STEP production launch, "Production DB starts empty"), so checkout there had no governorate to
+choose. Staging had them only because its database had been seeded.
+
+## 81.2 Approved fees (owner, 2026-11-03, in chat)
+
+Baghdad 5000. Najaf has two zones and no flat fee: «داخل قضاء النجف» 3000 and «خارج قضاء النجف» 4000.
+The customer must choose a zone, and the zone fee is the one charged (BR-05, unchanged). Every other
+governorate (16) is 6000. These are the values `seed.ts` already had.
+
+## 81.3 Migration `092_governorates_reference_data.sql`
+
+- Inserts any of the 18 that is missing (`ON CONFLICT (name) DO NOTHING`), and inserts Najaf's two zones.
+  Existing rows keep their ids. Nothing is deleted.
+- Corrects only fees that differ from 81.2, activates any of the 18 (and the two zones) that is inactive,
+  and fills `name_ckb` only where it is NULL.
+- Najaf's governorate-level `delivery_fee` is left as it is; it is never charged while Najaf has active
+  zones. A missing Najaf row is inserted with 6000, the Staging value.
+- **Stops instead of guessing.** It raises an error and rolls back when a governorate or Najaf zone exists
+  under a spelling that differs only by hamza, ى/ي, ة/ه, a leading «ال», tatweel or spaces (it would
+  otherwise create a second «ذي قار» next to «ذيقار»). It also stops when Najaf has a third active zone,
+  because that changes the range.
+- Touches no order. Every order keeps its own `delivery_fee`, `zone_id` and `zone_name` snapshot (BR-82).
+- Running it twice changes nothing. It uses no temporary tables or functions.
+- `seed.ts` no longer overwrites an existing governorate or zone fee. It only fills what is missing.
+
+## 81.4 Najaf shows its range
+
+`GET /catalog/governorates` and `GET /admin/governorates` now add `zoneFeeMin` and `zoneFeeMax`: the
+range of the governorate's active zones, or `null` when it has none.
+
+- Web store checkout: each governorate option reads «الاسم — 5000 د.ع», and Najaf reads
+  «النجف — 3000–4000 د.ع». Zone options show their fee. The summary's delivery row names the chosen zone.
+- Flutter checkout: the governorate sheet already showed a zone range. It now reads «3000–4000 د.ع» with
+  one currency suffix. The review screen's governorate row shows «النجف — <zone>».
+- Prices keep the project format (`priceIqd`, no thousands separator) on every client.
+
+## 81.5 Category order by drag and drop
+
+- `PUT /api/admin/categories/order` `{ ids }` and `PUT /api/admin/categories/:id/subcategories/order`
+  `{ ids }`, both under the `categories` permission.
+- The list must be exactly the current set: the main categories, or that one category's subcategories.
+  An id that is not in the set → 400 `ORDER_FOREIGN_ID`. This includes a subcategory of another parent,
+  so nothing is ever moved between parents. A missing id → 409 `ORDER_STALE` (the list changed since the
+  page loaded). A duplicate, an empty list or a malformed id → 400. An unknown parent → 404.
+- The rows are read `FOR NO KEY UPDATE` and written with a single `UPDATE … FROM unnest(…) WITH ORDINALITY`
+  in one transaction. Concurrent saves serialize and one of them wins whole. That lock does not block a
+  product insert's FK `KEY SHARE`. Positions are 1..n.
+- A new category or subcategory created without `sortOrder` is appended at the end (it used to get 0).
+- Dashboard `CategoriesPage`: a drag handle on each category and subcategory row (`components/SortableRows.tsx`,
+  `@dnd-kit`). Mouse, touch (150 ms hold) and keyboard (Space, arrows, Space or Escape) all work, with
+  Arabic screen-reader announcements. Movement is vertical only, and the dragged row moves into its
+  target slot with a dashed outline. The new order is saved as soon as the row is dropped, and it shows
+  at once. A rejection restores the saved order and shows the server's message. The numeric «الترتيب»
+  column and form fields are gone. The main table is no longer paginated, so a drag can reach every row.
+- The web store and the app read the same `/catalog/categories` (and `/catalog/home`) order. They are
+  unchanged.
