@@ -52,6 +52,26 @@ export async function listProducts(options: {
   return { ...data, items: data.items.map(withMedia) };
 }
 
+/** The API's largest page (`limit` max 50) and a bound on how many pages one walk may read. */
+const LISTING_PAGE_SIZE = 50;
+const LISTING_MAX_PAGES = 200;
+
+/**
+ * Every product the store lists, page by page until the API says there is no
+ * more — what the sitemap needs. Stops at `LISTING_MAX_PAGES` (10,000
+ * products) rather than walk forever; a product that moves between pages
+ * while this runs is kept once.
+ */
+export async function listAllProducts(): Promise<Product[]> {
+  const seen = new Map<string, Product>();
+  for (let page = 1; page <= LISTING_MAX_PAGES; page += 1) {
+    const result = await listProducts({ page, limit: LISTING_PAGE_SIZE });
+    for (const product of result.items) if (!seen.has(product.id)) seen.set(product.id, product);
+    if (!result.hasMore || result.items.length === 0) break;
+  }
+  return [...seen.values()];
+}
+
 export async function searchProducts(q: string, page = 1): Promise<Paginated<Product>> {
   const { data } = await apiFetch<Paginated<Product>>('/catalog/products/search', { query: { q, page, limit: 24 } });
   return { ...data, items: data.items.map(withMedia) };

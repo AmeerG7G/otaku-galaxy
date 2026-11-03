@@ -9,7 +9,8 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
   const lang = parseLegalLang((await searchParams).lang);
   return {
     title: privacyPolicy(lang).title,
-    alternates: { canonical: '/privacy-policy', languages: { ar: '/privacy-policy', en: '/privacy-policy?lang=en' } },
+    // Each language version is its own page: canonical to itself, the other listed as its alternate.
+    alternates: { canonical: lang === 'en' ? '/privacy-policy?lang=en' : '/privacy-policy', languages: { ar: '/privacy-policy', en: '/privacy-policy?lang=en' } },
   };
 }
 

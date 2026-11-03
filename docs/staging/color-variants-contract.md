@@ -127,7 +127,9 @@ A colour's stock going 0 → n while the product total was 0 triggers the existi
 
 > **Web store, 2026-11-02 (spec STEP 79, G1):** the web store and the dashboard preview now show the
 > general (display) images **first**, then the colour images; the page opens on the first display image.
-> The app below is unchanged (colours first) until the owner decides otherwise.
+> **App, 2026-11-02 (spec STEP 80):** the app follows the same order: display images first, then the colour
+> images. The table's "Order" and "First image" rows below describe the STEP 75 rule and are superseded on
+> every client. Branch `feat/app-gallery-display-first`, not yet released.
 
 The API is unchanged: the product already carries both image sources, and the gallery is derived
 from them in each client by the same rule (`productGalleryImages` in the app, `galleryImages` in
