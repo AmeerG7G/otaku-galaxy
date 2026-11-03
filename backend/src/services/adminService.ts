@@ -366,6 +366,31 @@ async function writeProductVariants(
   }
 }
 
+
+/**
+ * القائمة المرسلة = المجموعة الحالية بالضبط. معرّفٌ غريب ← 400 (لا ينتمي)،
+ * ومعرّفٌ ناقص ← 409: أُضيف عنصرٌ بعد تحميل الصفحة، فالترتيب مبنيٌّ على قائمةٍ قديمة.
+ */
+function assertExactOrder(current: string[], submitted: string[], foreignMessage: string) {
+  const known = new Set(current);
+  if (submitted.some((id) => !known.has(id))) {
+    throw Errors.badRequest(foreignMessage, 'ORDER_FOREIGN_ID');
+  }
+  if (submitted.length !== known.size) {
+    throw Errors.conflict('تغيّرت القائمة منذ فتحها — حدّث الصفحة ثم أعد الترتيب', 'ORDER_STALE');
+  }
+}
+
+/** موضع كل معرّف في القائمة (١، ٢، …) — جملةٌ واحدة، فلا ترتيبٌ نصف محفوظ. */
+async function applySortOrder(tx: pg.PoolClient, table: 'categories' | 'subcategories', ids: string[]) {
+  await tx.query(
+    `UPDATE ${table} t SET sort_order = v.position
+       FROM unnest($1::uuid[]) WITH ORDINALITY AS v(id, position)
+      WHERE t.id = v.id AND t.sort_order IS DISTINCT FROM v.position::int`,
+    [ids],
+  );
+}
+
 export const adminService = {
   // ===== المنتجات =====
   async createProduct(input: {
@@ -805,6 +830,44 @@ export const adminService = {
 
   async listCategoriesAdmin() {
     return categoryRepo.list(db, true);
+  },
+
+  /**
+   * ترتيب الأقسام الرئيسية كلها دفعةً واحدة (السحب في اللوحة).
+   *
+   * [CRITICAL] القائمة المرسلة يجب أن تساوي الأقسام الموجودة تماماً — تُقرأ
+   * مقفولةً (`FOR NO KEY UPDATE`: لا يحجب إدراج منتجٍ يأخذ KEY SHARE على قسمه)
+   * فيتسلسل حفظان متزامنان، والثاني يرى نتيجة الأول. الترتيب وحده يتغيّر:
+   * الفرعيّات ومنتجاتها مربوطة بمعرّف القسم لا بموضعه.
+   */
+  async reorderCategories(ids: string[]) {
+    return withTransaction(async (tx) => {
+      const { rows } = await tx.query<{ id: string }>(
+        'SELECT id FROM categories ORDER BY id FOR NO KEY UPDATE',
+      );
+      assertExactOrder(rows.map((row) => row.id), ids, 'قسمٌ لا وجود له');
+      await applySortOrder(tx, 'categories', ids);
+      return categoryRepo.list(tx, true);
+    });
+  },
+
+  /**
+   * ترتيب فرعيّات قسمٍ واحد. فرعيٌّ من قسمٍ آخر مرفوض — السحب لا ينقل بين
+   * الأقسام، والقسم الأب لا يتغيّر هنا أبداً.
+   */
+  async reorderSubcategories(categoryId: string, ids: string[]) {
+    return withTransaction(async (tx) => {
+      const parent = await tx.query('SELECT id FROM categories WHERE id = $1 FOR NO KEY UPDATE', [categoryId]);
+      if (parent.rowCount === 0) throw Errors.notFound('القسم غير موجود');
+      const { rows } = await tx.query<{ id: string }>(
+        'SELECT id FROM subcategories WHERE category_id = $1 ORDER BY id FOR NO KEY UPDATE',
+        [categoryId],
+      );
+      assertExactOrder(rows.map((row) => row.id), ids, 'قسمٌ فرعيّ لا ينتمي إلى هذا القسم');
+      await applySortOrder(tx, 'subcategories', ids);
+      const categories = await categoryRepo.list(tx, true);
+      return categories.find((category) => category.id === categoryId)!;
+    });
   },
 
   async createSubcategory(input: { categoryId: string; name: string; nameCkb?: string | null; sortOrder?: number }) {

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useMemo, useState, type Key } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -9,7 +9,6 @@ import {
   Flex,
   Form,
   Input,
-  InputNumber,
   Modal,
   Popconfirm,
   Space,
@@ -21,6 +20,7 @@ import {
 import {
   DeleteOutlined,
   EditOutlined,
+  HolderOutlined,
   PlusOutlined,
   UnorderedListOutlined,
   ReloadOutlined,
@@ -31,11 +31,14 @@ import {
   deleteCategory,
   deleteSubcategory,
   listAdminCategories,
+  reorderCategories,
+  reorderSubcategories,
   updateCategory,
   updateSubcategory,
 } from '../api/categoriesApi'
 import { ApiError } from '../api/client'
-import type { AdminCategory, AdminSubcategory } from '../types/categories'
+import type { AdminCategory, AdminCategoryListResponse, AdminSubcategory } from '../types/categories'
+import { DragHandle, SortableRow, SortableRows } from '../components/SortableRows'
 import EmptyState from '../components/EmptyState'
 import KurdishNameField from '../components/KurdishNameField'
 import { kurdishOrNull, kurdishPatch } from '../utils/kurdish'
@@ -64,20 +67,17 @@ interface CategoryFormValues {
   name: string
   /** اختياري (2026-10-26) — الفارغ يُعرض للزبون الكردي بالعربية. */
   nameCkb?: string | null
-  sortOrder?: number
 }
 
 interface SubcategoryFormValues {
   categoryId: string
   name: string
   nameCkb?: string | null
-  sortOrder?: number
 }
 
 interface SubcategoryEditorFormValues {
   name: string
   nameCkb?: string | null
-  sortOrder?: number
   isActive: boolean
 }
 
@@ -102,7 +102,6 @@ export default function CategoriesPage() {
       createCategory({
         name: values.name,
         nameCkb: kurdishOrNull(values.nameCkb),
-        sortOrder: values.sortOrder,
       }),
     onSuccess: (result) => {
       message.success(result.message)
@@ -119,7 +118,6 @@ export default function CategoriesPage() {
       updateCategory(input.id, {
         name: input.values.name,
         ...kurdishPatch('nameCkb', input.values.nameCkb, input.savedCkb),
-        sortOrder: input.values.sortOrder,
       }),
     onSuccess: (result) => {
       message.success(result.message)
@@ -146,7 +144,6 @@ export default function CategoriesPage() {
       updateSubcategory(input.id, {
         name: input.values.name,
         ...kurdishPatch('nameCkb', input.values.nameCkb, input.savedCkb),
-        sortOrder: input.values.sortOrder,
         isActive: input.values.isActive,
       }),
     onSuccess: (result) => {
@@ -165,7 +162,6 @@ export default function CategoriesPage() {
         categoryId: values.categoryId,
         name: values.name,
         nameCkb: kurdishOrNull(values.nameCkb),
-        sortOrder: values.sortOrder,
       }),
     onSuccess: (result) => {
       message.success(result.message)
@@ -200,20 +196,84 @@ export default function CategoriesPage() {
     },
   })
 
+  /**
+   * الترتيب بالسحب يُحفظ فور الإفلات (2026-11-03): القائمة تُعرض بترتيبها
+   * الجديد في الحال، وإن رفضه الخادم عادت إلى المحفوظ مع رسالته. لا رقم يُكتب.
+   */
+  const setCachedCategories = (update: (items: AdminCategory[]) => AdminCategory[]) => {
+    const previous = queryClient.getQueryData<AdminCategoryListResponse>(['admin-categories'])
+    if (previous) {
+      queryClient.setQueryData<AdminCategoryListResponse>(['admin-categories'], {
+        ...previous,
+        items: update(previous.items),
+      })
+    }
+    return previous
+  }
+
+  const reorderMutation = useMutation({
+    mutationFn: (input: { categoryId?: string; ids: string[] }) =>
+      input.categoryId
+        ? reorderSubcategories(input.categoryId, input.ids)
+        : reorderCategories(input.ids),
+    onMutate: async (input) => {
+      await queryClient.cancelQueries({ queryKey: ['admin-categories'] })
+      message.open({ key: 'category-order', type: 'loading', content: 'جارٍ حفظ الترتيب…', duration: 0 })
+      const previous = setCachedCategories((items) =>
+        input.categoryId
+          ? items.map((category) =>
+              category.id === input.categoryId
+                ? { ...category, subcategories: orderBy(category.subcategories, input.ids) }
+                : category,
+            )
+          : orderBy(items, input.ids),
+      )
+      return { previous }
+    },
+    onSuccess: (result) => {
+      message.open({
+        key: 'category-order',
+        type: 'success',
+        content: result.message || 'حُفظ الترتيب',
+        duration: 2,
+      })
+    },
+    onError: (error, _input, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(['admin-categories'], context.previous)
+      }
+      message.open({
+        key: 'category-order',
+        type: 'error',
+        content: error instanceof ApiError ? error.message : 'تعذّر حفظ الترتيب',
+        duration: 4,
+      })
+    },
+    onSettled: () => invalidateCategories(),
+  })
+
+  const [expandedKeys, setExpandedKeys] = useState<readonly Key[]>([])
+  const categories = useMemo(() => categoriesQuery.data?.items ?? [], [categoriesQuery.data])
+  const categoryName = useCallback(
+    (id: string) => categories.find((category) => category.id === id)?.name ?? '',
+    [categories],
+  )
+
   // الأعمدة تطابق بطاقة القسم في التطبيق: اسمٌ وعددٌ موسَّطان، بلا صورة.
   const columns = [
+    {
+      title: <span className="og-sr-only">الترتيب</span>,
+      key: 'drag',
+      width: 52,
+      align: 'center' as const,
+      render: (_: unknown, category: AdminCategory) => <DragHandle label={category.name} />,
+    },
     {
       title: 'القسم',
       dataIndex: 'name',
       key: 'name',
       align: 'center' as const,
       render: (value: string) => <Typography.Text strong>{value}</Typography.Text>,
-    },
-    {
-      title: 'الترتيب',
-      dataIndex: 'sortOrder',
-      key: 'sortOrder',
-      width: 90,
     },
     {
       title: 'الحالة',
@@ -287,7 +347,8 @@ export default function CategoriesPage() {
             الأقسام
           </Typography.Title>
           <Typography.Text type="secondary">
-            إدارة أقسام المتجر والأقسام الفرعية.
+            إدارة أقسام المتجر والأقسام الفرعية. اسحب المقبض <HolderOutlined aria-hidden /> لتغيير
+            الترتيب — يُحفظ فور الإفلات ويظهر بالترتيب نفسه في المتجر والتطبيق.
           </Typography.Text>
         </div>
         <Space>
@@ -323,11 +384,21 @@ export default function CategoriesPage() {
             }
           />
         ) : (
+          <SortableRows
+            ids={categories.map((category) => category.id)}
+            labelOf={categoryName}
+            disabled={reorderMutation.isPending}
+            // الصفّ المفتوح يترك فرعيّاته في مكانها أثناء السحب — يُطوى أولاً.
+            onDragStart={() => setExpandedKeys([])}
+            onReorder={(ids) => reorderMutation.mutate({ ids })}
+          >
           <Table
             rowKey="id"
             columns={columns}
-            dataSource={categoriesQuery.data?.items ?? []}
-            loading={categoriesQuery.isPending || categoriesQuery.isFetching}
+            dataSource={categories}
+            components={{ body: { row: SortableRow } }}
+            pagination={false}
+            loading={categoriesQuery.isPending || (categoriesQuery.isFetching && !reorderMutation.isPending)}
             scroll={{ x: 860 }}
             locale={{
               emptyText: (
@@ -339,6 +410,8 @@ export default function CategoriesPage() {
               ),
             }}
             expandable={{
+              expandedRowKeys: expandedKeys,
+              onExpandedRowsChange: (keys) => setExpandedKeys(keys),
               expandedRowRender: (category: AdminCategory) => (
                 <>
                   {category.subcategories.length === 0 ? (
@@ -369,18 +442,30 @@ export default function CategoriesPage() {
                       </Space>
                     </Space>
                   ) : (
+                    <SortableRows
+                      ids={category.subcategories.map((subcategory) => subcategory.id)}
+                      labelOf={(id) =>
+                        category.subcategories.find((subcategory) => subcategory.id === id)?.name ?? ''
+                      }
+                      disabled={reorderMutation.isPending}
+                      onReorder={(ids) => reorderMutation.mutate({ categoryId: category.id, ids })}
+                    >
                     <Table
                       size="small"
                       rowKey={(subcategory) => subcategory.id}
                       pagination={false}
+                      components={{ body: { row: SortableRow } }}
                       columns={[
-                        { title: 'الاسم', dataIndex: 'name', key: 'name' },
                         {
-                          title: 'الترتيب',
-                          dataIndex: 'sortOrder',
-                          key: 'sortOrder',
-                          width: 100,
+                          title: <span className="og-sr-only">الترتيب</span>,
+                          key: 'drag',
+                          width: 52,
+                          align: 'center' as const,
+                          render: (_: unknown, subcategory: AdminSubcategory) => (
+                            <DragHandle label={subcategory.name} />
+                          ),
                         },
+                        { title: 'الاسم', dataIndex: 'name', key: 'name' },
                         {
                           title: 'الحالة',
                           dataIndex: 'isActive',
@@ -472,12 +557,14 @@ export default function CategoriesPage() {
                       ]}
                       dataSource={category.subcategories}
                     />
+                    </SortableRows>
                   )}
                 </>
               ),
               rowExpandable: () => true,
             }}
           />
+          </SortableRows>
         )}
       </Card>
 
@@ -507,7 +594,6 @@ export default function CategoriesPage() {
             initialValues={{
               name: editor.category.name,
               nameCkb: editor.category.nameCkb ?? '',
-              sortOrder: editor.category.sortOrder,
             }}
             submitting={updateMutation.isPending}
             onSubmit={(values) =>
@@ -551,7 +637,6 @@ export default function CategoriesPage() {
             initialValues={{
               name: subcategoryEditor.subcategory.name,
               nameCkb: subcategoryEditor.subcategory.nameCkb ?? '',
-              sortOrder: subcategoryEditor.subcategory.sortOrder,
               isActive: subcategoryEditor.subcategory.isActive,
             }}
             submitting={updateSubcategoryMutation.isPending}
@@ -603,9 +688,6 @@ function CategoryEditorForm({
         <Input />
       </Form.Item>
       <KurdishNameField label="اسم القسم" min={2} max={60} />
-      <Form.Item name="sortOrder" label="الترتيب">
-        <InputNumber min={0} max={1000} style={{ width: '100%' }} precision={0} />
-      </Form.Item>
       <Space>
         <Button type="primary" htmlType="submit" loading={submitting}>
           حفظ
@@ -654,9 +736,6 @@ function SubcategoryForm({
         <Input />
       </Form.Item>
       <KurdishNameField label="اسم القسم الفرعي" min={2} max={60} />
-      <Form.Item name="sortOrder" label="الترتيب">
-        <InputNumber min={0} max={1000} style={{ width: '100%' }} precision={0} />
-      </Form.Item>
       <Space>
         <Button type="primary" htmlType="submit" loading={submitting}>
           إضافة
@@ -702,9 +781,6 @@ function SubcategoryEditorForm({
         <Input />
       </Form.Item>
       <KurdishNameField label="اسم القسم الفرعي" min={2} max={60} />
-      <Form.Item name="sortOrder" label="الترتيب">
-        <InputNumber min={0} max={1000} style={{ width: '100%' }} precision={0} />
-      </Form.Item>
       <Form.Item name="isActive" label="ظاهر للعملاء" valuePropName="checked">
         <Switch />
       </Form.Item>
@@ -717,5 +793,12 @@ function SubcategoryEditorForm({
         </Button>
       </Space>
     </Form>
+  )
+}
+/** العناصر بترتيب المعرّفات — ما لم يُذكر يبقى في آخرها كما كان. */
+function orderBy<T extends { id: string }>(items: T[], ids: string[]): T[] {
+  const position = new Map(ids.map((id, index) => [id, index]))
+  return [...items].sort(
+    (a, b) => (position.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (position.get(b.id) ?? Number.MAX_SAFE_INTEGER),
   )
 }

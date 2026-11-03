@@ -27,6 +27,7 @@ import {
   adminCustomersQuerySchema,
   adminNotificationQuerySchema,
   adminSubcategoryIdSchema,
+  adminOrderedIdsSchema,
   adminSubcategoryUpdateSchema,
   adminGovernorateIdSchema,
   adminGovernorateSchema,
@@ -145,6 +146,17 @@ export const adminController = {
     const input = parse(adminCategorySchema.partial(), req.body);
     const category = await adminService.updateCategory(id, input);
     return ok(res, category, 'حُدّث القسم');
+  }) as RequestHandler,
+
+  reorderCategories: (async (req, res) => {
+    const { ids } = parse(adminOrderedIdsSchema, req.body);
+    return ok(res, { items: await adminService.reorderCategories(ids) }, 'حُفظ ترتيب الأقسام');
+  }) as RequestHandler,
+
+  reorderSubcategories: (async (req, res) => {
+    const id = parse(adminCategoryIdSchema, req.params).id;
+    const { ids } = parse(adminOrderedIdsSchema, req.body);
+    return ok(res, await adminService.reorderSubcategories(id, ids), 'حُفظ ترتيب الأقسام الفرعية');
   }) as RequestHandler,
 
   listCategories: (async (_req, res) => {

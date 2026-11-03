@@ -17,6 +17,8 @@ vi.mock('../api/categoriesApi', () => ({
   deleteCategory: vi.fn(),
   updateSubcategory: vi.fn(),
   deleteSubcategory: vi.fn(),
+  reorderCategories: vi.fn(),
+  reorderSubcategories: vi.fn(),
 }))
 
 import { createCategory, listAdminCategories, updateCategory } from '../api/categoriesApi'

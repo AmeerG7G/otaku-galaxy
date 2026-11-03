@@ -259,13 +259,14 @@ async function main() {
       }
     }
 
+    // المحافظات ورسومها المعتمدة تُنشئها الهجرة ٠٩٢ في كل بيئة؛ البذرة لا
+    // تكتب فوق رسمٍ موجود (يديره المسؤول) — تُكمل الناقص فقط.
     for (const g of GOVERNORATES) {
       const { rows } = await client.query<{ id: string }>(
         `INSERT INTO governorates (name, name_ckb, delivery_fee)
          VALUES ($1, $2, $3)
          ON CONFLICT (name) DO UPDATE
-           SET delivery_fee = EXCLUDED.delivery_fee,
-               name_ckb = COALESCE(governorates.name_ckb, EXCLUDED.name_ckb)
+           SET name_ckb = COALESCE(governorates.name_ckb, EXCLUDED.name_ckb)
          RETURNING id`,
         [g.name, g.nameCkb, g.deliveryFee],
       );
@@ -276,8 +277,7 @@ async function main() {
           `INSERT INTO governorate_zones (governorate_id, name, name_ckb, delivery_fee, sort_order)
            VALUES ($1, $2, $3, $4, $5)
            ON CONFLICT (governorate_id, name)
-           DO UPDATE SET delivery_fee = EXCLUDED.delivery_fee,
-                         name_ckb = COALESCE(governorate_zones.name_ckb, EXCLUDED.name_ckb)`,
+           DO UPDATE SET name_ckb = COALESCE(governorate_zones.name_ckb, EXCLUDED.name_ckb)`,
           [governorateId, zone.name, zone.nameCkb, zone.deliveryFee, index],
         );
       }
