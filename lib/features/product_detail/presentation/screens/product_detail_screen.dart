@@ -198,7 +198,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                 bottom: BorderSide(color: theme.colorScheme.outlineVariant),
               ),
             ),
-            // معرضٌ واحد: صور الألوان كلها ثم صور المنتج العامة (STEP 74).
+            // معرضٌ واحد: صور العرض أولاً (يُفتح على الرئيسية) ثم صور الألوان
+            // — ترتيب المتجر الإلكتروني (STEP 80). لا لون مختار عند الفتح،
+            // فالمعرض يبدأ من أوّله.
             // تصفّحه لا يختار لوناً؛ اختيار لونٍ ينقله إلى صورته. لا مفتاح
             // يتغيّر مع الاختيار — كان يهدم المعرض ويبدأ تنزيل الصورة لحظتها.
             child: ProductImageGallery(

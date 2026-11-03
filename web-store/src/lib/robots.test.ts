@@ -8,14 +8,22 @@ afterEach(() => vi.unstubAllEnvs());
 
 const APP = path.resolve(__dirname, '../app');
 
+/**
+ * A private page says `noindex` in its static `metadata`. A public page may
+ * still return `noindex` for one state (an empty category listing,
+ * `c/[id]`) from `generateMetadata` — that is not a private page.
+ */
+const STATIC_NOINDEX = /export const metadata[^=]*=\s*\{[^}]*robots:\s*\{\s*index:\s*false/;
+
 /** Route of every page.tsx under src/app, with whether it declares `index: false`. */
 function pages(dir = APP): { route: string; noindex: boolean }[] {
   return readdirSync(dir).flatMap((name) => {
     const full = path.join(dir, name);
     if (statSync(full).isDirectory()) return pages(full);
     if (name !== 'page.tsx') return [];
-    const route = '/' + path.relative(APP, dir).split(path.sep).join('/');
-    return [{ route: route === '/' ? '/' : route, noindex: /robots:\s*\{\s*index:\s*false/.test(readFileSync(full, 'utf8')) }];
+    // Route groups — `(home)` — are folders only: they never appear in the URL.
+    const route = '/' + path.relative(APP, dir).split(path.sep).filter((part) => !/^\(.+\)$/.test(part)).join('/');
+    return [{ route: route === '/' ? '/' : route, noindex: STATIC_NOINDEX.test(readFileSync(full, 'utf8')) }];
   });
 }
 

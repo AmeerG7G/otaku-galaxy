@@ -21,8 +21,22 @@ const securityHeaders = [
  */
 const bffPolicy = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
 
+/**
+ * Crawlers that get each page's metadata (title, description, canonical,
+ * robots) inside `<head>` instead of streamed after it. This is Next's own
+ * default list (`next/dist/shared/lib/router/utils/html-bots`) plus
+ * `Googlebot`, which the default leaves out because Google renders scripts.
+ * Without it, a page whose metadata waits on the API — a category's
+ * `noindex` while it is empty — reached Google only in the body. Shoppers
+ * keep streaming. Setting this replaces Next's list, so `seo.test.ts` checks
+ * it still contains every default entry after an upgrade.
+ */
+export const HTML_LIMITED_BOTS =
+  /Googlebot|[\w-]+-Google|Google-[\w-]+|Chrome-Lighthouse|Slurp|DuckDuckBot|baiduspider|yandex|sogou|bitlybot|tumblr|vkShare|quora link preview|redditbot|ia_archiver|Bingbot|BingPreview|applebot|facebookexternalhit|facebookcatalog|Twitterbot|LinkedInBot|Slackbot|Discordbot|WhatsApp|SkypeUriPreview|Yeti|googleweblight/i;
+
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  htmlLimitedBots: HTML_LIMITED_BOTS,
   reactStrictMode: true,
   async headers() {
     return [

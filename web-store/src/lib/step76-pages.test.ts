@@ -21,7 +21,10 @@ vi.mock('@/lib/catalog', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./catalog')>()),
   getProduct: async () => state.product,
   listProductReviews: async () => state.reviews,
+  listCategories: async () => [],
+  listProducts: async () => ({ items: [], page: 1, limit: 5, total: 0, hasMore: false }),
 }));
+vi.mock('next/headers', () => ({ headers: async () => new Headers({ 'x-nonce': 'test-nonce' }) }));
 vi.mock('@/lib/server-session', () => ({ readSession: async () => state.session }));
 vi.mock('@/lib/page-session', () => ({
   requireSession: async () => state.session,

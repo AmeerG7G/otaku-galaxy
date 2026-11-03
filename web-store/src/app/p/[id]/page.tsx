@@ -1,46 +1,68 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
+import Link from '@/components/Link';
 import { AddToCart } from '@/components/AddToCart';
+import { Breadcrumbs } from '@/components/Breadcrumbs';
 import { FavoriteButton } from '@/components/FavoriteButton';
+import { cspNonce, JsonLd } from '@/components/JsonLd';
+import { ProductGrid } from '@/components/ProductCard';
 import { ProductGallery } from '@/components/ProductGallery';
 import { ProductReviews } from '@/components/ProductReviews';
 import { ColorRestockList, ProductRestockButton, RestockLoginPrompt } from '@/components/RestockAlerts';
 import { VariantSelectionProvider } from '@/components/VariantSelection';
-import { ApiError } from '@/lib/api';
-import { getProduct, isUuid, listProductReviews } from '@/lib/catalog';
+import { listCategories, listProductReviews, listProducts } from '@/lib/catalog';
+import { siteOrigin } from '@/lib/config';
 import { coverImage } from '@/lib/gallery';
 import { COMING_SOON, displayRestockAt, formatIqd, formatStoreDate, pairOfferLabel, PRICE_COMING_SOON } from '@/lib/format';
+import { breadcrumbJsonLd, HOME_LABEL, openGraph, productCanonical, productDescription, productJsonLd, type Crumb } from '@/lib/seo';
 import { readSession } from '@/lib/server-session';
-import type { Product } from '@/lib/types';
+import type { Category, Product } from '@/lib/types';
 import { customerVariants, variantAvailable } from '@/lib/variants';
+import { loadProduct } from './load';
 
 export const dynamic = 'force-dynamic';
 
 type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ reviews?: string }> };
 
 const REVIEWS_PER_PAGE = 10;
+/** Other products of the same category shown under this one. */
+const RELATED_COUNT = 4;
 
-/** The product as this visitor sees it: with a customer's session the API adds their own state (`viewer`). */
-async function load(id: string): Promise<Product | null> {
-  if (!isUuid(id)) return null;
-  const session = await readSession();
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const product = await loadProduct((await params).id);
+  if (!product) return { title: 'المنتج غير موجود' };
+  const cover = coverImage(product);
+  const description = productDescription(product);
+  const canonical = productCanonical(product.id);
+  return {
+    title: product.name,
+    description,
+    // `?reviews=N` pages through this product's reviews: still this product.
+    alternates: { canonical },
+    openGraph: openGraph({ title: product.name, description, url: canonical, images: cover ? [{ url: cover }] : undefined }),
+  };
+}
+
+/** The product's category as the store lists it; absent when it is not an active category. */
+async function categoryOf(product: Product): Promise<Category | undefined> {
   try {
-    return await getProduct(id, session?.token);
+    return (await listCategories()).find((category) => category.id === product.categoryId);
   } catch (error) {
-    if (error instanceof ApiError && (error.status === 404 || error.status === 400)) return null;
-    throw error;
+    console.error('[page] categories failed:', (error as Error)?.message);
+    return undefined;
   }
 }
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const product = await load((await params).id);
-  if (!product) return { title: 'المنتج غير موجود' };
-  const cover = coverImage(product);
-  return {
-    title: product.name,
-    description: product.description.slice(0, 160) || undefined,
-    openGraph: cover ? { images: [{ url: cover }] } : undefined,
-  };
+/** A few other products of the same category, newest first — none when that read fails. */
+async function relatedTo(product: Product, category: Category | undefined): Promise<Product[]> {
+  if (!category) return [];
+  try {
+    const { items } = await listProducts({ categoryId: category.id, page: 1, limit: RELATED_COUNT + 1 });
+    return items.filter((item) => item.id !== product.id).slice(0, RELATED_COUNT);
+  } catch (error) {
+    console.error('[page] related products failed:', (error as Error)?.message);
+    return [];
+  }
 }
 
 /** `?reviews=N` — a positive page number, else the first page. */
@@ -50,16 +72,20 @@ function reviewsPage(value: string | undefined): number {
 }
 
 export default async function ProductPage({ params, searchParams }: Props) {
-  const product = await load((await params).id);
+  const product = await loadProduct((await params).id);
   if (!product) notFound();
   const session = await readSession();
   const page = reviewsPage((await searchParams).reviews);
   // One more than shown tells whether a next page exists, without a count query.
-  const fetched = await listProductReviews(product.id, page, REVIEWS_PER_PAGE + 1).catch((error: Error) => {
+  const reviewsRead = listProductReviews(product.id, page, REVIEWS_PER_PAGE + 1).catch((error: Error) => {
     // The product still renders; the reviews section says it could not load.
     console.error('[page] product reviews failed:', error?.message);
     return null;
   });
+  const categoryRead = categoryOf(product).then(async (category) => ({ category, related: await relatedTo(product, category) }));
+  const [fetched, { category, related }, nonce] = await Promise.all([reviewsRead, categoryRead, cspNonce()]);
+  const crumbs: Crumb[] = [{ name: HOME_LABEL, path: '/' }, ...(category ? [{ name: category.name, path: `/c/${category.id}` }] : []), { name: product.name }];
+  const origin = siteOrigin();
   // Favourite and alert state come only with the product read (D5); an older API without `viewer` shows neither.
   const viewer = session ? product.viewer : undefined;
   // The app's `displayRestockAt` rule — see `lib/format.ts`.
@@ -142,8 +168,19 @@ export default async function ProductPage({ params, searchParams }: Props) {
   );
   const content = (
     <>
+      <JsonLd nonce={nonce} data={[productJsonLd(origin, product, category), breadcrumbJsonLd(origin, crumbs, productCanonical(product.id))]} />
+      <Breadcrumbs crumbs={crumbs} />
       {article}
       {reviews}
+      {category && related.length > 0 ? (
+        <section className="section" aria-labelledby="related-title">
+          <div className="section-head">
+            <h2 id="related-title">المزيد من {category.name}</h2>
+            <Link href={`/c/${category.id}`}>عرض القسم</Link>
+          </div>
+          <ProductGrid products={related} />
+        </section>
+      ) : null}
     </>
   );
   return hasColors ? <VariantSelectionProvider variants={variants} kind={product.variantKind}>{content}</VariantSelectionProvider> : content;

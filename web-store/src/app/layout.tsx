@@ -2,10 +2,12 @@ import type { Metadata, Viewport } from 'next';
 import localFont from 'next/font/local';
 import { cookies } from 'next/headers';
 import { Header } from '@/components/Header';
+import { cspNonce, JsonLd } from '@/components/JsonLd';
 import { BottomNav } from '@/components/SiteNav';
 import { SiteFooter } from '@/components/SiteFooter';
 import { getPlayStoreLink, getSocialLinks } from '@/lib/catalog';
 import { siteOrigin } from '@/lib/config';
+import { openGraph, organizationJsonLd, SITE_DESCRIPTION, SITE_NAME, websiteJsonLd } from '@/lib/seo';
 import { readSession } from '@/lib/server-session';
 import { parseTheme, THEME_COOKIE } from '@/lib/theme';
 import './globals.css';
@@ -32,8 +34,10 @@ const tajawal = localFont({
 export function generateMetadata(): Metadata {
   return {
     metadataBase: new URL(siteOrigin()),
-    title: { default: 'مجرة الأوتاكو', template: '%s | مجرة الأوتاكو' },
-    description: 'متجر مجرة الأوتاكو — منتجات الأنمي في العراق، الدفع عند الاستلام.',
+    title: { default: SITE_NAME, template: `%s | ${SITE_NAME}` },
+    description: SITE_DESCRIPTION,
+    applicationName: SITE_NAME,
+    openGraph: openGraph(),
   };
 }
 
@@ -49,11 +53,12 @@ export const viewport: Viewport = {
 };
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  const [session, playStore, social, cookieStore] = await Promise.all([readSession(), getPlayStoreLink(), getSocialLinks(), cookies()]);
+  const [session, playStore, social, cookieStore, nonce] = await Promise.all([readSession(), getPlayStoreLink(), getSocialLinks(), cookies(), cspNonce()]);
   const theme = parseTheme(cookieStore.get(THEME_COOKIE)?.value);
   return (
     <html lang="ar" dir="rtl" className={`${cairo.variable} ${tajawal.variable}`} data-theme={theme === 'system' ? undefined : theme}>
       <body>
+        <JsonLd nonce={nonce} data={[organizationJsonLd(siteOrigin(), social), websiteJsonLd(siteOrigin())]} />
         <a className="skip-link" href="#main">
           تخطَّ إلى المحتوى
         </a>

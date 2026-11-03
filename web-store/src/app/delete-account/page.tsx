@@ -14,7 +14,8 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
   const lang = parseLegalLang((await searchParams).lang);
   return {
     title: accountDeletionInfo(lang).title,
-    alternates: { canonical: '/delete-account', languages: { ar: '/delete-account', en: '/delete-account?lang=en' } },
+    // Each language version is its own page: canonical to itself, the other listed as its alternate.
+    alternates: { canonical: lang === 'en' ? '/delete-account?lang=en' : '/delete-account', languages: { ar: '/delete-account', en: '/delete-account?lang=en' } },
   };
 }
 
