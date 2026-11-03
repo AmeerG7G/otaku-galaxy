@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { displayRestockAt, formatDateTime, formatIqd, formatStoreDate, localPhone, orderStatusLabel } from './format';
+import { displayRestockAt, formatDateTime, formatIqd, governorateFeeLabel, formatStoreDate, localPhone, orderStatusLabel } from './format';
 import { resolveMediaUrl } from './media';
 
 describe('formatIqd', () => {
@@ -82,5 +82,21 @@ describe('displayRestockAt — one rule with the app', () => {
   it('no date: nothing', () => {
     expect(displayRestockAt({ price: null, stock: 0, restockAt: null }, now)).toBeNull();
     expect(displayRestockAt({ price: 5000, stock: 0, restockAt: null }, now)).toBeNull();
+  });
+});
+
+describe('governorateFeeLabel — Najaf shows its zone range, never a flat fee', () => {
+  it('a governorate with zones reads as the range of its zone fees', () => {
+    expect(governorateFeeLabel({ deliveryFee: 6000, zoneFeeMin: 3000, zoneFeeMax: 4000 })).toBe('3000–4000 د.ع');
+  });
+
+  it('a governorate without zones reads as its own fee', () => {
+    expect(governorateFeeLabel({ deliveryFee: 5000, zoneFeeMin: null, zoneFeeMax: null })).toBe('5000 د.ع');
+    // An older API without the range fields.
+    expect(governorateFeeLabel({ deliveryFee: 6000 })).toBe('6000 د.ع');
+  });
+
+  it('zones that share one fee read as that single fee', () => {
+    expect(governorateFeeLabel({ deliveryFee: 6000, zoneFeeMin: 3000, zoneFeeMax: 3000 })).toBe('3000 د.ع');
   });
 });

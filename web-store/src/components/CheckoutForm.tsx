@@ -3,7 +3,7 @@
 import Link from '@/components/Link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { formatIqd } from '@/lib/format';
+import { formatIqd, governorateFeeLabel } from '@/lib/format';
 import type { CheckoutQuote, Governorate, QuoteIssue, Zone } from '@/lib/types';
 import { lineColorName } from '@/lib/variants';
 import { isValidIraqiLocalPhone } from '@/lib/phone';
@@ -79,6 +79,7 @@ export function CheckoutForm({
   }, [governorateId]);
 
   const needsZone = (zones?.length ?? 0) > 0;
+  const selectedZone = needsZone ? zones!.find((zone) => zone.id === zoneId) ?? null : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -165,7 +166,7 @@ export function CheckoutForm({
             </option>
             {governorates.map((governorate) => (
               <option key={governorate.id} value={governorate.id}>
-                {governorate.name}
+                {`${governorate.name} — ${governorateFeeLabel(governorate)}`}
               </option>
             ))}
           </select>
@@ -179,7 +180,7 @@ export function CheckoutForm({
               </option>
               {zones!.map((zone) => (
                 <option key={zone.id} value={zone.id}>
-                  {zone.name}
+                  {`${zone.name} — ${formatIqd(zone.deliveryFee)}`}
                 </option>
               ))}
             </select>
@@ -258,7 +259,7 @@ export function CheckoutForm({
               </div>
             ) : null}
             <div className="summary-row">
-              <span>رسوم التوصيل</span>
+              <span>{selectedZone ? `رسوم التوصيل (${selectedZone.name})` : 'رسوم التوصيل'}</span>
               <span>{quote.deliveryFee === null ? 'حسب المحافظة' : formatIqd(quote.deliveryFee)}</span>
             </div>
             {quote.deliveryDiscount > 0 ? (
