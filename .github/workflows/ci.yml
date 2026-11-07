@@ -47,6 +47,19 @@ jobs:
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
       - run: npm run typecheck
+      # أداتا pg_dump/pg_restore من صورة الخدمة نفسها (postgres:16) لا من المشغّل:
+      # عميل المشغّل أحدث (ubuntu-26.04)، ونسخته تكتب `SET transaction_timeout`
+      # فيرفضها خادم 16 ويسقط اختبار الاستعادة (migration-086-dump-restore).
+      # العميل بنسخة الخادم دائماً، كما في النسخ الاحتياطي الحقيقي.
+      - name: PostgreSQL client tools from the service image
+        run: |
+          mkdir -p "$RUNNER_TEMP/pg-tools"
+          for tool in pg_dump pg_restore; do
+            printf '#!/bin/sh\nexec docker run --rm --network host -v /tmp:/tmp postgres:16 %s "$@"\n' "$tool" > "$RUNNER_TEMP/pg-tools/$tool"
+            chmod +x "$RUNNER_TEMP/pg-tools/$tool"
+          done
+          echo "$RUNNER_TEMP/pg-tools" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/pg-tools/pg_dump" --version
       - run: npm test
 
   admin:
