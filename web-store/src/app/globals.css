@@ -1604,7 +1604,8 @@ textarea {
 /*
  * ── «Download the app» card (admin-managed, catalog home) ──
  *
- * The admin's texts and Google's badge beside a phone showing the real app.
+ * The admin's texts and Google's badge beside a phone showing the real app
+ * (or the admin's upload, always inside the same phone frame).
  * Always a dark night-sky card (both admin styles), so its white text keeps
  * the same contrast in the light and the dark theme. Two columns at every
  * width: the phone shrinks with the viewport instead of stacking under the
@@ -1723,7 +1724,7 @@ textarea {
   outline-offset: 4px;
 }
 
-/* ── The phone: a titanium-dark frame around the real app screenshot ── */
+/* ── The phone: a titanium-dark frame around the screen (the app screenshot or the admin's upload) ── */
 
 .app-promo__phone {
   position: relative;
@@ -1792,6 +1793,9 @@ textarea {
   width: 100%;
   height: auto;
   aspect-ratio: 480 / 1039;
+  /* An upload of another shape fills the screen from the top, cropped at the screen's rounded edges. */
+  object-fit: cover;
+  object-position: top center;
 }
 
 /* Wide screens: text and phone stay together in the middle instead of at the card's two ends. */
@@ -1801,37 +1805,6 @@ textarea {
     justify-content: center;
     column-gap: clamp(48px, 7vw, 112px);
   }
-}
-
-/* ── The admin's uploaded image, in place of the phone ── */
-
-/* A wider column than the phone: the upload is a square composition. */
-.app-promo--art {
-  --promo-phone: clamp(100px, 33vw, 380px);
-}
-
-.app-promo__art {
-  position: relative;
-  width: var(--promo-phone);
-}
-
-/* The same soft light as behind the phone; transparent uploads sit on it. */
-.app-promo__art::before {
-  content: '';
-  position: absolute;
-  z-index: -1;
-  inset: -20%;
-  pointer-events: none;
-  background: radial-gradient(closest-side, var(--promo-glow), transparent 72%);
-}
-
-/* Square box whatever the upload's shape: contained, never cropped, never shifting. */
-.app-promo__art img {
-  display: block;
-  width: 100%;
-  height: auto;
-  aspect-ratio: 1;
-  object-fit: contain;
 }
 
 @media (prefers-reduced-motion: no-preference) {

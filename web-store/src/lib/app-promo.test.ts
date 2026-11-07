@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
@@ -5,6 +7,15 @@ import { AppPromoBanner } from '@/components/AppPromoBanner';
 import { APP_PROMO_DEFAULTS, toAppPromo } from './app-promo';
 
 const PLAY = 'https://play.google.com/store/apps/details?id=com.otakugalaxy.otaku_galaxy';
+
+/** The src of the one image inside the phone frame's screen, or null when there is no phone. */
+function phoneScreen(html: string): string | null {
+  return (
+    html.match(
+      /<div class="app-promo__phone" aria-hidden="true"><div class="app-promo__device"><div class="app-promo__screen"><img src="([^"]+)" width="480" height="1039" alt=""/,
+    )?.[1] ?? null
+  );
+}
 
 describe('toAppPromo — the admin promotion reaches the page only as a Play listing of the production app', () => {
   it('an enabled promotion keeps its texts, link and style', () => {
@@ -86,18 +97,66 @@ describe('AppPromoBanner', () => {
     const link = html.slice(html.indexOf('<a '), html.indexOf('</a>'));
     expect(link).toContain('src="/app-promo/google-play-badge-ar.png"');
     expect(link).toContain('alt="احصل عليه من Google Play"');
-    expect(html).toMatch(/<div class="app-promo__phone" aria-hidden="true">[\s\S]*alt=""/);
+    expect(phoneScreen(html)).toBe('/app-promo/app-home-ar.webp');
   });
 
-  it("an uploaded image replaces the phone; the link and badge stay the same", () => {
+  it('the uploaded image is shown inside the phone screen; the frame, link and badge stay', () => {
     const image = '/uploads/banner/2026/11/promo.webp';
     const promo = toAppPromo({ title: '', subtitle: '', cta: '', url: PLAY, style: 'night', imageUrl: image }, 'https://api.example')!;
     const html = renderToStaticMarkup(createElement(AppPromoBanner, { promo }));
-    expect(html).toContain('app-promo--art');
-    expect(html).not.toContain('app-promo__phone');
-    expect(html).toMatch(/<div class="app-promo__art" aria-hidden="true"><img src="https:\/\/api.example\/uploads\/banner\/2026\/11\/promo.webp" width="1080" height="1080" alt=""/);
+    expect(phoneScreen(html)).toBe('https://api.example/uploads/banner/2026/11/promo.webp');
+    expect(html).not.toContain('/app-promo/app-home-ar.webp');
+    expect(html).not.toContain('app-promo--art');
+    expect(html).not.toContain('app-promo__art');
+    expect(html.match(/<img /g)).toHaveLength(2);
     expect(html.match(/<a /g)).toHaveLength(1);
     expect(html).toContain(`href="${PLAY}"`);
     expect(html).toContain('src="/app-promo/google-play-badge-ar.png"');
+  });
+
+  it('replacing the image again and again only ever changes the screen', () => {
+    // Everything but the image sources (and React's matching preload hints).
+    const frame = (html: string) => html.replace(/ (src|href)="[^"]*\.(png|jpe?g|webp)"/g, '');
+    const render = (imageUrl: unknown) =>
+      renderToStaticMarkup(
+        createElement(AppPromoBanner, {
+          promo: toAppPromo({ title: '', subtitle: '', cta: '', url: PLAY, style: 'violet', imageUrl }, 'https://api.example')!,
+        }),
+      );
+    const builtIn = render(null);
+    for (const name of ['a.jpg', 'b.png', 'c.webp', 'd.jpeg']) {
+      const html = render(`/uploads/banner/2026/11/${name}`);
+      expect(phoneScreen(html)).toBe(`https://api.example/uploads/banner/2026/11/${name}`);
+      expect(frame(html)).toBe(frame(builtIn));
+    }
+    // Removed again: back to the built-in screenshot, same frame.
+    expect(render('')).toBe(builtIn);
+  });
+
+  it('a missing or invalid image keeps the phone with the built-in screen', () => {
+    for (const imageUrl of [undefined, null, '', 'https://evil.example/a.png', '/uploads/banner/a.svg', 'javascript:alert(1)', 42]) {
+      const promo = toAppPromo({ title: '', subtitle: '', cta: '', url: PLAY, style: 'night', imageUrl }, 'https://api.example')!;
+      const html = renderToStaticMarkup(createElement(AppPromoBanner, { promo }));
+      expect(phoneScreen(html), String(imageUrl)).toBe('/app-promo/app-home-ar.webp');
+    }
+  });
+});
+
+describe('the phone frame in globals.css', () => {
+  const css = readFileSync(fileURLToPath(new URL('../app/globals.css', import.meta.url)), 'utf8');
+  const rule = (selector: string) => css.match(new RegExp(`(?:^|\\n)${selector.replace(/[.*]/g, '\\$&')} \\{([^}]*)\\}`))?.[1] ?? '';
+
+  it('the screen clips its image to its rounded corners in a fixed phone-screen box', () => {
+    expect(rule('.app-promo__screen')).toMatch(/overflow: hidden/);
+    expect(rule('.app-promo__screen')).toMatch(/border-radius: /);
+    const img = rule('.app-promo__screen img');
+    expect(img).toMatch(/aspect-ratio: 480 \/ 1039/);
+    expect(img).toMatch(/object-fit: cover/);
+    expect(img).toMatch(/width: 100%/);
+  });
+
+  it('no rule swaps the phone for a bare image any more', () => {
+    expect(css).not.toContain('app-promo--art');
+    expect(css).not.toContain('app-promo__art');
   });
 });
