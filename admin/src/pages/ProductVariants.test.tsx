@@ -262,6 +262,9 @@ describe('ProductEditPage — تعديل الألوان', () => {
     const items = preview.getAllByTestId('gallery-preview-item')
     expect(items.map((item) => item.textContent)).toEqual(['1صورة عامة', '2صورة عامة', '3اللون: أحمر'])
     expect(preview.getByTestId('gallery-preview-duplicate')).toHaveTextContent('الصورة العامة 2 هي نفسها صورة اللون «أزرق»')
+    // الشرح يطابق الترتيب الحالي في المتجر والتطبيق معاً (STEP 80) — لا «ما زال».
+    expect(preview.getByText(/ترتيب المعرض في المتجر الإلكتروني وتطبيق الجوّال: الصور العامة بترتيبها/)).toBeInTheDocument()
+    expect(preview.queryByText(/صور الألوان أولاً/)).not.toBeInTheDocument()
   })
 
   it('[CRITICAL] الحفظ يحفظ الصور العامة كما هي — المكرّرة لا تُحذف تلقائياً، والألوان لا تُرسَل', async () => {
