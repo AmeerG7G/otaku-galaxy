@@ -72,7 +72,51 @@ describe('إعلان التطبيق عبر الإعدادات', () => {
       cta: 'حمّل التطبيق الآن',
       url: PLAY,
       style: 'night',
+      imageUrl: null,
     });
+  });
+
+  it('صورة الإعلان: مرجعٌ من مسار الرفع يصل المتجر، والفارغ يعيد الصورة الافتراضية', async () => {
+    const image = '/uploads/banner/2026/11/0b6f3c1e-8a4d-4f7e-9c2a-5d1e7b9a3f10.webp';
+    await save({ web_app_promo_url: PLAY, web_app_promo_enabled: true, web_app_promo_image: image }).then((r) =>
+      expect(r.status).toBe(200),
+    );
+    expect((await publicPromo()).imageUrl).toBe(image);
+
+    // تغيير النصوص وحدها لا يمسّ الصورة.
+    await save({ web_app_promo_title: 'عنوان آخر' }).then((r) => expect(r.status).toBe(200));
+    expect((await publicPromo()).imageUrl).toBe(image);
+
+    await save({ web_app_promo_image: '' }).then((r) => expect(r.status).toBe(200));
+    expect((await publicPromo()).imageUrl).toBeNull();
+  });
+
+  it('[SECURITY] صورة الإعلان مرفوعة على الخادم وحدها — لا رابط خارجي ولا مسار هارب', async () => {
+    for (const bad of [
+      'https://evil.example/promo.png',
+      'http://localhost:4000/uploads/banner/a.png',
+      '//evil.example/uploads/banner/a.png',
+      'javascript:alert(1)',
+      'data:image/png;base64,AAAA',
+      '/uploads/../.env',
+      '/uploads/banner/a.svg',
+      '/uploads/banner/a b.png',
+      'uploads/banner/a.png',
+    ]) {
+      const res = await save({ web_app_promo_image: bad });
+      expect(res.status, bad).toBe(400);
+    }
+  });
+
+  it('[SECURITY] صورةٌ فاسدة كُتبت في القاعدة مباشرةً لا تصل الجمهور', async () => {
+    await save({ web_app_promo_url: PLAY, web_app_promo_enabled: true }).then((r) => expect(r.status).toBe(200));
+    await db.query(
+      `INSERT INTO store_settings (key, value) VALUES ('web_app_promo_image', 'https://evil.example/x.png')
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+    );
+    const promo = await publicPromo();
+    expect(promo.url).toBe(PLAY);
+    expect(promo.imageUrl).toBeNull();
   });
 
   it('الإخفاء لا يحذف شيئاً، والإظهار ثانيةً يعيده كما كان', async () => {

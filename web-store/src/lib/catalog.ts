@@ -158,7 +158,7 @@ export const getSocialLinks = cache(async (): Promise<SocialLinks> => {
  */
 export const getAppPromo = cache(async (): Promise<AppPromo | null> => {
   try {
-    return toAppPromo((await getPublicSettings()).webAppPromo);
+    return toAppPromo((await getPublicSettings()).webAppPromo, mediaOrigin());
   } catch {
     return null;
   }

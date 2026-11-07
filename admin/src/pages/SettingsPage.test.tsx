@@ -5,8 +5,10 @@ import { App as AntApp, ConfigProvider } from 'antd'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 vi.mock('../api/communityApi', () => ({ fetchSettings: vi.fn(), updateSettings: vi.fn() }))
+vi.mock('../hooks/useAdminProfile', () => ({ useCan: vi.fn(() => true) }))
 
 import { fetchSettings, updateSettings } from '../api/communityApi'
+import { useCan } from '../hooks/useAdminProfile'
 import SettingsPage from './SettingsPage'
 
 function renderPage() {
@@ -118,7 +120,47 @@ describe('إعدادات المتجر', () => {
         web_app_promo_cta: '',
         web_app_promo_url: PLAY,
         web_app_promo_style: 'night',
+        web_app_promo_image: '',
       })
+    })
+
+    it('صورة الإعلان: المحفوظة تُعرض وتبقى في الحفظ، و«إزالة» تعيد الصورة الافتراضية', async () => {
+      const image = '/uploads/banner/2026/11/promo.webp'
+      vi.mocked(fetchSettings).mockResolvedValue({
+        social_tiktok: '',
+        social_instagram: '',
+        social_whatsapp: '',
+        social_description: '',
+        store_share_url: '',
+        web_app_promo_enabled: 'true',
+        web_app_promo_title: 'حمّل تطبيقنا',
+        web_app_promo_url: PLAY,
+        web_app_promo_style: 'night',
+        web_app_promo_image: image,
+      })
+      const user = userEvent.setup()
+      renderPage()
+      await screen.findByDisplayValue(image)
+      const scope = within(promoCard())
+      expect(scope.getByText('صورة الإعلان (اختيارية)')).toBeInTheDocument()
+      await user.click(scope.getByRole('button', { name: /حفظ/ }))
+      await waitFor(() => expect(updateSettings).toHaveBeenCalledTimes(1))
+      expect(vi.mocked(updateSettings).mock.calls[0][0]).toMatchObject({ web_app_promo_image: image, web_app_promo_enabled: true })
+
+      await user.click(scope.getByText('إزالة'))
+      await user.click(scope.getByRole('button', { name: /حفظ/ }))
+      await waitFor(() => expect(updateSettings).toHaveBeenCalledTimes(2))
+      expect(vi.mocked(updateSettings).mock.calls[1][0]).toMatchObject({ web_app_promo_image: '' })
+    })
+
+    it('بلا صلاحية المنتجات أو البنرات: الرفع معطّل، والسبب ظاهر', async () => {
+      vi.mocked(useCan).mockReturnValue(false)
+      renderPage()
+      await screen.findByDisplayValue('https://otakugalaxystore.com')
+      const scope = within(promoCard())
+      expect(scope.getByText('رفع الصور يتطلّب صلاحية المنتجات أو البنرات.')).toBeInTheDocument()
+      expect(scope.getByText('رفع صورة من الجهاز').closest('button')).toBeDisabled()
+      vi.mocked(useCan).mockReturnValue(true)
     })
 
     it('لا يُظهَر بلا رابط، ولا يُقبل رابط APK أو متجر آخر أو نسخة staging', async () => {

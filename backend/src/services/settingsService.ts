@@ -16,6 +16,14 @@ export type WebAppPromoStyle = (typeof WEB_APP_PROMO_STYLES)[number];
  * القاعدة يدوياً أو بنسخةٍ أقدم لا يصل الجمهورَ إلا وهو صفحة تطبيق الإنتاج
  * على Google Play — لا APK ولا متجر آخر.
  */
+/**
+ * مرجع صورة رفعها مسار الرفع: `/uploads/<مجلد>/.../<اسم>.<jpg|png|webp>` بلا
+ * `..` ولا محارف خارج المسار — يُفحص عند الحفظ وعند القراءة معاً.
+ */
+export function isUploadedImageRef(value: string): boolean {
+  return /^\/uploads\/(?:[A-Za-z0-9_-]+\/)+[A-Za-z0-9_-]+\.(?:jpe?g|png|webp)$/i.test(value);
+}
+
 export function publicWebAppPromo(settings: StoreSettings) {
   if (settings.web_app_promo_enabled !== 'true') return null;
   const url = officialPlayStoreUrl(settings.web_app_promo_url);
@@ -29,6 +37,8 @@ export function publicWebAppPromo(settings: StoreSettings) {
     cta: settings.web_app_promo_cta,
     url,
     style,
+    // نسبي كباقي الوسائط؛ `null` = الصورة الافتراضية في المتجر.
+    imageUrl: isUploadedImageRef(settings.web_app_promo_image) ? settings.web_app_promo_image : null,
   };
 }
 
