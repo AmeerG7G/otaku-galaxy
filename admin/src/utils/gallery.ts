@@ -31,7 +31,7 @@ export interface CustomerGallery {
  * عامة لا تتكرّر — تبقى في موضع الصورة العامة وتُعَدّ في
  * [CustomerGallery.duplicates]، ولا تُحذف من المنتج.
  *
- * [NOTE] تطبيق الجوّال (`productGalleryImages`) ما زال يعرض صور الألوان أولاً.
+ * [NOTE] تطبيق الجوّال (`productGalleryImages`) يتبع الترتيب نفسه منذ STEP 80.
  */
 export function customerGallery(images: readonly (string | null | undefined)[], colours: readonly GalleryColour[]): CustomerGallery {
   const byKey = new Map<string, GalleryEntry>()

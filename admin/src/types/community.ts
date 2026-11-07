@@ -99,6 +99,8 @@ export interface StoreSettings {
   web_app_promo_url?: string
   /** `violet` (الافتراضي) أو `night`. */
   web_app_promo_style?: string
+  /** صورة الإعلان المرفوعة (`/uploads/...`)؛ فارغ = الصورة الافتراضية في المتجر. */
+  web_app_promo_image?: string
 }
 
 /** ما يُرسَل لحفظ الإعلان — التفعيل قيمةٌ منطقية لا نصّ. */
@@ -109,6 +111,7 @@ export interface WebAppPromoInput {
   web_app_promo_cta: string
   web_app_promo_url: string
   web_app_promo_style: 'violet' | 'night'
+  web_app_promo_image: string
 }
 
 export type OrderStatusKey =
