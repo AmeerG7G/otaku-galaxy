@@ -60,6 +60,9 @@ RUN npm ci --omit=dev && npm cache clean --force
 # world-readable keeps it read-only for `node` whatever the checkout's umask.
 COPY --from=builder --chown=node:node /app/.next ./.next
 COPY --chmod=0444 next.config.ts ./
+# Static files served as-is at `/` (the app promotion's badge and screenshot).
+# 0755, not 0444: the same umask reason, and the directories need `x` to be entered.
+COPY --chmod=0755 public ./public
 
 USER node
 

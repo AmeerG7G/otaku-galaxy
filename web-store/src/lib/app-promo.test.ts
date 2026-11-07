@@ -14,11 +14,31 @@ describe('toAppPromo — the admin promotion reaches the page only as a Play lis
       cta: 'نزّله',
       url: PLAY,
       style: 'night',
+      image: null,
     });
   });
 
+  it("the admin's image: only an upload reference, resolved against the media origin", () => {
+    const base = { title: '', subtitle: '', cta: '', url: PLAY, style: 'night' };
+    const image = '/uploads/banner/2026/11/0b6f3c1e-8a4d-4f7e-9c2a-5d1e7b9a3f10.webp';
+    expect(toAppPromo({ ...base, imageUrl: image }, 'https://api.example')!.image).toBe(`https://api.example${image}`);
+    for (const bad of [
+      null,
+      '',
+      'https://evil.example/promo.png',
+      '//evil.example/uploads/banner/a.png',
+      'javascript:alert(1)',
+      '/uploads/../x.png',
+      '/uploads/banner/a.svg',
+    ]) {
+      expect(toAppPromo({ ...base, imageUrl: bad }, 'https://api.example')!.image, String(bad)).toBeNull();
+    }
+    // No media origin known: no image (the phone stays).
+    expect(toAppPromo({ ...base, imageUrl: image })!.image).toBeNull();
+  });
+
   it('empty texts fall back to the defaults; an unknown style is violet', () => {
-    expect(toAppPromo({ title: '', subtitle: '  ', cta: '', url: PLAY, style: 'neon' })).toEqual({ ...APP_PROMO_DEFAULTS, url: PLAY, style: 'violet' });
+    expect(toAppPromo({ title: '', subtitle: '  ', cta: '', url: PLAY, style: 'neon' })).toEqual({ ...APP_PROMO_DEFAULTS, url: PLAY, style: 'violet', image: null });
     expect(APP_PROMO_DEFAULTS.cta).toBe('حمّل التطبيق الآن');
   });
 
@@ -51,6 +71,33 @@ describe('AppPromoBanner', () => {
     expect(html).not.toContain('<script>');
     expect(html).toContain('&lt;script&gt;');
     expect(html).toContain('حمّل التطبيق الآن');
-    expect(html).not.toMatch(/<img|onclick|ping=/i);
+    expect(html).not.toMatch(/onclick|ping=/i);
+  });
+
+  it("artwork is local only: Google's badge inside the link, the app screenshot decorative", () => {
+    const promo = toAppPromo({ title: '', subtitle: '', cta: '', url: PLAY, style: 'night' })!;
+    const html = renderToStaticMarkup(createElement(AppPromoBanner, { promo }));
+    const images = [...html.matchAll(/<img [^>]*>/g)].map(([tag]) => tag);
+    expect(images).toHaveLength(2);
+    for (const tag of images) {
+      expect(tag).toMatch(/ src="\/app-promo\/[a-z-]+\.(png|webp)"/);
+      expect(tag).toMatch(/ width="\d+" height="\d+"/);
+    }
+    const link = html.slice(html.indexOf('<a '), html.indexOf('</a>'));
+    expect(link).toContain('src="/app-promo/google-play-badge-ar.png"');
+    expect(link).toContain('alt="احصل عليه من Google Play"');
+    expect(html).toMatch(/<div class="app-promo__phone" aria-hidden="true">[\s\S]*alt=""/);
+  });
+
+  it("an uploaded image replaces the phone; the link and badge stay the same", () => {
+    const image = '/uploads/banner/2026/11/promo.webp';
+    const promo = toAppPromo({ title: '', subtitle: '', cta: '', url: PLAY, style: 'night', imageUrl: image }, 'https://api.example')!;
+    const html = renderToStaticMarkup(createElement(AppPromoBanner, { promo }));
+    expect(html).toContain('app-promo--art');
+    expect(html).not.toContain('app-promo__phone');
+    expect(html).toMatch(/<div class="app-promo__art" aria-hidden="true"><img src="https:\/\/api.example\/uploads\/banner\/2026\/11\/promo.webp" width="1080" height="1080" alt=""/);
+    expect(html.match(/<a /g)).toHaveLength(1);
+    expect(html).toContain(`href="${PLAY}"`);
+    expect(html).toContain('src="/app-promo/google-play-badge-ar.png"');
   });
 });

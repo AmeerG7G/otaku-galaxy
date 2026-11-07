@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { WEB_APP_PROMO_STYLES } from '../services/settingsService.js';
+import { WEB_APP_PROMO_STYLES, isUploadedImageRef } from '../services/settingsService.js';
 import { optionalKurdish } from './admin.js';
 import { isValidVersionString } from '../services/appVersionService.js';
 import { canonicalPlayStoreUrl, officialPlayStoreUrl } from '../utils/playStoreUrl.js';
@@ -137,6 +137,14 @@ export const updateSettingsSchema = z.object({
     .transform((value) => (value === '' ? '' : officialPlayStoreUrl(value)!))
     .optional(),
   web_app_promo_style: z.enum(WEB_APP_PROMO_STYLES, { error: 'اختر شكل الإعلان' }).optional(),
+  // صورة مرفوعة على الخادم وحدها — لا رابط خارجي: المتجر لا يحمّل صوراً إلا
+  // من أصل وسائطه، والإعلان يحمل اسم المتجر. فارغ = الصورة الافتراضية.
+  web_app_promo_image: z
+    .string()
+    .trim()
+    .max(500)
+    .refine((value) => value === '' || isUploadedImageRef(value), 'ارفع صورة الإعلان من الجهاز — الروابط الخارجية غير مقبولة')
+    .optional(),
 });
 
 // ── نسخة التطبيق ──

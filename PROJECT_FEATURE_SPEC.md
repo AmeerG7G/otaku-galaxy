@@ -12719,3 +12719,33 @@ range of the governorate's active zones, or `null` when it has none.
   column and form fields are gone. The main table is no longer paginated, so a drag can reach every row.
 - The web store and the app read the same `/catalog/categories` (and `/catalog/home`) order. They are
   unchanged.
+
+# STEP 82 — WEB STORE: APP PROMOTION REDESIGN AND ADMIN-REPLACEABLE IMAGE (2026-11-03)
+
+Supersedes the «no artwork» line of 79.3. Branch `feat/web-app-promo-redesign` (rebased on origin/dev 5fde92b).
+
+## 82.1 Owner decisions (2026-11-03)
+
+- The promotion's phone glyph is replaced by a premium card: the admin's texts, Google's unmodified Arabic «احصل عليه من Google Play» badge, and artwork.
+- The artwork must be replaceable by the admin from the dashboard. The promo card had no image setting, so the owner approved adding one («Add an image field»).
+- The production promotion stays **enabled** with its URL and settings unchanged, although the listing still returned 404 on 2026-11-03. That supersedes 79.3's «keep it hidden» note. Do not disable it or «fix» the 404 without the owner.
+
+## 82.2 Image setting
+
+- New key `web_app_promo_image` (key/value, no migration): `''` = the store's built-in phone mockup, or a reference returned by `POST /api/admin/uploads` (purpose `banner`, an existing purpose: `media.purpose` has a CHECK constraint).
+- Only `/uploads/<dir>/…/<name>.(jpg|jpeg|png|webp)` is accepted (`isUploadedImageRef`). No external URL, `data:`, `javascript:`, `..` or SVG. It is checked again on read.
+- `GET /api/catalog/settings` → `webAppPromo.imageUrl`: relative, or `null`.
+- Upload permission is unchanged. `/admin/uploads` stays `can('products', 'banners')`. A sub-admin with only `settings` sees the upload disabled, with the reason shown.
+- Dashboard: `WebAppPromoCard` reuses `ImageUploadField` (upload or remove). Recommended size: square 1080×1080, PNG/WebP with a transparent background.
+- Web store: `toAppPromo` accepts only an upload reference and resolves it against the media origin. `AppPromoBanner` shows it in a square `object-fit: contain` box in place of the phone.
+
+## 82.3 Built-in fallback and assets
+
+- `web-store/public/app-promo/`:
+  - `google-play-badge-ar.png`: Google's file, byte-identical.
+  - `app-home-ar.webp`: a real screenshot of the app's home screen with the production catalog.
+- The Dockerfile now copies `public/` (`--chmod=0755`, for the same umask reason as STEP 79's `next.config.ts` fix).
+- The suggested upload (not committed) was composed only from real assets:
+  - a real app-home screenshot;
+  - two real product cards cropped from app screenshots;
+  - five real variant photos.
