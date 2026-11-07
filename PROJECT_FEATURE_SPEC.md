@@ -12749,3 +12749,20 @@ Supersedes the «no artwork» line of 79.3. Branch `feat/web-app-promo-redesign`
   - a real app-home screenshot;
   - two real product cards cropped from app screenshots;
   - five real variant photos.
+
+# STEP 83 — WEB STORE: THE PROMOTION IMAGE GOES INSIDE A FIXED PHONE FRAME (2026-11-07)
+
+Supersedes the last bullet of 82.2 and its «square 1080×1080» recommendation.
+
+## 83.1 Owner decision (2026-11-07)
+
+- Replacing the promotion image in the dashboard made the phone frame disappear on Production. The owner reported this as a bug. The phone frame is part of the fixed promotion design. The admin's image only replaces what is shown inside the phone screen, never the frame.
+- The frame stays separate markup and CSS (`app-promo__phone` → `__device` → `__screen`). It is never merged with the upload into one flattened image.
+
+## 83.2 Behaviour
+
+- `AppPromoBanner` always renders the phone. The screen's single `<img>` is `promo.image ?? '/app-promo/app-home-ar.webp'`. The `app-promo--art` / `app-promo__art` square box is removed.
+- The screen box keeps the built-in screenshot's shape (`aspect-ratio: 480 / 1039`, `width`/`height` 480×1039), with `object-fit: cover` and `object-position: top center`. The screen's `overflow: hidden` and `border-radius` clip the image to the rounded screen. An upload of another shape is cropped and never stretched. The box never changes size, so the frame geometry is identical for every image.
+- A missing, rejected (`toAppPromo` → `null`) or unloadable image keeps the frame. The first two show the built-in screenshot. The last leaves the screen's light background inside the frame.
+- Dashboard hint: a portrait image at the phone-screen shape (for example 1080×2340), shown inside the fixed frame.
+- Tests: `web-store/src/lib/app-promo.test.ts` (frame with and without upload, repeated replacements change only the screen `src`, invalid images, CSS clipping box).
