@@ -32,6 +32,9 @@ export const ERASED_TABLES = [
   'user_daily_activity',
   'admin_push_devices',
   'admin_notification_prefs',
+  // جلسات التحقق عبر واتساب (٠٩٣) — المكتملة مربوطةٌ بالحساب؛ غير المكتملة
+  // تُحذف بالرقم أدناه.
+  'whatsapp_signup_sessions',
 ] as const;
 
 /**
@@ -111,6 +114,9 @@ export const accountDeletionRepo = {
     );
     // طلبات التسجيل وإعادة التعيين تحمل الرقم والاسم كما أُرسلا، ويبقى الصفّ
     // بعد فكّ الربط (`SET NULL`) — فتُحذف بالحساب **وبالرقم** معاً.
+    // جلسات التحقق عبر واتساب (٠٩٣) تحمل الرقم ومعرّف واتساب — بالحساب وبالرقم.
+    // الردود الصادرة تُحذف معها (CASCADE)، وأحداث الويبهوك لا تحمل رقماً.
+    await tx.query('DELETE FROM whatsapp_signup_sessions WHERE user_id = $1 OR phone = $2', [userId, phone]);
     await tx.query('DELETE FROM account_requests WHERE user_id = $1 OR submitted_phone = $2', [userId, phone]);
     // سجلّ إجراءات الإدارة يبقى (من فعل ماذا ومتى)، لكن **محتواه** عن الزبون
     // يُمحى: تعديل الجنس، تصحيح الميلاد (من/إلى والسبب)، سبب الحساب الداخلي.

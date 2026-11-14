@@ -16,6 +16,8 @@ import '../widgets/auth_field.dart';
 import '../widgets/auth_scaffold.dart';
 import '../../../visuals/domain/visual_slot.dart';
 import '../../../settings/presentation/cubit/locale_cubit.dart';
+import '../../../../core/di/injection_container.dart' show sl;
+import '../../../whatsapp_signup/data/whatsapp_signup_repository.dart';
 
 @RoutePage()
 class RegisterScreen extends StatefulWidget {
@@ -70,6 +72,25 @@ class _RegisterScreenState extends State<RegisterScreen>
         );
 
     _animationController.forward();
+    _loadWhatsAppOption();
+  }
+
+  /// زرّ «تحقّق عبر واتساب» يظهر فقط حين يقول الخادم إن المسار مفعَّل
+  /// (`WHATSAPP_VERIFY_MODE=auto`). أي فشل — خادمٌ أقدم، انقطاع، لا تسجيل في
+  /// الحاوية (الاختبارات) — يُبقي الشاشة كما كانت حرفياً.
+  bool _whatsAppEnabled = false;
+
+  Future<void> _loadWhatsAppOption() async {
+    if (!sl.isRegistered<WhatsAppSignupRepository>()) return;
+    final options = await sl<WhatsAppSignupRepository>().options();
+    if (mounted && options.enabled) setState(() => _whatsAppEnabled = true);
+  }
+
+  void _openWhatsAppSignup() {
+    final typed = _phoneController.text;
+    context.router.push(
+      WhatsAppSignupRoute(initialPhone: isValidIraqiLocalPhone(typed) ? typed : null),
+    );
   }
 
   @override
@@ -163,6 +184,19 @@ class _RegisterScreenState extends State<RegisterScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                // التسجيل عبر واتساب — مسارٌ إضافي، والاستمارة أدناه تبقى البديل.
+                if (_whatsAppEnabled) ...[
+                  AnimePrimaryButton(
+                    key: const Key('registerWithWhatsApp'),
+                    label: context.strings('waSignupEntry'),
+                    icon: Icons.chat_outlined,
+                    onPressed: _openWhatsAppSignup,
+                    height: AppDimens.buttonHeightXl,
+                    borderRadius: AppDimens.radiusMd,
+                    gradient: AppColors.ctaGradient,
+                  ),
+                  SizedBox(height: AppDimens.space5),
+                ],
                 // حقل اسم المستخدم
                 AuthField(
                   controller: _usernameController,

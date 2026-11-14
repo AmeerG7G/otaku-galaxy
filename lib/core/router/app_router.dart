@@ -6,6 +6,9 @@ import '../../features/auth/presentation/screens/account_pending_screen.dart';
 import '../../features/auth/presentation/screens/forgot_password_screen.dart';
 import '../../features/auth/presentation/screens/login_screen.dart';
 import '../../features/auth/presentation/screens/register_screen.dart';
+import '../../features/whatsapp_signup/data/whatsapp_signup_repository.dart';
+import '../../features/whatsapp_signup/data/whatsapp_signup_store.dart';
+import '../../features/whatsapp_signup/presentation/whatsapp_signup_screen.dart';
 import '../../features/account/presentation/screens/account_screen.dart';
 import '../../features/cart/presentation/screens/cart_screen.dart';
 import '../../features/categories/presentation/screens/categories_screen.dart';
@@ -63,6 +66,9 @@ class AppRouter extends RootStackRouter {
     AutoRoute(page: OnboardingRoute.page, path: '/onboarding'),
     AutoRoute(page: LoginRoute.page, path: '/login'),
     AutoRoute(page: RegisterRoute.page, path: '/register'),
+    // التسجيل عبر واتساب — يُعرض زرّه فقط حين يقول الخادم إن المسار مفعَّل
+    // (`WHATSAPP_VERIFY_MODE=auto`). يسبق أي جلسة فلا يُحمى بفاحص المصادقة.
+    AutoRoute(page: WhatsAppSignupRoute.page, path: '/register/whatsapp'),
     AutoRoute(page: ForgotPasswordRoute.page, path: '/forgot-password'),
     // «طلبك قيد المراجعة» — بعد التسجيل وبعد نسيان كلمة المرور. يسبق أي
     // جلسة فلا يُحمى بفاحص المصادقة.
