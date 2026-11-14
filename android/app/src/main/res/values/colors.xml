@@ -17,4 +17,7 @@
       إقلاع قبل أي اختيار.
     -->
     <color name="brand_launch_background_dark">#141024</color>
+
+    <!-- لون تلوين أيقونة الإشعار — البنفسجي الأساسي (`AppColors.primary`). -->
+    <color name="notification_accent">#8B5CF6</color>
 </resources>
