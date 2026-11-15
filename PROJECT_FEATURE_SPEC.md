@@ -12795,3 +12795,33 @@ The owner chose this on 2026-11-14 after a read-only password policy audit: **le
 - Flutter (`kPasswordMinLength`) and the dashboard forms (`min: 8`) still check length only. The server message reaches the user. Mirroring the rules on the client, and 12 for the dashboard admin forms, is a follow-up.
 - `BCRYPT_ROUNDS` validation and login timing for unknown phone numbers (audit P3) are not changed.
 - Tests: `backend/tests/password-policy.test.ts`. Test fixtures that used weak passwords (`secret123`, `password-123`, `password-1`) were changed to strong ones.
+
+---
+
+# STEP 85 — PASSWORD POLICY IN FLUTTER AND THE DASHBOARD: ONE SHARED RULES FILE (2026-11-15)
+
+## 85.1 Decision
+
+On 2026-11-15 the owner chose the **shared rules file** design over two alternatives: clients checking only length (leaving the blocklist to the server) and a new `POST /auth/password-check` endpoint. Clients check the STEP 84 policy before submitting, for user experience only; **the backend stays authoritative.**
+
+## 85.2 Single source and copies
+
+- `backend/src/domain/passwordPolicy.data.json` is the only place the data lives: the limits, sequences, common words, letter substitutions, and the Arabic and Kurdish messages. `passwordPolicy.ts` and `errorMessages.ts` (Kurdish) read it, with no behaviour change from STEP 84.
+- `node tool/password_policy/sync_password_policy.mjs` writes the client copies, `lib/core/validation/password_policy_data.dart` and `admin/src/generated/passwordPolicyData.ts`. `--check` exits 1 when a copy is stale. Copies are needed because Flutter bundles Dart only and the dashboard builds from `admin/`.
+- The ~40 lines of rules are ported to `lib/core/validation/password_policy.dart` and `admin/src/utils/passwordPolicy.ts`.
+- **Drift guard:** `backend/tests/fixtures/password-policy-vectors.json` holds 83 cases generated from the backend. The backend, Flutter and dashboard suites all run it, and each client test also compares its generated copy, and the messages, with the source.
+
+## 85.3 Behaviour
+
+- The order is the server's: length → 72 bytes → pattern → identity.
+- **Length counts code points, as zod 4 does**, not UTF-16 units: 4 emoji are 8 UTF-16 units but 4 characters.
+- Customer minimum 8: registration (Flutter), change password (Flutter, customer) and admin-sets-customer-password (dashboard).
+- Admin minimum 12: dashboard create sub-admin, edit sub-admin, own profile, and Flutter change password when `role == 'admin'`.
+- Identity uses the phone and username typed in the same form plus the saved account values: the customer's phone and name in the reset modal, and the target sub-admin's saved phone and name when editing.
+- Messages are the server's exact text. Flutter uses `AppStrings` keys `passwordMinLength`, `passwordAdminMinLength`, `passwordTooLong`, `passwordBlank`, `passwordWeak`, `passwordContainsPhone` and `passwordContainsUsername` in Arabic and Kurdish. The six new Kurdish keys are in the review queue as `NEEDS_NATIVE_REVIEW`. The dashboard is Arabic only.
+
+## 85.4 Known client differences
+
+- Dart has no NFKC normalisation. It folds full-width Latin letters, digits and the full-width space; Arabic presentation forms (U+FB50–FEFF) are not folded, so the server may reject such a password after submit.
+- Dart `trim()` also removes U+0085, which JavaScript does not.
+- The web store (`web-store/`) still checks length only. It is out of scope here.

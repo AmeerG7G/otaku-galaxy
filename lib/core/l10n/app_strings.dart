@@ -445,6 +445,14 @@ class AppStrings {
     'newPassword': 'كلمة المرور الجديدة',
     // ٨ كما يفرض الخادم (`validators/auth.ts`) — كان ٦ فيقبل التطبيق ما يرفضه.
     'passwordMinLength': 'كلمة المرور يجب أن تكون 8 أحرف على الأقل',
+    // سياسة كلمة المرور (STEP 85) — حرفياً كرسائل الخادم (`passwordPolicy.data.json`)؛
+    // يحرس التطابقَ `test/password_policy_test.dart`.
+    'passwordAdminMinLength': 'كلمة مرور المسؤول يجب أن تكون 12 حرفاً على الأقل',
+    'passwordTooLong': 'كلمة المرور طويلة جداً',
+    'passwordBlank': 'كلمة المرور لا يمكن أن تكون فراغات فقط',
+    'passwordWeak': 'كلمة المرور سهلة التخمين — تجنّب الكلمات الشائعة والتكرار والتسلسل مثل 12345678',
+    'passwordContainsPhone': 'كلمة المرور يجب ألا تحتوي رقم هاتفك',
+    'passwordContainsUsername': 'كلمة المرور يجب ألا تحتوي اسم المستخدم',
     'showPassword': 'إظهار كلمة المرور',
     'hidePassword': 'إخفاء كلمة المرور',
     'confirmNewPassword': 'تأكيد كلمة المرور الجديدة',
@@ -692,6 +700,12 @@ class AppStrings {
     'phoneInvalid': 'ژمارەی مۆبایل هەڵەیە',
     'passwordRequired': 'تکایە وشەی نهێنی بنووسە',
     'passwordMinLength': 'وشەی نهێنی دەبێت لانیکەم 8 پیت بێت',
+    'passwordAdminMinLength': 'وشەی نهێنی بەڕێوەبەر دەبێت لانیکەم 12 پیت بێت',
+    'passwordTooLong': 'وشەی نهێنی زۆر درێژە',
+    'passwordBlank': 'وشەی نهێنی ناتوانێت تەنها بۆشایی بێت',
+    'passwordWeak': 'وشەی نهێنی بە ئاسانی دەزانرێت — خۆت لە وشە باوەکان و دووبارەکردنەوە و زنجیرەی وەک 12345678 بەدوور بگرە',
+    'passwordContainsPhone': 'وشەی نهێنی نابێت ژمارەی مۆبایلەکەت لەخۆ بگرێت',
+    'passwordContainsUsername': 'وشەی نهێنی نابێت ناوی بەکارهێنەر لەخۆ بگرێت',
     'showPassword': 'پیشاندانی وشەی نهێنی',
     'hidePassword': 'شاردنەوەی وشەی نهێنی',
     'passwordsDoNotMatch': 'هەردوو وشەی نهێنی وەک یەک نین',

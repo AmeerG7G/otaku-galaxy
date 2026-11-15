@@ -10,8 +10,11 @@
 /// يجوز أن تكون هذه أرخى من الخادم أبداً.
 library;
 
-/// `newPassword`/`password` في `validators/auth.ts`: `min(8)`.
-const int kPasswordMinLength = 8;
+import '../validation/password_policy_data.dart';
+
+/// الحدّ الأدنى لكلمة مرور الزبون — من بيانات السياسة المولَّدة لا رقمٌ يُكرَّر.
+/// القواعد كاملةً في `core/validation/password_policy.dart` (STEP 85).
+const int kPasswordMinLength = kPolicyMinLength;
 
 /// `username` في `validators/auth.ts`: `min(2).max(40)`.
 const int kUsernameMinLength = 2;

@@ -18,6 +18,7 @@ import {
   Tag,
   Typography,
 } from 'antd'
+import type { FormInstance } from 'antd'
 import { DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons'
 import {
   createSubAdmin,
@@ -47,6 +48,7 @@ import {
 import { syncWebPush } from '../push/webPush'
 import { formatDateTime } from '../utils/format'
 import { IRAQI_MOBILE_LENGTH, IRAQI_MOBILE_PATTERN, formatIraqiPhone } from '../utils/phone'
+import { passwordPolicyRule } from '../utils/passwordPolicy'
 
 const errorText = (error: unknown, fallback: string) => (error instanceof ApiError ? error.message : fallback)
 
@@ -54,10 +56,16 @@ const phoneRules = [
   { required: true, message: 'أدخل رقم الهاتف' },
   { pattern: IRAQI_MOBILE_PATTERN, message: 'رقم موبايل عراقي من 11 رقماً يبدأ بـ07' },
 ]
-const passwordRules = [
-  { required: true, message: 'أدخل كلمة المرور' },
-  { min: 8, message: 'ثمانية أحرف على الأقل' },
-]
+/**
+ * كلمات مرور المسؤولين: سياسة الخادم بحدّ المسؤول (١٢) — STEP 85.
+ * الهوية = الاسم والرقم المكتوبان الآن في النموذج، ومعهما المحفوظان إن وُجدا.
+ */
+function adminPasswordRule(form: FormInstance, saved?: { phone: string; username: string }) {
+  return passwordPolicyRule(true, () => [
+    { phone: form.getFieldValue('phone') as string | undefined, username: form.getFieldValue('username') as string | undefined },
+    ...(saved ? [saved] : []),
+  ])
+}
 
 /** مربّعات الصلاحيات مجمّعةً كالقائمة الجانبية. */
 function PermissionPicker({ value = [], onChange }: { value?: AdminSection[]; onChange?: (next: AdminSection[]) => void }) {
@@ -151,7 +159,7 @@ function OwnProfileTab() {
       <Form.Item label="رقم الهاتف" name="phone" rules={phoneRules}>
         <Input dir="ltr" inputMode="tel" maxLength={IRAQI_MOBILE_LENGTH} autoComplete="tel" />
       </Form.Item>
-      <Form.Item label="كلمة المرور الجديدة" name="newPassword" rules={[{ min: 8, message: 'ثمانية أحرف على الأقل' }]}>
+      <Form.Item label="كلمة المرور الجديدة" name="newPassword" rules={[adminPasswordRule(form, profile)]}>
         <Input.Password autoComplete="new-password" placeholder="اتركها فارغة للإبقاء على الحالية" />
       </Form.Item>
       <Form.Item
@@ -274,7 +282,11 @@ function AdminEditor({ state, onClose }: { state: EditorState; onClose: () => vo
         <Form.Item
           label={editing ? 'كلمة مرور جديدة' : 'كلمة المرور'}
           name="password"
-          rules={editing ? [{ min: 8, message: 'ثمانية أحرف على الأقل' }] : passwordRules}
+          rules={
+            editing
+              ? [adminPasswordRule(form, editing)]
+              : [{ required: true, message: 'أدخل كلمة المرور' }, adminPasswordRule(form)]
+          }
           extra={editing ? 'اتركها فارغة للإبقاء على الحالية. تغييرها يُخرجه من كل أجهزته.' : 'كلمة دائمة — يغيّرها المسؤول من «ملفّي».'}
         >
           <Input.Password autoComplete="new-password" />
