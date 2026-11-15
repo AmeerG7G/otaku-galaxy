@@ -39,7 +39,7 @@ import type { InboundEvent } from './whatsapp/metaWebhook.js';
  */
 
 type SessionStatus = 'pending' | 'awaiting_contact' | 'verified' | 'completed' | 'dead';
-type DeadReason = 'mismatch' | 'phone_taken' | 'attempts';
+type DeadReason = 'mismatch' | 'phone_taken' | 'attempts' | 'blocked';
 
 interface SessionRow {
   id: string;
@@ -127,6 +127,10 @@ const unavailable = () =>
 const sessionNotFound = () => Errors.notFound('جلسة التحقق غير موجودة — ابدأ من جديد', 'SESSION_NOT_FOUND');
 const sessionExpired = () => new AppError(410, 'SESSION_EXPIRED', 'انتهت مهلة التحقق — ابدأ من جديد');
 const phoneTaken = () => Errors.conflict('هذا الرقم مسجّل بالفعل — جرّب تسجيل الدخول', 'PHONE_TAKEN');
+// النصّان نفسهما في الدخول (`authService.login`) والوسيط — قرار المسؤول واحدٌ في كل مسار.
+const requestRejected = () => Errors.forbidden('تم رفض طلب إنشاء الحساب — تواصل مع الإدارة', 'ACCOUNT_REQUEST_REJECTED');
+const accountSuspended = () => Errors.forbidden('الحساب موقوف — تواصل مع الدعم', 'ACCOUNT_SUSPENDED');
+type BlockReason = 'rejected' | 'suspended';
 
 export function assertWhatsAppSignupEnabled() {
   if (config.whatsapp.mode !== 'auto') throw unavailable();
@@ -158,6 +162,29 @@ async function isPhoneTaken(client: pg.Pool | pg.PoolClient, phone: string): Pro
     [phone],
   );
   return rows.length > 0;
+}
+
+/**
+ * [SECURITY] قرار المسؤول يسبق واتساب: رقمٌ آخر طلب تسجيلٍ له **مرفوض**، أو
+ * حسابه المعلَّق **موقوف**، لا يفعَّل ذاتياً. القاعدة نفسها التي يطبّقها الدخول
+ * (آخر طلب مرفوض → `ACCOUNT_REQUEST_REJECTED`؛ موقوف → `ACCOUNT_SUSPENDED`).
+ * إعادة التقديم بالطريقة العادية تفتح طلباً جديداً فيسقط «المرفوض» — كما في الدخول.
+ * `lock` يقفل الحساب ثم آخر طلب (ترتيب `register` والموافقة والرفض نفسه).
+ */
+async function blockReason(client: pg.Pool | pg.PoolClient, phone: string, lock = false): Promise<BlockReason | null> {
+  const forUpdate = lock ? ' FOR UPDATE' : '';
+  const { rows: [user] } = await client.query<{ is_active: boolean; role: string }>(
+    `SELECT is_active, role FROM users WHERE phone = $1${forUpdate}`,
+    [phone],
+  );
+  if (user && user.role === 'customer' && !user.is_active) return 'suspended';
+  const { rows: [latest] } = await client.query<{ status: string }>(
+    `SELECT status FROM account_requests
+      WHERE kind = 'registration' AND submitted_phone = $1
+      ORDER BY created_at DESC LIMIT 1${forUpdate}`,
+    [phone],
+  );
+  return latest?.status === 'rejected' ? 'rejected' : null;
 }
 
 async function findSession(client: pg.Pool | pg.PoolClient, id: string, lock = false): Promise<SessionRow | null> {
@@ -259,6 +286,8 @@ export const whatsappSignupService = {
     let status = computeStatus(row);
     // الرقم المأخوذ يُكشف **بعد** إثبات الملكية وحده.
     if (status === 'verified' && (await isPhoneTaken(db, row.phone))) status = 'phone_taken';
+    // المرفوض والموقوف: لا يُطلب منه إكمالٌ سيُرفض — «تعذّر» عامّة، والسبب يظهر عند الإكمال.
+    else if (status === 'verified' && (await blockReason(db, row.phone)) !== null) status = 'dead';
     return {
       status,
       expiresAt: row.expires_at.toISOString(),
@@ -328,7 +357,7 @@ export const whatsappSignupService = {
     // التجزئة قبل المعاملة (لا عمل حسابيّ ثقيل تحت قفل) — كما في `register`.
     const passwordHash = await bcrypt.hash(input.password, config.bcryptRounds);
 
-    let result: { user: UserRow } | { taken: true } | null = null;
+    let result: { user: UserRow } | { taken: true } | { blocked: BlockReason } | null = null;
     for (let attemptNo = 0; attemptNo < 2 && result === null; attemptNo++) {
       try {
         result = await withTransaction((tx) => completeInTx(tx, input, passwordHash));
@@ -339,6 +368,7 @@ export const whatsappSignupService = {
         throw error;
       }
     }
+    if (result && 'blocked' in result) throw result.blocked === 'rejected' ? requestRejected() : accountSuspended();
     if (!result || 'taken' in result) throw phoneTaken();
     return { token: signToken(result.user), user: toPublicUser(result.user) };
   },
@@ -374,7 +404,7 @@ async function completeInTx(
   tx: pg.PoolClient,
   input: { sessionId: string; username: string; gender: Gender },
   passwordHash: string,
-): Promise<{ user: UserRow } | { taken: true }> {
+): Promise<{ user: UserRow } | { taken: true } | { blocked: BlockReason }> {
   const session = await findSession(tx, input.sessionId, true);
   if (!session) throw sessionNotFound();
   assertCompletable(session);
@@ -385,6 +415,13 @@ async function completeInTx(
     // وتُلتزم، ثم يُرمى الخطأ خارج المعاملة.
     await killSession(tx, session.id, 'phone_taken');
     return { taken: true };
+  }
+  // [SECURITY] تحت قفل الحساب (أُخذ أعلاه) ثم قفل آخر طلب: رفضٌ متزامن من
+  // المسؤول إما يسبقنا فنراه، أو ينتظرنا فيجد الطلب محسوماً (REQUEST_RESOLVED).
+  const blocked = await blockReason(tx, session.phone, true);
+  if (blocked) {
+    await killSession(tx, session.id, 'blocked');
+    return { blocked };
   }
 
   let user: UserRow;

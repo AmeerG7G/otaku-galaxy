@@ -178,8 +178,9 @@ class _WhatsAppSignupViewState extends State<_WhatsAppSignupView>
       listenWhen: (a, b) => a.error != b.error || a.step != b.step,
       listener: (context, state) {
         final error = state.error;
-        if (error != null && state.step != WhatsAppSignupStep.waiting)
+        if (error != null && state.step != WhatsAppSignupStep.waiting) {
           _snack(_errorText(error));
+        }
         if (state.step == WhatsAppSignupStep.done) {
           context.router.replaceAll([
             sl<PersonalizeStorage>().isDone
@@ -227,10 +228,12 @@ class _WhatsAppSignupViewState extends State<_WhatsAppSignupView>
             maxLength: kIraqiLocalPhoneLength,
             textInputAction: TextInputAction.done,
             validator: (value) {
-              if (value == null || value.trim().isEmpty)
+              if (value == null || value.trim().isEmpty) {
                 return context.strings('phoneRequiredShort');
-              if (!isValidIraqiLocalPhone(value))
+              }
+              if (!isValidIraqiLocalPhone(value)) {
                 return context.strings('phoneInvalid');
+              }
               return null;
             },
           ),
@@ -365,10 +368,12 @@ class _WhatsAppSignupViewState extends State<_WhatsAppSignupView>
             hint: context.strings('usernameHintExample'),
             textInputAction: TextInputAction.next,
             validator: (value) {
-              if (value == null || value.trim().isEmpty)
+              if (value == null || value.trim().isEmpty) {
                 return context.strings('usernameRequired');
-              if (value.trim().length < kUsernameMinLength)
+              }
+              if (value.trim().length < kUsernameMinLength) {
                 return context.strings('usernameTooShort');
+              }
               return null;
             },
           ),
@@ -390,10 +395,12 @@ class _WhatsAppSignupViewState extends State<_WhatsAppSignupView>
               onPressed: () => setState(() => _obscure = !_obscure),
             ),
             validator: (value) {
-              if (value == null || value.isEmpty)
+              if (value == null || value.isEmpty) {
                 return context.strings('passwordRequired');
-              if (value.length < kPasswordMinLength)
+              }
+              if (value.length < kPasswordMinLength) {
                 return context.strings('passwordMinLength');
+              }
               return null;
             },
           ),

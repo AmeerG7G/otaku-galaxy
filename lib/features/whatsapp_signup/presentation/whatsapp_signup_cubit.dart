@@ -216,7 +216,7 @@ class WhatsAppSignupCubit extends Cubit<WhatsAppSignupState> {
       );
       await store.clear();
       await onSession(auth);
-      if (!isClosed)
+      if (!isClosed) {
         emit(
           state.copyWith(
             step: WhatsAppSignupStep.done,
@@ -224,14 +224,18 @@ class WhatsAppSignupCubit extends Cubit<WhatsAppSignupState> {
             phase: WhatsAppSignupPhase.completed,
           ),
         );
+      }
     } on AppException catch (e) {
       if (isClosed) return;
       final phase = switch (e.code) {
         'PHONE_TAKEN' => WhatsAppSignupPhase.phoneTaken,
         'SESSION_EXPIRED' => WhatsAppSignupPhase.expired,
+        // المرفوض والموقوف: الجلسة ماتت على الخادم — رسالة الخادم تبقى ظاهرة.
         'SESSION_DEAD' ||
         'SESSION_ATTEMPTS_EXCEEDED' ||
-        'SESSION_NOT_FOUND' => WhatsAppSignupPhase.dead,
+        'SESSION_NOT_FOUND' ||
+        'ACCOUNT_REQUEST_REJECTED' ||
+        'ACCOUNT_SUSPENDED' => WhatsAppSignupPhase.dead,
         _ => null,
       };
       if (phase != null) {

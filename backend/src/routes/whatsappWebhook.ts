@@ -2,6 +2,7 @@ import express, { Router, type Request, type Response } from 'express';
 import { config } from '../config/index.js';
 import { whatsappProvider } from '../services/whatsapp/provider.js';
 import { whatsappSignupService } from '../services/whatsappSignupService.js';
+import { AppError } from '../utils/errors.js';
 
 /**
  * ويبهوك واتساب — `GET|POST /api/webhooks/whatsapp`.
@@ -12,8 +13,10 @@ import { whatsappSignupService } from '../services/whatsappSignupService.js';
  * [SECURITY]
  * - التوقيع (`X-Hub-Signature-256`) يُفحص قبل أي تحليل؛ الخاطئ ٤٠١ بلا تفاصيل.
  * - الويبهوك لا يُنشئ حساباً ولا يضع كلمة مرور: يقلب جلسةً إلى «متحقَّق» وحسب.
- * - بعد توقيعٍ صحيح يردّ ٢٠٠ دائماً — خطأ منطقي لا تصلحه إعادة إرسال Meta، وردٌّ
- *   غير ٢٠٠ يعني إعادةً لسبعة أيام وقد تعطّل Meta الاشتراك.
+ * - بعد توقيعٍ صحيح يردّ ٢٠٠ — إلا عطلاً **عابراً** (قاعدة البيانات مثلاً) في أي
+ *   حدث: عندها ٥٠٠ فتعيد Meta الدفعة، ولا تضيع رسالة عميلٍ صالحة. الإعادة آمنة:
+ *   كل حدث معاملةٌ مستقلة، وما نجح منه يُسقطه منع التكرار (`event_id`). الخطأ
+ *   المنطقي (`AppError`) لا تصلحه الإعادة، فيبقى ٢٠٠.
  * - الوضع `off`: المصافحة تعمل، والأحداث تُقبل وتُهمَل (لا تُخزَّن).
  */
 export const whatsappWebhookRoutes = Router();
@@ -49,6 +52,7 @@ async function handle(req: Request, res: Response) {
     res.status(401).json({ success: false });
     return;
   }
+  let transientFailure = false;
   if (config.whatsapp.mode === 'auto') {
     for (const event of provider.parse(body)) {
       try {
@@ -57,8 +61,13 @@ async function handle(req: Request, res: Response) {
       } catch (error) {
         // [SECURITY] رسالة الخطأ وحدها (رمز pg مثلاً) — لا حمولة ولا رقم.
         console.error('[whatsapp-webhook] event failed:', (error as { code?: string }).code ?? (error as Error).name);
+        if (!(error instanceof AppError)) transientFailure = true;
       }
     }
+  }
+  if (transientFailure) {
+    res.status(500).json({ success: false });
+    return;
   }
   res.status(200).json({ success: true });
 }

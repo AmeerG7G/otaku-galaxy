@@ -302,6 +302,39 @@ void main() {
         await cubit.close();
       },
     );
+
+    for (final code in ['ACCOUNT_REQUEST_REJECTED', 'ACCOUNT_SUSPENDED']) {
+      testWidgets(
+        'قرار المسؤول ($code): الجلسة تُمسح وتنتهي، ورسالة الخادم ظاهرة',
+        (tester) async {
+          final repo = _FakeRepo()
+            ..statuses.add(
+              const WhatsAppSignupStatus(phase: WhatsAppSignupPhase.verified),
+            )
+            ..completeError = AppException(
+              'رسالة الخادم',
+              statusCode: 403,
+              code: code,
+            );
+          final store = MemoryWhatsAppSignupStore();
+          final adopted = <AuthSession>[];
+          final cubit = _cubit(repo, store, adopted);
+          await cubit.startSession('+9647701234567');
+          await cubit.refresh();
+          await cubit.complete(
+            username: 'زبون',
+            gender: 'male',
+            password: 'secret123',
+          );
+          expect(cubit.state.phase, WhatsAppSignupPhase.dead);
+          expect(cubit.state.step, WhatsAppSignupStep.waiting);
+          expect(cubit.state.error?.code, code);
+          expect(store.value, isNull);
+          expect(adopted, isEmpty);
+          await cubit.close();
+        },
+      );
+    }
   });
 
   group('الشاشة', () {

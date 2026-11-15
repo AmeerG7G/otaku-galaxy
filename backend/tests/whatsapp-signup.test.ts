@@ -5,6 +5,7 @@ import { purgeExpiredWhatsAppData, runWhatsAppOutboxOnce } from '../src/jobs/wha
 import { signMetaPayload } from '../src/services/whatsapp/metaWebhook.js';
 import { fixtureSent, setFixtureSendFailure, WhatsAppSendError } from '../src/services/whatsapp/provider.js';
 import { whatsappSignupService } from '../src/services/whatsappSignupService.js';
+import { AppError } from '../src/utils/errors.js';
 import { api, createAdminUser, purgeTestUsers, registerAndLogin } from './helpers.js';
 
 /**
@@ -664,6 +665,134 @@ describe('[CRITICAL] التزامن', () => {
         );
         expect(rows.map((r) => r.status)).toEqual(['approved']);
       }
+    }
+  });
+});
+
+describe('[CRITICAL] قرار المسؤول يسبق واتساب (Phase B)', () => {
+  let adminToken = '';
+  const admin = () => ({ Authorization: `Bearer ${adminToken}` });
+  beforeAll(async () => {
+    adminToken = await createAdminUser();
+  });
+
+  async function pendingRegistration(local = freshLocal()) {
+    const res = await api.post('/api/auth/register').send({ username: 'طالب', phone: local, password: 'applicant-pass', gender: 'male' }).expect(202);
+    return { local, requestId: res.body.data.request.id as string };
+  }
+
+  it('[SECURITY] رقمٌ آخر طلبه مرفوض: التحقق لا يفعّله — ٤٠٣ ACCOUNT_REQUEST_REJECTED، والسجلّ كما هو', async () => {
+    const { local, requestId } = await pendingRegistration();
+    await api.post(`/api/admin/account-requests/${requestId}/reject`).set(admin()).send({ note: 'مرفوض' }).expect(200);
+    const s = await start(local);
+    await verifyBySender(s);
+    expect((await status(s)).body.data.status).toBe('dead');
+    const done = await complete(s, 'owner-pass-123');
+    expect(done.status).toBe(403);
+    expect(done.body.error.code).toBe('ACCOUNT_REQUEST_REJECTED');
+    expect(await sessionRow(s.sessionId)).toMatchObject({ status: 'dead', dead_reason: 'blocked', user_id: null });
+    const { rows } = await db.query(`SELECT status, admin_note FROM account_requests WHERE submitted_phone = $1 AND kind = 'registration'`, [s.phone]);
+    expect(rows).toEqual([{ status: 'rejected', admin_note: 'مرفوض' }]);
+    const { rows: [user] } = await db.query('SELECT phone_verified_at FROM users WHERE phone = $1', [s.phone]);
+    expect(user?.phone_verified_at ?? null).toBeNull();
+    expect((await api.post('/api/auth/login').send({ phone: local, password: 'owner-pass-123' })).status).not.toBe(200);
+  });
+
+  it('[SECURITY] رقمٌ مرفوض لم يبقَ له صفّ حساب: لا يُنشأ حساب', async () => {
+    const { local, requestId } = await pendingRegistration();
+    await api.post(`/api/admin/account-requests/${requestId}/reject`).set(admin()).send({}).expect(200);
+    await db.query('UPDATE account_requests SET user_id = NULL WHERE id = $1', [requestId]);
+    await db.query('DELETE FROM users WHERE phone = $1', [toE164(local)]);
+    const s = await start(local);
+    await verifyBySender(s);
+    expect((await complete(s)).status).toBe(403);
+    expect((await db.query('SELECT 1 FROM users WHERE phone = $1', [s.phone])).rowCount).toBe(0);
+  });
+
+  it('[SECURITY] حسابٌ معلَّق موقوف: التحقق لا يفعّله — ٤٠٣ ACCOUNT_SUSPENDED', async () => {
+    const { local } = await pendingRegistration();
+    await db.query('UPDATE users SET is_active = FALSE WHERE phone = $1', [toE164(local)]);
+    const s = await start(local);
+    await verifyBySender(s);
+    expect((await status(s)).body.data.status).toBe('dead');
+    const done = await complete(s);
+    expect(done.status).toBe(403);
+    expect(done.body.error.code).toBe('ACCOUNT_SUSPENDED');
+    const { rows: [user] } = await db.query('SELECT is_active, phone_verified_at FROM users WHERE phone = $1', [s.phone]);
+    expect(user).toEqual({ is_active: false, phone_verified_at: null });
+    expect((await sessionRow(s.sessionId)).dead_reason).toBe('blocked');
+  });
+
+  it('إعادة التقديم بالطريقة العادية بعد الرفض تفتح طلباً جديداً — واتساب يحسمه (قاعدة الدخول نفسها)', async () => {
+    const { local, requestId } = await pendingRegistration();
+    await api.post(`/api/admin/account-requests/${requestId}/reject`).set(admin()).send({}).expect(200);
+    await api.post('/api/auth/register').send({ username: 'طالب', phone: local, password: 'applicant-pass-2', gender: 'male' }).expect(202);
+    const s = await start(local);
+    await verifyBySender(s);
+    await complete(s).expect(201);
+    const { rows } = await db.query(
+      `SELECT status FROM account_requests WHERE submitted_phone = $1 AND kind = 'registration' ORDER BY created_at`,
+      [s.phone],
+    );
+    expect(rows.map((r) => r.status)).toEqual(['rejected', 'approved']);
+  });
+
+  it('[CRITICAL] إكمالٌ يسابق رفض المسؤول: لا يجتمع «مرفوض» و«مفعَّل» أبداً', async () => {
+    for (let round = 0; round < 5; round++) {
+      const { local, requestId } = await pendingRegistration();
+      const s = await start(local);
+      await verifyBySender(s);
+      const [done, rejected] = await Promise.all([
+        complete(s, 'owner-pass-123').then((r) => r),
+        api.post(`/api/admin/account-requests/${requestId}/reject`).set(admin()).send({}).then((r) => r),
+      ]);
+      const { rows: [user] } = await db.query('SELECT phone_verified_at FROM users WHERE phone = $1', [s.phone]);
+      const { rows: [latest] } = await db.query(
+        `SELECT status FROM account_requests WHERE submitted_phone = $1 AND kind = 'registration' ORDER BY created_at DESC LIMIT 1`,
+        [s.phone],
+      );
+      if (done.status === 201) {
+        expect(rejected.status).toBe(409);
+        expect(latest.status).toBe('approved');
+        expect(user.phone_verified_at).not.toBeNull();
+      } else {
+        expect(done.status).toBe(403);
+        expect(rejected.status).toBe(200);
+        expect(latest.status).toBe('rejected');
+        expect(user.phone_verified_at).toBeNull();
+      }
+    }
+  });
+});
+
+describe('[CRITICAL] الويبهوك: العطل العابر يُعاد (Phase B)', () => {
+  it('عطل قاعدة بيانات في حدث: ٥٠٠ فتعيد Meta؛ الإعادة نفسها تتحقّق مرّة واحدة', async () => {
+    const s = await start();
+    const payload = textPayload({ from: digits(s.local), userId: 'IQ.BSUID1', text: `الرمز: ${s.code}` });
+    const spy = vi
+      .spyOn(whatsappSignupService, 'handleInboundEvent')
+      .mockRejectedValueOnce(Object.assign(new Error('connection terminated'), { code: '57P01' }));
+    try {
+      expect((await postWebhook(payload)).status).toBe(500);
+      expect((await status(s)).body.data.status).toBe('pending');
+      expect((await postWebhook(payload)).status).toBe(200);
+      expect((await status(s)).body.data.status).toBe('verified');
+      expect((await postWebhook(payload)).status).toBe(200); // إعادةٌ ثالثة: مكرَّرة بلا أثر
+    } finally {
+      spy.mockRestore();
+    }
+    await complete(s).expect(201);
+  });
+
+  it('خطأٌ منطقي (AppError) لا تصلحه الإعادة: ٢٠٠', async () => {
+    const s = await start();
+    const spy = vi
+      .spyOn(whatsappSignupService, 'handleInboundEvent')
+      .mockRejectedValueOnce(new AppError(409, 'X', 'منطقي'));
+    try {
+      expect((await postWebhook(textPayload({ from: digits(s.local), userId: 'IQ.BSUID1', text: s.code }))).status).toBe(200);
+    } finally {
+      spy.mockRestore();
     }
   });
 });

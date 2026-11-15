@@ -163,7 +163,14 @@ export function WhatsAppSignup() {
     const code = result.error?.code;
     if (code === 'PHONE_TAKEN') setPhase('phone_taken');
     else if (code === 'SESSION_EXPIRED' || code === 'SESSION_NOT_FOUND') setPhase('expired');
-    else if (code === 'SESSION_DEAD' || code === 'SESSION_ATTEMPTS_EXCEEDED') setPhase('dead');
+    else if (
+      code === 'SESSION_DEAD' ||
+      code === 'SESSION_ATTEMPTS_EXCEEDED' ||
+      // Rejected request / suspended account: the server killed the session; its message stays shown.
+      code === 'ACCOUNT_REQUEST_REJECTED' ||
+      code === 'ACCOUNT_SUSPENDED'
+    )
+      setPhase('dead');
     setError(result.error?.message ?? 'تعذّر إنشاء الحساب');
   }
 

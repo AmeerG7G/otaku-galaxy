@@ -24,7 +24,7 @@ CREATE TABLE whatsapp_signup_sessions (
   secret_hash        BYTEA NOT NULL,
   status             TEXT NOT NULL DEFAULT 'pending'
                        CHECK (status IN ('pending', 'awaiting_contact', 'verified', 'completed', 'dead')),
-  dead_reason        TEXT CHECK (dead_reason IN ('mismatch', 'phone_taken', 'attempts')),
+  dead_reason        TEXT CHECK (dead_reason IN ('mismatch', 'phone_taken', 'attempts', 'blocked')),
   locale             TEXT NOT NULL DEFAULT 'ar' CHECK (locale IN ('ar', 'ckb')),
   provider           TEXT NOT NULL,
   sender_ref         TEXT,
