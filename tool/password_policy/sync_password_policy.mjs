@@ -5,6 +5,7 @@
  *   source : backend/src/domain/passwordPolicy.data.json   (edit only this)
  *   outputs: lib/core/validation/password_policy_data.dart
  *            admin/src/generated/passwordPolicyData.ts
+ *            web-store/src/generated/passwordPolicyData.ts
  *
  * Usage (from the repository root):
  *   node tool/password_policy/sync_password_policy.mjs           # write
@@ -14,7 +15,8 @@
  * (build_runner output), and this file must be committed.
  *
  * Copies exist because no client build can read backend/: Flutter bundles Dart
- * only and the dashboard is built from admin/. Each client has a test that
+ * only, the dashboard is built from admin/, and the web store's Docker build
+ * sees web-store/ only (STEP 86). Each client has a test that
  * compares its copy with the source, so a stale copy fails CI even if nobody
  * runs this script.
  */
@@ -26,6 +28,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const SOURCE = 'backend/src/domain/passwordPolicy.data.json';
 const DART_OUT = 'lib/core/validation/password_policy_data.dart';
 const TS_OUT = 'admin/src/generated/passwordPolicyData.ts';
+const WEB_STORE_OUT = 'web-store/src/generated/passwordPolicyData.ts';
 
 const policy = JSON.parse(readFileSync(resolve(root, SOURCE), 'utf8'));
 
@@ -83,6 +86,7 @@ export const PASSWORD_POLICY = ${JSON.stringify(
 const outputs = [
   [DART_OUT, dart],
   [TS_OUT, ts],
+  [WEB_STORE_OUT, ts],
 ];
 
 const check = process.argv.includes('--check');
