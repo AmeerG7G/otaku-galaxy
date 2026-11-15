@@ -470,6 +470,31 @@ void main() {
       },
     );
 
+    testWidgets(
+      '[STEP 84/85] خطوة البيانات: سياسة كلمة المرور نفسها — رقم الجلسة يُرفض عند الحقل ولا يُرسل',
+      (tester) async {
+        final repo = await pumpScreen(tester);
+        await tester.tap(find.byKey(const Key('waSignupStart')));
+        await tester.pump();
+        await tester.pump();
+        repo.statuses.add(
+          const WhatsAppSignupStatus(phase: WhatsAppSignupPhase.verified),
+        );
+        await tester.pump(WhatsAppSignupCubit.fastInterval);
+        await tester.pump();
+        await tester.enterText(find.byKey(const Key('waSignupUsername')), 'زبون جديد');
+        await tester.enterText(find.byKey(const Key('waSignupPassword')), 'og77012345678');
+        await tester.tap(find.text(AppStrings.arabic('genderMale')));
+        await tester.pump();
+        await tester.ensureVisible(find.byKey(const Key('waSignupCreate')));
+        await tester.tap(find.byKey(const Key('waSignupCreate')));
+        await tester.pump();
+        expect(find.text(AppStrings.arabic('passwordContainsPhone')), findsOneWidget);
+        expect(repo.completed, isEmpty);
+        await tester.pumpWidget(const SizedBox());
+      },
+    );
+
     testWidgets('حالة «مشاركة الرقم» ومحاولة الرقم الآخر تُعرضان بنصّهما', (
       tester,
     ) async {

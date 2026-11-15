@@ -14,6 +14,7 @@ import '../../../core/l10n/app_strings.dart';
 import '../../../core/l10n/gender.dart' show AppGender;
 import '../../../core/router/app_router.dart';
 import '../../../core/utils/iraqi_phone.dart';
+import '../../../core/validation/password_policy.dart';
 import '../../auth/presentation/cubit/auth_cubit.dart' show AuthCubit;
 import '../../auth/presentation/widgets/auth_field.dart';
 import '../../auth/presentation/widgets/auth_scaffold.dart';
@@ -428,10 +429,14 @@ class _WhatsAppSignupViewState extends State<_WhatsAppSignupView>
               if (value == null || value.isEmpty) {
                 return context.strings('passwordRequired');
               }
-              if (value.length < kPasswordMinLength) {
-                return context.strings('passwordMinLength');
-              }
-              return null;
+              // سياسة الخادم نفسها كما في استمارة التسجيل (STEP 84/85): الطول
+              // والبايتات والكلمات الشائعة، ورقم الجلسة والاسم المكتوب هنا.
+              final problem = passwordProblem(
+                value,
+                phone: state.session?.phone,
+                username: _usernameController.text,
+              );
+              return problem == null ? null : context.strings(problem.stringKey);
             },
           ),
           const SizedBox(height: 15),
