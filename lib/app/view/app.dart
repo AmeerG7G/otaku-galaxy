@@ -125,8 +125,9 @@ class OtakuGalaxyApp extends StatelessWidget {
               // التبويب إلى الرئيسية فلا يبقى الزائر على تبويب محمي بعد خروجه.
               pendingProtectedTab = null;
               mainNavIndex.value = MainTab.home;
-              // [CRITICAL] إلغاء تسجيل الجهاز أولاً: بدونه يبقى مسجَّلاً باسم
-              // من خرج، فتصل إشعاراته الخاصة إلى من يستعمل الهاتف بعده.
+              // إلغاء تسجيل الجهاز يحدث في `AuthCubit.logout` قبل مسح التوكن
+              // (`beforeLogout`). هنا يبقى لخروج الـ401: يوقف متابعة تدوير
+              // الرمز وينسى الرمز الحالي — وفي الخروج العادي لا يفعل شيئاً.
               unawaited(di.sl<PushRegistrar>().onLogout());
               di.sl<CartCubit>().clear();
               di.sl<FavoritesCubit>().clear();
