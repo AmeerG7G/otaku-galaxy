@@ -105,11 +105,13 @@ export default function LoginPage() {
           }}
         >
           <div style={{ marginBottom: 6 }}>
+            {/* شعارٌ لا صورةُ محتوى: بلا معاينة antd (عارض الصور بالنقر). */}
             <Image
               src="/otaku-square-mark.png"
               alt="مجرة الأوتاكو"
               width={64}
               height={64}
+              preview={false}
               style={{
                 borderRadius: 14,
                 boxShadow: '0 6px 18px rgba(124, 92, 255, 0.4)',
