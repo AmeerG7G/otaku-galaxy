@@ -12825,3 +12825,28 @@ On 2026-11-15 the owner chose the **shared rules file** design over two alternat
 - Dart has no NFKC normalisation. It folds full-width Latin letters, digits and the full-width space; Arabic presentation forms (U+FB50–FEFF) are not folded, so the server may reject such a password after submit.
 - Dart `trim()` also removes U+0085, which JavaScript does not.
 - The web store (`web-store/`) still checks length only. It is out of scope here.
+
+---
+
+# STEP 86 — PASSWORD POLICY IN THE WEB STORE: REGISTRATION AND CHANGE PASSWORD (2026-11-15)
+
+## 86.1 Decision
+
+On 2026-11-15 the owner asked for the web store to enforce the complete STEP 84 customer policy in **both** its registration form and its change-password form, through the STEP 85 shared rules file, with no separate or divergent rules. As with STEP 85, the client check is for user experience only; **the backend stays authoritative**, and the BFF routes and the API's validation and error handling are unchanged.
+
+The owner also stated on 2026-11-15 that the six STEP 85 Kurdish keys are approved and need no further native review. The web store is Arabic only and uses none of them. The repo's review queue still marks them `NEEDS_NATIVE_REVIEW`, because `test/sorani_review_queue_test.dart` forbids `NATIVE_APPROVED`; changing that guard needs its own instruction.
+
+## 86.2 Copies
+
+- `tool/password_policy/sync_password_policy.mjs` writes a third copy, `web-store/src/generated/passwordPolicyData.ts`, byte-identical to the dashboard copy. It lives inside `web-store/src/` because the web store's Docker build copies only `src/`, `tsconfig.json` and `next.config.ts`.
+- `web-store/src/lib/password-policy.ts` holds the rules, line for line the dashboard's `admin/src/utils/passwordPolicy.ts` without the antd helper. Length counts code points (`[...s].length`), and bytes use `TextEncoder`.
+- `web-store/src/lib/password-policy.test.ts` runs the 83 shared vectors, compares the generated copy with `passwordPolicy.data.json` and with the dashboard copy, and checks every message against the source's Arabic text. It reads `backend/` at test time only; CI checks out the whole repository.
+
+## 86.3 Behaviour
+
+- **Registration** (`RegisterForm`): customer rules, checked against the name and phone typed in the same form. The phone check and the password check both run on submit, so both messages can show at once.
+- **Change password** (`PasswordForm`): customer rules, checked against the signed-in account's own phone and name, passed from the sealed session by `app/account/password/page.tsx`. The profile BFF route already refreshes the session's copy of the name. The order is: current password present (form alert) → new password passes the policy (under the field) → confirmation matches (form alert, text unchanged). The old hardcoded «8 characters» message is replaced by the API's own `tooShort` text.
+- `components/PasswordField.tsx` holds the shared new-password field. Its message appears when the user leaves a filled field or submits, then follows every edit of the password, the name or the phone, with `aria-invalid` and `aria-describedby` set.
+- The `minLength` attribute is removed from the new and confirm password inputs, because the browser counts UTF-16 units and the API counts code points. The forms are `noValidate`, so the attribute never blocked submission.
+- Login is unchanged: old accounts keep signing in with whatever password they have.
+- A rejection from the server (`VALIDATION_ERROR`, `WEAK_PASSWORD`) still shows the API's message in the form alert, as before.
