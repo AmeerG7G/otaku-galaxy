@@ -360,7 +360,7 @@ describe('admin push — events, fan-out, and separation from customers', () => 
 
   it('a NEW account request notifies once; resuming the same pending request does not ring again', async () => {
     const phone = `077${Math.floor(10000000 + Math.random() * 89999999)}`;
-    const body = { username: 'طالب حساب', phone, password: 'password-123', gender: 'female' };
+    const body = { username: 'طالب حساب', phone, password: 'amber-lantern-42', gender: 'female' };
     await api.post('/api/auth/register').send(body).expect(202);
     await api.post('/api/auth/register').send({ ...body, username: 'طالب حساب ٢' }).expect(202);
     const rows = (await outboxFor(superId, 'admin')).filter(

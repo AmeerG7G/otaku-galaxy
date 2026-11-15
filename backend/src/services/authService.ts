@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import { assertAcceptablePassword } from '../domain/passwordPolicy.js';
 import type pg from 'pg';
 import type { AppLocale } from '../utils/locale.js';
 import jwt from 'jsonwebtoken';
@@ -90,6 +91,10 @@ export const authService = {
     password: string;
     gender: Gender;
   }) {
+    // قبل أي قراءة: كلمةٌ تحوي رقم الطالب أو اسمه تُرفض أياً كان مآل الرقم.
+    assertAcceptablePassword(input.password, {
+      identities: [{ phone: input.phone, username: input.username }],
+    });
     const existing = await userRepo.findByPhone(db, input.phone);
 
     if (existing && existing.phone_verified_at !== null) {
@@ -288,6 +293,11 @@ export const authService = {
     // هذا الحقل يُخرج صاحب الحساب من التطبيق كله. الرمز الخاص يميّزه لأي
     // عميل يقرأ الرمز لا الحالة.
     if (!ok) throw Errors.badRequest('كلمة المرور الحالية غير صحيحة', 'INVALID_CURRENT_PASSWORD');
+    // المسار مشترك بين الزبون والمسؤول، فحدّ المسؤول (١٢) يُفرض هنا حيث يُعرف الدور.
+    assertAcceptablePassword(newPassword, {
+      admin: user.role === 'admin',
+      identities: [{ phone: user.phone, username: user.username }],
+    });
     const passwordHash = await bcrypt.hash(newPassword, config.bcryptRounds);
     // [SECURITY] المسار مفتوحٌ للمسؤول أيضاً (الفرعي بلا قسم «المسؤولين» لا يملك
     // غيره). الجلسات تسقط بالنسخة، وأجهزة إشعار المسؤول معها في المعاملة نفسها —

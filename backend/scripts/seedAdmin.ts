@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import type pg from 'pg';
 import { config } from '../src/config/index.js';
 import { normalizeIraqiPhone } from '../src/utils/phone.js';
+import { passwordIdentityProblem, passwordPatternProblem } from '../src/domain/passwordPolicy.js';
 
 /**
  * حساب المسؤول الأولي — اختياري، صريح، وغير مطبوع.
@@ -63,6 +64,10 @@ export async function seedAdminUser(
   }
 
   const username = env.SEED_ADMIN_USERNAME?.trim() || 'مدير المتجر';
+  // نفس قائمة الحظر والهوية التي يفرضها الخادم على كل كلمة مسؤول.
+  const problem =
+    passwordPatternProblem(password) ?? passwordIdentityProblem(password, [{ phone, username }]);
+  if (problem) throw new Error(`SEED_ADMIN_PASSWORD مرفوضة — ${problem}`);
   const passwordHash = await bcrypt.hash(password, config.bcryptRounds);
   await client.query(
     // أول مسؤولٍ في بيئةٍ جديدة هو **المسؤول الأعلى** (هجرة ٠٦٨): لا مسار API

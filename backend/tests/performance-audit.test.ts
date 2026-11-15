@@ -203,7 +203,7 @@ describe('Performance / resource audit', () => {
         const phone = `0779${String(Math.floor(1000000 + Math.random() * 8999999))}`;
         await api
           .post('/api/auth/register')
-          .send({ username: `مختبر ${i}`, phone, password: 'secret123', gender: 'male' })
+          .send({ username: `مختبر ${i}`, phone, password: 'quiet-river-731', gender: 'male' })
           .expect(202);
       }
 

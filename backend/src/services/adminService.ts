@@ -28,6 +28,7 @@ import { franchiseRepo } from '../repositories/franchisesRepo.js';
 import { adminAuditRepo } from '../repositories/adminAuditRepo.js';
 import { analyticsPeriodsRepo } from '../repositories/analyticsPeriodsRepo.js';
 import bcrypt from 'bcryptjs';
+import { assertAcceptablePassword } from '../domain/passwordPolicy.js';
 import {
   accountRequestRepo,
   type AccountRequestKind,
@@ -1353,6 +1354,9 @@ export const adminService = {
       }
     }
 
+    assertAcceptablePassword(input.newPassword, {
+      identities: [{ phone: user.phone, username: user.username }],
+    });
     const passwordHash = await bcrypt.hash(input.newPassword, config.bcryptRounds);
     return withTransaction(async (tx) => {
       await userRepo.update(tx, user.id, { passwordHash, bumpTokenVersion: true });
