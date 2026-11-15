@@ -768,6 +768,46 @@ describe('[CRITICAL] قرار المسؤول يسبق واتساب (Phase B)', (
   });
 });
 
+describe('[STEP 84] سياسة كلمة المرور في الإكمال', () => {
+  it('كلمةٌ تحوي رقم الجلسة أو الاسم: ٤٠٠ WEAK_PASSWORD، ولا تستهلك محاولة، والقوية تكمل', async () => {
+    const s = await start();
+    await verifyBySender(s);
+    for (const password of [`og${s.local}x`, `x${s.local.slice(-8)}yz`, 'زبونواتساب-9']) {
+      const res = await complete(s, password);
+      expect(res.status, password).toBe(400);
+      expect(res.body.error.code).toBe('WEAK_PASSWORD');
+    }
+    expect((await sessionRow(s.sessionId)).complete_attempts).toBe(0);
+    expect((await sessionRow(s.sessionId)).status).toBe('verified');
+    await complete(s, 'whatsapp-pass-1').expect(201);
+  });
+
+  it('قصيرة (٧) أو فوق ٧٢ بايتاً: يرفضها المخطّط نفسه الذي يرفضها في التسجيل', async () => {
+    const s = await start();
+    await verifyBySender(s);
+    const short = await complete(s, 'abc1234');
+    expect(short.status).toBe(400);
+    expect(short.body.error.code).toBe('VALIDATION_ERROR');
+    expect(short.body.message).toBe('كلمة المرور يجب أن تكون 8 أحرف على الأقل');
+    const long = await complete(s, 'ك'.repeat(37)); // ٧٤ بايتاً
+    expect(long.status).toBe(400);
+    expect(long.body.message).toBe('كلمة المرور طويلة جداً');
+    // المخطّط يرفض قبل الخدمة: لا محاولة تُستهلك.
+    expect((await sessionRow(s.sessionId)).complete_attempts).toBe(0);
+  });
+
+  it('[SECURITY] بلا السرّ لا يكشف شيئاً عن الرقم: ٤٠٤ أياً كانت كلمة المرور', async () => {
+    const s = await start();
+    await verifyBySender(s);
+    const wrong = { sessionId: s.sessionId, secret: 'A'.repeat(43) };
+    const withPhone = await complete(wrong, `x${s.local.slice(-8)}yz`);
+    const plain = await complete(wrong, 'whatsapp-pass-1');
+    expect(withPhone.status).toBe(404);
+    expect(plain.status).toBe(404);
+    expect(withPhone.body.error.code).toBe(plain.body.error.code);
+  });
+});
+
 describe('[CRITICAL] الويبهوك: العطل العابر يُعاد (Phase B)', () => {
   it('عطل قاعدة بيانات في حدث: ٥٠٠ فتعيد Meta؛ الإعادة نفسها تتحقّق مرّة واحدة', async () => {
     const s = await start();

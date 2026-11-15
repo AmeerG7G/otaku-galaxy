@@ -4,6 +4,7 @@ import { ipKeyGenerator } from 'express-rate-limit';
 import type pg from 'pg';
 import { config } from '../config/index.js';
 import { db, withTransaction } from '../database/pool.js';
+import { assertAcceptablePassword } from '../domain/passwordPolicy.js';
 import { WHATSAPP_SIGNUP_TEXTS } from '../domain/whatsappSignupTexts.js';
 import { toPublicUser, userRepo, type UserRow } from '../repositories/userRepo.js';
 import type { Gender } from '../types/index.js';
@@ -336,6 +337,21 @@ export const whatsappSignupService = {
     }
     if (!secretMatches(attempt, input.secret)) throw sessionNotFound();
     assertCompletable(attempt);
+
+    // [STEP 84] سياسة كلمة المرور كاملةً كما في `register`: المخطّط فحص الطول
+    // والنمط، وهنا الهوية — كلمةٌ تحوي رقم الجلسة أو الاسم تُرفض (WEAK_PASSWORD).
+    // [SECURITY] بعد إثبات السرّ وحده: قبلها كان الردّ يكشف لمن يملك معرّف جلسةٍ
+    // دون سرّها هل يحوي تخمينه أرقام الهاتف. ورفضٌ كهذا خطأُ إدخال لا تخمين،
+    // فلا يستهلك محاولةً من الخمس.
+    try {
+      assertAcceptablePassword(input.password, { identities: [{ phone: attempt.phone, username: input.username }] });
+    } catch (error) {
+      await db.query(
+        `UPDATE whatsapp_signup_sessions SET complete_attempts = GREATEST(complete_attempts - 1, 0) WHERE id = $1`,
+        [attempt.id],
+      );
+      throw error;
+    }
 
     // التجزئة قبل المعاملة (لا عمل حسابيّ ثقيل تحت قفل) — كما في `register`.
     const passwordHash = await bcrypt.hash(input.password, config.bcryptRounds);
