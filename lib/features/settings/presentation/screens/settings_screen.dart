@@ -11,7 +11,7 @@ import '../../../../core/router/app_router.dart';
 import '../../../auth/presentation/cubit/auth_cubit.dart';
 import '../../../auth/presentation/cubit/auth_state.dart';
 import '../../../../core/auth/require_auth.dart';
-import '../../../../core/constants/validation_rules.dart';
+import '../../../../core/validation/password_policy.dart';
 import '../../../../core/config/app_config.dart';
 import '../../../../core/config/public_pages.dart';
 import '../../../app_update/data/installed_version.dart';
@@ -313,7 +313,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   /// تغيير كلمة المرور — ورقة سفلية بنموذج مُتحقَّق منه.
   ///
-  /// النموذج ([_ChangePasswordForm]) يملك حقوله ويحرّرها بعد زوال الورقة،
+  /// النموذج ([ChangePasswordForm]) يملك حقوله ويحرّرها بعد زوال الورقة،
   /// ويعيد الكلمتين فقط. الكلمة الحالية تُتحقَّق على الخادم؛ خطؤها يعود
   /// رسالةً (400 `INVALID_CURRENT_PASSWORD`) لا خروجاً من التطبيق، والنجاح
   /// يحفظ التوكن الجديد داخل `AuthCubit.changePassword`.
@@ -321,7 +321,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final auth = context.read<AuthCubit>();
     final entered = await showOtakuSheet<({String current, String next})>(
       context: context,
-      builder: (_) => const _ChangePasswordForm(),
+      builder: (_) => ChangePasswordForm(
+        phone: auth.user?.phone,
+        username: auth.user?.username,
+        // مسار `/auth/me/password` مشترك؛ الخادم يفرض ١٢ على المسؤول.
+        admin: auth.user?.role == 'admin',
+      ),
     );
     if (entered == null || !mounted) return;
 
@@ -436,16 +441,23 @@ class _PrefSwitch extends StatelessWidget {
 /// الحقول أثناء حركة الخروج (انظر `OtakuTextPromptSheet`).
 ///
 /// كل حقل له زرّ عين مستقل: المستخدم يرى **نصّه هو** في الحقلين (الحالية
-/// والجديدة) ليتأكّد مما كتب. الحدّ الأدنى [kPasswordMinLength] كما يفرضه
-/// الخادم؛ كان التطبيق يقبل ٦ فيردّ الخادم برسالةٍ بعد الإرسال.
-class _ChangePasswordForm extends StatefulWidget {
-  const _ChangePasswordForm();
+/// والجديدة) ليتأكّد مما كتب. الكلمة الجديدة تُفحص بسياسة الخادم نفسها
+/// ([passwordProblem]، STEP 85) مع رقم صاحب الحساب واسمه.
+///
+/// عامٌّ للاختبار وحده (`test/password_policy_forms_test.dart`)؛ لا يُستعمل خارج هذا الملف.
+@visibleForTesting
+class ChangePasswordForm extends StatefulWidget {
+  const ChangePasswordForm({super.key, this.phone, this.username, this.admin = false});
+
+  final String? phone;
+  final String? username;
+  final bool admin;
 
   @override
-  State<_ChangePasswordForm> createState() => _ChangePasswordFormState();
+  State<ChangePasswordForm> createState() => ChangePasswordFormState();
 }
 
-class _ChangePasswordFormState extends State<_ChangePasswordForm> {
+class ChangePasswordFormState extends State<ChangePasswordForm> {
   final _formKey = GlobalKey<FormState>();
   final _currentCtrl = TextEditingController();
   final _newCtrl = TextEditingController();
@@ -521,9 +533,17 @@ class _ChangePasswordFormState extends State<_ChangePasswordForm> {
                     _obscureNew,
                     () => setState(() => _obscureNew = !_obscureNew),
                   ),
-                  validator: (v) => (v == null || v.length < kPasswordMinLength)
-                      ? context.strings('passwordMinLength')
-                      : null,
+                  validator: (v) {
+                    final problem = passwordProblem(
+                      v ?? '',
+                      admin: widget.admin,
+                      phone: widget.phone,
+                      username: widget.username,
+                    );
+                    return problem == null
+                        ? null
+                        : context.strings(problem.stringKey);
+                  },
                 ),
                 const SizedBox(height: 12),
                 AnimeTextField(
