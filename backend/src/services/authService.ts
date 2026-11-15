@@ -167,7 +167,6 @@ export const authService = {
           id: pending.id,
           kind: 'registration',
           username: input.username,
-          phone: written.phone,
         });
       }
       return { user: written, request: pending };
@@ -241,7 +240,6 @@ export const authService = {
           id: pending.id,
           kind: 'password_reset',
           username: input.username,
-          phone: input.phone,
         });
       }
       return pending;
