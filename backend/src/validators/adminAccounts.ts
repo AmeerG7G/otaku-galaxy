@@ -1,9 +1,9 @@
 import { z } from 'zod';
 import { ADMIN_SECTIONS } from '../domain/adminPermissions.js';
 import {
+  adminNewPasswordSchema,
   currentPasswordSchema,
   iraqiPhoneSchema,
-  newPasswordSchema,
   usernameSchema,
 } from './auth.js';
 
@@ -35,7 +35,7 @@ export const adminAccountIdSchema = z.object({
 export const createSubAdminSchema = strictBody({
   username: usernameSchema,
   phone: iraqiPhoneSchema,
-  password: newPasswordSchema,
+  password: adminNewPasswordSchema,
   permissions,
 });
 
@@ -44,7 +44,7 @@ export const updateSubAdminSchema = strictBody({
   phone: iraqiPhoneSchema.optional(),
   permissions: permissions.optional(),
   isActive: z.boolean().optional(),
-  newPassword: newPasswordSchema.optional(),
+  newPassword: adminNewPasswordSchema.optional(),
 }).refine((input) => Object.values(input).some((value) => value !== undefined), {
   message: 'لا تغيير في الطلب',
 });
@@ -52,7 +52,7 @@ export const updateSubAdminSchema = strictBody({
 export const updateOwnAdminSchema = strictBody({
   username: usernameSchema.optional(),
   phone: iraqiPhoneSchema.optional(),
-  newPassword: newPasswordSchema.optional(),
+  newPassword: adminNewPasswordSchema.optional(),
   currentPassword: currentPasswordSchema.optional(),
 })
   .refine(

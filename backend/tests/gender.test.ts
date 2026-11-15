@@ -27,7 +27,7 @@ function registerWith(body: Record<string, unknown>) {
 /** يُنشئ حساباً محقَّقاً بالجنس المعطى ويعيد جلسته. */
 async function signUp(gender: 'male' | 'female') {
   const phone = freshPhone();
-  const password = 'secret123';
+  const password = 'quiet-river-731';
   const registered = await registerWith({ username: 'مختبر الجنس', phone, password, gender }).expect(202);
   await approveAsAdmin(registered.body.data.request.id as string);
   const login = await api.post('/api/auth/login').send({ phone, password }).expect(200);
@@ -59,7 +59,7 @@ describe('التسجيل بالجنس', () => {
     const res = await registerWith({
       username: 'بلا جنس',
       phone: freshPhone(),
-      password: 'secret123',
+      password: 'quiet-river-731',
     });
     expect([400, 422]).toContain(res.status);
   });
@@ -70,7 +70,7 @@ describe('التسجيل بالجنس', () => {
       const res = await registerWith({
         username: 'قيمة فاسدة',
         phone,
-        password: 'secret123',
+        password: 'quiet-river-731',
         gender,
       });
       expect([400, 422], JSON.stringify(gender)).toContain(res.status);
@@ -95,7 +95,7 @@ describe('التسجيل بالجنس', () => {
     await registerWith({
       username: 'أول محاولة',
       phone,
-      password: 'secret123',
+      password: 'quiet-river-731',
       gender: 'male',
     }).expect(202);
 
@@ -103,7 +103,7 @@ describe('التسجيل بالجنس', () => {
     const resumed = await registerWith({
       username: 'محاولة ثانية',
       phone,
-      password: 'secret123',
+      password: 'quiet-river-731',
       gender: 'female',
     });
     expect(resumed.status).toBe(202);
@@ -227,7 +227,7 @@ describe('الحسابات القديمة بلا جنس', () => {
 describe('تمثيل الجنس في الـAPI', () => {
   it('يظهر في كل ردود المستخدم ولا يُسرَّب معه شيء خاص', async () => {
     const phone = freshPhone();
-    const password = 'secret123';
+    const password = 'quiet-river-731';
     const registered = await registerWith({
       username: 'تمثيل',
       phone,

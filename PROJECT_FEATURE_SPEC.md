@@ -12766,3 +12766,32 @@ Supersedes the last bullet of 82.2 and its «square 1080×1080» recommendation.
 - A missing, rejected (`toAppPromo` → `null`) or unloadable image keeps the frame. The first two show the built-in screenshot. The last leaves the screen's light background inside the frame.
 - Dashboard hint: a portrait image at the phone-screen shape (for example 1080×2340), shown inside the fixed frame.
 - Tests: `web-store/src/lib/app-promo.test.ts` (frame with and without upload, repeated replacements change only the screen `src`, invalid images, CSS clipping box).
+
+---
+
+# STEP 84 — PASSWORD POLICY: LENGTH + BLOCKLIST, ADMIN 12, ONE SCHEMA FOR EVERY PATH (2026-11-14)
+
+## 84.1 Decision
+
+The owner chose this on 2026-11-14 after a read-only password policy audit: **length plus a blocklist, with no composition rules**. This replaces the 8-character-only rule and the old «6–72 chars» line in §4.1, which is historical.
+
+- Customers need at least 8 characters, admins at least 12, and every account has a maximum of 72 **bytes**.
+- The following are rejected: whitespace-only passwords, fewer than 4 distinct characters (`11111111`, `abababab`), whole sequences (`12345678`, `87654321`, `abcdefgh`, `qwertyui`, Arabic keyboard rows), and common words, also when wrapped in digits or symbols or written with substitutions (`password123`, `P@ssw0rd!`, `qwerty123`, `Otaku-Galaxy`, `naruto2024`). Arabic-Indic digits count as digits (`١٢٣٤٥٦٧٨`).
+- A password is also rejected when it contains the account's phone number (last 8 digits) or a username of 3 or more characters.
+- Uppercase, digit and symbol requirements are **not** used. They push users toward `Password1!` and block Arabic and Kurdish passphrases.
+- The policy applies to new and changed passwords only. Login (`loginPassword`) is unchanged, so accounts created under the old 6-character minimum still log in.
+
+## 84.2 Where it is enforced
+
+- `backend/src/domain/passwordPolicy.ts` holds the rules, the messages and `assertAcceptablePassword`.
+- The zod schemas in `validators/auth.ts` check length, the byte maximum and patterns: `newPasswordSchema` (8) and `adminNewPasswordSchema` (12, used by `POST /admin/admins`, `PATCH /admin/admins/:id` and `PATCH /admin/me`).
+- The services call `assertAcceptablePassword` before hashing, where the account is known. They check the phone and username, and apply the admin 12 on the shared `PATCH /auth/me/password`. The error is `400 WEAK_PASSWORD`.
+- **P0 fix:** `adminSetCustomerPasswordSchema` (`PATCH /admin/customers/:id/password`) had its own copy of the rule: `min(8).max(200)` *characters*, with no byte limit. bcrypt silently cut anything over 72 bytes. It now uses the shared `newPasswordSchema`.
+- `scripts/seedAdmin.ts` (and therefore `createOwner`) keeps its 12-character minimum and also applies the pattern and identity checks.
+- Kurdish translations of the new messages are in `domain/errorMessages.ts`. They are a draft awaiting native review.
+
+## 84.3 Not done here
+
+- Flutter (`kPasswordMinLength`) and the dashboard forms (`min: 8`) still check length only. The server message reaches the user. Mirroring the rules on the client, and 12 for the dashboard admin forms, is a follow-up.
+- `BCRYPT_ROUNDS` validation and login timing for unknown phone numbers (audit P3) are not changed.
+- Tests: `backend/tests/password-policy.test.ts`. Test fixtures that used weak passwords (`secret123`, `password-123`, `password-1`) were changed to strong ones.
