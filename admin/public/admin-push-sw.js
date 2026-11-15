@@ -41,7 +41,7 @@ self.addEventListener('push', (event) => {
         body: data.body || '',
         icon: '/otaku-square-mark.png',
         // الشارة تُرسم من الشفافية وحدها (أندرويد/Chrome): الشعار بأرضيته
-        // المعتمة كان مربعاً أبيض. هذه ظلّه الأبيض على شفاف
+        // المعتمة كان مربعاً أبيض. هذه رمزه المبسّط أبيض على شفاف
         // (`tool/branding/make_notification_icon.py`).
         badge: '/otaku-notification-badge.png',
         dir: 'rtl',

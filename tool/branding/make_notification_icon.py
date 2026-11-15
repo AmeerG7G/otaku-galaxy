@@ -1,93 +1,85 @@
-"""Monochrome notification icons derived from the brand mark.
+"""Monochrome notification icon: a simplified glyph inspired by the brand mark.
 
-Reads (never writes) `assets/branding/otaku-square-mark.png` and produces the
-white-on-transparent silhouette of its six squares:
+Produces a white-on-transparent glyph of three rounded squares:
 
   android/app/src/main/res/drawable-<density>/ic_stat_otaku.png  (24dp)
   admin/public/otaku-notification-badge.png                      (96 px)
 
 Android draws a notification small icon — and Chrome a web-push badge — from
-the image's ALPHA only. The full-colour mark has an opaque ground, so used as
-is it renders as a plain white square. The squares are separated from the
-ground by colour: a pixel belongs to the art when it is nearer to one of the
-six brand colours (`lib/core/design_system/tokens/app_colors.dart`) than to
-the ground.
+the image's ALPHA only, so the full-colour mark (opaque ground) cannot be used
+as is. A silhouette of the mark's six squares was tried and rejected: at 24 px
+the squares merge, or the two smallest shrink to 2–3 px and stop reading.
+
+This glyph keeps the mark's idea — a large tilted rounded square leading a
+trail that bends down to the right — with three squares sized and spaced for a
+24 px canvas (owner-approved "concept B", 2026-11-15). Geometry is defined on a
+24-unit grid (1 unit = 1 px at mdpi), inside the 20-unit live area (2..22):
+every square is at least 4.5 units and every pair is at least 2 units apart, so
+all three stay separate shapes at every density.
+
+The brand mark (`assets/branding/otaku-square-mark.png`) and the launcher
+icons are not read or touched; only the corner radius (22% of the side) and the
+arc follow the mark.
 
 Run from the repo root:  python3 -I tool/branding/make_notification_icon.py
-Deterministic: the same mark always yields byte-identical PNGs.
+Deterministic: pure geometry, byte-identical PNGs on every run.
 """
 
+import math
 from pathlib import Path
 
-from PIL import Image, ImageFilter
+from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parents[2]
-MARK = ROOT / "assets/branding/otaku-square-mark.png"
 
-BRAND = [  # magenta, violet, blue, indigo, purple, gold
-    (0xF0, 0x45, 0x9B), (0x8B, 0x5C, 0xF6), (0x4F, 0xA3, 0xF0),
-    (0x3B, 0x2F, 0xA8), (0x6D, 0x3B, 0xC0), (0xF6, 0xC1, 0x44),
+# (centre x, centre y, side, rotation in degrees) on the 24-unit grid.
+SQUARES = [
+    (8.0, 8.0, 9.0, 20),  # lead square, tilted like the mark's largest
+    (18.0, 9.0, 5.5, 0),
+    (17.0, 18.0, 4.5, 25),
 ]
+CORNER = 0.22  # corner radius as a fraction of the side, as in the mark
+GRID = 24.0
+SUPERSAMPLE = 32
 
-# 24dp canvas, 20dp live area (Material small-icon keyline: 2dp padding).
 DENSITIES = {"mdpi": 24, "hdpi": 36, "xhdpi": 48, "xxhdpi": 72, "xxxhdpi": 96}
 BADGE_PX = 96
 
 
-def _dist2(a, b):
-    return sum((x - y) ** 2 for x, y in zip(a, b))
+def _rounded_square(cx, cy, side, rot_deg, arc_steps=10):
+    half, r = side / 2, side * CORNER
+    pts = []
+    for sx, sy, start in ((1, 1, 0), (-1, 1, 90), (-1, -1, 180), (1, -1, 270)):
+        ox, oy = sx * (half - r), sy * (half - r)
+        for i in range(arc_steps + 1):
+            a = math.radians(start + 90 * i / arc_steps)
+            pts.append((ox + r * math.cos(a), oy + r * math.sin(a)))
+    t = math.radians(rot_deg)
+    cos_t, sin_t = math.cos(t), math.sin(t)
+    return [(cx + x * cos_t - y * sin_t, cy + x * sin_t + y * cos_t) for x, y in pts]
 
 
-def silhouette() -> Image.Image:
-    """Binary art mask (L, 0/255) at the mark's own resolution."""
-    mark = Image.open(MARK).convert("RGB")
-    w, h = mark.size
-    # The ground is a radial gradient: sample it per pixel from a heavy blur of
-    # the corners' tone would be overkill — its brightest point stays far
-    # darker than every brand colour, so a fixed reference works.
-    grounds = [(0x0B, 0x07, 0x18), (0x16, 0x10, 0x2E), (0x24, 0x1A, 0x54)]
-    px = mark.load()
-    mask = Image.new("L", (w, h), 0)
-    out = mask.load()
-    for y in range(h):
-        for x in range(w):
-            c = px[x, y]
-            brand = min(_dist2(c, b) for b in BRAND)
-            ground = min(_dist2(c, g) for g in grounds)
-            out[x, y] = 255 if brand < ground else 0
-    # Drop isolated speckles from anti-aliased ground pixels.
-    return mask.filter(ImageFilter.MedianFilter(5))
-
-
-def render(mask: Image.Image, size: int, live: float) -> Image.Image:
-    """White glyph, alpha = mask, art fitted (aspect kept) inside `live`·size."""
-    box = mask.getbbox()
-    art = mask.crop(box)
-    target = live * size
-    scale = target / max(art.size)
-    # Supersample: scale at 8x, then down with a box filter for clean edges.
-    ss = 8
-    big = art.resize(
-        (max(1, round(art.width * scale * ss)), max(1, round(art.height * scale * ss))),
-        Image.LANCZOS,
-    )
-    canvas = Image.new("L", (size * ss, size * ss), 0)
-    canvas.paste(big, ((size * ss - big.width) // 2, (size * ss - big.height) // 2))
-    alpha = canvas.resize((size, size), Image.BOX)
+def render(size: int) -> Image.Image:
+    """White glyph at `size` px: drawn at 32x, box-filtered down."""
+    big = size * SUPERSAMPLE
+    alpha = Image.new("L", (big, big), 0)
+    draw = ImageDraw.Draw(alpha)
+    k = big / GRID
+    for square in SQUARES:
+        draw.polygon([(x * k, y * k) for x, y in _rounded_square(*square)], fill=255)
     icon = Image.new("RGBA", (size, size), (255, 255, 255, 0))
-    icon.putalpha(alpha)
+    icon.putalpha(alpha.resize((size, size), Image.BOX))
     return icon
 
 
 def main() -> None:
-    mask = silhouette()
     for density, size in DENSITIES.items():
         out = ROOT / f"android/app/src/main/res/drawable-{density}/ic_stat_otaku.png"
         out.parent.mkdir(parents=True, exist_ok=True)
-        render(mask, size, live=20 / 24).save(out, optimize=True)
+        render(size).save(out, optimize=True)
         print(out.relative_to(ROOT))
     badge = ROOT / "admin/public/otaku-notification-badge.png"
-    render(mask, BADGE_PX, live=0.8).save(badge, optimize=True)
+    render(BADGE_PX).save(badge, optimize=True)
     print(badge.relative_to(ROOT))
 
 

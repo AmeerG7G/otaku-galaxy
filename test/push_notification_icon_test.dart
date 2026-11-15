@@ -2,11 +2,14 @@
 //
 // [CRITICAL] أندرويد وChrome يرسمان الأيقونة الصغيرة/الشارة من الشفافية
 // وحدها. أيقونة التشغيل (الشعار بأرضيته المعتمة) كانت تظهر مربعاً أبيض في
-// شريط الحالة. الأيقونة الآن ظلّ الشعار أبيض على شفاف، مشتقّة منه بـ
-// `tool/branding/make_notification_icon.py` (الأصل لا يُمسّ).
+// شريط الحالة. الأيقونة الآن رمزٌ مبسّط مستوحى من الشعار — ثلاثة مربعات
+// بيضاء على شفاف يرسمها `tool/branding/make_notification_icon.py` هندسياً
+// (الشعار وأيقونات التشغيل لا تُقرأ ولا تُمسّ). ظلّ المربعات الستة رُفض: عند
+// 24px تلتحم، أو يصغر أصغرها إلى 2px فلا يُرى.
 //
-// الحارس يقيس البكسل: عودةُ أيقونة معتمة أو ملوّنة أو فارغة تُسقطه — ويتأكّد
-// أن البيان (الخلفية/الإغلاق) والتطبيق (المقدّمة) يشيران إلى الأيقونة نفسها.
+// الحارس يقيس البكسل: عودةُ أيقونة معتمة أو ملوّنة أو فارغة تُسقطه، وكذلك
+// التحامُ المربعات أو تلاشي أصغرها في أي كثافة — ويتأكّد أن البيان
+// (الخلفية/الإغلاق) والتطبيق (المقدّمة) يشيران إلى الأيقونة نفسها.
 
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -35,8 +38,35 @@ Future<(int, int, List<int>)> _read(String path) async {
   return (frame.image.width, frame.image.height, data!.buffer.asUint8List());
 }
 
+/// الأشكال المنفصلة (اتصالٌ رباعي) التي تبلغ ألفاها [threshold] — أحجامها.
+List<int> _shapes(List<int> px, int w, int h, int threshold) {
+  final seen = List<bool>.filled(w * h, false);
+  final sizes = <int>[];
+  for (var start = 0; start < w * h; start++) {
+    if (seen[start] || px[start * 4 + 3] < threshold) continue;
+    seen[start] = true;
+    final stack = [start];
+    var n = 0;
+    while (stack.isNotEmpty) {
+      final i = stack.removeLast();
+      n++;
+      final x = i % w, y = i ~/ w;
+      for (final (nx, ny) in [(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)]) {
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        final j = ny * w + nx;
+        if (!seen[j] && px[j * 4 + 3] >= threshold) {
+          seen[j] = true;
+          stack.add(j);
+        }
+      }
+    }
+    sizes.add(n);
+  }
+  return sizes..sort();
+}
+
 /// قواعد الأيقونة الأحادية: بيضاء حيث تظهر، شفافة في الحواف، لا فارغة ولا
-/// مربعاً مصمتاً.
+/// مربعاً مصمتاً — ومقروءة: ثلاثة مربعات منفصلة بفجوةٍ نظيفة، أصغرها لا يتلاشى.
 Future<void> _expectMonochromeGlyph(String path, int size) async {
   final (w, h, px) = await _read(path);
   expect((w, h), (size, size), reason: '$path: المقاس');
@@ -54,7 +84,23 @@ Future<void> _expectMonochromeGlyph(String path, int size) async {
   }
   final coverage = opaque / (w * h);
   expect(coverage, greaterThan(0.15), reason: '$path: الأيقونة شبه فارغة');
-  expect(coverage, lessThan(0.6), reason: '$path: مربعٌ مصمت لا ظلّ الشعار');
+  expect(coverage, lessThan(0.6), reason: '$path: مربعٌ مصمت لا رمز الإشعار');
+
+  // [CRITICAL] المقروئية بالمقاس الفعلي: ثلاثة أشكال منفصلة حتى مع أخفت
+  // البكسلات (10%) — فالفجوات نظيفة لا جسور رمادية — ومع المصمتة (50%).
+  for (final threshold in [26, 128]) {
+    expect(
+      _shapes(px, w, h, threshold),
+      hasLength(3),
+      reason: '$path: المربعات الثلاثة ملتحمة أو ناقصة (ألفا ≥ $threshold)',
+    );
+  }
+  // أصغر مربع لا يقلّ عن سُدس الضلع مربّعاً (24px → 16 بكسلاً مصمتاً).
+  expect(
+    _shapes(px, w, h, 128).first,
+    greaterThanOrEqualTo(size * size ~/ 36),
+    reason: '$path: أصغر المربعات أصغر من أن يُرى',
+  );
 
   // الهامش: الصف والعمود الأولان والأخيران شفافة تماماً.
   for (var k = 0; k < size; k++) {
@@ -67,7 +113,7 @@ Future<void> _expectMonochromeGlyph(String path, int size) async {
 void main() {
   group('[CRITICAL] أيقونة شريط الحالة لأندرويد', () {
     for (final MapEntry(key: density, value: size) in _densities.entries) {
-      test('drawable-$density/ic_stat_otaku.png: ظلّ أبيض ${size}px', () async {
+      test('drawable-$density/ic_stat_otaku.png: رمز أبيض مقروء ${size}px', () async {
         await _expectMonochromeGlyph(
           'android/app/src/main/res/drawable-$density/$kPushSmallIcon.png',
           size,
@@ -122,7 +168,7 @@ void main() {
   });
 
   group('[CRITICAL] شارة إشعار اللوحة (Web Push)', () {
-    test('otaku-notification-badge.png: ظلّ أبيض 96px', () async {
+    test('otaku-notification-badge.png: رمز أبيض مقروء 96px', () async {
       await _expectMonochromeGlyph(_badge, 96);
     });
 

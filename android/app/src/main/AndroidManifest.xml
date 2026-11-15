@@ -40,8 +40,8 @@
             android:value="otaku_default" />
         <!-- أيقونة شريط الحالة لما يعرضه FCM والتطبيق في الخلفية أو مغلق: صورة
              ظلّية بيضاء على شفاف (أندرويد يقرأ الشفافية وحدها — أيقونة التشغيل
-             بأرضيتها المعتمة كانت تظهر مربعاً أبيض). مشتقّة من الشعار بـ
-             `tool/branding/make_notification_icon.py`؛ نفسها `kPushSmallIcon`. -->
+             بأرضيتها المعتمة كانت تظهر مربعاً أبيض). رمزٌ مبسّط مستوحى من الشعار
+             يرسمه `tool/branding/make_notification_icon.py`؛ نفسها `kPushSmallIcon`. -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"
             android:resource="@drawable/ic_stat_otaku" />
