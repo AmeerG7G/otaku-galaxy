@@ -16,7 +16,11 @@ import type { SessionData } from './session';
  * - An upstream 401 (expired/revoked token) or a suspended account ends the
  *   browser session too.
  */
-export type BffBody = { data?: unknown; message?: string | null; error?: { code: string; message: string; details?: unknown } };
+export type BffBody = {
+  data?: unknown;
+  message?: string | null;
+  error?: { code: string; message: string; details?: unknown; retryAfterSeconds?: number };
+};
 
 export function bffJson(status: number, body: BffBody, headers?: HeadersInit): NextResponse<BffBody> {
   return NextResponse.json(body, {
@@ -57,7 +61,12 @@ export async function handleBff(
   } catch (error) {
     if (error instanceof ApiError) {
       if (error.status === 401 || error.code === 'ACCOUNT_SUSPENDED') await clearSession();
-      return bffJson(error.status, { error: { code: error.code, message: error.message, details: error.details } });
+      const retryAfter = error.retryAfterSeconds;
+      return bffJson(
+        error.status,
+        { error: { code: error.code, message: error.message, details: error.details, ...(retryAfter ? { retryAfterSeconds: retryAfter } : {}) } },
+        retryAfter ? { 'Retry-After': String(retryAfter) } : undefined,
+      );
     }
     // No request body, headers or token in the log — only what failed.
     console.error(`[bff] ${request.method} ${new URL(request.url).pathname} failed:`, (error as Error)?.message);

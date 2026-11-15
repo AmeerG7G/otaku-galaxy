@@ -326,7 +326,11 @@ function positiveInt(name: string, fallback: number): number {
 }
 
 const whatsappSessionTtlSeconds = positiveInt('WHATSAPP_SESSION_TTL_SECONDS', 300);
-const whatsappGlobalDailyCap = positiveInt('WHATSAPP_GLOBAL_DAILY_CAP', 500);
+// الحدود العامّة اليومية (STEP 85، الحدود الطبقية): البدايات كلها سقفٌ أخير ضد
+// الفيضان، و«غير المتحقَّق منها» زرّ الانشغال، والرسائل الصادرة حارسُ الكلفة.
+const whatsappGlobalDailyCap = positiveInt('WHATSAPP_GLOBAL_DAILY_CAP', 5000);
+const whatsappGlobalUnverifiedDailyCap = positiveInt('WHATSAPP_GLOBAL_UNVERIFIED_DAILY_CAP', 1000);
+const whatsappOutboundDailyCap = positiveInt('WHATSAPP_OUTBOUND_DAILY_CAP', 500);
 const whatsappSendTimeoutMs = positiveInt('WHATSAPP_SEND_TIMEOUT_MS', 10_000);
 const whatsappOutboxIntervalMs = positiveInt('WHATSAPP_OUTBOX_INTERVAL_MS', 5_000);
 
@@ -441,12 +445,23 @@ export const config = {
     clockSkewSeconds: 60,
     maxMismatches: 3,
     maxCompleteAttempts: 5,
+    /**
+     * الحدود الطبقية. «العنوان» = IPv4 كاملاً أو شبكة IPv6 ‎/56 (`ipKeyGenerator`).
+     * الجلسة **غير المتحقَّق منها** (`verified_at IS NULL`) وحدها تستهلك حصّة
+     * العنوان الساعية: زبائن حقيقيون خلف NAT المشغّل يتحقّقون فلا يزاحم أحدهم
+     * غيره. انظر `whatsappSignupService.start`.
+     */
     limits: {
       livePerPhone: 3,
       perPhoneHour: 6,
       perPhoneDay: 15,
-      perIpHour: 10,
+      /** التأخير قبل البداية رقم n للرقم في الساعة (الفهرس n-1) — ١، ٢، ٤ دقائق للرابعة فما بعد. */
+      perPhoneDelaysSeconds: [0, 0, 0, 60, 120, 240] as number[],
+      perIpUnverifiedHour: 30,
+      perIpDay: 300,
+      globalUnverifiedDay: whatsappGlobalUnverifiedDailyCap,
       globalDay: whatsappGlobalDailyCap,
+      outboundDay: whatsappOutboundDailyCap,
     },
     /** رسالة «أُنشئ حسابٌ بهذا الرقم» بعد الإكمال — حماية من انتحال المرسِل. */
     confirmationMessage: process.env.WHATSAPP_CONFIRMATION_MESSAGE?.trim().toLowerCase() !== 'false',
@@ -543,6 +558,12 @@ export const config = {
     globalMax: Number(process.env.RATE_LIMIT_GLOBAL_MAX ?? 300),
     /** سقف عام لنقاط المصادقة لكل IP — واسع لأنه يحمي من الفيضان لا من التخمين. */
     authMax: Number(process.env.RATE_LIMIT_AUTH_MAX ?? 60),
+    /**
+     * دلو الفيضان للتسجيل عبر واتساب (البداية + الإكمال) لكل عنوان — **منفصل** عن
+     * `authMax` كي لا يستهلك زبائنُ يسجّلون خلف NAT المشغّل حدَّ الدخول، ولا يحجبهم
+     * هو قبل حدود القاعدة الطبقية (٣٠ غير متحقَّق/ساعة). المنعُ الحقيقي هناك.
+     */
+    whatsappSignupMax: Number(process.env.RATE_LIMIT_WHATSAPP_SIGNUP_MAX ?? 120),
     /** محاولات تسجيل الدخول لكل (رقم + IP) — هذا هو الحاجز ضد تخمين كلمة المرور. */
     loginMaxPerPhone: Number(process.env.RATE_LIMIT_LOGIN_MAX_PER_PHONE ?? 10),
     /** محاولات التحقق من الرمز لكل (رقم + IP). */

@@ -80,17 +80,69 @@ class _RegisterScreenState extends State<RegisterScreen>
   /// الحاوية (الاختبارات) — يُبقي الشاشة كما كانت حرفياً.
   bool _whatsAppEnabled = false;
 
+  /// [STEP 85] حين يكون واتساب مفعَّلاً يختار الزبون الطريق أولاً — طريقان
+  /// ظاهران بالقدر نفسه. `false` = لم يختر بعد؛ `true` = «المتابعة بدون
+  /// واتساب»: الاستمارة الإدارية القائمة نفسها (طلبٌ معلَّق حتى موافقة الإدارة).
+  /// حين لا يكون واتساب مفعَّلاً لا اختيار: الاستمارة مباشرةً كما كانت.
+  bool _manualChosen = false;
+
   Future<void> _loadWhatsAppOption() async {
     if (!sl.isRegistered<WhatsAppSignupRepository>()) return;
     final options = await sl<WhatsAppSignupRepository>().options();
     if (mounted && options.enabled) setState(() => _whatsAppEnabled = true);
   }
 
-  void _openWhatsAppSignup() {
+  Future<void> _openWhatsAppSignup() async {
     final typed = _phoneController.text;
-    context.router.push(
+    final result = await context.router.push<String>(
       WhatsAppSignupRoute(initialPhone: isValidIraqiLocalPhone(typed) ? typed : null),
     );
+    // عاد بـ«المتابعة بدون واتساب»: الاستمارة الإدارية، والرقم الذي كتبه هناك.
+    if (!mounted || result == null) return;
+    setState(() {
+      _manualChosen = true;
+      if (_phoneController.text.isEmpty && isValidIraqiLocalPhone(result)) {
+        _phoneController.text = result;
+      }
+    });
+  }
+
+  /// الطريقان قبل الاختيار — زرّان كاملان، لكلٍّ سطرٌ يقول ما يحدث بعده.
+  List<Widget> _pathChoice(BuildContext context) {
+    final hint = Theme.of(context).textTheme.bodySmall?.copyWith(
+      color: Theme.of(context).colorScheme.onSurfaceVariant,
+      height: 1.6,
+    );
+    return [
+      Text(
+        context.strings('regChooseMethod'),
+        key: const Key('registerChooseMethod'),
+        textAlign: TextAlign.center,
+        style: Theme.of(context).textTheme.titleSmall,
+      ),
+      SizedBox(height: AppDimens.space4),
+      AnimePrimaryButton(
+        key: const Key('registerWithWhatsApp'),
+        label: context.strings('waSignupEntry'),
+        icon: Icons.chat_outlined,
+        onPressed: _openWhatsAppSignup,
+        height: AppDimens.buttonHeightXl,
+        borderRadius: AppDimens.radiusMd,
+        gradient: AppColors.ctaGradient,
+      ),
+      SizedBox(height: AppDimens.space2),
+      Text(context.strings('regPathWhatsAppHint'), textAlign: TextAlign.center, style: hint),
+      SizedBox(height: AppDimens.space5),
+      AnimeOutlinedButton(
+        key: const Key('registerWithoutWhatsApp'),
+        label: context.strings('regContinueWithoutWhatsApp'),
+        icon: Icons.assignment_ind_outlined,
+        height: AppDimens.buttonHeightXl,
+        onPressed: () => setState(() => _manualChosen = true),
+      ),
+      SizedBox(height: AppDimens.space2),
+      Text(context.strings('regPathManualHint'), textAlign: TextAlign.center, style: hint),
+    ];
   }
 
   @override
@@ -184,18 +236,27 @@ class _RegisterScreenState extends State<RegisterScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // التسجيل عبر واتساب — مسارٌ إضافي، والاستمارة أدناه تبقى البديل.
+                // واتساب مفعَّل ولم يُختر طريق: الطريقان وحدهما، بلا استمارة.
+                if (_whatsAppEnabled && !_manualChosen)
+                  ..._pathChoice(context)
+                else ...[
+                // «المتابعة بدون واتساب» اختيرت: الاستمارة الإدارية، ورجوعٌ إلى واتساب.
                 if (_whatsAppEnabled) ...[
-                  AnimePrimaryButton(
-                    key: const Key('registerWithWhatsApp'),
-                    label: context.strings('waSignupEntry'),
-                    icon: Icons.chat_outlined,
-                    onPressed: _openWhatsAppSignup,
-                    height: AppDimens.buttonHeightXl,
-                    borderRadius: AppDimens.radiusMd,
-                    gradient: AppColors.ctaGradient,
+                  Text(
+                    context.strings('regPathManualHint'),
+                    key: const Key('registerManualNotice'),
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      height: 1.6,
+                    ),
                   ),
-                  SizedBox(height: AppDimens.space5),
+                  AnimeTextButton(
+                    key: const Key('registerSwitchToWhatsApp'),
+                    label: context.strings('regSwitchToWhatsApp'),
+                    onPressed: _openWhatsAppSignup,
+                  ),
+                  SizedBox(height: AppDimens.space3),
                 ],
                 // حقل اسم المستخدم
                 AuthField(
@@ -326,6 +387,7 @@ class _RegisterScreenState extends State<RegisterScreen>
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
+                ],
               ],
             ),
           ),

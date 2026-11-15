@@ -7,6 +7,10 @@
 //   - الوضع off (أو خادمٌ أقدم): شاشة التسجيل كما هي حرفياً — لا زرّ واتساب.
 //   - البديل الإداري ظاهرٌ في كل خطوة.
 
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -14,6 +18,16 @@ import 'package:otaku_galaxy/core/design_system/themes/app_theme.dart';
 import 'package:otaku_galaxy/core/di/injection_container.dart';
 import 'package:otaku_galaxy/core/errors/app_exception.dart';
 import 'package:otaku_galaxy/core/l10n/app_strings.dart';
+import 'package:otaku_galaxy/core/network/api_client.dart';
+import 'package:otaku_galaxy/features/auth/domain/entities/account_request.dart';
+import 'package:otaku_galaxy/features/auth/domain/usecases/change_password_usecase.dart';
+import 'package:otaku_galaxy/features/auth/domain/usecases/forgot_password_usecase.dart';
+import 'package:otaku_galaxy/features/auth/domain/usecases/get_me_usecase.dart';
+import 'package:otaku_galaxy/features/auth/domain/usecases/login_usecase.dart';
+import 'package:otaku_galaxy/features/auth/domain/usecases/register_usecase.dart';
+import 'package:otaku_galaxy/features/auth/domain/usecases/update_profile_usecase.dart';
+import 'package:otaku_galaxy/features/auth/presentation/cubit/auth_cubit.dart';
+import 'package:otaku_galaxy/features/auth/presentation/screens/register_screen.dart';
 import 'package:otaku_galaxy/features/auth/domain/entities/auth_session.dart';
 import 'package:otaku_galaxy/features/settings/presentation/cubit/locale_cubit.dart';
 import 'package:otaku_galaxy/features/whatsapp_signup/data/whatsapp_signup_repository.dart';
@@ -31,6 +45,7 @@ class _FakeRepo implements WhatsAppSignupRepository {
   final List<WhatsAppSignupStatus> statuses = [];
   AppException? statusError;
   AppException? completeError;
+  AppException? startError;
   int statusCalls = 0;
   final List<String> started = [];
   final List<Map<String, String>> completed = [];
@@ -41,6 +56,8 @@ class _FakeRepo implements WhatsAppSignupRepository {
   @override
   Future<WhatsAppSignupSession> start(String phone) async {
     started.add(phone);
+    final error = startError;
+    if (error != null) throw error;
     return WhatsAppSignupSession(
       sessionId: 'sid-1',
       secret: 'S' * 43,
@@ -81,6 +98,52 @@ class _FakeRepo implements WhatsAppSignupRepository {
       user: stubUser(gender: gender),
     );
   }
+}
+
+/// يسجّل طلب الحساب الإداري ثم يرفض — فلا تنتقل الشاشة (لا موجّه في الاختبار).
+class _RecordingAuthRepo extends StubAuthRepository {
+  _RecordingAuthRepo() : super(stubUser());
+
+  final List<Map<String, String>> registered = [];
+
+  @override
+  Future<AccountRequestReceipt> register({
+    required String username,
+    required String phone,
+    required String password,
+    required String gender,
+  }) async {
+    registered.add({
+      'username': username,
+      'phone': phone,
+      'password': password,
+      'gender': gender,
+    });
+    throw const AppException('stop-before-navigation', statusCode: 400);
+  }
+}
+
+/// خادمٌ يردّ بمغلّف خطأ ثابت — لفحص ما يقرؤه `ApiClient` منه.
+class _ErrorAdapter implements HttpClientAdapter {
+  _ErrorAdapter(this.status, this.body);
+  final int status;
+  final Map<String, Object?> body;
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async => ResponseBody.fromString(
+    jsonEncode(body),
+    status,
+    headers: {
+      Headers.contentTypeHeader: [Headers.jsonContentType],
+    },
+  );
+
+  @override
+  void close({bool force = false}) {}
 }
 
 WhatsAppSignupCubit _cubit(
@@ -460,12 +523,212 @@ void main() {
     });
   });
 
+  group('[STEP 85] شاشة التسجيل — الطريقان', () {
+    Future<(_FakeRepo, _RecordingAuthRepo)> pumpRegister(
+      WidgetTester tester, {
+      required bool enabled,
+    }) async {
+      tester.view.physicalSize = const Size(430, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      final wa = _FakeRepo()
+        ..optionsValue = enabled
+            ? const WhatsAppSignupOptions(
+                enabled: true,
+                businessNumber: '+9647500000000',
+              )
+            : WhatsAppSignupOptions.disabled;
+      sl.registerSingleton<WhatsAppSignupRepository>(wa);
+      addTearDown(() => sl.unregister<WhatsAppSignupRepository>());
+      final auth = _RecordingAuthRepo();
+      final cubit = AuthCubit(
+        localStorage: InMemoryAuthStorage(stubUser()),
+        loginUsecase: LoginUsecase(auth),
+        registerUsecase: RegisterUsecase(auth),
+        forgotPasswordUsecase: ForgotPasswordUsecase(auth),
+        getMeUsecase: GetMeUsecase(auth),
+        updateProfileUsecase: UpdateProfileUsecase(auth),
+        changePasswordUsecase: ChangePasswordUsecase(auth),
+      );
+      addTearDown(cubit.close);
+      await tester.pumpWidget(
+        BlocProvider<AuthCubit>.value(
+          value: cubit,
+          child: MaterialApp(
+            theme: AppTheme.light,
+            home: const Directionality(
+              textDirection: TextDirection.rtl,
+              child: RegisterScreen(),
+            ),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(seconds: 1));
+      return (wa, auth);
+    }
+
+    testWidgets(
+      'auto: الطريقان ظاهران بالقدر نفسه قبل أي استمارة — واتساب و«المتابعة بدون واتساب»',
+      (tester) async {
+        await pumpRegister(tester, enabled: true);
+        final s = AppStrings.arabic;
+        expect(find.byKey(const Key('registerChooseMethod')), findsOneWidget);
+        expect(find.byKey(const Key('registerWithWhatsApp')), findsOneWidget);
+        expect(find.byKey(const Key('registerWithoutWhatsApp')), findsOneWidget);
+        expect(find.text(s('regContinueWithoutWhatsApp')), findsOneWidget);
+        expect(find.text(s('regPathWhatsAppHint')), findsOneWidget);
+        expect(find.text(s('regPathManualHint')), findsOneWidget);
+        // لا استمارة قبل الاختيار.
+        expect(find.byType(TextField), findsNothing);
+      },
+    );
+
+    testWidgets(
+      '[CRITICAL] «المتابعة بدون واتساب»: الاستمارة الإدارية نفسها، وتُرسل طلباً بلا أي خطوة واتساب',
+      (tester) async {
+        final (wa, auth) = await pumpRegister(tester, enabled: true);
+        await tester.tap(find.byKey(const Key('registerWithoutWhatsApp')));
+        await tester.pump();
+        expect(find.byKey(const Key('registerManualNotice')), findsOneWidget);
+        expect(find.byKey(const Key('registerSwitchToWhatsApp')), findsOneWidget);
+        expect(find.byKey(const Key('registerWithWhatsApp')), findsNothing);
+        final fields = find.byType(TextField);
+        expect(fields, findsNWidgets(3));
+        await tester.enterText(fields.at(0), 'بلا واتساب');
+        await tester.enterText(fields.at(1), '07701234567');
+        await tester.enterText(fields.at(2), 'secret-pass-1');
+        await tester.tap(find.text(AppStrings.arabic('genderMale')));
+        await tester.pump();
+        await tester.tap(find.text(AppStrings.arabic('submitRequest')));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(auth.registered, [
+          {
+            'username': 'بلا واتساب',
+            'phone': '+9647701234567',
+            'password': 'secret-pass-1',
+            'gender': 'male',
+          },
+        ]);
+        expect(wa.started, isEmpty);
+        await tester.pumpWidget(const SizedBox());
+        await tester.pump(const Duration(seconds: 5));
+      },
+    );
+
+    testWidgets('off: لا اختيار ولا زرّ واتساب — الاستمارة مباشرةً كما كانت', (
+      tester,
+    ) async {
+      await pumpRegister(tester, enabled: false);
+      expect(find.byKey(const Key('registerChooseMethod')), findsNothing);
+      expect(find.byKey(const Key('registerWithWhatsApp')), findsNothing);
+      expect(find.byKey(const Key('registerWithoutWhatsApp')), findsNothing);
+      expect(find.byKey(const Key('registerManualNotice')), findsNothing);
+      expect(find.byType(TextField), findsNWidgets(3));
+      expect(find.text(AppStrings.arabic('submitRequest')), findsOneWidget);
+    });
+  });
+
+  group('[STEP 85] معلومات إعادة المحاولة', () {
+    testWidgets(
+      '429 عند البدء: السبب ومتى تُقبل المحاولة، و«المتابعة بدون واتساب» زرٌّ كامل في مكانه',
+      (tester) async {
+        final repo = _FakeRepo()
+          ..startError = const AppException(
+            'طلبات كثيرة لهذا الرقم — حاول بعد قليل',
+            statusCode: 429,
+            code: 'WHATSAPP_VERIFY_RATE_LIMITED',
+            retryAfterSeconds: 125,
+          );
+        SharedPreferences.setMockInitialValues({'app_language_code': 'ar'});
+        final prefs = await SharedPreferences.getInstance();
+        final locale = LocaleCubit(prefs)..loadPreference();
+        addTearDown(locale.close);
+        tester.view.physicalSize = const Size(412, 1400);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(
+          BlocProvider<LocaleCubit>.value(
+            value: locale,
+            child: MaterialApp(
+              theme: AppTheme.light,
+              home: WhatsAppSignupScreen(
+                initialPhone: '07701234567',
+                repository: repo,
+                store: MemoryWhatsAppSignupStore(),
+                openLink: (_) async => false,
+              ),
+            ),
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 100));
+        await tester.tap(find.byKey(const Key('waSignupStart')));
+        await tester.pump();
+        await tester.pump();
+        final limited = tester.widget<Text>(
+          find.byKey(const Key('waSignupLimited')),
+        );
+        expect(limited.data, contains('طلبات كثيرة لهذا الرقم'));
+        expect(
+          limited.data,
+          contains(
+            AppStrings.arabic.p('waSignupRetryIn', {'time': '2:05'}),
+          ),
+        );
+        expect(find.byKey(const Key('waSignupManualInline')), findsOneWidget);
+        // لا شريط عابر مكرَّر: الرسالة في مكانها.
+        expect(find.byType(SnackBar), findsNothing);
+        await tester.pumpWidget(const SizedBox());
+      },
+    );
+
+    test('formatWait: أرقامٌ بلا وحدات', () {
+      expect(formatWait(0), '0:00');
+      expect(formatWait(59), '0:59');
+      expect(formatWait(125), '2:05');
+      expect(formatWait(3600), '1:00:00');
+      expect(formatWait(86399), '23:59:59');
+    });
+
+    test(
+      'ApiClient يقرأ error.retryAfterSeconds من مغلّف 429 — وغيابه null',
+      () async {
+        Future<AppException> errorFrom(Map<String, Object?> error) async {
+          final client = ApiClient(
+            dio: Dio(BaseOptions(baseUrl: 'https://test.local/api'))
+              ..httpClientAdapter = _ErrorAdapter(429, {
+                'success': false,
+                'data': null,
+                'message': 'طلبات كثيرة',
+                'error': error,
+              }),
+          );
+          try {
+            await client.post('/auth/register/whatsapp/start', body: {});
+          } on AppException catch (e) {
+            return e;
+          }
+          fail('expected AppException');
+        }
+
+        final limited = await errorFrom({
+          'code': 'WHATSAPP_VERIFY_RATE_LIMITED',
+          'retryAfterSeconds': 61,
+        });
+        expect(limited.statusCode, 429);
+        expect(limited.code, 'WHATSAPP_VERIFY_RATE_LIMITED');
+        expect(limited.retryAfterSeconds, 61);
+        expect((await errorFrom({'code': 'RATE_LIMITED'})).retryAfterSeconds, isNull);
+      },
+    );
+  });
+
   group('النصوص', () {
     test(
       'كل مفتاح waSignup* له عربي وكردي مختلفان، والمتغيّرات نفسها في اللغتين',
       () {
         final keys = AppStrings.keys
-            .where((k) => k.startsWith('waSignup'))
+            .where((k) => k.startsWith('waSignup') || k.startsWith('regPath') || k == 'regChooseMethod' || k == 'regContinueWithoutWhatsApp' || k == 'regSwitchToWhatsApp')
             .toList();
         expect(keys.length, greaterThanOrEqualTo(20));
         for (final key in keys) {

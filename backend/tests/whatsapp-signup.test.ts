@@ -120,8 +120,11 @@ async function cleanup() {
 
 beforeAll(async () => {
   await cleanup();
-  wa.limits.perIpHour = 100_000;
+  wa.limits.perIpUnverifiedHour = 100_000;
+  wa.limits.perIpDay = 100_000;
+  wa.limits.globalUnverifiedDay = 100_000;
   wa.limits.globalDay = 100_000;
+  wa.limits.outboundDay = 100_000;
 });
 afterAll(async () => {
   wa.mode = ORIGINAL.mode;
@@ -529,12 +532,12 @@ describe('الحدود والمزوّد والتنظيف', () => {
   });
 
   it('سقف العنوان وسقف اليوم العام (من القاعدة لا من الذاكرة)', async () => {
-    wa.limits.perIpHour = 1;
+    wa.limits.perIpUnverifiedHour = 1;
     try {
       const res = await api.post('/api/auth/register/whatsapp/start').send({ phone: freshLocal() });
       expect(res.status).toBe(429);
     } finally {
-      wa.limits.perIpHour = 100_000;
+      wa.limits.perIpUnverifiedHour = 100_000;
     }
     wa.limits.globalDay = 1;
     try {

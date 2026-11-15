@@ -3,6 +3,7 @@ import { db, withTransaction } from '../database/pool.js';
 import { WHATSAPP_SIGNUP_TEXTS } from '../domain/whatsappSignupTexts.js';
 import type { AppLocale } from '../utils/locale.js';
 import { WhatsAppSendError, whatsappProvider, type OutboundMessage } from '../services/whatsapp/provider.js';
+import { noteCapUsage } from '../services/whatsappSignupService.js';
 
 /**
  * ردود واتساب الصادرة للتحقق التلقائي + تنظيف البيانات القديمة.
@@ -60,11 +61,23 @@ export async function runWhatsAppOutboxOnce(): Promise<{ sent: number; failed: n
   });
 
   const provider = whatsappProvider();
+  // [COST] سقف الرسائل الصادرة في اليوم (المرسَلة فعلاً). المهمّة عمليةٌ واحدة
+  // تُرسل بالتسلسل، فالعدّ مرّةً ثم الزيادة محلياً دقيق.
+  const outboundCap = config.whatsapp.limits.outboundDay;
+  let sentToday = claimed.length === 0 ? 0 : await countSentToday();
   for (const row of claimed) {
     // طلب مشاركة الرقم لجلسةٍ لم تعد تنتظره (تحقّقت، ماتت) لا يُرسل.
     if (row.kind === 'contact_request' && (row.session_status !== 'awaiting_contact' || !row.sender_ref)) {
       await db.query(`UPDATE whatsapp_outbox SET status = 'skipped' WHERE id = $1`, [row.id]);
       counts.skipped++;
+      continue;
+    }
+    if (sentToday >= outboundCap) {
+      // لا يُرسل ولا يُعاد: طلب مشاركةٍ يبقى بلا ردّ فتنتهي الجلسة بمهلتها (لا
+      // تحقّق بلا دليل)، والتأكيد يسقط. الإدارة بديلٌ دائم.
+      await db.query(`UPDATE whatsapp_outbox SET status = 'skipped', last_error_code = 'daily_cap' WHERE id = $1`, [row.id]);
+      counts.skipped++;
+      noteOutboundCapReached();
       continue;
     }
     const texts = WHATSAPP_SIGNUP_TEXTS[row.locale] ?? WHATSAPP_SIGNUP_TEXTS.ar;
@@ -83,6 +96,8 @@ export async function runWhatsAppOutboxOnce(): Promise<{ sent: number; failed: n
         [row.id, providerMessageId.slice(0, 256)],
       );
       counts.sent++;
+      sentToday++;
+      noteCapUsage('outbound-messages', sentToday, outboundCap);
     } catch (error) {
       const code = error instanceof WhatsAppSendError ? error.code : 'unexpected';
       const retryable = error instanceof WhatsAppSendError ? error.retryable : false;
@@ -101,6 +116,26 @@ export async function runWhatsAppOutboxOnce(): Promise<{ sent: number; failed: n
     }
   }
   return counts;
+}
+
+async function countSentToday(): Promise<number> {
+  const { rows: [row] } = await db.query<{ n: number }>(
+    `SELECT COUNT(*)::int AS n FROM whatsapp_outbox WHERE status = 'sent' AND sent_at > now() - interval '1 day'`,
+  );
+  return row!.n;
+}
+
+let outboundCapWarnedDay = '';
+function noteOutboundCapReached() {
+  const day = new Date().toISOString().slice(0, 10);
+  if (outboundCapWarnedDay === day) return;
+  outboundCapWarnedDay = day;
+  console.warn('[whatsapp-outbox] daily outbound message cap reached — replies skipped');
+}
+
+/** للاختبارات. */
+export function resetOutboundCapWarningForTests() {
+  outboundCapWarnedDay = '';
 }
 
 /**

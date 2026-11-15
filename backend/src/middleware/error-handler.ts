@@ -273,6 +273,15 @@ export function whatsappStatusRateLimiter() {
 }
 
 /** ويبهوك واتساب — Meta ترسل من عناوين قليلة؛ سقفٌ واسع ضد الفيضان وحده. */
+/**
+ * فيضان التسجيل عبر واتساب لكل عنوان — دلوٌ مستقلّ عن `authRateLimiter`
+ * (انظر `config.rateLimit.whatsappSignupMax`). نسخةٌ واحدة تُركَّب على البداية
+ * والإكمال معاً فيتقاسمان الدلو.
+ */
+export function whatsappSignupFloodLimiter() {
+  return limiter({ limit: config.rateLimit.whatsappSignupMax });
+}
+
 export function whatsappWebhookRateLimiter() {
   return limiter({ limit: 600, windowMs: 60_000 });
 }

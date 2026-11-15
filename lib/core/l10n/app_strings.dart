@@ -655,7 +655,13 @@ class AppStrings {
     'waSignupDead': 'تعذّر التحقق من هذا الرقم عبر واتساب',
     'waSignupPhoneTaken': 'هذا الرقم لديه حساب بالفعل',
     'waSignupStartAgain': 'ابدأ من جديد',
-    'waSignupManual': 'اطلب حساباً بمراجعة الإدارة بدلاً من ذلك',
+    'waSignupManual': 'المتابعة بدون واتساب — طلب بمراجعة الإدارة',
+    'waSignupRetryIn': 'المحاولة متاحة بعد {time}',
+    'regChooseMethod': 'طريقة إنشاء الحساب',
+    'regPathWhatsAppHint': 'رسالة واحدة من واتساب على الرقم نفسه، ثم إكمال البيانات — والتفعيل فوري',
+    'regContinueWithoutWhatsApp': 'المتابعة بدون واتساب',
+    'regPathManualHint': 'بلا واتساب: يُرسَل الطلب إلى الإدارة، ويُفعَّل الحساب بعد مراجعته',
+    'regSwitchToWhatsApp': 'لديك واتساب؟ التفعيل الفوري متاح',
   };
 
   static const _ckb = <String, String>{
@@ -1248,7 +1254,13 @@ class AppStrings {
     'waSignupDead': 'پشتڕاستکردنەوەی ئەم ژمارەیە لە ڕێگەی واتسئاپەوە سەرکەوتوو نەبوو',
     'waSignupPhoneTaken': 'ئەم ژمارەیە پێشتر هەژماری هەیە',
     'waSignupStartAgain': 'لە سەرەتاوە دەست پێبکەرەوە',
-    'waSignupManual': 'لەبری ئەوە داوای هەژمار بکە بە پێداچوونەوەی بەڕێوەبەرایەتی',
+    'waSignupManual': 'بەردەوامبوون بەبێ واتسئاپ — داواکاری بە پێداچوونەوەی بەڕێوەبەرایەتی',
+    'waSignupRetryIn': 'دوای {time} دەتوانرێت دووبارە هەوڵ بدرێتەوە',
+    'regChooseMethod': 'ڕێگای دروستکردنی هەژمار',
+    'regPathWhatsAppHint': 'یەک نامەی واتسئاپ لە هەمان ژمارەوە، پاشان تەواوکردنی زانیارییەکان — چالاککردن دەستبەجێیە',
+    'regContinueWithoutWhatsApp': 'بەردەوامبوون بەبێ واتسئاپ',
+    'regPathManualHint': 'بەبێ واتسئاپ: داواکارییەکە بۆ بەڕێوەبەرایەتی دەنێردرێت، هەژمارەکە دوای پێداچوونەوە چالاک دەکرێت',
+    'regSwitchToWhatsApp': 'واتسئاپت هەیە؟ چالاککردنی دەستبەجێ بەردەستە',
   };
 
   static const arabic = AppStrings._(_ar);

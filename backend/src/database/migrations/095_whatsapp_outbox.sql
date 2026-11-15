@@ -21,6 +21,8 @@ CREATE TABLE whatsapp_outbox (
 );
 
 CREATE INDEX idx_wa_outbox_due ON whatsapp_outbox (next_attempt_at) WHERE status = 'queued';
+-- سقف الرسائل الصادرة في اليوم (`WHATSAPP_OUTBOUND_DAILY_CAP`) يعدّ المرسَلة منذ ٢٤ ساعة.
+CREATE INDEX idx_wa_outbox_sent ON whatsapp_outbox (sent_at) WHERE status = 'sent';
 
 COMMENT ON TABLE whatsapp_outbox IS
   'ردود واتساب الصادرة للتحقق التلقائي — تُرسلها مهمّة دورية. تُحذف مع جلستها.';

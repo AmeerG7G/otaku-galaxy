@@ -129,8 +129,12 @@ class _WhatsAppSignupViewState extends State<_WhatsAppSignupView>
   }
 
   String _errorText(AppException e) {
-    final text = e.localizedMessage(context);
-    return text.trim().isEmpty ? context.strings('unexpectedError') : text;
+    final raw = e.localizedMessage(context);
+    final text = raw.trim().isEmpty ? context.strings('unexpectedError') : raw;
+    final wait = e.retryAfterSeconds;
+    if (wait == null) return text;
+    // متى تُقبل المحاولة التالية — الخادم يحسبها من نافذة الحدّ نفسها.
+    return '$text\n${context.strings.p('waSignupRetryIn', {'time': formatWait(wait)})}';
   }
 
   Future<void> _start() async {
@@ -170,7 +174,9 @@ class _WhatsAppSignupViewState extends State<_WhatsAppSignupView>
     );
   }
 
-  void _manualReview() => context.router.maybePop();
+  /// «المتابعة بدون واتساب»: يعود إلى شاشة التسجيل في وضع الطلب الإداري، ومعه
+  /// الرقم المكتوب هنا (في الذاكرة وحدها) فلا يُعاد كتابته.
+  void _manualReview() => context.router.maybePop<String>(_phoneController.text);
 
   @override
   Widget build(BuildContext context) {
@@ -178,7 +184,12 @@ class _WhatsAppSignupViewState extends State<_WhatsAppSignupView>
       listenWhen: (a, b) => a.error != b.error || a.step != b.step,
       listener: (context, state) {
         final error = state.error;
-        if (error != null && state.step != WhatsAppSignupStep.waiting) {
+        // ‏429 في خطوة الرقم يُعرض في مكانه مع البديل (`waSignupLimited`).
+        final shownInline =
+            error?.statusCode == 429 && state.step == WhatsAppSignupStep.phone;
+        if (error != null &&
+            state.step != WhatsAppSignupStep.waiting &&
+            !shownInline) {
           _snack(_errorText(error));
         }
         if (state.step == WhatsAppSignupStep.done) {
@@ -246,6 +257,25 @@ class _WhatsAppSignupViewState extends State<_WhatsAppSignupView>
             height: AppDimens.buttonHeightXl,
             gradient: AppColors.ctaGradient,
           ),
+          // حدٌّ بلغ سقفه (429): السبب ومتى تُقبل المحاولة، والطلب الإداري
+          // زرٌّ كامل هنا — لا رابطٌ في التذييل وحده.
+          if (state.error case final error? when error.statusCode == 429) ...[
+            SizedBox(height: AppDimens.space4),
+            Text(
+              _errorText(error),
+              key: const Key('waSignupLimited'),
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.error,
+              ),
+            ),
+            SizedBox(height: AppDimens.space3),
+            AnimeOutlinedButton(
+              key: const Key('waSignupManualInline'),
+              label: context.strings('regContinueWithoutWhatsApp'),
+              onPressed: _manualReview,
+            ),
+          ],
         ],
       ),
     );
@@ -486,4 +516,13 @@ class _StatusLineState extends State<_StatusLine> {
       ],
     );
   }
+}
+
+/// مدّة انتظار بأرقامٍ بلا وحدات (لا تحتاج ترجمة): ‎2:05 أو ‎1:00:00.
+String formatWait(int seconds) {
+  final s = seconds < 0 ? 0 : seconds;
+  final h = s ~/ 3600;
+  final m = (s % 3600) ~/ 60;
+  final sec = (s % 60).toString().padLeft(2, '0');
+  return h > 0 ? '$h:${m.toString().padLeft(2, '0')}:$sec' : '$m:$sec';
 }

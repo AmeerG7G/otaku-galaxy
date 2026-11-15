@@ -1,5 +1,6 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import bcrypt from 'bcryptjs';
+import { ipKeyGenerator } from 'express-rate-limit';
 import type pg from 'pg';
 import { config } from '../config/index.js';
 import { db, withTransaction } from '../database/pool.js';
@@ -107,6 +108,16 @@ export function extractSignupCode(text: string): string | null {
 
 const pepper = (purpose: string, value: string) =>
   createHmac('sha256', config.whatsapp.tokenPepper).update(`${purpose}:${value}`).digest();
+
+/**
+ * مفتاح العنوان للحدود: IPv4 كاملاً، وIPv6 بشبكته ‎/56 — المفتاح نفسه الذي تبني
+ * عليه حدود الذاكرة (`clientRateLimitKey`). عنوانٌ خام كان يُعدّ وحده، فمن يملك
+ * شبكة IPv6 (والمشترك المنزلي يملك ‎/64 على الأقل) يبدّل عنوانه مع كل طلب.
+ * يُخزَّن مجزَّأً بـHMAC (`ip_hash`) — لا عنوانٌ صريح في القاعدة.
+ */
+export function signupIpKey(ip: string): string {
+  return ipKeyGenerator(ip);
+}
 
 const sha256 = (value: string) => createHash('sha256').update(value, 'utf8').digest();
 
@@ -216,47 +227,19 @@ export const whatsappSignupService = {
    */
   async start(input: { phone: string; ip: string; locale: AppLocale }) {
     assertWhatsAppSignupEnabled();
-    const { limits, sessionTtlSeconds, completeWindowSeconds } = config.whatsapp;
+    const { sessionTtlSeconds } = config.whatsapp;
     const code = generateSignupCode();
     const secret = randomBytes(32).toString('base64url');
-    const ipHash = input.ip ? pepper('ip', input.ip) : null;
+    const ipHash = input.ip ? pepper('ip', signupIpKey(input.ip)) : null;
 
     const row = await withTransaction(async (tx) => {
-      // [CONCURRENCY] عدّ الحدود ثم الإدراج تحت قفلٍ للرقم: عشرة طلبات متزامنة
-      // لا تقرأ كلها «صفر» فتمرّ.
-      await tx.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`wa-signup:${input.phone}`]);
-      const { rows: [perPhone] } = await tx.query<{ live: number; hour: number; day: number }>(
-        `SELECT
-           COUNT(*) FILTER (WHERE (status = 'pending' AND expires_at > now())
-                               OR (status = 'awaiting_contact' AND contact_deadline > now())
-                               OR (status = 'verified' AND verified_at + make_interval(secs => $2) > now()))::int AS live,
-           COUNT(*) FILTER (WHERE created_at > now() - interval '1 hour')::int AS hour,
-           COUNT(*)::int AS day
-         FROM whatsapp_signup_sessions
-         WHERE phone = $1 AND created_at > now() - interval '1 day'`,
-        [input.phone, completeWindowSeconds],
-      );
-      if (perPhone!.live >= limits.livePerPhone || perPhone!.hour >= limits.perPhoneHour || perPhone!.day >= limits.perPhoneDay) {
-        throw Errors.tooManyRequests('طلبات كثيرة لهذا الرقم — حاول بعد قليل', 'WHATSAPP_VERIFY_RATE_LIMITED');
-      }
-      if (ipHash) {
-        const { rows: [perIp] } = await tx.query<{ n: number }>(
-          `SELECT COUNT(*)::int AS n FROM whatsapp_signup_sessions
-            WHERE ip_hash = $1 AND created_at > now() - interval '1 hour'`,
-          [ipHash],
-        );
-        if (perIp!.n >= limits.perIpHour) throw Errors.tooManyRequests('طلبات كثيرة، حاول لاحقاً', 'WHATSAPP_VERIFY_RATE_LIMITED');
-      }
-      const { rows: [global] } = await tx.query<{ n: number }>(
-        `SELECT COUNT(*)::int AS n FROM whatsapp_signup_sessions WHERE created_at > now() - interval '1 day'`,
-      );
-      if (global!.n >= limits.globalDay) {
-        console.warn('[whatsapp-signup] global daily cap reached');
-        throw Errors.tooManyRequests(
-          'التحقق عبر واتساب مشغول الآن — اطلب حساباً بالطريقة العادية',
-          'WHATSAPP_VERIFY_BUSY',
-        );
-      }
+      // [CONCURRENCY] قفلٌ واحد لكل البدايات: العدّ ثم الإدراج متسلسلان، فلا
+      // تقرأ بداياتٌ متزامنة (لرقمٍ أو عنوانٍ أو للمتجر كله) عدّاً واحداً فتتجاوز
+      // السقف معاً. القفل كان على الرقم وحده، فتجاوزت بداياتٌ متزامنة لأرقامٍ
+      // مختلفة من عنوانٍ واحد حصّته. البداية بضعة استعلاماتٍ مفهرسة — تسلسلها
+      // أرخص من سقفٍ لا يصدق.
+      await tx.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['wa-signup:start']);
+      await enforceStartLimits(tx, input.phone, ipHash);
       const { rows: [inserted] } = await tx.query<SessionRow>(
         `INSERT INTO whatsapp_signup_sessions (phone, code_hash, secret_hash, locale, provider, ip_hash, expires_at)
          VALUES ($1, $2, $3, $4, $5, $6, now() + make_interval(secs => $7))
@@ -373,6 +356,147 @@ export const whatsappSignupService = {
     return { token: signToken(result.user), user: toPublicUser(result.user) };
   },
 };
+
+// ═══ الحدود الطبقية للبداية ═══
+
+const HOUR = 3600;
+const DAY = 86_400;
+
+/**
+ * ثوانٍ حتى يهبط عدّ نافذةٍ متحرّكة تحت سقفها: عمر الصفّ الذي بخروجه يصير
+ * العدّ `limit - 1`. سقفٌ أعلى لا أدنى — جلسةٌ تتحقّق قبله تخرج من عدّ
+ * «غير المتحقَّق منها» أبكر.
+ */
+async function secondsUntilBelow(
+  tx: pg.PoolClient,
+  where: string,
+  params: unknown[],
+  windowSeconds: number,
+  count: number,
+  limit: number,
+): Promise<number> {
+  const { rows: [row] } = await tx.query<{ s: number }>(
+    `SELECT EXTRACT(EPOCH FROM (created_at + make_interval(secs => ${windowSeconds}) - now()))::float8 AS s
+       FROM whatsapp_signup_sessions WHERE ${where}
+      ORDER BY created_at ASC OFFSET ${Math.max(0, count - limit)} LIMIT 1`,
+    params,
+  );
+  return Math.max(1, row?.s ?? windowSeconds);
+}
+
+const phoneLimited = (retryAfter: number) =>
+  Errors.tooManyRequests('طلبات كثيرة لهذا الرقم — حاول بعد قليل', 'WHATSAPP_VERIFY_RATE_LIMITED', retryAfter);
+
+/**
+ * [SECURITY] كل حدود البداية — تحت قفل البدايات (`start`)، من القاعدة لا من
+ * الذاكرة فتصمد لإعادة التشغيل. الترتيب: الرقم ← العنوان ← المتجر.
+ *
+ * - الرقم: ٣ حيّة، ٦/ساعة، ١٥/يوم، وتأخيرٌ متصاعد بعد الثالثة في الساعة.
+ *   لا يعرف العنوان: تبديل العناوين لا يفتح رقماً.
+ * - العنوان: ٣٠ جلسة **غير متحقَّق منها** في الساعة، و٣٠٠ بداية في اليوم.
+ *   المتحقَّق منها لا تُحتسب في الأولى — الزبائن خلف NAT المشغّل لا يتزاحمون.
+ * - المتجر: ١٠٠٠ غير متحقَّق منها و٥٠٠٠ بداية في اليوم ← «مشغول» (`BUSY`):
+ *   الإدارة بديلٌ دائم، والجلسات المتحقَّق منها تكمل كما هي.
+ */
+async function enforceStartLimits(tx: pg.PoolClient, phone: string, ipHash: Buffer | null) {
+  const { limits, completeWindowSeconds } = config.whatsapp;
+
+  const { rows: [p] } = await tx.query<{ live: number; hour: number; day: number; last_age: number | null; live_free_in: number | null }>(
+    `SELECT
+       COUNT(*) FILTER (WHERE ${LIVE_SQL})::int AS live,
+       COUNT(*) FILTER (WHERE created_at > now() - interval '1 hour')::int AS hour,
+       COUNT(*)::int AS day,
+       EXTRACT(EPOCH FROM (now() - MAX(created_at) FILTER (WHERE created_at > now() - interval '1 hour')))::float8 AS last_age,
+       EXTRACT(EPOCH FROM (MIN(${LIVE_END_SQL}) FILTER (WHERE ${LIVE_SQL}) - now()))::float8 AS live_free_in
+     FROM whatsapp_signup_sessions
+     WHERE phone = $1 AND created_at > now() - interval '1 day'`,
+    [phone, completeWindowSeconds],
+  );
+  if (p!.live >= limits.livePerPhone) throw phoneLimited(p!.live_free_in ?? sessionTtlFallback());
+  if (p!.day >= limits.perPhoneDay) {
+    throw phoneLimited(await secondsUntilBelow(tx, 'phone = $1 AND created_at > now() - interval \'1 day\'', [phone], DAY, p!.day, limits.perPhoneDay));
+  }
+  if (p!.hour >= limits.perPhoneHour) {
+    throw phoneLimited(await secondsUntilBelow(tx, 'phone = $1 AND created_at > now() - interval \'1 hour\'', [phone], HOUR, p!.hour, limits.perPhoneHour));
+  }
+  // التأخير المتصاعد: البداية رقم (hour + 1) في الساعة تنتظر مهلتها منذ آخر بداية.
+  const delays = limits.perPhoneDelaysSeconds;
+  const delay = delays[Math.min(p!.hour, delays.length - 1)] ?? 0;
+  if (delay > 0 && p!.last_age !== null && p!.last_age < delay) throw phoneLimited(delay - p!.last_age);
+
+  if (ipHash) {
+    const { rows: [a] } = await tx.query<{ unverified: number; day: number }>(
+      `SELECT
+         COUNT(*) FILTER (WHERE verified_at IS NULL AND created_at > now() - interval '1 hour')::int AS unverified,
+         COUNT(*)::int AS day
+       FROM whatsapp_signup_sessions
+       WHERE ip_hash = $1 AND created_at > now() - interval '1 day'`,
+      [ipHash],
+    );
+    if (a!.unverified >= limits.perIpUnverifiedHour) {
+      throw Errors.tooManyRequests(
+        'طلبات كثيرة، حاول لاحقاً',
+        'WHATSAPP_VERIFY_RATE_LIMITED',
+        await secondsUntilBelow(tx, 'ip_hash = $1 AND verified_at IS NULL AND created_at > now() - interval \'1 hour\'', [ipHash], HOUR, a!.unverified, limits.perIpUnverifiedHour),
+      );
+    }
+    if (a!.day >= limits.perIpDay) {
+      throw Errors.tooManyRequests(
+        'طلبات كثيرة، حاول لاحقاً',
+        'WHATSAPP_VERIFY_RATE_LIMITED',
+        await secondsUntilBelow(tx, 'ip_hash = $1 AND created_at > now() - interval \'1 day\'', [ipHash], DAY, a!.day, limits.perIpDay),
+      );
+    }
+  }
+
+  const { rows: [g] } = await tx.query<{ unverified: number; day: number }>(
+    `SELECT COUNT(*) FILTER (WHERE verified_at IS NULL)::int AS unverified, COUNT(*)::int AS day
+       FROM whatsapp_signup_sessions WHERE created_at > now() - interval '1 day'`,
+  );
+  const busy = (retryAfter: number) =>
+    Errors.tooManyRequests('التحقق عبر واتساب مشغول الآن — اطلب حساباً بالطريقة العادية', 'WHATSAPP_VERIFY_BUSY', retryAfter);
+  if (g!.unverified >= limits.globalUnverifiedDay) {
+    console.warn('[whatsapp-signup] global unverified daily cap reached — WhatsApp sign-up busy');
+    throw busy(await secondsUntilBelow(tx, `verified_at IS NULL AND created_at > now() - interval '1 day'`, [], DAY, g!.unverified, limits.globalUnverifiedDay));
+  }
+  if (g!.day >= limits.globalDay) {
+    console.warn('[whatsapp-signup] global daily start cap reached — WhatsApp sign-up busy');
+    throw busy(await secondsUntilBelow(tx, `created_at > now() - interval '1 day'`, [], DAY, g!.day, limits.globalDay));
+  }
+  // البداية ستُقبل: العدّان بعدها +١.
+  noteCapUsage('global-unverified-starts', g!.unverified + 1, limits.globalUnverifiedDay);
+  noteCapUsage('global-starts', g!.day + 1, limits.globalDay);
+}
+
+/** جلسةٌ حيّة: تنتظر رسالةً أو مشاركةً أو إكمالاً قبل مهلتها. `$2` = مهلة الإكمال. */
+const LIVE_SQL = `((status = 'pending' AND expires_at > now())
+   OR (status = 'awaiting_contact' AND contact_deadline > now())
+   OR (status = 'verified' AND verified_at + make_interval(secs => $2) > now()))`;
+const LIVE_END_SQL = `CASE status WHEN 'pending' THEN expires_at
+   WHEN 'awaiting_contact' THEN contact_deadline
+   ELSE verified_at + make_interval(secs => $2) END`;
+const sessionTtlFallback = () => config.whatsapp.sessionTtlSeconds;
+
+const capWarned = new Map<string, { day: string; level: number }>();
+/**
+ * تحذيرٌ في السجلّ عند ٥٠٪ و٨٠٪ من سقفٍ يومي عام — مرّةً لكل مستوى في اليوم
+ * (UTC) لكل سقف، في هذه العملية. لا رقم ولا عنوان: الاسم والعدّ وحدهما.
+ */
+export function noteCapUsage(name: string, count: number, limit: number) {
+  const ratio = count / limit;
+  const level = ratio >= 0.8 ? 80 : ratio >= 0.5 ? 50 : 0;
+  if (level === 0) return;
+  const day = new Date().toISOString().slice(0, 10);
+  const seen = capWarned.get(name);
+  if (seen && seen.day === day && seen.level >= level) return;
+  capWarned.set(name, { day, level });
+  console.warn(`[whatsapp-signup] daily cap ${name} at ${level}% (${count}/${limit})`);
+}
+
+/** للاختبارات: تبدأ تحذيرات السقوف من الصفر. */
+export function resetCapWarningsForTests() {
+  capWarned.clear();
+}
 
 function assertCompletable(row: SessionRow) {
   const status = computeStatus(row);

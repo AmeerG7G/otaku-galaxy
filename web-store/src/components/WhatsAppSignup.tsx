@@ -7,6 +7,7 @@ import { GenderField } from './AuthForms';
 import { bff } from './client-api';
 import { PhoneField, usePhoneField } from './PhoneField';
 import { useHydrated } from './use-hydrated';
+import { formatWait } from '@/lib/wait';
 
 /**
  * WhatsApp sign-up (API `WHATSAPP_VERIFY_MODE=auto`): phone → send the
@@ -62,6 +63,8 @@ export function WhatsAppSignup() {
   const phone = usePhoneField();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The last start was refused by a limit (429): the manual path becomes a full button.
+  const [limited, setLimited] = useState(false);
   const [session, setSession] = useState<Started | null>(null);
   const [phase, setPhase] = useState<Phase | null>(null);
   const [mismatched, setMismatched] = useState(false);
@@ -130,9 +133,14 @@ export function WhatsAppSignup() {
     const result = await bff<Started>('/bff/register/whatsapp/start', { method: 'POST', body: { phone: phone.submitValue } });
     setBusy(false);
     if (!result.ok || !result.data) {
-      setError(result.error?.message ?? 'تعذّر بدء التحقق');
+      const wait = result.error?.retryAfterSeconds;
+      const message = result.error?.message ?? 'تعذّر بدء التحقق';
+      // When the next attempt is accepted — the API computes it from the limit's own window.
+      setError(wait ? `${message} — المحاولة متاحة بعد ${formatWait(wait)}` : message);
+      setLimited(result.status === 429);
       return;
     }
+    setLimited(false);
     setSession(result.data);
     setPhase('pending');
     setMismatched(false);
@@ -191,9 +199,10 @@ export function WhatsAppSignup() {
     setError(null);
   }
 
+  // "Continue without WhatsApp" — the administrator-reviewed request form, always one tap away.
   const manual = (
     <p className="hint form-links">
-      <Link href="/register">اطلب حساباً بمراجعة الإدارة بدلاً من ذلك</Link>
+      <Link href="/register?method=manual">المتابعة بدون واتساب — طلب بمراجعة الإدارة</Link>
     </p>
   );
 
@@ -275,7 +284,13 @@ export function WhatsAppSignup() {
       <button type="submit" className="btn btn-primary btn-block" disabled={busy || !hydrated}>
         {busy ? 'جارٍ البدء…' : 'متابعة'}
       </button>
-      {manual}
+      {limited ? (
+        <Link className="btn btn-block" href="/register?method=manual">
+          المتابعة بدون واتساب
+        </Link>
+      ) : (
+        manual
+      )}
     </form>
   );
 }

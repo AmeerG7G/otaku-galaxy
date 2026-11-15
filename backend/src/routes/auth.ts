@@ -7,6 +7,7 @@ import {
   accountRequestRateLimiter,
   authRateLimiter,
   loginRateLimiter,
+  whatsappSignupFloodLimiter,
   whatsappStatusRateLimiter,
 } from '../middleware/error-handler.js';
 
@@ -36,10 +37,17 @@ authRoutes.post('/forgot-password', floodGuard, accountRequestRateLimiter(), aut
  * (`/register` تحسمه الإدارة) باقٍ كما هو في الوضعين وهو البديل دائماً. في الوضع
  * `off` تردّ هذه النقاط ٤٠٤ وتقول الخيارات `enabled: false`.
  */
-authRoutes.get('/registration-options', floodGuard, whatsappSignupController.options);
-authRoutes.post('/register/whatsapp/start', floodGuard, accountRequestRateLimiter(), whatsappSignupController.start);
+// قراءةُ إعدادٍ عامّ تفتحها كل شاشة تسجيل — خارج `floodGuard` عمداً: ذلك الدلو
+// (لكل عنوان) يحرس الدخول، وخلف NAT المشغّل كانت فتحاتُ الشاشة تستهلكه. يبقى
+// تحت الحدّ العامّ للتطبيق (`globalRateLimiter`).
+authRoutes.get('/registration-options', whatsappSignupController.options);
+// [STEP 85] دلو فيضانٍ خاصّ بواتساب، لا `floodGuard` الذي يحرس الدخول: زبائن خلف
+// عنوانٍ واحد كانوا يُحجبون عنده (٦٠/١٥ دقيقة) قبل حدود القاعدة، ويستهلكون حدّ
+// دخول جيرانهم. الحدود الحقيقية في القاعدة (`whatsappSignupService.start`).
+const whatsappFlood = whatsappSignupFloodLimiter();
+authRoutes.post('/register/whatsapp/start', whatsappFlood, accountRequestRateLimiter(), whatsappSignupController.start);
 authRoutes.post('/register/whatsapp/status', whatsappStatusRateLimiter(), whatsappSignupController.status);
-authRoutes.post('/register/whatsapp/complete', floodGuard, whatsappSignupController.complete);
+authRoutes.post('/register/whatsapp/complete', whatsappFlood, whatsappSignupController.complete);
 
 authRoutes.get('/me', authenticate, authController.me);
 authRoutes.patch('/me', authenticate, authController.updateProfile);
