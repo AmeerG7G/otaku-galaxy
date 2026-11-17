@@ -104,6 +104,41 @@ describe('تحليل حمولة Meta', () => {
   });
 });
 
+describe('[SECURITY] BSUID ليس رقماً أبداً', () => {
+  const text = (m: Record<string, unknown>, contacts?: unknown[]) =>
+    parseMetaWebhook(wrap({ ...(contacts ? { contacts } : {}), messages: [{ id: 'wamid.b', timestamp: '1749416383', type: 'text', text: { body: 'x' }, ...m }] }))[0] as { senderPhone?: string; senderRef?: string };
+
+  it('BSUID أو اسم مستخدم في `from`/`wa_id` لا يصير رقم المرسِل', () => {
+    expect(text({ from: 'IQ.1a2b3c', from_user_id: 'IQ.1a2b3c' }).senderPhone).toBeUndefined();
+    expect(text({ from: '@otaku' }).senderPhone).toBeUndefined();
+    expect(text({ from: '+9647701234567' }).senderPhone).toBeUndefined(); // Meta لا ترسل `+`؛ صيغةٌ غريبة = غائب
+    expect(text({ from_user_id: 'IQ.9' }, [{ user_id: 'IQ.9', wa_id: 'IQ.9' }]).senderPhone).toBeUndefined();
+    expect(text({ from_user_id: 'IQ.9' }, [{ user_id: 'IQ.9', wa_id: '9647701234567' }])).toMatchObject({ senderPhone: '9647701234567', senderRef: 'IQ.9' });
+  });
+
+  it('ملفٌّ وحيد لمرسِلٍ آخر لا يُستعار رقمه', () => {
+    const e = text({ from_user_id: 'IQ.mine' }, [{ user_id: 'IQ.other', wa_id: '9647701234567' }]);
+    expect(e).toMatchObject({ senderRef: 'IQ.mine' });
+    expect(e.senderPhone).toBeUndefined();
+  });
+
+  it('ردّ زرّ المشاركة بمعرّفٍ ليس رقماً يُهمَل', () => {
+    const [event] = parseMetaWebhook(wrap({ messages: [{
+      from_user_id: 'IQ.3', id: 'wamid.c2', timestamp: '1749416383', type: 'contacts',
+      contacts: [{ origin: 'contact_request', phones: [{ wa_id: 'IQ.3' }] }],
+    }] }));
+    expect(event).toMatchObject({ kind: 'ignored', type: 'contacts:not_contact_request' });
+  });
+
+  it('حالات الإرسال بجوار رسالة: الرسالة وحدها حدث', () => {
+    const events = parseMetaWebhook(wrap({
+      statuses: [{ id: 'wamid.out', status: 'read', recipient_id: '9647701234567', timestamp: '1749416383' }],
+      messages: [{ from: '9647701234567', id: 'wamid.in', timestamp: '1749416383', type: 'text', text: { body: 'x' } }],
+    }));
+    expect(events.map((e) => e.eventId)).toEqual(['wamid.in']);
+  });
+});
+
 describe('حمولة الإرسال إلى Graph API', () => {
   it('زرّ مشاركة الرقم إلى BSUID، والتأكيد إلى الرقم حين لا معرّف', () => {
     expect(metaSendPayload({ kind: 'contact_request', recipient: { bsuid: 'IQ.9' }, bodyText: 'b' })).toEqual({

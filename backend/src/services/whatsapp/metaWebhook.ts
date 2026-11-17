@@ -53,6 +53,15 @@ type Json = Record<string, unknown>;
 const isObj = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v);
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
 const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+/**
+ * رقم واتساب كما ترسله Meta في `from`/`wa_id`: أرقام E.164 بلا `+` (٧–١٥).
+ * [SECURITY] أي قيمةٍ أخرى — BSUID مثل `IQ.…` أو اسم مستخدم — **ليست رقماً**
+ * فتُعامَل كأن الرقم غائب، ولا تصل مقارنة رقم الجلسة أبداً.
+ */
+const waPhone = (v: unknown): string | undefined => {
+  const s = str(v);
+  return s && /^\d{7,15}$/.test(s) ? s : undefined;
+};
 
 function parseTimestamp(raw: unknown): Date | null {
   const s = typeof raw === 'number' ? String(raw) : str(raw);
@@ -80,9 +89,12 @@ export function parseMetaWebhook(payload: unknown, expectedPhoneNumberId?: strin
 
       // `contacts[]` على مستوى القيمة: ملفّ المرسِل (wa_id/user_id) — احتياطٌ إن غاب حقل الرسالة.
       const profiles = arr(value.contacts).filter(isObj);
+      // الملفّ الوحيد احتياطٌ فقط إن لم يناقض الرسالة: معرّفٌ أو رقمٌ آخر = ملفّ غيره.
+      const consistent = (p: Json, ref?: string, phone?: string) =>
+        (!ref || !str(p.user_id) || str(p.user_id) === ref) && (!phone || !str(p.wa_id) || str(p.wa_id) === phone);
       const profileFor = (ref?: string, phone?: string) =>
-        profiles.find((p) => (ref && str(p.user_id) === ref) || (phone && str(p.wa_id) === phone)) ??
-        (profiles.length === 1 ? profiles[0] : undefined);
+        profiles.find((p) => (ref && str(p.user_id) === ref) || (phone && waPhone(p.wa_id) === phone)) ??
+        (profiles.length === 1 && consistent(profiles[0]!, ref, phone) ? profiles[0] : undefined);
 
       for (const message of arr(value.messages)) {
         if (!isObj(message)) continue;
@@ -91,10 +103,10 @@ export function parseMetaWebhook(payload: unknown, expectedPhoneNumberId?: strin
         const type = str(message.type) ?? 'unknown';
         const sentAt = parseTimestamp(message.timestamp);
         let senderRef = str(message.from_user_id);
-        let senderPhone = str(message.from);
+        let senderPhone = waPhone(message.from);
         const profile = profileFor(senderRef, senderPhone);
         senderRef ??= profile ? str(profile.user_id) : undefined;
-        senderPhone ??= profile ? str(profile.wa_id) : undefined;
+        senderPhone ??= profile ? waPhone(profile.wa_id) : undefined;
         if (!sentAt) {
           events.push({ kind: 'ignored', eventId, type: `${type}:no_timestamp` });
           continue;
@@ -112,7 +124,7 @@ export function parseMetaWebhook(payload: unknown, expectedPhoneNumberId?: strin
           // جهةٌ واحدة، `origin` صريح، ورقمٌ واحدٌ بمعرّف واتساب.
           const only = shared.length === 1 ? shared[0]! : undefined;
           const phones = only ? arr(only.phones).filter(isObj) : [];
-          const waIds = phones.map((p) => str(p.wa_id)).filter((v): v is string => !!v);
+          const waIds = phones.map((p) => waPhone(p.wa_id)).filter((v): v is string => !!v);
           if (only && str(only.origin) === 'contact_request' && waIds.length === 1) {
             events.push({ kind: 'contact_request_reply', eventId, senderRef, senderPhone, sharedWaId: waIds[0]!, sentAt });
           } else {

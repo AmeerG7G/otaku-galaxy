@@ -839,3 +839,120 @@ describe('[CRITICAL] الويبهوك: العطل العابر يُعاد (Phase
     }
   });
 });
+
+describe('[CRITICAL] نقطة الويبهوك: المصافحة والحالات والحمولة والمطابقة', () => {
+  const eventRows = async (ids: string[]) =>
+    (await db.query('SELECT event_id, outcome FROM whatsapp_webhook_events WHERE event_id = ANY($1)', [ids])).rows;
+
+  function signedRaw(raw: string) {
+    return api
+      .post('/api/webhooks/whatsapp')
+      .set('Content-Type', 'application/json')
+      .set('X-Hub-Signature-256', signMetaPayload(raw, wa.appSecret))
+      .send(raw);
+  }
+
+  it('[SECURITY] المصافحة: النمط والرمز والتحدّي كلها مطلوبة؛ لا يُقبل جزءٌ من الرمز ولا مصفوفة', async () => {
+    const original = wa.verifyToken;
+    const hub = (q: Record<string, unknown>) => api.get('/api/webhooks/whatsapp').query(q);
+    try {
+      wa.verifyToken = 'test-verify-token';
+      await hub({ 'hub.mode': 'unsubscribe', 'hub.verify_token': 'test-verify-token', 'hub.challenge': '1' }).expect(403);
+      await hub({ 'hub.verify_token': 'test-verify-token', 'hub.challenge': '1' }).expect(403);
+      await hub({ 'hub.mode': 'subscribe', 'hub.verify_token': 'test-verify', 'hub.challenge': '1' }).expect(403);
+      await hub({ 'hub.mode': 'subscribe', 'hub.verify_token': 'test-verify-token-x', 'hub.challenge': '1' }).expect(403);
+      await hub({ 'hub.mode': 'subscribe', 'hub.verify_token': 'test-verify-token' }).expect(403);
+      await hub({ 'hub.mode': 'subscribe', 'hub.verify_token': 'test-verify-token', 'hub.challenge': '<script>' }).expect(403);
+      await api.get('/api/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=test-verify-token&hub.verify_token=x&hub.challenge=1').expect(403);
+      const rejected = await hub({ 'hub.mode': 'subscribe', 'hub.verify_token': 'nope', 'hub.challenge': '1' });
+      expect(rejected.text).not.toContain('test-verify-token');
+      // المصافحة تعمل في off أيضاً — ربط الويبهوك في لوحة Meta لا يتطلّب تشغيل التحقق.
+      wa.mode = 'off';
+      const ok = await hub({ 'hub.mode': 'subscribe', 'hub.verify_token': 'test-verify-token', 'hub.challenge': '1158201444' }).expect(200);
+      expect(ok.text).toBe('1158201444');
+      expect(ok.headers['content-type']).toMatch(/^text\/plain/);
+    } finally {
+      wa.verifyToken = original;
+    }
+  });
+
+  it('حالات التسليم والقراءة ليست رسائل زبون: ٢٠٠، لا حدث، لا تغيير جلسة', async () => {
+    const s = await start();
+    const statusId = wamid();
+    const payload = {
+      object: 'whatsapp_business_account',
+      entry: [{ id: 'WABA-TEST', changes: [{ field: 'messages', value: {
+        messaging_product: 'whatsapp',
+        metadata: { phone_number_id: 'PNID-TEST' },
+        statuses: ['sent', 'delivered', 'read'].map((st) => ({ id: statusId, status: st, timestamp: String(nowTs()), recipient_id: digits(s.local) })),
+      } }] }],
+    };
+    await postWebhook(payload).expect(200);
+    expect(await eventRows([statusId])).toEqual([]);
+    expect((await sessionRow(s.sessionId))).toMatchObject({ status: 'pending', mismatch_count: 0 });
+  });
+
+  it('حمولةٌ مشوّهة موقَّعة: ٢٠٠ بلا أثر (الإعادة لا تصلحها)؛ وغير الموقَّعة ٤٠١ قبل التحليل', async () => {
+    const before = (await db.query('SELECT count(*)::int AS n FROM whatsapp_webhook_events')).rows[0].n;
+    for (const raw of ['{not json', '', 'null', '[]', '{"object":"page","entry":[]}', '{"object":"whatsapp_business_account","entry":[{"changes":[{"field":"messages","value":{"messages":[{"type":"text"}]}}]}]}']) {
+      const res = await signedRaw(raw);
+      expect(res.status).toBe(200);
+      expect(JSON.stringify(res.body)).not.toMatch(/stack|Error|at /);
+    }
+    await api.post('/api/webhooks/whatsapp').set('Content-Type', 'application/json').send('{not json').expect(401);
+    expect((await db.query('SELECT count(*)::int AS n FROM whatsapp_webhook_events')).rows[0].n).toBe(before);
+  });
+
+  it('[SECURITY] المرسِل المجهول: بلا رقم ولا BSUID لا يُحقِّق ولا يُعدّ محاولةً خاطئة', async () => {
+    const s = await start();
+    const id = wamid();
+    await postWebhook(textPayload({ id, text: s.code })).expect(200);
+    expect(await eventRows([id])).toEqual([{ event_id: id, outcome: 'no_sender' }]);
+    expect((await sessionRow(s.sessionId))).toMatchObject({ status: 'pending', mismatch_count: 0 });
+    // والمالك الحقيقي ما زال يستطيع التحقق.
+    await verifyBySender(s);
+    expect((await sessionRow(s.sessionId)).status).toBe('verified');
+  });
+
+  it('[SECURITY] BSUID في حقل الرقم يُعامَل كرقمٍ غائب: مشاركة الرقم، لا تحقّق ولا محاولة خاطئة', async () => {
+    const s = await start();
+    const id = wamid();
+    await postWebhook(textPayload({ id, from: 'IQ.BSUIDONLY', userId: 'IQ.BSUIDONLY', text: s.code })).expect(200);
+    expect(await eventRows([id])).toEqual([{ event_id: id, outcome: 'contact_requested' }]);
+    const row = await sessionRow(s.sessionId);
+    expect(row).toMatchObject({ status: 'awaiting_contact', mismatch_count: 0, verified_at: null });
+  });
+
+  it('[CRITICAL] الرسالة تصل جلسة رمزها وحدها: رمز (أ) من رقم (ب) لا يمسّ (ب) ولا يحقّق (أ)', async () => {
+    const a = await start();
+    const b = await start();
+    await postWebhook(textPayload({ from: digits(b.local), text: a.code })).expect(200);
+    expect((await sessionRow(a.sessionId))).toMatchObject({ status: 'pending', mismatch_count: 1 });
+    expect((await sessionRow(b.sessionId))).toMatchObject({ status: 'pending', mismatch_count: 0 });
+    // سرّ (أ) لا يكمل (ب) ولا العكس.
+    await verifyBySender(b);
+    expect((await complete({ sessionId: b.sessionId, secret: a.secret })).status).toBe(404);
+    expect((await sessionRow(a.sessionId)).status).toBe('pending');
+    await complete(b).expect(201);
+  });
+
+  it('ولي الأمر يسجّل لطفله برقمه من جهازٍ آخر: الويبهوك لا يعرف الجهاز، والسرّ وحده يكمل', async () => {
+    // الجلسة بدأت من «جهاز الطفل» (عنوانٌ آخر)؛ الرسالة من واتساب ولي الأمر.
+    const parentLocal = freshLocal();
+    const res = await api.post('/api/auth/register/whatsapp/start').set('X-Forwarded-For', '203.0.113.77').send({ phone: parentLocal }).expect(201);
+    const s = { local: parentLocal, ...(res.body.data as { sessionId: string; secret: string; code: string }) };
+    await verifyBySender(s);
+    const done = await complete(s, 'whatsapp-pass-1', { username: 'اسم الطفل', gender: 'male' }).expect(201);
+    expect(done.body.data.user).toMatchObject({ username: 'اسم الطفل', phone: toE164(parentLocal) });
+  });
+
+  it('[CRITICAL] تسليمان متزامنان للحدث نفسه: صفّ حدثٍ واحد وانتقالٌ واحد', async () => {
+    const s = await start();
+    const id = wamid();
+    const payload = textPayload({ id, from: digits(freshLocal()), text: s.code });
+    const results = await Promise.all([postWebhook(payload), postWebhook(payload), postWebhook(payload)]);
+    expect(results.map((r) => r.status)).toEqual([200, 200, 200]);
+    expect((await sessionRow(s.sessionId)).mismatch_count).toBe(1);
+    expect((await db.query('SELECT 1 FROM whatsapp_webhook_events WHERE event_id = $1', [id])).rowCount).toBe(1);
+  });
+});

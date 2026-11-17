@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { config } from '../../config/index.js';
 import { parseMetaWebhook, verifyMetaSignature, type InboundEvent } from './metaWebhook.js';
 
@@ -31,13 +32,23 @@ export class WhatsAppSendError extends Error {
   }
 }
 
+/**
+ * [SECURITY] مقارنة رمز المصافحة بزمنٍ ثابت: تجزئة الطرفين أولاً فيتساوى الطول
+ * دائماً، ولا يكشف زمن الردّ طول الرمز المضبوط ولا أوّل محرفٍ يختلف.
+ */
+function sameToken(given: string, expected: string): boolean {
+  const a = createHash('sha256').update(given, 'utf8').digest();
+  const b = createHash('sha256').update(expected, 'utf8').digest();
+  return timingSafeEqual(a, b);
+}
+
 function handshake(query: Record<string, unknown>): string | null {
   const expected = config.whatsapp.verifyToken;
   if (!expected) return null;
   if (query['hub.mode'] !== 'subscribe') return null;
   const token = query['hub.verify_token'];
   const challenge = query['hub.challenge'];
-  if (typeof token !== 'string' || token !== expected) return null;
+  if (typeof token !== 'string' || !sameToken(token, expected)) return null;
   if (typeof challenge !== 'string' || !/^[\w-]{1,128}$/.test(challenge)) return null;
   return challenge;
 }
@@ -47,6 +58,8 @@ function parse(rawBody: Buffer): InboundEvent[] {
   try {
     payload = JSON.parse(rawBody.toString('utf8'));
   } catch {
+    // [SECURITY] لا شيء من الجسم في السجلّ — موقَّعٌ لكنه ليس JSON.
+    console.warn('[whatsapp-webhook] signed payload is not valid JSON — ignored');
     return [];
   }
   return parseMetaWebhook(payload, config.whatsapp.phoneNumberId || undefined);
