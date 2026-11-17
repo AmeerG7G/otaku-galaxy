@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import type { LoyaltyLevel } from '@/lib/types';
 import { bff } from './client-api';
+import { NewPasswordField, useNewPasswordField } from './PasswordField';
 import { PhoneField, usePhoneField } from './PhoneField';
 import { useHydrated } from './use-hydrated';
 
@@ -91,19 +92,26 @@ export function GenderField() {
 /**
  * Account request. No SMS and no code: the request waits for the admin, who
  * confirms it over WhatsApp, and only then can the customer log in.
+ *
+ * The password is checked against the API's policy and the name and phone
+ * typed here before sending (STEP 86); the API still decides.
  */
 export function RegisterForm() {
   const hydrated = useHydrated();
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Feedback>(null);
+  const [username, setUsername] = useState('');
   const phone = usePhoneField();
+  const password = useNewPasswordField({ phone: phone.submitValue, username });
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
     const form = new FormData(event.currentTarget);
-    if (!phone.check()) return;
+    const phoneOk = phone.check();
+    const passwordOk = password.check();
+    if (!phoneOk || !passwordOk) return;
     setBusy(true);
     setFeedback(null);
     const result = await bff('/bff/register', {
@@ -111,7 +119,7 @@ export function RegisterForm() {
       body: {
         username: value(form, 'username'),
         phone: phone.submitValue,
-        password: String(form.get('password') ?? ''),
+        password: password.value,
         gender: value(form, 'gender'),
       },
     });
@@ -145,14 +153,19 @@ export function RegisterForm() {
       <FeedbackAlert feedback={feedback} />
       <div className="field">
         <label htmlFor="username">الاسم</label>
-        <input id="username" name="username" autoComplete="name" minLength={2} maxLength={40} required />
+        <input
+          id="username"
+          name="username"
+          autoComplete="name"
+          minLength={2}
+          maxLength={40}
+          required
+          value={username}
+          onChange={(event) => setUsername(event.target.value)}
+        />
       </div>
       <PhoneField label="رقم الهاتف" value={phone.value} onChange={phone.onChange} error={phone.error} />
-      <div className="field">
-        <label htmlFor="password">كلمة المرور</label>
-        <input id="password" name="password" type="password" autoComplete="new-password" minLength={8} required />
-        <span className="hint">8 أحرف على الأقل</span>
-      </div>
+      <NewPasswordField id="password" label="كلمة المرور" hint="8 أحرف على الأقل" field={password} />
       <GenderField />
       <button type="submit" className="btn btn-primary btn-block" disabled={busy || !hydrated}>
         {busy ? 'جارٍ الإرسال…' : 'إرسال الطلب'}
