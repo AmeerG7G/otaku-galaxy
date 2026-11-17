@@ -7,8 +7,14 @@ import { authenticate, optionalAuthenticate, requireAdmin } from './middleware/a
 import { pinLocale } from './middleware/locale.js';
 import { DEFAULT_LOCALE } from './utils/locale.js';
 import { requireSupportedAppVersion } from './middleware/app-version.js';
-import { errorHandler, globalRateLimiter, notFoundHandler } from './middleware/error-handler.js';
+import {
+  errorHandler,
+  globalRateLimiter,
+  notFoundHandler,
+  whatsappWebhookRateLimiter,
+} from './middleware/error-handler.js';
 import { resolveClientIp } from './middleware/client-ip.js';
+import { whatsappWebhookRoutes } from './routes/whatsappWebhook.js';
 import { adminRoutes } from './routes/admin.js';
 import { authRoutes } from './routes/auth.js';
 import { catalogRoutes } from './routes/catalog.js';
@@ -41,6 +47,11 @@ export function createApp() {
       credentials: true,
     }),
   );
+  /**
+   * ويبهوك واتساب — **قبل** `express.json` (التوقيع على الجسم الخام) وقبل الحدّ
+   * العام، وخارج `authenticate`. انظر `routes/whatsappWebhook.ts`.
+   */
+  app.use('/api/webhooks/whatsapp', whatsappWebhookRateLimiter(), whatsappWebhookRoutes);
   app.use(express.json({ limit: '1mb' }));
 
   /**

@@ -187,3 +187,41 @@ describe('AppLayout — «المسؤولون» في المتناول (STEP 66)',
     expect(content.getAttribute('style')).not.toMatch(/overflow-x:\s*hidden/)
   })
 })
+
+/**
+ * شعار المتجر في الشريط الجانبي والدرج — الأصل المعتمد، وشعارٌ لا صورةُ محتوى:
+ * `Image` في أنتديب يفتح عارض الصور بملء الشاشة (تكبير/تدوير) عند النقر ما لم
+ * تُطفأ معاينته، وهكذا كان الشعار يتصرّف.
+ */
+describe('AppLayout — شعار مجرة الأوتاكو', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useAuthStore.setState({ token: 'session-token', user: { id: 'a1', username: 'مسؤول', phone: '+9647800000001', role: 'admin' } as never })
+    vi.mocked(fetchAdminMe).mockResolvedValue({ id: 'a1', username: 'مسؤول', phone: '+9647800000001', isSuperAdmin: true, permissions: [] })
+  })
+  afterEach(() => setViewportWidth(PHONE))
+
+  async function expectStaticBrand() {
+    const user = userEvent.setup()
+    const logo = await screen.findByRole('img', { name: 'مجرة الأوتاكو' })
+    expect(logo.getAttribute('src')).toBe('/otaku-square-mark.png')
+    expect(screen.getAllByText('مجرة الأوتاكو').length).toBeGreaterThan(0)
+    expect(logo.closest('.ant-image')?.querySelector('.ant-image-cover, .ant-image-mask')).toBeNull()
+    await user.click(logo)
+    expect(document.querySelector('.ant-image-preview, .ant-image-preview-root')).toBeNull()
+  }
+
+  it('[CRITICAL] الشاشة العريضة: الشريط الجانبي يعرض الأصل، والنقر لا يفتح عارض الصور', async () => {
+    setViewportWidth(DESKTOP)
+    renderLayout()
+    await expectStaticBrand()
+  })
+
+  it('[CRITICAL] الهاتف: درج القائمة يعرض الأصل نفسه بلا عارض صور', async () => {
+    setViewportWidth(PHONE)
+    const user = userEvent.setup()
+    renderLayout()
+    await user.click(await screen.findByRole('button', { name: 'فتح القائمة' }))
+    await expectStaticBrand()
+  })
+})

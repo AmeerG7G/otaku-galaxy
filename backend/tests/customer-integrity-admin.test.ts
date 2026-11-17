@@ -49,7 +49,7 @@ describe('قبول تسجيلٍ بلا جنس', () => {
   it('[CRITICAL] يُرفض بـ409 GENDER_REQUIRED ويبقى الحساب غير مفعَّل، ثم يُقبل بعد الإكمال', async () => {
     const registered = await api
       .post('/api/auth/register')
-      .send({ username: 'قديم', phone: freshPhone(), password: 'secret123', gender: 'female' })
+      .send({ username: 'قديم', phone: freshPhone(), password: 'quiet-river-731', gender: 'female' })
       .expect(202);
     const requestId = registered.body.data.request.id as string;
     const { rows } = await db.query<{ user_id: string }>('SELECT user_id FROM account_requests WHERE id = $1', [requestId]);

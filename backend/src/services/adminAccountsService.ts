@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import { assertAcceptablePassword } from '../domain/passwordPolicy.js';
 import { config } from '../config/index.js';
 import { db, withTransaction } from '../database/pool.js';
 import { normalizePermissions, type AdminSection } from '../domain/adminPermissions.js';
@@ -109,6 +110,13 @@ export const adminAccountsService = {
           }
         }
 
+        if (passwordChanges) {
+          // الاسم والرقم القديمان والجديدان معاً: تغييرهما في الطلب نفسه لا يفتح ثغرة.
+          assertAcceptablePassword(input.newPassword!, {
+            admin: true,
+            identities: [current, { phone: input.phone, username: input.username }],
+          });
+        }
         const nameChanges = input.username !== undefined && input.username !== current.username;
         const passwordHash = passwordChanges
           ? await bcrypt.hash(input.newPassword!, config.bcryptRounds)
@@ -174,6 +182,10 @@ export const adminAccountsService = {
     input: { username: string; phone: string; password: string; permissions: AdminSection[] },
   ) {
     const permissions = normalizePermissions(input.permissions);
+    assertAcceptablePassword(input.password, {
+      admin: true,
+      identities: [{ phone: input.phone, username: input.username }],
+    });
     const passwordHash = await bcrypt.hash(input.password, config.bcryptRounds);
     return withPhoneGuard(() =>
       withTransaction(async (tx) => {
@@ -219,6 +231,12 @@ export const adminAccountsService = {
       withTransaction(async (tx) => {
         const before = await adminAccountsRepo.lockSubAdmin(tx, id);
         if (!before) throw Errors.notFound('المسؤول غير موجود');
+        if (input.newPassword !== undefined) {
+          assertAcceptablePassword(input.newPassword, {
+            admin: true,
+            identities: [before, { phone: input.phone, username: input.username }],
+          });
+        }
 
         const permissions =
           input.permissions !== undefined ? normalizePermissions(input.permissions) : undefined;

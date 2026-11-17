@@ -74,7 +74,7 @@ export function LoginForm({ returnTo }: { returnTo: string }) {
   );
 }
 
-function GenderField() {
+export function GenderField() {
   return (
     <fieldset className="field choice-group">
       <legend>الجنس</legend>

@@ -33,6 +33,8 @@ class AuthCubit extends Cubit<AuthState> {
     required this.changePasswordUsecase,
     this.languageOf,
     this.onSessionRenewed,
+    this.beforeLogout,
+    this.beforeLogoutTimeout = const Duration(seconds: 5),
   }) : super(const AuthInitializing());
 
   final AuthLocalStorage localStorage;
@@ -56,6 +58,17 @@ class AuthCubit extends Cubit<AuthState> {
   /// يعيد مستمعُ الدخول في التطبيق تسجيلَ الجهاز. بدون هذا يتوقّف الإشعار
   /// الفوري على هذا الهاتف بعد أن يغيّر صاحبه كلمته. لا يُنتظر ولا يُفشِل.
   final Future<void> Function()? onSessionRenewed;
+
+  /// يُستدعى عند الخروج الذي يطلبه المستخدم ([logout]) **قبل** مسح التوكن.
+  ///
+  /// [CRITICAL] إلغاء تسجيل جهاز الإشعارات (`POST /devices/unregister`) مسارٌ
+  /// محميّ بالمصادقة. كان يُستدعى من مستمع `AuthUnauthenticated` — أي بعد مسح
+  /// التوكن — فيخرج بلا ترويسة، ويرتدّ بـ401 يُبتلع، ويبقى الهاتف يستقبل
+  /// إشعارات طلبات من خرج. لا يُفشل الخروج، ومهلته [beforeLogoutTimeout]:
+  /// خادمٌ بطيء لا يحبس المستخدم (الطلب خرج بترويسته ويكمل في الخلفية).
+  final Future<void> Function()? beforeLogout;
+
+  final Duration beforeLogoutTimeout;
 
   User? _user;
   bool _sessionLoaded = false;
@@ -201,6 +214,10 @@ class AuthCubit extends Cubit<AuthState> {
     if (renewed != null) unawaited(renewed().catchError((Object _) {}));
   }
 
+  /// يتبنّى جلسةً أصدرها الخادم خارج شاشة الدخول — التسجيل عبر واتساب
+  /// (`features/whatsapp_signup`) يعيد `{token, user}` بعقد الدخول نفسه.
+  Future<void> adoptSession(String token, User user) => _saveSession(token, user);
+
   /// مسح الجلسة بشكل إجباري (انتهاء صلاحية التوكن / استجابة 401).
   Future<void> forceLogout() async {
     if (!isLoggedIn && _user == null) return;
@@ -209,8 +226,21 @@ class AuthCubit extends Cubit<AuthState> {
     emit(const AuthUnauthenticated());
   }
 
-  /// تسجيل الخروج ومسح الجلسة.
-  Future<void> logout() => forceLogout();
+  /// تسجيل الخروج ومسح الجلسة — بعد إلغاء ما يحتاج التوكن ([beforeLogout]).
+  ///
+  /// [forceLogout] (‏401) لا يستدعيه: التوكن ميّتٌ أصلاً، وما يبطله الخادم
+  /// (`token_version`) يبطل أجهزة الحساب معه.
+  Future<void> logout() async {
+    final hook = beforeLogout;
+    if (hook != null && isLoggedIn) {
+      try {
+        await hook().timeout(beforeLogoutTimeout);
+      } catch (_) {
+        // مهلةٌ أو عطل: الخروج يمضي — انظر [beforeLogout].
+      }
+    }
+    await forceLogout();
+  }
 
   Future<void> _saveSession(String token, User user) async {
     await localStorage.saveSession(token, jsonEncode(user.toJson()));

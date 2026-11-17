@@ -95,12 +95,12 @@ describe('تسجيل حساب جديد — المسار الحقيقي كامل�
     const phone = uniquePhone();
     const register = await api
       .post('/api/auth/register')
-      .send({ username: 'مختبر', phone, password: 'secret123', gender: 'male' })
+      .send({ username: 'مختبر', phone, password: 'quiet-river-731', gender: 'male' })
       .expect(202);
 
     // لا توكن، لا رمز، لا كلمة مرور في الردّ.
     expect(register.body.data.token).toBeUndefined();
-    expect(JSON.stringify(register.body)).not.toContain('secret123');
+    expect(JSON.stringify(register.body)).not.toContain('quiet-river-731');
     expect(register.body.data.request.status).toBe('pending');
 
     // القاعدة: صفٌّ غير مفعَّل يحمل تجزئةً لا كلمةً، وطلبٌ معلَّق بلا كلمة.
@@ -110,19 +110,19 @@ describe('تسجيل حساب جديد — المسار الحقيقي كامل�
     );
     expect(rows).toHaveLength(1);
     expect(rows[0]!.phone_verified_at).toBeNull();
-    expect(rows[0]!.password_hash).not.toBe('secret123');
+    expect(rows[0]!.password_hash).not.toBe('quiet-river-731');
     expect(rows[0]!.password_hash.startsWith('$2')).toBe(true);
     const { rows: req } = await db.query<Record<string, unknown>>(
       `SELECT * FROM account_requests WHERE kind = 'registration' AND submitted_phone = $1`,
       [phone],
     );
     expect(req).toHaveLength(1);
-    expect(JSON.stringify(req[0])).not.toContain('secret123');
+    expect(JSON.stringify(req[0])).not.toContain('quiet-river-731');
     expect(Object.keys(req[0]!).some((k) => k.includes('password'))).toBe(false);
 
     await approveAsAdmin(register.body.data.request.id as string);
 
-    const login = await api.post('/api/auth/login').send({ phone, password: 'secret123' }).expect(200);
+    const login = await api.post('/api/auth/login').send({ phone, password: 'quiet-river-731' }).expect(200);
     expect(login.body.data.user.isPhoneVerified).toBe(true);
     expect(login.body.data.token).toBeTruthy();
   });
@@ -131,7 +131,7 @@ describe('تسجيل حساب جديد — المسار الحقيقي كامل�
     const phone = uniquePhone();
     await api
       .post('/api/auth/register')
-      .send({ username: 'مختبر', phone, password: 'secret123', gender: 'male' })
+      .send({ username: 'مختبر', phone, password: 'quiet-river-731', gender: 'male' })
       .expect(202);
 
     const { rows } = await db.query<{ phone_verified_at: Date | null }>(
@@ -141,7 +141,7 @@ describe('تسجيل حساب جديد — المسار الحقيقي كامل�
     expect(rows[0]!.phone_verified_at).toBeNull();
 
     // كلمة مرور صحيحة + حساب غير مفعَّل = لا جلسة.
-    const login = await api.post('/api/auth/login').send({ phone, password: 'secret123' });
+    const login = await api.post('/api/auth/login').send({ phone, password: 'quiet-river-731' });
     expect(login.status).toBe(403);
     expect(login.body.error.code).toBe('ACCOUNT_PENDING_APPROVAL');
     expect(login.body.data).toBeNull();
@@ -396,7 +396,7 @@ describe('تسجيل حساب جديد — المسار الحقيقي كامل�
   it('بيانات دخول خاطئة مرفوضة بلا كشف أيّ الحقلين خطأ', async () => {
     const { phone } = await registerAndLogin();
     const wrongPassword = await api.post('/api/auth/login').send({ phone, password: 'wrong' });
-    const wrongPhone = await api.post('/api/auth/login').send({ phone: uniquePhone(), password: 'secret123' });
+    const wrongPhone = await api.post('/api/auth/login').send({ phone: uniquePhone(), password: 'quiet-river-731' });
     expect(wrongPassword.status).toBe(401);
     expect(wrongPhone.status).toBe(401);
     expect(wrongPassword.body.message).toBe(wrongPhone.body.message);

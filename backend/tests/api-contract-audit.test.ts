@@ -601,7 +601,7 @@ describe('حرّاس · الحقول التي يملكها الخادم لا ي�
     const phone = `077${Math.floor(10000000 + Math.random() * 89999999)}`;
     const res = await api
       .post('/api/auth/register')
-      .send({ username: 'دخيل', phone, password: 'secret123', gender: 'male', role: 'admin', isPhoneVerified: true, id: randomUUID() })
+      .send({ username: 'دخيل', phone, password: 'quiet-river-731', gender: 'male', role: 'admin', isPhoneVerified: true, id: randomUUID() })
       .expect(202);
     expect(res.body.data.user.role).toBe('customer');
     expect(res.body.data.user.isPhoneVerified).toBe(false);

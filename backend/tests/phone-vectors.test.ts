@@ -38,7 +38,7 @@ describe('[CRITICAL] طلبٌ مباشر إلى الـAPI لا يتجاوز ال
       for (const path of ['/api/auth/register', '/api/auth/login', '/api/auth/forgot-password']) {
         const res = await api
           .post(path)
-          .send({ username: 'مختبر الهاتف', phone, password: 'secret123', gender: 'male', levelKey: 'nebula' });
+          .send({ username: 'مختبر الهاتف', phone, password: 'quiet-river-731', gender: 'male', levelKey: 'nebula' });
         expect(res.status, `${path} ${JSON.stringify(phone)}`).toBe(400);
         expect(res.body.error.code, `${path} ${JSON.stringify(phone)}`).toBe('VALIDATION_ERROR');
       }

@@ -16,6 +16,7 @@ async function main() {
       databaseUrl: config.databaseUrl,
       host: config.host ?? null,
       bffSharedSecretSet: config.bffSharedSecret !== null,
+      whatsappMode: config.whatsapp.mode,
     }),
   );
 }

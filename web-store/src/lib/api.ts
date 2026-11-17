@@ -20,6 +20,8 @@ export class ApiError extends Error {
     readonly code: string,
     message: string,
     readonly details?: unknown,
+    /** 429 only: seconds until the next attempt is accepted (API `error.retryAfterSeconds`). */
+    readonly retryAfterSeconds?: number,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -30,7 +32,7 @@ interface Envelope<T> {
   success: boolean;
   data: T;
   message: string | null;
-  error?: { code?: string; details?: unknown };
+  error?: { code?: string; details?: unknown; retryAfterSeconds?: unknown };
 }
 
 export interface ApiRequest {
@@ -124,6 +126,10 @@ export async function apiUpload<T>(path: string, form: FormData, token: string):
   return readEnvelope<T>(response);
 }
 
+function retryAfterSeconds(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.ceil(value) : undefined;
+}
+
 async function readEnvelope<T>(response: Response): Promise<{ data: T; message: string | null; headers: Headers }> {
   let envelope: Envelope<T> | null = null;
   if (response.status !== 204) {
@@ -140,6 +146,7 @@ async function readEnvelope<T>(response: Response): Promise<{ data: T; message: 
       envelope?.error?.code ?? 'UPSTREAM_ERROR',
       envelope?.message ?? 'حدث خطأ غير متوقع',
       envelope?.error?.details,
+      retryAfterSeconds(envelope?.error?.retryAfterSeconds),
     );
   }
   return { data: envelope.data, message: envelope.message, headers: response.headers };

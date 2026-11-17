@@ -2,11 +2,14 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { App as AntApp, Alert, Form, Input, Modal, Typography } from 'antd'
 import { setCustomerPassword } from '../api/customersApi'
 import { ApiError } from '../api/client'
+import { passwordPolicyRule } from '../utils/passwordPolicy'
 
 interface Props {
   open: boolean
   customerId: string
   customerName: string
+  /** رقم الزبون — كلمةٌ تحويه تُرفض كما يرفضها الخادم. */
+  customerPhone?: string
   /** طلب إعادة التعيين المعلَّق الذي يُحسم بهذا الفعل — إن وُجد. */
   requestId?: string
   onClose: () => void
@@ -27,6 +30,7 @@ export default function SetCustomerPasswordModal({
   open,
   customerId,
   customerName,
+  customerPhone,
   requestId,
   onClose,
 }: Props) {
@@ -84,7 +88,8 @@ export default function SetCustomerPasswordModal({
           label="كلمة المرور الجديدة"
           rules={[
             { required: true, message: 'أدخل كلمة المرور الجديدة' },
-            { min: 8, message: 'كلمة المرور يجب أن تكون 8 أحرف على الأقل' },
+            // سياسة **الزبون** (٨) لا المسؤول — الحساب حساب زبون (STEP 85).
+            passwordPolicyRule(false, () => [{ phone: customerPhone, username: customerName }]),
           ]}
         >
           <Input.Password autoComplete="new-password" data-testid="new-password" />

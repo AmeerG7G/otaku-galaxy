@@ -23,8 +23,33 @@ describe('عرض الهاتف للمسؤول بالصيغة المحلية', () 
     }
   });
 
-  it('إشعار طلب الحساب يعرض الرقم كما تعرضه اللوحة', () => {
-    expect(ADMIN_EVENT_TEXTS.accountRequest('registration', 'أمير', '+9647701234567').body).toBe('أمير — 07701234567');
-    expect(ADMIN_EVENT_TEXTS.accountRequest('password_reset', 'أمير', '+9647809876543').body).toBe('أمير — 07809876543');
+});
+
+/**
+ * [PRIVACY] نصوص إشعار المسؤول تظهر على شاشة القفل وتمرّ بـFCM: لا رقم هاتف
+ * زبون فيها. الرقم يُقرأ في صفحة الطلبات بعد الدخول.
+ */
+describe('[CRITICAL] إشعار طلب الحساب بلا رقم الزبون', () => {
+  it('النوع في العنوان والاسم في النصّ — ولا شيء غيرهما', () => {
+    expect(ADMIN_EVENT_TEXTS.accountRequest('registration', 'أمير')).toEqual({
+      title: 'طلب إنشاء حساب',
+      body: 'أمير',
+    });
+    expect(ADMIN_EVENT_TEXTS.accountRequest('password_reset', 'أمير')).toEqual({
+      title: 'طلب إعادة تعيين كلمة المرور',
+      body: 'أمير',
+    });
+  });
+
+  it('لا نصّ إشعار مسؤول يحمل رقماً بطول هاتف', () => {
+    const texts = [
+      ADMIN_EVENT_TEXTS.accountRequest('registration', 'أمير'),
+      ADMIN_EVENT_TEXTS.accountRequest('password_reset', 'أمير'),
+      ADMIN_EVENT_TEXTS.newOrder('أمير', 125000),
+      ADMIN_EVENT_TEXTS.restockRequest('مجسّم'),
+    ];
+    for (const { title, body } of texts) {
+      expect(`${title} ${body}`).not.toMatch(/(?:\+?964|0)7\d{9}|\d{9,}/);
+    }
   });
 });

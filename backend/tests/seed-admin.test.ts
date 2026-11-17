@@ -111,4 +111,12 @@ describe('[CRITICAL] SEED_ADMIN_PHONE بالصيغة المحلية ينشئ م�
     ).rejects.toThrow(/SEED_ADMIN_PASSWORD/);
     expect(await seedAdminUser(db, {}, silent)).toEqual({ status: 'skipped' });
   });
+
+  it('كلمةٌ شائعة أو تحوي رقم المسؤول تُرفض ولو بلغت ١٢ حرفاً — قائمة الخادم نفسها', async () => {
+    for (const bad of ['password1234', 'qwerty123456', `owner-${LOCAL}`]) {
+      await expect(
+        seedAdminUser(db, { SEED_ADMIN_PHONE: LOCAL, SEED_ADMIN_PASSWORD: bad }, silent),
+      ).rejects.toThrow(/SEED_ADMIN_PASSWORD/);
+    }
+  });
 });

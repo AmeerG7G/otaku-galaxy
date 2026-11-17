@@ -265,6 +265,11 @@ export default function AccountRequestsPage() {
     return (
       <Space direction="vertical" size={0}>
         <Tag color={STATUS_COLORS[r.status]}>{ACCOUNT_REQUEST_STATUS_LABELS[r.status]}</Tag>
+        {r.resolvedVia === 'whatsapp' && (
+          <Tag color="cyan" data-testid="resolved-via-whatsapp">
+            واتساب تلقائي
+          </Tag>
+        )}
         {r.resolvedAt && (
           <Typography.Text type="secondary" style={{ fontSize: 11 }}>
             {formatDateTime(r.resolvedAt)}
@@ -479,6 +484,7 @@ export default function AccountRequestsPage() {
           open
           customerId={passwordFor.account.id}
           customerName={passwordFor.account.username}
+          customerPhone={passwordFor.account.phone}
           requestId={passwordFor.id}
           onClose={() => setPasswordFor(null)}
         />

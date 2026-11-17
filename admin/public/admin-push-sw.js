@@ -40,7 +40,10 @@ self.addEventListener('push', (event) => {
       return self.registration.showNotification(title, {
         body: data.body || '',
         icon: '/otaku-square-mark.png',
-        badge: '/otaku-square-mark.png',
+        // الشارة تُرسم من الشفافية وحدها (أندرويد/Chrome): الشعار بأرضيته
+        // المعتمة كان مربعاً أبيض. هذه رمزه المبسّط أبيض على شفاف
+        // (`tool/branding/make_notification_icon.py`).
+        badge: '/otaku-notification-badge.png',
         dir: 'rtl',
         lang: 'ar',
         tag: data.event ? `${data.event}:${data.orderId || data.requestId || data.productId || ''}` : undefined,

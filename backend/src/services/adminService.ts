@@ -28,6 +28,7 @@ import { franchiseRepo } from '../repositories/franchisesRepo.js';
 import { adminAuditRepo } from '../repositories/adminAuditRepo.js';
 import { analyticsPeriodsRepo } from '../repositories/analyticsPeriodsRepo.js';
 import bcrypt from 'bcryptjs';
+import { assertAcceptablePassword } from '../domain/passwordPolicy.js';
 import {
   accountRequestRepo,
   type AccountRequestKind,
@@ -1224,10 +1225,28 @@ export const adminService = {
     const userIds = [...new Set(rows.flatMap((row) => (row.user_id ? [row.user_id] : [])))];
     const users = await userRepo.findByIds(db, userIds);
     const balances = await pointsRepo.balances(db, [...users.keys()]);
+    // [WhatsApp] الطلب الذي حسمه التحقق التلقائي — يُشتقّ من ربط الجلسة به (هجرة ٠٩٣)،
+    // لا من `resolved_by IS NULL` (مسؤولٌ حُذف يترك القيمة نفسها).
+    const approvedIds = rows.filter((row) => row.status === 'approved').map((row) => row.id);
+    const viaWhatsApp = new Set(
+      approvedIds.length === 0
+        ? []
+        : (
+            await db.query<{ id: string }>(
+              `SELECT DISTINCT account_request_id AS id FROM whatsapp_signup_sessions
+                WHERE account_request_id = ANY($1::uuid[])`,
+              [approvedIds],
+            )
+          ).rows.map((r) => r.id),
+    );
     return rows.map((row) => {
       const user = row.user_id ? (users.get(row.user_id) ?? null) : null;
       const balance = user ? (balances.get(user.id) ?? 0) : null;
-      return shapeAccountRequestRow(row, user, balance);
+      return {
+        ...shapeAccountRequestRow(row, user, balance),
+        resolvedVia:
+          row.status === 'pending' ? null : viaWhatsApp.has(row.id) ? ('whatsapp' as const) : ('admin' as const),
+      };
     });
   },
 
@@ -1353,6 +1372,9 @@ export const adminService = {
       }
     }
 
+    assertAcceptablePassword(input.newPassword, {
+      identities: [{ phone: user.phone, username: user.username }],
+    });
     const passwordHash = await bcrypt.hash(input.newPassword, config.bcryptRounds);
     return withTransaction(async (tx) => {
       await userRepo.update(tx, user.id, { passwordHash, bumpTokenVersion: true });

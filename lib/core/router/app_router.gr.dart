@@ -813,6 +813,89 @@ class SplashRoute extends PageRouteInfo<void> {
 }
 
 /// generated route for
+/// [WhatsAppSignupScreen]
+class WhatsAppSignupRoute extends PageRouteInfo<WhatsAppSignupRouteArgs> {
+  WhatsAppSignupRoute({
+    Key? key,
+    String? initialPhone,
+    WhatsAppSignupRepository? repository,
+    WhatsAppSignupStore? store,
+    Future<bool> Function(Uri)? openLink,
+    List<PageRouteInfo>? children,
+  }) : super(
+         WhatsAppSignupRoute.name,
+         args: WhatsAppSignupRouteArgs(
+           key: key,
+           initialPhone: initialPhone,
+           repository: repository,
+           store: store,
+           openLink: openLink,
+         ),
+         initialChildren: children,
+       );
+
+  static const String name = 'WhatsAppSignupRoute';
+
+  static PageInfo page = PageInfo(
+    name,
+    builder: (data) {
+      final args = data.argsAs<WhatsAppSignupRouteArgs>(
+        orElse: () => const WhatsAppSignupRouteArgs(),
+      );
+      return WhatsAppSignupScreen(
+        key: args.key,
+        initialPhone: args.initialPhone,
+        repository: args.repository,
+        store: args.store,
+        openLink: args.openLink,
+      );
+    },
+  );
+}
+
+class WhatsAppSignupRouteArgs {
+  const WhatsAppSignupRouteArgs({
+    this.key,
+    this.initialPhone,
+    this.repository,
+    this.store,
+    this.openLink,
+  });
+
+  final Key? key;
+
+  final String? initialPhone;
+
+  final WhatsAppSignupRepository? repository;
+
+  final WhatsAppSignupStore? store;
+
+  final Future<bool> Function(Uri)? openLink;
+
+  @override
+  String toString() {
+    return 'WhatsAppSignupRouteArgs{key: $key, initialPhone: $initialPhone, repository: $repository, store: $store, openLink: $openLink}';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! WhatsAppSignupRouteArgs) return false;
+    return key == other.key &&
+        initialPhone == other.initialPhone &&
+        repository == other.repository &&
+        store == other.store;
+  }
+
+  @override
+  int get hashCode =>
+      key.hashCode ^
+      initialPhone.hashCode ^
+      repository.hashCode ^
+      store.hashCode;
+}
+
+/// generated route for
 /// [WriteReviewScreen]
 class WriteReviewRoute extends PageRouteInfo<WriteReviewRouteArgs> {
   WriteReviewRoute({
