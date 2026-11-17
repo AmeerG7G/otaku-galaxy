@@ -149,6 +149,57 @@ describe('APP_ENV يفشل مغلقاً', () => {
     expect((result as { stderr: string }).stderr).toContain('HOST');
   });
 
+  it('[CRITICAL] WHATSAPP_VERIFY_MODE: الإنتاج يرفض auto، والقيمة المجهولة تُرفض، والافتراض off', async () => {
+    const PROD = { ...REAL_SECRETS, APP_ENV: 'prod', NODE_ENV: 'production' };
+    const META = {
+      WHATSAPP_PROVIDER: 'meta',
+      WHATSAPP_APP_SECRET: 'a'.repeat(40),
+      WHATSAPP_VERIFY_TOKEN: 'v'.repeat(20),
+      WHATSAPP_ACCESS_TOKEN: 't'.repeat(40),
+      WHATSAPP_PHONE_NUMBER_ID: '123456789',
+      WHATSAPP_BUSINESS_NUMBER: '07701234567',
+      WHATSAPP_TOKEN_PEPPER: 'p'.repeat(64),
+    };
+    const defaulted = await boot({ ...PROD, WHATSAPP_VERIFY_MODE: undefined });
+    expect(JSON.parse((defaulted as { stdout: string }).stdout).whatsappMode).toBe('off');
+    const explicitOff = await boot({ ...PROD, WHATSAPP_VERIFY_MODE: 'off' });
+    expect(explicitOff.ok).toBe(true);
+    // كل الأسرار حاضرة ومع ذلك يسقط: الإنتاج لا يعرف هذا الوضع.
+    const prodAuto = await boot({ ...PROD, ...META, WHATSAPP_VERIFY_MODE: 'auto' });
+    expect(prodAuto.ok).toBe(false);
+    expect((prodAuto as { stderr: string }).stderr).toContain('مرفوض في الإنتاج');
+    const typo = await boot({ ...REAL_SECRETS, APP_ENV: 'staging', NODE_ENV: 'production', WHATSAPP_VERIFY_MODE: 'on' });
+    expect(typo.ok).toBe(false);
+    expect((typo as { stderr: string }).stderr).toContain('WHATSAPP_VERIFY_MODE');
+  }, 60_000);
+
+  it('[CRITICAL] staging بـauto: fixture مرفوض، والأسرار الناقصة تُسمّى، وكاملها يُقلع', async () => {
+    const STAGING = { ...REAL_SECRETS, APP_ENV: 'staging', NODE_ENV: 'production', WHATSAPP_VERIFY_MODE: 'auto' };
+    const fixture = await boot({ ...STAGING, WHATSAPP_PROVIDER: 'fixture' });
+    expect(fixture.ok).toBe(false);
+    expect((fixture as { stderr: string }).stderr).toContain('WHATSAPP_PROVIDER=fixture');
+    const missing = await boot({ ...STAGING, WHATSAPP_PROVIDER: 'meta' });
+    expect(missing.ok).toBe(false);
+    const stderr = (missing as { stderr: string }).stderr;
+    for (const name of ['WHATSAPP_APP_SECRET', 'WHATSAPP_ACCESS_TOKEN', 'WHATSAPP_BUSINESS_NUMBER', 'WHATSAPP_TOKEN_PEPPER']) {
+      expect(stderr).toContain(name);
+    }
+    const full = await boot({
+      ...STAGING,
+      WHATSAPP_PROVIDER: 'meta',
+      WHATSAPP_APP_SECRET: 'a'.repeat(40),
+      WHATSAPP_VERIFY_TOKEN: 'v'.repeat(20),
+      WHATSAPP_ACCESS_TOKEN: 't'.repeat(40),
+      WHATSAPP_PHONE_NUMBER_ID: '123456789',
+      WHATSAPP_BUSINESS_NUMBER: '07701234567',
+      WHATSAPP_TOKEN_PEPPER: 'p'.repeat(64),
+    });
+    expect(full.ok).toBe(true);
+    expect(JSON.parse((full as { stdout: string }).stdout).whatsappMode).toBe('auto');
+    // الأسرار لا تظهر في أي مخرج.
+    expect((full as { stdout: string }).stdout).not.toContain('a'.repeat(40));
+  }, 60_000);
+
   it('BFF_SHARED_SECRET اختياري، وقصيره يُرفض', async () => {
     const without = await boot({ ...REAL_SECRETS, APP_ENV: 'prod', NODE_ENV: 'production', BFF_SHARED_SECRET: undefined });
     expect(JSON.parse((without as { stdout: string }).stdout).bffSharedSecretSet).toBe(false);

@@ -135,6 +135,27 @@ describe('طلب إنشاء الحساب', () => {
   })
 })
 
+describe('[WhatsApp] الطلب الذي حسمه التحقق التلقائي', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('يحمل وسم «واتساب تلقائي» بلا أزرار حسم؛ المقبول يدوياً والمعلَّق بلا وسم', async () => {
+    vi.mocked(listAccountRequests).mockResolvedValue(
+      listOf([
+        request({ id: 'wa', status: 'approved', resolvedAt: '2026-11-14T10:00:00Z', resolvedVia: 'whatsapp' }),
+        request({ id: 'adm', status: 'approved', resolvedAt: '2026-11-14T10:00:00Z', resolvedVia: 'admin', submitted: { phone: '+9647709999999', username: 'آخر', gender: 'male', levelKey: null } }),
+        request({ id: 'old', submitted: { phone: '+9647708888888', username: 'قديم', gender: 'female', levelKey: null } }),
+      ]),
+    )
+    renderPage()
+    await screen.findByText('07701234567')
+    const tags = await screen.findAllByTestId('resolved-via-whatsapp')
+    expect(tags).toHaveLength(1)
+    const row = tags[0]!.closest('[data-row-key]')! as HTMLElement
+    expect(row.getAttribute('data-row-key')).toBe('wa')
+    expect(within(row).queryByText('موافقة')).not.toBeInTheDocument()
+  })
+})
+
 describe('طلب إعادة تعيين كلمة المرور', () => {
   const reset = request({
     id: 'req-2',

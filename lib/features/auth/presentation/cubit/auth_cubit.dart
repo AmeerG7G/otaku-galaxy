@@ -214,6 +214,10 @@ class AuthCubit extends Cubit<AuthState> {
     if (renewed != null) unawaited(renewed().catchError((Object _) {}));
   }
 
+  /// يتبنّى جلسةً أصدرها الخادم خارج شاشة الدخول — التسجيل عبر واتساب
+  /// (`features/whatsapp_signup`) يعيد `{token, user}` بعقد الدخول نفسه.
+  Future<void> adoptSession(String token, User user) => _saveSession(token, user);
+
   /// مسح الجلسة بشكل إجباري (انتهاء صلاحية التوكن / استجابة 401).
   Future<void> forceLogout() async {
     if (!isLoggedIn && _user == null) return;

@@ -47,6 +47,12 @@ export interface AccountRequest {
   adminNote: string | null
   resolvedAt: string | null
   resolvedBy: string | null
+  /**
+   * من حسم الطلب: `admin` من هذه الصفحة، أو `whatsapp` تحقّقٌ تلقائي برسالة
+   * واتساب من الرقم نفسه (WHATSAPP_VERIFY_MODE=auto). `null` للمعلَّق، وقد يغيب
+   * عن خادمٍ أقدم.
+   */
+  resolvedVia?: 'admin' | 'whatsapp' | null
   createdAt: string
   updatedAt: string
 }

@@ -3,6 +3,7 @@ import { config } from './config/index.js';
 import { closePools } from './database/pool.js';
 import { startAnalyticsScheduler } from './jobs/analyticsJob.js';
 import { startPushOutboxScheduler } from './jobs/pushOutboxJob.js';
+import { startWhatsAppOutboxScheduler } from './jobs/whatsappOutboxJob.js';
 import { trackingService } from './services/trackingService.js';
 import { startRatingReminderScheduler } from './jobs/ratingReminderJob.js';
 import { probeUploadsWritable } from './storage/index.js';
@@ -39,6 +40,11 @@ const stopRatingReminders = startRatingReminderScheduler();
 const stopPushOutbox = startPushOutboxScheduler();
 // التحليلات التاريخية — ملخّصات يومية/شهرية وإغلاق الأشهر المنقضية (STEP 67).
 const stopAnalytics = startAnalyticsScheduler();
+// ردود التحقق عبر واتساب + تنظيف جلساته (لا يرسل شيئاً حين WHATSAPP_VERIFY_MODE=off).
+const stopWhatsAppOutbox = startWhatsAppOutboxScheduler();
+if (config.whatsapp.mode !== 'off') {
+  console.log(`[whatsapp-signup] mode=${config.whatsapp.mode} provider=${config.whatsapp.provider}`);
+}
 // مجلّدات الرفع قابلة للكتابة؟ تحذيرٌ في السجلّ وحده، لا يمنع الإقلاع.
 void probeUploadsWritable(MEDIA_PURPOSES).catch((error) => console.error('[uploads] probe failed', error));
 // حقبة التتبّع تتبع الإعداد عند كل إقلاع (D3: مطفأ افتراضياً) — من أي يومٍ بدأ القياس.
@@ -60,6 +66,7 @@ async function shutdown(reason: string, exitCode = 0) {
   stopRatingReminders();
   stopPushOutbox();
   stopAnalytics();
+  stopWhatsAppOutbox();
   server.close(async () => {
     await closePools();
     process.exit(exitCode);

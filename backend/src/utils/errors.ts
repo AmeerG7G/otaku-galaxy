@@ -5,6 +5,8 @@ export class AppError extends Error {
     public readonly code: string,
     message: string,
     public readonly details?: unknown,
+    /** ‏429 فقط: متى تُقبل المحاولة التالية — `Retry-After` و`error.retryAfterSeconds`. */
+    public readonly retryAfterSeconds?: number,
   ) {
     super(message);
     this.name = 'AppError';
@@ -23,8 +25,14 @@ export const Errors = {
   conflict: (message: string, code = 'CONFLICT') => new AppError(409, code, message),
   validation: (message: string, details?: unknown) =>
     new AppError(422, 'VALIDATION_ERROR', message, details),
-  tooManyRequests: (message = 'طلبات كثيرة، حاول لاحقاً', code = 'RATE_LIMITED') =>
-    new AppError(429, code, message),
+  tooManyRequests: (message = 'طلبات كثيرة، حاول لاحقاً', code = 'RATE_LIMITED', retryAfterSeconds?: number) =>
+    new AppError(
+      429,
+      code,
+      message,
+      undefined,
+      retryAfterSeconds === undefined ? undefined : Math.max(1, Math.ceil(retryAfterSeconds)),
+    ),
   /** عطلٌ داخلي **معروف السبب** برمزٍ يميّزه — لا تفاصيل داخلية في الرسالة. */
   internal: (message: string, code: string) => new AppError(500, code, message),
 } as const;
