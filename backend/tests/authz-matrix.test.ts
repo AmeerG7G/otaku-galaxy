@@ -352,7 +352,7 @@ describe('Phase 3 — vertical privilege escalation (every admin endpoint)', () 
     ['get', () => '/api/admin/me'],
     ['patch', () => '/api/admin/me', { username: 'x' }],
     ['get', () => '/api/admin/admins'],
-    ['post', () => '/api/admin/admins', { username: 'xx', phone: '07800000999', password: 'password-1', permissions: [] }],
+    ['post', () => '/api/admin/admins', { username: 'xx', phone: '07800000999', password: 'amber-lantern-43', permissions: [] }],
     ['patch', () => `/api/admin/admins/${U}`, { permissions: ['orders'] }],
     ['delete', () => `/api/admin/admins/${U}`],
     ['get', () => '/api/admin/audit'],

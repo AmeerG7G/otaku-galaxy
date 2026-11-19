@@ -18,7 +18,7 @@ export const api = request(app);
  * رمزٍ ولا من كتابة مباشرة في القاعدة — حتى يبقى الاختبار شاهداً على أن
  * لا مسار عاماً يفعّل حساباً.
  */
-export const TEST_PASSWORD = 'secret123';
+export const TEST_PASSWORD = 'quiet-river-731';
 
 /** بذور بيانات مشتركة للاختبارات: قسم + منتجات + محافظة. */
 export async function seedTestCatalog() {

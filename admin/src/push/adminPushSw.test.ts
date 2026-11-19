@@ -48,3 +48,24 @@ describe('admin-push-sw.js — اشتراكٌ تبدّل', () => {
     await expect(dispatch(listeners.get('pushsubscriptionchange')!)).resolves.toBeUndefined()
   })
 })
+
+describe('admin-push-sw.js — إشعار النظام', () => {
+  it('[CRITICAL] الشارة ظلٌّ أحادي لا الشعار المعتم — وإلا ظهرت مربعاً أبيض', async () => {
+    const { listeners, self } = loadWorker([])
+    const push = listeners.get('push')!
+    let pending: Promise<unknown> = Promise.resolve()
+    push({
+      data: { json: () => ({ data: { title: 'طلب جديد', body: 'أمير', event: 'new_order', orderId: 'o1', url: '/orders/o1' } }) },
+      waitUntil: (promise: Promise<unknown>) => (pending = promise),
+    })
+    await pending
+    expect(self.registration.showNotification).toHaveBeenCalledWith(
+      'طلب جديد',
+      expect.objectContaining({
+        icon: '/otaku-square-mark.png',
+        badge: '/otaku-notification-badge.png',
+        data: { url: '/orders/o1' },
+      }),
+    )
+  })
+})

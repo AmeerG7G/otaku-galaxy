@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { GENDERS } from '../types/index.js';
+import { newPasswordSchema } from './auth.js';
 import { GALAXY_LEVEL_KEYS } from '../domain/galaxyPoints.js';
 import {
   MAX_OPTION_NAME_LENGTH,
@@ -618,16 +619,15 @@ export const adminResolveRequestSchema = z.object({
 });
 
 /**
- * كلمة المرور الجديدة التي يضعها المسؤول — نفس قواعد التسجيل (٨ أحرف فأكثر).
+ * كلمة المرور الجديدة التي يضعها المسؤول — نفس قواعد التسجيل بالمخطّط نفسه.
  *
  * [CRITICAL] لا حقل «مؤقّتة» ولا «يجب تغييرها»: هذه كلمة المرور الدائمة.
  * `requestId` اختياري ويُربط بالحساب في الخدمة — لا يُخوِّل وحده شيئاً.
  */
 export const adminSetCustomerPasswordSchema = z.object({
-  newPassword: z
-    .string()
-    .min(8, 'كلمة المرور يجب أن تكون 8 أحرف على الأقل')
-    .max(200, 'كلمة المرور طويلة جداً'),
+  // [SECURITY] المخطّط المشترك لا نسخةٌ منه: النسخة كانت `max(200)` حرفاً،
+  // فكلمةٌ أطول من ٧٢ بايتاً تُقتطع بصمت في bcrypt.
+  newPassword: newPasswordSchema,
   requestId: z.string().uuid('معرّف غير صالح').optional(),
   note: z.string().trim().max(500).optional(),
 });

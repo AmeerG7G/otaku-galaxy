@@ -465,6 +465,9 @@ void main() {
       for (final entity in Directory('lib').listSync(recursive: true)) {
         if (entity is! File || !entity.path.endsWith('.dart')) continue;
         if (entity.path.contains(localizationLayer)) continue;
+        // بيانات سياسة كلمة المرور المولَّدة من الخادم (STEP 85): كلماتٌ شائعة
+        // تُحظر، لا نصٌّ يُعرض. تطابقُها مع المصدر يحرسه `password_policy_test.dart`.
+        if (entity.path.endsWith('core/validation/password_policy_data.dart')) continue;
         var src = entity.readAsStringSync();
         src = src.replaceAll(RegExp(r'^\s*///.*$', multiLine: true), '');
         src = src.replaceAll(RegExp(r'^\s*//.*$', multiLine: true), '');

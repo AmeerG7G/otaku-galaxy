@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/constants/validation_rules.dart';
+import '../../../../core/validation/password_policy.dart';
 import '../../../../core/design_system/design_system.dart';
 import '../../../../core/errors/app_exception.dart';
 import '../../../../core/l10n/gender.dart' show AppGender, GenderedStrings;
@@ -229,12 +230,16 @@ class _RegisterScreenState extends State<RegisterScreen>
                     if (value == null || value.isEmpty) {
                       return context.strings('passwordRequired');
                     }
-                    // الحدّ نفسه الذي يفرضه الخادم — لا ٦ التي كان يقبلها
-                    // التطبيق ويرفضها الخادم بعد الإرسال.
-                    if (value.length < kPasswordMinLength) {
-                      return context.strings('passwordMinLength');
-                    }
-                    return null;
+                    // سياسة الخادم نفسها (STEP 85): الطول والبايتات والكلمات
+                    // الشائعة، ورقم الهاتف والاسم المكتوبان في هذا النموذج.
+                    final problem = passwordProblem(
+                      value,
+                      phone: _phoneController.text,
+                      username: _usernameController.text,
+                    );
+                    return problem == null
+                        ? null
+                        : context.strings(problem.stringKey);
                   },
                 ),
 

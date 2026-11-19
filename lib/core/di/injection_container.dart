@@ -345,6 +345,8 @@ void _initAuthFeature() {
         // [D3/P5] تغيير كلمة المرور يُبطل أجهزة الحساب على الخادم مع التوكن
         // القديم؛ هذا الجهاز يعيد تسجيل رمزه بالتوكن الجديد.
         onSessionRenewed: () => sl<PushRegistrar>().onLogin(),
+        // إلغاء تسجيل الجهاز والتوكن ما يزال صالحاً — بعد المسح يرتدّ بـ401.
+        beforeLogout: () => sl<PushRegistrar>().onLogout(),
       ),
     );
 }

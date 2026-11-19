@@ -46,11 +46,14 @@ function SidebarBrand() {
         flexShrink: 0,
       }}
     >
+      {/* شعارٌ لا صورةُ محتوى: بلا معاينة antd — كان النقر عليه يفتح عارض
+          الصور بملء الشاشة (تكبير/تدوير). */}
       <Image
         src="/otaku-square-mark.png"
         alt="مجرة الأوتاكو"
         width={40}
         height={40}
+        preview={false}
         style={{
           borderRadius: 14,
           boxShadow: '0 6px 18px rgba(124, 92, 255, 0.4)',

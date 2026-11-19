@@ -2,6 +2,13 @@ import { z } from 'zod';
 import { APP_LOCALES } from '../utils/locale.js';
 import { GENDERS } from '../types/index.js';
 import { normalizeIraqiPhone } from '../utils/phone.js';
+import {
+  ADMIN_PASSWORD_MIN_LENGTH,
+  PASSWORD_MAX_BYTES,
+  PASSWORD_MESSAGES,
+  PASSWORD_MIN_LENGTH,
+  passwordPatternProblem,
+} from '../domain/passwordPolicy.js';
 
 /**
  * رقم الهاتف — يُتحقَّق منه ثم **يُحوَّل** إلى الصيغة المعتمدة.
@@ -18,24 +25,33 @@ const phone = z
   .transform((v) => normalizeIraqiPhone(v)!);
 
 /**
- * سياسة كلمة المرور عند **الضبط** (تسجيل، إعادة تعيين، تغيير).
+ * سياسة كلمة المرور عند **الضبط** (تسجيل، إعادة تعيين، تغيير) — القواعد في
+ * `domain/passwordPolicy.ts`، وهذا غلافها لـzod.
  *
- * الحدّ الأدنى ثمانية. الحدّ الأعلى ٧٢ **بايتاً** لا حرفاً: bcrypt يتوقّف
- * عند ٧٢ بايتاً ويتجاهل ما بعدها بصمت، والحرف العربي بايتان في UTF-8 — أي
- * أن عبارة مرور عربية من ٤٠ حرفاً كانت تُقتطع دون أن يعلم صاحبها، فيظنّ
- * نفسه محمياً بما لم يُحسب أصلاً. الرفض الصريح أصدق من الاقتطاع الصامت.
+ * الحدّ الأعلى ٧٢ **بايتاً** لا حرفاً: bcrypt يتوقّف عند ٧٢ بايتاً ويتجاهل ما
+ * بعدها بصمت، والحرف العربي بايتان في UTF-8 — أي أن عبارة مرور عربية من ٤٠
+ * حرفاً كانت تُقتطع دون أن يعلم صاحبها. الرفض الصريح أصدق من الاقتطاع الصامت.
  *
- * لا قواعد تعقيد (رمز/رقم/حرف كبير): تدفع المستخدمين إلى أنماط متوقَّعة
- * وتمنع عبارات المرور الطويلة، فتُنقص الأمان بدل أن تزيده.
+ * ما يحتاج معرفة صاحب الحساب (رقمه، اسمه، دوره) تفحصه الخدمة بـ
+ * `assertAcceptablePassword` قبل التجزئة.
  */
-const MAX_PASSWORD_BYTES = 72;
+function settablePassword(minLength: number, minMessage: string) {
+  return z
+    .string()
+    .min(minLength, minMessage)
+    .refine((v) => Buffer.byteLength(v, 'utf8') <= PASSWORD_MAX_BYTES, {
+      message: PASSWORD_MESSAGES.tooLong,
+    })
+    .superRefine((v, ctx) => {
+      const problem = passwordPatternProblem(v);
+      if (problem) ctx.addIssue({ code: 'custom', message: problem });
+    });
+}
 
-const newPassword = z
-  .string()
-  .min(8, 'كلمة المرور يجب أن تكون 8 أحرف على الأقل')
-  .refine((v) => Buffer.byteLength(v, 'utf8') <= MAX_PASSWORD_BYTES, {
-    message: 'كلمة المرور طويلة جداً',
-  });
+const newPassword = settablePassword(PASSWORD_MIN_LENGTH, PASSWORD_MESSAGES.tooShort);
+
+/** كلمة مرور حساب مسؤول — حساباتٌ تقرأ بيانات كل الزبائن، فالحدّ ١٢. */
+const adminNewPassword = settablePassword(ADMIN_PASSWORD_MIN_LENGTH, PASSWORD_MESSAGES.adminTooShort);
 
 /**
  * كلمة المرور عند **الدخول** — تُقبل كما هي.
@@ -164,6 +180,7 @@ export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 export {
   phone as iraqiPhoneSchema,
   newPassword as newPasswordSchema,
+  adminNewPassword as adminNewPasswordSchema,
   loginPassword as currentPasswordSchema,
   username as usernameSchema,
 };

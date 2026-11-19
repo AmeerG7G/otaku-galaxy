@@ -143,7 +143,7 @@ describe('التطبيع عبر مسارات المصادقة', () => {
 
     const registered = await api
       .post('/api/auth/register')
-      .send({ username: 'مختبر التطبيع', phone: local, password: 'secret123',
+      .send({ username: 'مختبر التطبيع', phone: local, password: 'quiet-river-731',
         gender: 'male',
       })
       .expect(202);
@@ -153,14 +153,14 @@ describe('التطبيع عبر مسارات المصادقة', () => {
     // «رقماً آخر» ولفشل الدخول.
     const login = await api
       .post('/api/auth/login')
-      .send({ phone: canonical, password: 'secret123' })
+      .send({ phone: canonical, password: 'quiet-river-731' })
       .expect(200);
     expect(login.body.data.user.phone).toBe(canonical);
 
     // وبصيغة `00964` أيضاً.
     await api
       .post('/api/auth/login')
-      .send({ phone: `00964${local.slice(1)}`, password: 'secret123' })
+      .send({ phone: `00964${local.slice(1)}`, password: 'quiet-river-731' })
       .expect(200);
 
     const { rows } = await db.query<{ phone: string }>(
@@ -179,7 +179,7 @@ describe('التطبيع عبر مسارات المصادقة', () => {
 
     const first = await api
       .post('/api/auth/register')
-      .send({ username: 'الأول', phone: local, password: 'secret123',
+      .send({ username: 'الأول', phone: local, password: 'quiet-river-731',
         gender: 'male',
       })
       .expect(202);
@@ -188,7 +188,7 @@ describe('التطبيع عبر مسارات المصادقة', () => {
     // التسجيل ثانيةً بالصيغة الدولية يجب أن يصطدم بالحساب نفسه لا أن يُنشئ ثانياً.
     const again = await api
       .post('/api/auth/register')
-      .send({ username: 'الثاني', phone: canonical, password: 'secret123',
+      .send({ username: 'الثاني', phone: canonical, password: 'quiet-river-731',
         gender: 'male',
       });
     expect(again.status).toBeGreaterThanOrEqual(400);
@@ -208,7 +208,7 @@ describe('التطبيع عبر مسارات المصادقة', () => {
     for (const path of ['/api/auth/register', '/api/auth/login', '/api/auth/forgot-password']) {
       const res = await api
         .post(path)
-        .send({ username: 'مختبر', phone: '07001234567', password: 'secret123', gender: 'male' });
+        .send({ username: 'مختبر', phone: '07001234567', password: 'quiet-river-731', gender: 'male' });
       expect(res.status, path).toBe(400);
       expect(res.body.error.code, path).toBe('VALIDATION_ERROR');
     }

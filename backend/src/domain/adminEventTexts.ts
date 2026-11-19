@@ -1,5 +1,3 @@
-import { formatIraqiPhone } from '../utils/phone.js';
-
 /**
  * نصوص إشعارات هاتف **المسؤول** (STEP 64) — عربيةٌ وحدها عمداً.
  *
@@ -16,10 +14,14 @@ export const ADMIN_EVENT_TEXTS = {
     title: 'طلب جديد 🛒',
     body: `${customerName ?? 'زبون'} — ${iqd(total)}`,
   }),
-  accountRequest: (kind: 'registration' | 'password_reset', username: string, phone: string) => ({
+  /**
+   * [PRIVACY] لا رقم هاتف هنا: نصّ الإشعار يظهر على شاشة قفل المسؤول ويمرّ
+   * بخوادم Google (FCM). الاسم ونوع الطلب يكفيان للتنبيه؛ الرقم — وهو ما
+   * يُتحقّق منه عبر واتساب — يُقرأ في صفحة الطلبات بعد الدخول (`url`).
+   */
+  accountRequest: (kind: 'registration' | 'password_reset', username: string) => ({
     title: kind === 'registration' ? 'طلب إنشاء حساب' : 'طلب إعادة تعيين كلمة المرور',
-    // الرقم بصيغة اللوحة `07…` لا المخزَّنة `+9647…` — المسؤول يرى الرقم نفسه هنا وفي الطلب.
-    body: `${username} — ${formatIraqiPhone(phone)}`,
+    body: username,
   }),
   restockRequest: (productName: string) => ({
     title: 'طلب توفّر جديد',

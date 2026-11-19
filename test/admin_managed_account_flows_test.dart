@@ -217,7 +217,7 @@ void main() {
       final s = AppStrings.arabic;
       await _type(tester, s('username'), 'زبون جديد');
       await _type(tester, s('phoneNumber'), '07701234567');
-      await _type(tester, s('password'), 'secret123');
+      await _type(tester, s('password'), 'quiet-river-731');
       await tester.tap(find.text(s('genderMale')));
       await tester.pump();
       await _tapButton(tester, s('submitRequest'));
@@ -241,7 +241,7 @@ void main() {
       final k = AppStrings.kurdish;
       await _type(tester, k('username'), 'کڕیاری نوێ');
       await _type(tester, k('phoneNumber'), '07701234567');
-      await _type(tester, k('password'), 'secret123');
+      await _type(tester, k('password'), 'quiet-river-731');
       await tester.tap(find.text(k('genderFemale')));
       await tester.pump();
       await _tapButton(tester, k('submitRequest'));
@@ -370,7 +370,7 @@ void main() {
         expect(field.controller!.text, startsWith('07'), reason: entry.key);
 
         await _type(tester, s('username'), 'زبون جديد');
-        await _type(tester, s('password'), 'secret123');
+        await _type(tester, s('password'), 'quiet-river-731');
         await tester.tap(find.text(s('genderMale')));
         await tester.pump();
         await _tapButton(tester, s('submitRequest'));
@@ -403,7 +403,7 @@ void main() {
       final h = await _pump(tester, route: const RegisterRoute());
       final s = AppStrings.arabic;
       await _type(tester, s('username'), 'زبون جديد');
-      await _type(tester, s('password'), 'secret123');
+      await _type(tester, s('password'), 'quiet-river-731');
       await tester.tap(find.text(s('genderMale')));
       await tester.pump();
       for (final bad in [
