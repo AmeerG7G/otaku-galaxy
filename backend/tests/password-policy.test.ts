@@ -233,4 +233,57 @@ describe('سياسة كلمة المرور عبر الـAPI', () => {
     await db.query('UPDATE users SET password_hash = $1 WHERE id = $2', [await bcrypt.hash('123456', 4), user.userId]);
     await api.post('/api/auth/login').send({ phone: user.phone, password: '123456' }).expect(200);
   });
+
+  // ── التوافق مع الحسابات القائمة: السياسة تسري على ما يُضبط لا على ما ضُبط ──
+  describe('[CRITICAL] الحسابات القائمة: الدخول والتحقق من الحالية لم يتغيّرا', () => {
+    const setHash = async (userId: string, password: string) =>
+      db.query('UPDATE users SET password_hash = $1 WHERE id = $2', [await bcrypt.hash(password, 4), userId]);
+
+    it('كلمةٌ قديمة تخالف القواعد الجديدة (تحوي رقم صاحبها) ما زالت تدخل، والخاطئة تُرفض كما كانت', async () => {
+      const user = await registerAndLogin(freshPhone());
+      const legacy = user.phone.slice(-8); // ثمانية أرقام من رقمه — مرفوضةٌ لو ضُبطت اليوم
+      await setHash(user.userId, legacy);
+      const ok = await api.post('/api/auth/login').send({ phone: user.phone, password: legacy }).expect(200);
+      expect(ok.body.data.token).toEqual(expect.any(String));
+      expect(ok.body.data.user.role).toBe('customer');
+      const wrong = await api.post('/api/auth/login').send({ phone: user.phone, password: `${legacy}x` });
+      expect(wrong.status).toBe(401);
+    });
+
+    it('مسؤولٌ فرعي بكلمةٍ أقصر من ١٢ (ضُبطت قبل السياسة) ما زال يدخل بصلاحياته', async () => {
+      const sub = await createSubAdmin(['orders'], { suffix: 7731 });
+      await setHash(sub.userId, 'abc123');
+      const res = await api.post('/api/auth/login').send({ phone: sub.phone, password: 'abc123' }).expect(200);
+      expect(res.body.data.user.role).toBe('admin');
+      const bearer = { Authorization: `Bearer ${res.body.data.token}` };
+      await api.get('/api/admin/orders').set(bearer).expect(200);
+    });
+
+    it('تغيير كلمة المرور بكلمةٍ حالية قصيرة: الصحيحة تُقبل والخاطئة تُرفض، ثم القديمة لا تدخل والجديدة تدخل', async () => {
+      const user = await registerAndLogin(freshPhone());
+      await setHash(user.userId, '123456');
+      const login = await api.post('/api/auth/login').send({ phone: user.phone, password: '123456' }).expect(200);
+      const bearer = { Authorization: `Bearer ${login.body.data.token}` };
+
+      const wrong = await api.patch('/api/auth/me/password').set(bearer).send({ currentPassword: '654321', newPassword: 'amber-lantern-88' });
+      expect(wrong.status).toBe(400);
+      expect(wrong.body.error.code).toBe('INVALID_CURRENT_PASSWORD');
+
+      // الجديدة تخضع للسياسة حتى لو كانت الحالية قديمة.
+      const weakNew = await api.patch('/api/auth/me/password').set(bearer).send({ currentPassword: '123456', newPassword: '1234567' });
+      expect(weakNew.status).toBe(400);
+
+      await api.patch('/api/auth/me/password').set(bearer).send({ currentPassword: '123456', newPassword: 'amber-lantern-88' }).expect(200);
+      await api.post('/api/auth/login').send({ phone: user.phone, password: '123456' }).expect(401);
+      await api.post('/api/auth/login').send({ phone: user.phone, password: 'amber-lantern-88' }).expect(200);
+    });
+
+    it('التفعيل لم يتغيّر: طلبٌ بانتظار الإدارة لا يدخل ولو بكلمةٍ قوية صحيحة', async () => {
+      const phone = freshPhone();
+      await register('amber-lantern-55', { phone }).expect(202);
+      const res = await api.post('/api/auth/login').send({ phone, password: 'amber-lantern-55' });
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('ACCOUNT_PENDING_APPROVAL');
+    });
+  });
 });
