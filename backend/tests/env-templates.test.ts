@@ -105,6 +105,10 @@ describe('[CRITICAL] قوالب الإنتاج على المضيفات الحق�
     expect(active(store)).not.toMatch(/auth_basic|X-Robots-Tag|noindex/);
     expect(active(admin)).toContain('X-Robots-Tag "noindex, nofollow, noarchive" always');
     expect(active(api)).toContain('X-Robots-Tag "noindex, nofollow, noarchive" always');
+    // الاستثناء الوحيد: صور المنتجات العامّة (SEO 2026-11-19) — لا الـAPI ولا بقية الرفع.
+    expect(active(api)).toContain('return 200 "User-agent: *\\nAllow: /uploads/product/\\nDisallow: /\\n";');
+    expect(active(api).match(/location \^~ \/uploads\/[^ ]*/g)).toEqual(['location ^~ /uploads/product/']);
+    expect(active(api).match(/X-Robots-Tag "all"/g)).toHaveLength(1);
     expect(active(admin)).toContain('return 200 "User-agent: *\\nDisallow: /\\n";');
     // بوّابة اللوحة (قرار المالك 2026-11-02): Basic Auth بملف الإنتاج، و`robots.txt` خارجها.
     expect(active(admin)).toContain('auth_basic           "Otaku Galaxy admin";');
@@ -125,6 +129,33 @@ describe('[CRITICAL] قوالب الإنتاج على المضيفات الحق�
     for (const conf of [api, store, admin]) expect(active(conf)).not.toContain('www.otakugalaxystore.com');
     // HSTS من helmet على الـAPI؛ تكراره في nginx كان I-03.
     expect(active(api)).not.toContain('Strict-Transport-Security');
+  });
+
+  it('[SEO 2026-11-19] مضيف الـAPI: كتلة صور المنتجات وحدها تُفهرس، وكل ما سواها يرث noindex', () => {
+    const api = read('deploy/nginx/prod-api.conf')
+      .split('\n')
+      .filter((l) => !l.trimStart().startsWith('#'))
+      .join('\n');
+    // كتل الملف لا تتداخل: من `location … {` حتى أول `}`.
+    const blocks = [...api.matchAll(/location ([^{]+?) \{([^}]*)\}/g)].map((m) => ({ spec: m[1]!, body: m[2]! }));
+    expect(blocks.map((b) => b.spec)).toEqual(
+      expect.arrayContaining(['= /', '= /robots.txt', '= /health', '^~ /uploads/product/', '/uploads/', '/']),
+    );
+
+    // nginx: `add_header` داخل كتلةٍ يُبطل وراثة ترويسات الخادم لها وحدها. فالكتلة
+    // الوحيدة التي تعلن ترويسةً هي صور المنتجات، وما تعلنه `all` لا noindex.
+    const withHeaders = blocks.filter((b) => b.body.includes('add_header'));
+    expect(withHeaders.map((b) => b.spec)).toEqual(['^~ /uploads/product/']);
+    const product = withHeaders[0]!.body;
+    expect(product).toContain('add_header X-Robots-Tag "all" always;');
+    expect(product).not.toMatch(/noindex/);
+    expect(product).toContain('proxy_pass http://otaku_prod_api;');
+
+    // noindex على مستوى الخادم قبل أي كتلة، فيرثه الـAPI و`/uploads/` (تقييم، صورة شخصية، بانر…).
+    const serverNoindex = api.indexOf('add_header X-Robots-Tag "noindex, nofollow, noarchive" always;');
+    expect(serverNoindex).toBeGreaterThan(-1);
+    expect(serverNoindex).toBeLessThan(api.indexOf('location = /'));
+    expect(api.match(/add_header X-Robots-Tag/g)).toHaveLength(2);
   });
 
   it('بصمة سكربت `admin/index.html` المضمَّن هي التي في CSP اللوحة', () => {
