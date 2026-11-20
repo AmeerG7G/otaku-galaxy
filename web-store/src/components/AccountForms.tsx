@@ -4,8 +4,10 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { daysInMonth, MONTH_NAMES } from '@/lib/birthday';
 import { resolveMediaUrl } from '@/lib/media';
+import { passwordChangeError, type PasswordIdentity } from '@/lib/password-policy';
 import type { BirthdayStatus } from '@/lib/types';
 import { bff } from './client-api';
+import { NewPasswordField, useNewPasswordField } from './PasswordField';
 import { useHydrated } from './use-hydrated';
 
 type Feedback = { kind: 'error' | 'success'; text: string } | null;
@@ -147,28 +149,36 @@ export function ProfileForm({
 /**
  * Change the password. The API checks the current one and signs out every
  * other device; this browser receives the new session at once.
+ *
+ * The new password is checked against the API's policy and this account's own
+ * phone and name before sending (STEP 86); the API still decides.
  */
-export function PasswordForm() {
+export function PasswordForm({ identity }: { identity: PasswordIdentity }) {
   const hydrated = useHydrated();
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<Feedback>(null);
+  const newPasswordField = useNewPasswordField(identity);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
     const currentPassword = String(form.get('currentPassword') ?? '');
-    const newPassword = String(form.get('newPassword') ?? '');
-    const confirm = String(form.get('confirmPassword') ?? '');
-    if (!currentPassword) return setFeedback({ kind: 'error', text: 'أدخل كلمة المرور الحالية' });
-    if (newPassword.length < 8) return setFeedback({ kind: 'error', text: 'كلمة المرور يجب أن تكون 8 أحرف على الأقل' });
-    if (newPassword !== confirm) return setFeedback({ kind: 'error', text: 'كلمتا المرور غير متطابقتين' });
+    const newPassword = newPasswordField.value;
+    const confirmPassword = String(form.get('confirmPassword') ?? '');
+    const problem = passwordChangeError({ currentPassword, newPassword, confirmPassword }, identity);
+    if (problem?.field === 'newPassword') {
+      newPasswordField.check();
+      return setFeedback(null);
+    }
+    if (problem) return setFeedback({ kind: 'error', text: problem.text });
     setBusy(true);
     setFeedback(null);
     const result = await bff('/bff/account/password', { method: 'PATCH', body: { currentPassword, newPassword } });
     setBusy(false);
     if (result.ok) {
       formElement.reset();
+      newPasswordField.reset();
       setFeedback({ kind: 'success', text: `${result.message ?? 'تم تغيير كلمة المرور بنجاح'} — خرجت أجهزتك الأخرى من الحساب.` });
     } else setFeedback({ kind: 'error', text: result.error?.message ?? 'تعذّر تغيير كلمة المرور' });
   }
@@ -180,13 +190,10 @@ export function PasswordForm() {
         <label htmlFor="currentPassword">كلمة المرور الحالية</label>
         <input id="currentPassword" name="currentPassword" type="password" autoComplete="current-password" required />
       </div>
-      <div className="field">
-        <label htmlFor="newPassword">كلمة المرور الجديدة</label>
-        <input id="newPassword" name="newPassword" type="password" autoComplete="new-password" minLength={8} required />
-      </div>
+      <NewPasswordField id="newPassword" label="كلمة المرور الجديدة" field={newPasswordField} />
       <div className="field">
         <label htmlFor="confirmPassword">تأكيد كلمة المرور الجديدة</label>
-        <input id="confirmPassword" name="confirmPassword" type="password" autoComplete="new-password" minLength={8} required />
+        <input id="confirmPassword" name="confirmPassword" type="password" autoComplete="new-password" required />
       </div>
       <button type="submit" className="btn btn-primary btn-block" disabled={busy || !hydrated}>
         {busy ? 'جارٍ الحفظ…' : 'تغيير كلمة المرور'}

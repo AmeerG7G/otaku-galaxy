@@ -53,6 +53,14 @@ function recordingProvider(
 /** دورةٌ تلتقط كل المستحقّ (صفوف السويتات الأخرى تسبق بترتيب الوصول). */
 const dispatch = (provider: PushProvider | null) => dispatchPushOutbox({ provider, batchSize: 100_000 });
 
+/** لا أثر لأرقام الهاتف (بأيّ صيغة) في عنوان الصفّ ونصّه وبياناته. */
+function expectNoPhone(row: { title: string; body: string; data: Record<string, string> }, phone: string) {
+  const local = phone.replace(/\D/g, '').slice(-9); // 7XXXXXXXX — مشترك بين 07… و+9647…
+  expect(`${row.title} ${row.body} ${JSON.stringify(row.data)}`).not.toContain(local);
+  // النصّ المرئي فقط: `data` فيه UUIDs قد تحمل أرقاماً متتالية.
+  expect(`${row.title} ${row.body}`).not.toMatch(/\d{7,}/);
+}
+
 async function outboxFor(userId: string, audience: 'customer' | 'admin' = 'customer') {
   const { rows } = await db.query<{
     id: string;
@@ -60,10 +68,12 @@ async function outboxFor(userId: string, audience: 'customer' | 'admin' = 'custo
     attempts: number;
     last_error: string | null;
     event_key: string | null;
+    title: string;
+    body: string;
     data: Record<string, string>;
     next_attempt_at: Date;
   }>(
-    `SELECT id::text, status, attempts, last_error, event_key, data, next_attempt_at
+    `SELECT id::text, status, attempts, last_error, event_key, title, body, data, next_attempt_at
        FROM push_outbox WHERE user_id = $1 AND audience = $2 ORDER BY push_outbox.id`,
     [userId, audience],
   );
@@ -360,7 +370,7 @@ describe('admin push — events, fan-out, and separation from customers', () => 
 
   it('a NEW account request notifies once; resuming the same pending request does not ring again', async () => {
     const phone = `077${Math.floor(10000000 + Math.random() * 89999999)}`;
-    const body = { username: 'طالب حساب', phone, password: 'password-123', gender: 'female' };
+    const body = { username: 'طالب حساب', phone, password: 'amber-lantern-42', gender: 'female' };
     await api.post('/api/auth/register').send(body).expect(202);
     await api.post('/api/auth/register').send({ ...body, username: 'طالب حساب ٢' }).expect(202);
     const rows = (await outboxFor(superId, 'admin')).filter(
@@ -375,6 +385,9 @@ describe('admin push — events, fan-out, and separation from customers', () => 
       if (r.length) mine.push(row);
     }
     expect(mine).toHaveLength(1);
+    // [PRIVACY] لا رقم الزبون في ما يُرسل إلى FCM ويظهر على شاشة القفل.
+    expectNoPhone(mine[0]!, phone);
+    expect(mine[0]!.body).toBe('طالب حساب');
   });
 
   it('a password-reset request notifies the admins holding «account_requests»', async () => {
@@ -386,7 +399,8 @@ describe('admin push — events, fan-out, and separation from customers', () => 
       .expect(202);
     const after = await outboxFor(superId, 'admin');
     expect(after.length).toBe(before + 1);
-    expect(after.at(-1)).toMatchObject({ event_key: 'account_request' });
+    expect(after.at(-1)).toMatchObject({ event_key: 'account_request', body: 'مختبر' });
+    expectNoPhone(after.at(-1)!, customer.phone);
   });
 
   it('a NEW restock subscription notifies «restock» admins; a repeated tap does not', async () => {

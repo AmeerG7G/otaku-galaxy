@@ -479,6 +479,7 @@ export default function AccountRequestsPage() {
           open
           customerId={passwordFor.account.id}
           customerName={passwordFor.account.username}
+          customerPhone={passwordFor.account.phone}
           requestId={passwordFor.id}
           onClose={() => setPasswordFor(null)}
         />

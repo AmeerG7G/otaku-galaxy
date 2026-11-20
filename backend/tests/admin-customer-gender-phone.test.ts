@@ -28,12 +28,12 @@ async function signUp(gender: 'male' | 'female') {
   const phone = freshPhone();
   const registered = await api
     .post('/api/auth/register')
-    .send({ username: 'زبون إدارة', phone, password: 'secret123', gender })
+    .send({ username: 'زبون إدارة', phone, password: 'quiet-river-731', gender })
     .expect(202);
   await approveAsAdmin(registered.body.data.request.id as string);
   const login = await api
     .post('/api/auth/login')
-    .send({ phone, password: 'secret123' })
+    .send({ phone, password: 'quiet-river-731' })
     .expect(200);
   return {
     id: login.body.data.user.id as string,

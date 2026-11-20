@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
+import 'dart:ui' show Color;
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -15,6 +16,14 @@ import 'push_tap_router.dart';
 /// (`android.notification.channel_id`)، والبيان يجعلها الافتراضية لما يعرضه
 /// النظام والتطبيق في الخلفية.
 const String kPushChannelId = 'otaku_default';
+
+/// أيقونة شريط الحالة (`res/drawable-*/ic_stat_otaku.png`): رمزٌ مبسّط من الشعار
+/// (ثلاثة مربعات) أبيض على شفاف. أندرويد يرسم الأيقونة الصغيرة من الشفافية وحدها، فأيقونة التشغيل
+/// بأرضيتها المعتمة تظهر مربعاً أبيض. البيان يضبطها نفسها لـFCM في الخلفية.
+const String kPushSmallIcon = 'ic_stat_otaku';
+
+/// لون تلوين الأيقونة — `AppColors.primary`، ومثله `@color/notification_accent`.
+const Color kPushAccentColor = Color(0xFF8B5CF6);
 
 /// هل هيّأ [initPushNotifications] Firebase في هذا التشغيل؟ يقرؤه الحقن
 /// ليختار مصدر الرمز — `false` يُبقي [UnconfiguredPushTokenSource].
@@ -126,7 +135,7 @@ Future<bool> initPushNotifications({
     final local = FlutterLocalNotificationsPlugin();
     await local.initialize(
       settings: const InitializationSettings(
-        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+        android: AndroidInitializationSettings(kPushSmallIcon),
         iOS: DarwinInitializationSettings(
           requestAlertPermission: false,
           requestBadgePermission: false,
@@ -172,6 +181,8 @@ Future<bool> initPushNotifications({
               'Otaku Galaxy',
               importance: Importance.high,
               priority: Priority.high,
+              icon: kPushSmallIcon,
+              color: kPushAccentColor,
             ),
           ),
         ),

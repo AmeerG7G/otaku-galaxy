@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 export const metadata: Metadata = { title: 'تغيير كلمة المرور', robots: { index: false } };
 
 export default async function PasswordPage() {
-  await requireSession('/account/password');
+  const { user } = await requireSession('/account/password');
   return (
     <div className="narrow stack">
       <p>
@@ -15,7 +15,7 @@ export default async function PasswordPage() {
       </p>
       <h1>تغيير كلمة المرور</h1>
       <p className="hint">بعد التغيير تخرج كل أجهزتك الأخرى من الحساب، ويبقى هذا المتصفح داخلاً.</p>
-      <PasswordForm />
+      <PasswordForm identity={{ phone: user.phone, username: user.username }} />
     </div>
   );
 }

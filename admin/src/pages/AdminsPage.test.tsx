@@ -28,6 +28,7 @@ import {
 import { useAuthStore } from '../stores/authStore'
 import AdminsPage from './AdminsPage'
 import type { AdminProfile, SubAdmin } from '../types/adminPermissions'
+import { passwordMessage } from '../utils/passwordPolicy'
 
 const superAdmin: AdminProfile = { id: 's', username: 'المدير', phone: '+9647800000000', isSuperAdmin: true, permissions: [] }
 const subAdmin: AdminProfile = { id: 'b', username: 'مشرف', phone: '+9647800000005', isSuperAdmin: false, permissions: ['admins', 'orders'] }
@@ -219,5 +220,71 @@ describe('هاتف المسؤول', () => {
     expect(details.textContent).toContain('social_whatsapp: «07701234567» ← «07809876543»')
     expect(details.textContent).toContain('social_tiktok: «—» ← «https://tiktok.com/@otaku»')
     expect(details.textContent).not.toContain('964')
+  })
+})
+
+/**
+ * كلمات مرور المسؤولين (STEP 85): سياسة الخادم بحدّ المسؤول (١٢)، والاسم والرقم
+ * المكتوبان في النموذج نفسه. الرفض قبل الطلب؛ الخادم يفحص ثانيةً.
+ */
+describe('سياسة كلمة مرور المسؤول في اللوحة', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useAuthStore.setState({ token: 't', user: null })
+    vi.mocked(listSubAdmins).mockResolvedValue({ items: [orders] })
+    vi.mocked(listAudit).mockResolvedValue({ items: [], page: 1, limit: 20, total: 0, hasMore: false })
+  })
+
+  async function openCreate() {
+    vi.mocked(fetchAdminMe).mockResolvedValue(superAdmin)
+    const user = userEvent.setup()
+    renderPage()
+    await user.click(await screen.findByRole('tab', { name: 'المسؤولون' }))
+    await user.click(await screen.findByText('مسؤول جديد'))
+    const dialog = (await screen.findByText('مسؤول جديد', { selector: '.ant-modal-title' })).closest('.ant-modal') as HTMLElement
+    await user.type(within(dialog).getByLabelText('الاسم'), 'zainab')
+    await user.type(within(dialog).getByLabelText('رقم الهاتف'), '07800009911')
+    return { user, dialog }
+  }
+
+  it.each([
+    ['k7#mPq2z-9', 'adminTooShort'],
+    ['password1234', 'weak'],
+    ['qwerty123456', 'weak'],
+    ['ops-07800009911-x', 'containsPhone'],
+    ['mod-zainab-river-7', 'containsUsername'],
+  ] as const)('إنشاء: «%s» ← %s، ولا طلب', async (password, problem) => {
+    const { user, dialog } = await openCreate()
+    await user.type(within(dialog).getByLabelText('كلمة المرور'), password)
+    await user.click(within(dialog).getByText('إنشاء'))
+    expect(await within(dialog).findByText(passwordMessage(problem))).toBeInTheDocument()
+    expect(createSubAdmin).not.toHaveBeenCalled()
+  })
+
+  it('تعديل مسؤول: رقمه المحفوظ محظور داخل الكلمة الجديدة', async () => {
+    vi.mocked(fetchAdminMe).mockResolvedValue(superAdmin)
+    const user = userEvent.setup()
+    renderPage()
+    await user.click(await screen.findByRole('tab', { name: 'المسؤولون' }))
+    const row = (await screen.findByText('مشرف الطلبات')).closest('[data-row-key]') as HTMLElement
+    await user.click(within(row).getByText('تعديل'))
+    const dialog = (await screen.findByText('تعديل مشرف الطلبات')).closest('.ant-modal') as HTMLElement
+    await user.type(within(dialog).getByLabelText('كلمة مرور جديدة'), 'team-07800009910-x')
+    await user.click(within(dialog).getByText('حفظ'))
+    expect(await within(dialog).findByText(passwordMessage('containsPhone'))).toBeInTheDocument()
+    expect(updateSubAdmin).not.toHaveBeenCalled()
+  }, 90_000)
+
+  it('ملفّي: كلمة شائعة ← رسالة الخادم، ولا طلب', async () => {
+    vi.mocked(fetchAdminMe).mockResolvedValue(subAdmin)
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByDisplayValue('مشرف')
+    await user.type(screen.getByLabelText('كلمة المرور الجديدة'), 'password1234')
+    await user.type(screen.getByLabelText('تأكيد كلمة المرور الجديدة'), 'password1234')
+    await user.type(screen.getByLabelText('كلمة المرور الحالية'), 'old-pass-123')
+    await user.click(screen.getByText('حفظ'))
+    expect(await screen.findByText(passwordMessage('weak'))).toBeInTheDocument()
+    expect(updateOwnProfile).not.toHaveBeenCalled()
   })
 })

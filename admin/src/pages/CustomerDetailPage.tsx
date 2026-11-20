@@ -331,6 +331,7 @@ export default function CustomerDetailPage() {
         open={passwordOpen}
         customerId={profile.id}
         customerName={profile.username}
+        customerPhone={profile.phone}
         {...(pendingReset ? { requestId: pendingReset.id } : {})}
         onClose={() => setPasswordOpen(false)}
       />

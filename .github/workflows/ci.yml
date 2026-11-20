@@ -110,6 +110,10 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          # إصدارٌ مثبَّت لا «آخر stable»: 3.50.0 أهمل `package:flutter/material.dart`
+          # فأفشل `flutter analyze` (261 تنبيه) دون أي تغيير في الكود. 3.47.9 آخر
+          # إصدار نجح عليه الفحص (cc894dd). الترقية تغييرٌ مقصود مع ترحيل الاستيرادات.
+          flutter-version: 3.47.9
       - run: flutter pub get
       - run: flutter analyze
       # اختبارات التكامل تحتاج خادماً حياً؛ موسومة بـ`integration` وتُستثنى

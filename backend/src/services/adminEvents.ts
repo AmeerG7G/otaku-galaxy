@@ -21,11 +21,11 @@ export const adminEvents = {
 
   accountRequest(
     db: pg.Pool | pg.PoolClient,
-    request: { id: string; kind: 'registration' | 'password_reset'; username: string; phone: string },
+    request: { id: string; kind: 'registration' | 'password_reset'; username: string },
   ) {
     return pushOutboxRepo.enqueueAdminEvent(db, {
       event: 'account_request',
-      ...ADMIN_EVENT_TEXTS.accountRequest(request.kind, request.username, request.phone),
+      ...ADMIN_EVENT_TEXTS.accountRequest(request.kind, request.username),
       data: { url: '/account-requests', requestId: request.id },
     });
   },

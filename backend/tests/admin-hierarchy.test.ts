@@ -96,7 +96,7 @@ describe('admin hierarchy — adversarial', () => {
     const other = await createSubAdmin(['orders'], { suffix: 3 });
     const attempts = [
       api.get('/api/admin/admins'),
-      api.post('/api/admin/admins').send({ username: 'دخيل', phone: '07800009901', password: 'password-123', permissions: ['admins'] }),
+      api.post('/api/admin/admins').send({ username: 'دخيل', phone: '07800009901', password: 'amber-lantern-42', permissions: ['admins'] }),
       api.patch(`/api/admin/admins/${other.userId}`).send({ permissions: [...ADMIN_SECTIONS] }),
       api.patch(`/api/admin/admins/${all.userId}`).send({ permissions: [...ADMIN_SECTIONS] }),
       api.patch(`/api/admin/admins/${superUserId}`).send({ isActive: false }),
@@ -281,13 +281,13 @@ describe('admin hierarchy — adversarial', () => {
     const unknown = await api
       .post('/api/admin/admins')
       .set(bearer(superToken))
-      .send({ username: 'مسؤول', phone: '07800009910', password: 'password-123', permissions: ['everything'] });
+      .send({ username: 'مسؤول', phone: '07800009910', password: 'amber-lantern-42', permissions: ['everything'] });
     expect(unknown.status).toBe(400);
 
     const promote = await api
       .post('/api/admin/admins')
       .set(bearer(superToken))
-      .send({ username: 'مسؤول', phone: customer.phone, password: 'password-123', permissions: ['orders'] });
+      .send({ username: 'مسؤول', phone: customer.phone, password: 'amber-lantern-42', permissions: ['orders'] });
     expect(promote.status).toBe(409);
     expect(promote.body.error.code).toBe('PHONE_TAKEN');
     const still = await db.query<{ role: string; admin_permissions: string[] }>(
@@ -299,7 +299,7 @@ describe('admin hierarchy — adversarial', () => {
     const superFlag = await api
       .post('/api/admin/admins')
       .set(bearer(superToken))
-      .send({ username: 'مسؤول', phone: '07800009910', password: 'password-123', permissions: [], isSuperAdmin: true });
+      .send({ username: 'مسؤول', phone: '07800009910', password: 'amber-lantern-42', permissions: [], isSuperAdmin: true });
     expect(superFlag.status).toBe(400);
     const none = await db.query('SELECT 1 FROM users WHERE phone = $1', ['+9647800009910']);
     expect(none.rowCount).toBe(0);

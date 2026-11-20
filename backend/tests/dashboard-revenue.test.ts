@@ -100,7 +100,7 @@ describe('إيراد الرئيسية', () => {
     const before = await stats();
     await api
       .post('/api/auth/register')
-      .send({ username: 'معلّق', phone: `077${Math.floor(10000000 + Math.random() * 89999999)}`, password: 'secret123', gender: 'female' })
+      .send({ username: 'معلّق', phone: `077${Math.floor(10000000 + Math.random() * 89999999)}`, password: 'quiet-river-731', gender: 'female' })
       .expect(202);
     const after = await stats();
     expect(after.customers.total).toBe(before.customers.total);

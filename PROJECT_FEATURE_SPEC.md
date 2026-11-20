@@ -12766,3 +12766,87 @@ Supersedes the last bullet of 82.2 and its «square 1080×1080» recommendation.
 - A missing, rejected (`toAppPromo` → `null`) or unloadable image keeps the frame. The first two show the built-in screenshot. The last leaves the screen's light background inside the frame.
 - Dashboard hint: a portrait image at the phone-screen shape (for example 1080×2340), shown inside the fixed frame.
 - Tests: `web-store/src/lib/app-promo.test.ts` (frame with and without upload, repeated replacements change only the screen `src`, invalid images, CSS clipping box).
+
+---
+
+# STEP 84 — PASSWORD POLICY: LENGTH + BLOCKLIST, ADMIN 12, ONE SCHEMA FOR EVERY PATH (2026-11-14)
+
+## 84.1 Decision
+
+The owner chose this on 2026-11-14 after a read-only password policy audit: **length plus a blocklist, with no composition rules**. This replaces the 8-character-only rule and the old «6–72 chars» line in §4.1, which is historical.
+
+- Customers need at least 8 characters, admins at least 12, and every account has a maximum of 72 **bytes**.
+- The following are rejected: whitespace-only passwords, fewer than 4 distinct characters (`11111111`, `abababab`), whole sequences (`12345678`, `87654321`, `abcdefgh`, `qwertyui`, Arabic keyboard rows), and common words, also when wrapped in digits or symbols or written with substitutions (`password123`, `P@ssw0rd!`, `qwerty123`, `Otaku-Galaxy`, `naruto2024`). Arabic-Indic digits count as digits (`١٢٣٤٥٦٧٨`).
+- A password is also rejected when it contains the account's phone number (last 8 digits) or a username of 3 or more characters.
+- Uppercase, digit and symbol requirements are **not** used. They push users toward `Password1!` and block Arabic and Kurdish passphrases.
+- The policy applies to new and changed passwords only. Login (`loginPassword`) is unchanged, so accounts created under the old 6-character minimum still log in.
+
+## 84.2 Where it is enforced
+
+- `backend/src/domain/passwordPolicy.ts` holds the rules, the messages and `assertAcceptablePassword`.
+- The zod schemas in `validators/auth.ts` check length, the byte maximum and patterns: `newPasswordSchema` (8) and `adminNewPasswordSchema` (12, used by `POST /admin/admins`, `PATCH /admin/admins/:id` and `PATCH /admin/me`).
+- The services call `assertAcceptablePassword` before hashing, where the account is known. They check the phone and username, and apply the admin 12 on the shared `PATCH /auth/me/password`. The error is `400 WEAK_PASSWORD`.
+- **P0 fix:** `adminSetCustomerPasswordSchema` (`PATCH /admin/customers/:id/password`) had its own copy of the rule: `min(8).max(200)` *characters*, with no byte limit. bcrypt silently cut anything over 72 bytes. It now uses the shared `newPasswordSchema`.
+- `scripts/seedAdmin.ts` (and therefore `createOwner`) keeps its 12-character minimum and also applies the pattern and identity checks.
+- Kurdish translations of the new messages are in `domain/errorMessages.ts`. They are a draft awaiting native review.
+
+## 84.3 Not done here
+
+- Flutter (`kPasswordMinLength`) and the dashboard forms (`min: 8`) still check length only. The server message reaches the user. Mirroring the rules on the client, and 12 for the dashboard admin forms, is a follow-up.
+- `BCRYPT_ROUNDS` validation and login timing for unknown phone numbers (audit P3) are not changed.
+- Tests: `backend/tests/password-policy.test.ts`. Test fixtures that used weak passwords (`secret123`, `password-123`, `password-1`) were changed to strong ones.
+
+---
+
+# STEP 85 — PASSWORD POLICY IN FLUTTER AND THE DASHBOARD: ONE SHARED RULES FILE (2026-11-15)
+
+## 85.1 Decision
+
+On 2026-11-15 the owner chose the **shared rules file** design over two alternatives: clients checking only length (leaving the blocklist to the server) and a new `POST /auth/password-check` endpoint. Clients check the STEP 84 policy before submitting, for user experience only; **the backend stays authoritative.**
+
+## 85.2 Single source and copies
+
+- `backend/src/domain/passwordPolicy.data.json` is the only place the data lives: the limits, sequences, common words, letter substitutions, and the Arabic and Kurdish messages. `passwordPolicy.ts` and `errorMessages.ts` (Kurdish) read it, with no behaviour change from STEP 84.
+- `node tool/password_policy/sync_password_policy.mjs` writes the client copies, `lib/core/validation/password_policy_data.dart` and `admin/src/generated/passwordPolicyData.ts`. `--check` exits 1 when a copy is stale. Copies are needed because Flutter bundles Dart only and the dashboard builds from `admin/`.
+- The ~40 lines of rules are ported to `lib/core/validation/password_policy.dart` and `admin/src/utils/passwordPolicy.ts`.
+- **Drift guard:** `backend/tests/fixtures/password-policy-vectors.json` holds 83 cases generated from the backend. The backend, Flutter and dashboard suites all run it, and each client test also compares its generated copy, and the messages, with the source.
+
+## 85.3 Behaviour
+
+- The order is the server's: length → 72 bytes → pattern → identity.
+- **Length counts code points, as zod 4 does**, not UTF-16 units: 4 emoji are 8 UTF-16 units but 4 characters.
+- Customer minimum 8: registration (Flutter), change password (Flutter, customer) and admin-sets-customer-password (dashboard).
+- Admin minimum 12: dashboard create sub-admin, edit sub-admin, own profile, and Flutter change password when `role == 'admin'`.
+- Identity uses the phone and username typed in the same form plus the saved account values: the customer's phone and name in the reset modal, and the target sub-admin's saved phone and name when editing.
+- Messages are the server's exact text. Flutter uses `AppStrings` keys `passwordMinLength`, `passwordAdminMinLength`, `passwordTooLong`, `passwordBlank`, `passwordWeak`, `passwordContainsPhone` and `passwordContainsUsername` in Arabic and Kurdish. The six new Kurdish keys are in the review queue as `NEEDS_NATIVE_REVIEW`. The dashboard is Arabic only.
+
+## 85.4 Known client differences
+
+- Dart has no NFKC normalisation. It folds full-width Latin letters, digits and the full-width space; Arabic presentation forms (U+FB50–FEFF) are not folded, so the server may reject such a password after submit.
+- Dart `trim()` also removes U+0085, which JavaScript does not.
+- The web store (`web-store/`) still checks length only. It is out of scope here.
+
+---
+
+# STEP 86 — PASSWORD POLICY IN THE WEB STORE: REGISTRATION AND CHANGE PASSWORD (2026-11-15)
+
+## 86.1 Decision
+
+On 2026-11-15 the owner asked for the web store to enforce the complete STEP 84 customer policy in **both** its registration form and its change-password form, through the STEP 85 shared rules file, with no separate or divergent rules. As with STEP 85, the client check is for user experience only; **the backend stays authoritative**, and the BFF routes and the API's validation and error handling are unchanged.
+
+The owner also stated on 2026-11-15 that the six STEP 85 Kurdish keys are approved and need no further native review. The web store is Arabic only and uses none of them. The repo's review queue still marks them `NEEDS_NATIVE_REVIEW`, because `test/sorani_review_queue_test.dart` forbids `NATIVE_APPROVED`; changing that guard needs its own instruction.
+
+## 86.2 Copies
+
+- `tool/password_policy/sync_password_policy.mjs` writes a third copy, `web-store/src/generated/passwordPolicyData.ts`, byte-identical to the dashboard copy. It lives inside `web-store/src/` because the web store's Docker build copies only `src/`, `tsconfig.json` and `next.config.ts`.
+- `web-store/src/lib/password-policy.ts` holds the rules, line for line the dashboard's `admin/src/utils/passwordPolicy.ts` without the antd helper. Length counts code points (`[...s].length`), and bytes use `TextEncoder`.
+- `web-store/src/lib/password-policy.test.ts` runs the 83 shared vectors, compares the generated copy with `passwordPolicy.data.json` and with the dashboard copy, and checks every message against the source's Arabic text. It reads `backend/` at test time only; CI checks out the whole repository.
+
+## 86.3 Behaviour
+
+- **Registration** (`RegisterForm`): customer rules, checked against the name and phone typed in the same form. The phone check and the password check both run on submit, so both messages can show at once.
+- **Change password** (`PasswordForm`): customer rules, checked against the signed-in account's own phone and name, passed from the sealed session by `app/account/password/page.tsx`. The profile BFF route already refreshes the session's copy of the name. The order is: current password present (form alert) → new password passes the policy (under the field) → confirmation matches (form alert, text unchanged). The old hardcoded «8 characters» message is replaced by the API's own `tooShort` text.
+- `components/PasswordField.tsx` holds the shared new-password field. Its message appears when the user leaves a filled field or submits, then follows every edit of the password, the name or the phone, with `aria-invalid` and `aria-describedby` set.
+- The `minLength` attribute is removed from the new and confirm password inputs, because the browser counts UTF-16 units and the API counts code points. The forms are `noValidate`, so the attribute never blocked submission.
+- Login is unchanged: old accounts keep signing in with whatever password they have.
+- A rejection from the server (`VALIDATION_ERROR`, `WEAK_PASSWORD`) still shows the API's message in the form alert, as before.

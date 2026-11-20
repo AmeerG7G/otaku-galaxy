@@ -22,7 +22,7 @@ describe('auth flow', () => {
     const res = await api.post('/api/auth/register').send({
       username: 'مختبر',
       phone: '123',
-      password: 'secret123',
+      password: 'quiet-river-731',
       gender: 'male',
     });
     expect(res.status).toBe(400);
@@ -36,7 +36,7 @@ describe('auth flow', () => {
     const reg = await api.post('/api/auth/register').send({
       username: 'مختبر',
       phone,
-      password: 'secret123',
+      password: 'quiet-river-731',
       gender: 'male',
     });
     expect(reg.status).toBe(202);
@@ -46,13 +46,13 @@ describe('auth flow', () => {
     expect(reg.body.data.request.status).toBe('pending');
 
     // قبل الموافقة: كلمة مرور صحيحة لا تفتح جلسة.
-    const early = await api.post('/api/auth/login').send({ phone, password: 'secret123' });
+    const early = await api.post('/api/auth/login').send({ phone, password: 'quiet-river-731' });
     expect(early.status).toBe(403);
     expect(early.body.error.code).toBe('ACCOUNT_PENDING_APPROVAL');
 
     await approveAsAdmin(reg.body.data.request.id as string);
 
-    const login = await api.post('/api/auth/login').send({ phone, password: 'secret123' });
+    const login = await api.post('/api/auth/login').send({ phone, password: 'quiet-river-731' });
     expect(login.status).toBe(200);
     expect(login.body.data.token).toBeTruthy();
     // أُرسل `077…` وخُزّن `+96477…`: هذا هو التطبيع من طرف إلى طرف.
@@ -70,7 +70,7 @@ describe('auth flow', () => {
     const res = await api.post('/api/auth/register').send({
       username: 'آخر',
       phone,
-      password: 'secret123',
+      password: 'quiet-river-731',
       gender: 'male',
     });
     expect(res.status).toBe(409);
@@ -161,11 +161,11 @@ describe('registration does not authenticate', () => {
     const phone = `078${Math.floor(10000000 + Math.random() * 89999999)}`;
     const reg = await api
       .post('/api/auth/register')
-      .send({ username: 'مختبر التحقق', phone, password: 'secret123', gender: 'male' })
+      .send({ username: 'مختبر التحقق', phone, password: 'quiet-river-731', gender: 'male' })
       .expect(202);
     expect(reg.body.data.token).toBeUndefined();
 
-    const login = await api.post('/api/auth/login').send({ phone, password: 'secret123' });
+    const login = await api.post('/api/auth/login').send({ phone, password: 'quiet-river-731' });
     expect(login.status).toBe(403);
     expect(login.body.data).toBeNull();
 
