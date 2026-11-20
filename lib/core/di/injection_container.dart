@@ -15,7 +15,6 @@ import '../router/app_router.dart';
 import '../tracking/tracking_signals.dart';
 import '../../features/auth/data/datasources/auth_local_storage.dart';
 import '../../features/auth/data/repositories/auth_repository_impl.dart';
-import '../../features/whatsapp_signup/data/whatsapp_signup_repository.dart';
 import '../../features/auth/domain/repositories/auth_repository.dart';
 import '../../features/auth/domain/usecases/change_password_usecase.dart';
 import '../../features/auth/domain/usecases/get_me_usecase.dart';
@@ -330,10 +329,6 @@ void _initAuthFeature() {
     )
     ..registerLazySingleton<ChangePasswordUsecase>(
       () => ChangePasswordUsecase(sl<AuthRepository>()),
-    )
-    // التسجيل عبر واتساب (WHATSAPP_VERIFY_MODE) — مستودعه وحده؛ مكعّبه لكل شاشة.
-    ..registerLazySingleton<WhatsAppSignupRepository>(
-      () => WhatsAppSignupRepositoryImpl(api: sl<ApiClient>()),
     )
     // [NOTE]: AuthCubit مسجّل كـ singleton لأن حالة الجلسة مشتركة بين
     // عدة شاشات؛ تعديلها في شاشة ينعكس على باقي الشاشات تلقائياً.

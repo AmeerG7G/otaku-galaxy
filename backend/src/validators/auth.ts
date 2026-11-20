@@ -184,9 +184,3 @@ export {
   loginPassword as currentPasswordSchema,
   username as usernameSchema,
 };
-
-/**
- * الحقول نفسها لمسار التحقق عبر واتساب (`validators/whatsappSignup.ts`) — مصدرٌ
- * واحد لقاعدة الرقم والاسم والجنس وكلمة المرور، لا نسخةٌ ثانية تنحرف عنه.
- */
-export const whatsappSignupFields = { phone, username, gender, newPassword } as const;

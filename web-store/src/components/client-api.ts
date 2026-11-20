@@ -10,7 +10,7 @@ export interface BffResult<T> {
   status: number;
   data?: T;
   message?: string | null;
-  error?: { code: string; message: string; details?: unknown; retryAfterSeconds?: number };
+  error?: { code: string; message: string; details?: unknown };
   replayed?: boolean;
 }
 

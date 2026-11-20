@@ -1,7 +1,6 @@
 import path from 'node:path';
 import { isIP } from 'node:net';
 import dotenv from 'dotenv';
-import { normalizeIraqiPhone } from '../utils/phone.js';
 
 /**
  * قراءة إعدادات البيئة — مع تمييز صريح بين التطوير والاختبار والإنتاج.
@@ -243,97 +242,6 @@ if (bffSharedSecret !== null && bffSharedSecret.length < MIN_JWT_SECRET_LENGTH) 
   );
 }
 
-// ===== التحقق التلقائي عبر واتساب (WHATSAPP_VERIFY_MODE) =====
-/**
- * وضع التسجيل: `off` (الافتراض) = المسار القائم كما هو — طلبٌ تحسمه الإدارة.
- * `auto` = الزبون يرسل رسالة واتساب من رقمه، فيُفعَّل حسابه حين يطابق المرسِلُ
- * الرقمَ المُدخَل. المسار الإداري يبقى في الوضعين بديلاً.
- *
- * [CRITICAL] الإنتاج **يرفض** `auto` عند الإقلاع — مهما قالت البيئة. رفعُ هذا
- * الحارس تغييرُ شيفرةٍ بموافقة المالك، لا تعديلُ ملف بيئة.
- */
-export type WhatsAppVerifyMode = 'off' | 'auto';
-export type WhatsAppProviderName = 'meta' | 'fixture';
-
-/** بديل التطوير/الاختبار وحدهما — موسومٌ باسمه، ويُرفض في البيئتين الحقيقيتين. */
-const DEV_WHATSAPP_PEPPER = 'development_only_whatsapp_pepper_do_not_use_in_production';
-const DEV_WHATSAPP_APP_SECRET = 'development_only_whatsapp_fixture_app_secret';
-/** رقمٌ عراقي صالح الصيغة للتطوير بمزوّد `fixture` — لا يُراسَل أبداً. */
-const DEV_WHATSAPP_BUSINESS_NUMBER = '+9647500000000';
-
-function resolveWhatsAppMode(raw: string | undefined): WhatsAppVerifyMode {
-  const value = raw?.trim().toLowerCase();
-  if (!value || value === 'off') return 'off';
-  if (value === 'auto') return 'auto';
-  fatalConfigErrors.push(`WHATSAPP_VERIFY_MODE=${raw} غير معروف. القيم المقبولة: off, auto.`);
-  return 'off';
-}
-
-const whatsappMode = resolveWhatsAppMode(process.env.WHATSAPP_VERIFY_MODE);
-if (isProduction && whatsappMode !== 'off') {
-  // بلا استثناء للاختبار: الإنتاج لا يعرف هذا المسار في هذه المرحلة.
-  fatalConfigErrors.push(
-    'WHATSAPP_VERIFY_MODE=auto مرفوض في الإنتاج — التحقق التلقائي عبر واتساب غير معتمد للإنتاج.',
-  );
-}
-
-const whatsappProviderRaw = (
-  process.env.WHATSAPP_PROVIDER?.trim().toLowerCase() || (requiresRealSecrets ? 'meta' : 'fixture')
-);
-const whatsappProvider: WhatsAppProviderName = whatsappProviderRaw === 'meta' ? 'meta' : 'fixture';
-const whatsappEnv = (name: string) => process.env[name]?.trim() ?? '';
-const whatsappBusinessNumberRaw = whatsappEnv('WHATSAPP_BUSINESS_NUMBER');
-const whatsappBusinessNumber =
-  normalizeIraqiPhone(whatsappBusinessNumberRaw) ??
-  (whatsappProvider === 'fixture' && !requiresRealSecrets ? DEV_WHATSAPP_BUSINESS_NUMBER : '');
-const whatsappPepper =
-  whatsappEnv('WHATSAPP_TOKEN_PEPPER') || (requiresRealSecrets ? '' : DEV_WHATSAPP_PEPPER);
-const whatsappAppSecret =
-  whatsappEnv('WHATSAPP_APP_SECRET') ||
-  (whatsappProvider === 'fixture' && !requiresRealSecrets ? DEV_WHATSAPP_APP_SECRET : '');
-
-if (whatsappMode === 'auto') {
-  if (whatsappProviderRaw !== 'meta' && whatsappProviderRaw !== 'fixture') {
-    fatalConfigErrors.push(`WHATSAPP_PROVIDER=${whatsappProviderRaw} غير معروف. القيم المقبولة: meta, fixture.`);
-  }
-  if (whatsappProvider === 'fixture' && requiresRealSecrets) {
-    fatalConfigErrors.push(`WHATSAPP_PROVIDER=fixture مرفوض في ${appEnv} — مزوّدٌ لا يستقبل رسائل حقيقية عطلٌ صامت.`);
-  }
-  if (whatsappProvider === 'meta') {
-    for (const name of ['WHATSAPP_APP_SECRET', 'WHATSAPP_VERIFY_TOKEN', 'WHATSAPP_ACCESS_TOKEN', 'WHATSAPP_PHONE_NUMBER_ID']) {
-      if (!whatsappEnv(name)) fatalConfigErrors.push(`${name} مفقود — مطلوب حين WHATSAPP_VERIFY_MODE=auto.`);
-    }
-  }
-  if (!normalizeIraqiPhone(whatsappBusinessNumberRaw) && (whatsappProvider === 'meta' || requiresRealSecrets)) {
-    fatalConfigErrors.push('WHATSAPP_BUSINESS_NUMBER مفقود أو ليس رقم موبايل عراقياً (+9647…).');
-  }
-  if (whatsappPepper.length < MIN_JWT_SECRET_LENGTH) {
-    fatalConfigErrors.push(
-      `WHATSAPP_TOKEN_PEPPER مفقود أو قصير (الحد الأدنى ${MIN_JWT_SECRET_LENGTH}) — ولّده بـ openssl rand -hex 32`,
-    );
-  }
-}
-
-function positiveInt(name: string, fallback: number): number {
-  const raw = process.env[name]?.trim();
-  if (!raw) return fallback;
-  const n = Number(raw);
-  if (!Number.isInteger(n) || n <= 0) {
-    fatalConfigErrors.push(`${name}: يجب أن يكون عدداً صحيحاً موجباً.`);
-    return fallback;
-  }
-  return n;
-}
-
-const whatsappSessionTtlSeconds = positiveInt('WHATSAPP_SESSION_TTL_SECONDS', 300);
-// الحدود العامّة اليومية (STEP 85، الحدود الطبقية): البدايات كلها سقفٌ أخير ضد
-// الفيضان، و«غير المتحقَّق منها» زرّ الانشغال، والرسائل الصادرة حارسُ الكلفة.
-const whatsappGlobalDailyCap = positiveInt('WHATSAPP_GLOBAL_DAILY_CAP', 5000);
-const whatsappGlobalUnverifiedDailyCap = positiveInt('WHATSAPP_GLOBAL_UNVERIFIED_DAILY_CAP', 1000);
-const whatsappOutboundDailyCap = positiveInt('WHATSAPP_OUTBOUND_DAILY_CAP', 500);
-const whatsappSendTimeoutMs = positiveInt('WHATSAPP_SEND_TIMEOUT_MS', 10_000);
-const whatsappOutboxIntervalMs = positiveInt('WHATSAPP_OUTBOX_INTERVAL_MS', 5_000);
-
 if (fatalConfigErrors.length > 0) {
   throw new Error(
     `فشل التحقق من إعدادات الإنتاج:\n  - ${fatalConfigErrors.join('\n  - ')}\n` +
@@ -413,60 +321,6 @@ export const config = {
   analytics: {
     jobIntervalMs: Number(process.env.ANALYTICS_JOB_INTERVAL_MS ?? 3_600_000),
     trackingEnabled: process.env.ANALYTICS_TRACKING_ENABLED === 'true',
-  },
-
-  /**
-   * التحقق التلقائي عبر واتساب — انظر `resolveWhatsAppMode` أعلاه. الأسرار لا
-   * تخرج من الخادم أبداً (لا تطبيق ولا موقع ولا لوحة).
-   */
-  whatsapp: {
-    mode: whatsappMode as WhatsAppVerifyMode,
-    provider: whatsappProvider as WhatsAppProviderName,
-    /** سرّ تطبيق Meta — مفتاح HMAC لترويسة `X-Hub-Signature-256`. */
-    appSecret: whatsappAppSecret,
-    /** قيمة `hub.verify_token` التي تُكتب في لوحة Meta عند ربط الويبهوك. */
-    verifyToken: whatsappEnv('WHATSAPP_VERIFY_TOKEN'),
-    /** توكن مستخدم النظام الدائم (System User) — للردود الصادرة وحدها. */
-    accessToken: whatsappEnv('WHATSAPP_ACCESS_TOKEN'),
-    phoneNumberId: whatsappEnv('WHATSAPP_PHONE_NUMBER_ID'),
-    graphApiVersion: whatsappEnv('WHATSAPP_GRAPH_API_VERSION') || 'v23.0',
-    /** رقم المتجر على واتساب (E.164) — يُعرض للزبون ويُبنى منه رابط wa.me. */
-    businessNumber: whatsappBusinessNumber,
-    /** مفتاح HMAC لتجزئة الرموز وعناوين IP — لا يُخزَّن رمزٌ صريح. */
-    tokenPepper: whatsappPepper,
-    sessionTtlSeconds: whatsappSessionTtlSeconds,
-    /** مهلة خطوة «مشاركة الرقم» بعد وصول الرسالة. */
-    contactTtlSeconds: 300,
-    /** المهلة بين التحقق وإكمال التسجيل (الاسم وكلمة المرور). */
-    completeWindowSeconds: 900,
-    /** تأخّر وصول الويبهوك المقبول بعد انتهاء الجلسة (طابع Meta داخل المهلة). */
-    webhookGraceSeconds: 600,
-    /** فرق الساعة المقبول بين طابع Meta وساعة الخادم. */
-    clockSkewSeconds: 60,
-    maxMismatches: 3,
-    maxCompleteAttempts: 5,
-    /**
-     * الحدود الطبقية. «العنوان» = IPv4 كاملاً أو شبكة IPv6 ‎/56 (`ipKeyGenerator`).
-     * الجلسة **غير المتحقَّق منها** (`verified_at IS NULL`) وحدها تستهلك حصّة
-     * العنوان الساعية: زبائن حقيقيون خلف NAT المشغّل يتحقّقون فلا يزاحم أحدهم
-     * غيره. انظر `whatsappSignupService.start`.
-     */
-    limits: {
-      livePerPhone: 3,
-      perPhoneHour: 6,
-      perPhoneDay: 15,
-      /** التأخير قبل البداية رقم n للرقم في الساعة (الفهرس n-1) — ١، ٢، ٤ دقائق للرابعة فما بعد. */
-      perPhoneDelaysSeconds: [0, 0, 0, 60, 120, 240] as number[],
-      perIpUnverifiedHour: 30,
-      perIpDay: 300,
-      globalUnverifiedDay: whatsappGlobalUnverifiedDailyCap,
-      globalDay: whatsappGlobalDailyCap,
-      outboundDay: whatsappOutboundDailyCap,
-    },
-    /** رسالة «أُنشئ حسابٌ بهذا الرقم» بعد الإكمال — حماية من انتحال المرسِل. */
-    confirmationMessage: process.env.WHATSAPP_CONFIRMATION_MESSAGE?.trim().toLowerCase() !== 'false',
-    sendTimeoutMs: whatsappSendTimeoutMs,
-    outboxIntervalMs: whatsappOutboxIntervalMs,
   },
 
   corsOrigins: (process.env.CORS_ORIGINS ?? '')
@@ -558,12 +412,6 @@ export const config = {
     globalMax: Number(process.env.RATE_LIMIT_GLOBAL_MAX ?? 300),
     /** سقف عام لنقاط المصادقة لكل IP — واسع لأنه يحمي من الفيضان لا من التخمين. */
     authMax: Number(process.env.RATE_LIMIT_AUTH_MAX ?? 60),
-    /**
-     * دلو الفيضان للتسجيل عبر واتساب (البداية + الإكمال) لكل عنوان — **منفصل** عن
-     * `authMax` كي لا يستهلك زبائنُ يسجّلون خلف NAT المشغّل حدَّ الدخول، ولا يحجبهم
-     * هو قبل حدود القاعدة الطبقية (٣٠ غير متحقَّق/ساعة). المنعُ الحقيقي هناك.
-     */
-    whatsappSignupMax: Number(process.env.RATE_LIMIT_WHATSAPP_SIGNUP_MAX ?? 120),
     /** محاولات تسجيل الدخول لكل (رقم + IP) — هذا هو الحاجز ضد تخمين كلمة المرور. */
     loginMaxPerPhone: Number(process.env.RATE_LIMIT_LOGIN_MAX_PER_PHONE ?? 10),
     /** محاولات التحقق من الرمز لكل (رقم + IP). */

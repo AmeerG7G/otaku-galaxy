@@ -257,36 +257,6 @@ export function accountRequestRateLimiter() {
 }
 
 /**
- * استعلام حالة التحقق عبر واتساب — التطبيق يسأل كل بضع ثوانٍ طوال المهلة،
- * فلا يشارك دلوَ `authRateLimiter` (٦٠ في ربع ساعة يُستنفد باستعلامٍ واحد).
- * المفتاح (العنوان + الجلسة): زبائن NAT واحد لا يتزاحمون.
- */
-export function whatsappStatusRateLimiter() {
-  return limiter({
-    limit: 240,
-    keyGenerator: (req) => {
-      const body = req.body as { sessionId?: unknown } | undefined;
-      const session = typeof body?.sessionId === 'string' ? body.sessionId.slice(0, 64) : 'unknown';
-      return `${clientRateLimitKey(req)}:${session}`;
-    },
-  });
-}
-
-/**
- * فيضان التسجيل عبر واتساب لكل عنوان — دلوٌ مستقلّ عن `authRateLimiter`
- * (انظر `config.rateLimit.whatsappSignupMax`). نسخةٌ واحدة تُركَّب على البداية
- * والإكمال معاً فيتقاسمان الدلو.
- */
-export function whatsappSignupFloodLimiter() {
-  return limiter({ limit: config.rateLimit.whatsappSignupMax });
-}
-
-/** ويبهوك واتساب — Meta ترسل من عناوين قليلة؛ سقفٌ واسع ضد الفيضان وحده. */
-export function whatsappWebhookRateLimiter() {
-  return limiter({ limit: 600, windowMs: 60_000 });
-}
-
-/**
  * سقف الرفع — بالحساب لا بالعنوان.
  *
  * المفتاح هو المستخدم المصادَق عليه: المسار محميّ أصلاً، والمفتاح بالعنوان
