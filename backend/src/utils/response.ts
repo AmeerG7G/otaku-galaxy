@@ -23,17 +23,11 @@ export function noContent(res: Response) {
  */
 export function httpError(res: Response, error: unknown, locale: AppLocale = 'ar') {
   if (error instanceof AppError) {
-    const retryAfter = error.retryAfterSeconds;
-    if (retryAfter !== undefined) res.setHeader('Retry-After', String(retryAfter));
     res.status(error.statusCode).json({
       success: false,
       data: null,
       message: localizeErrorMessage(error.message, locale),
-      error: {
-        code: error.code,
-        ...(error.details !== undefined ? { details: error.details } : {}),
-        ...(retryAfter !== undefined ? { retryAfterSeconds: retryAfter } : {}),
-      },
+      error: { code: error.code, ...(error.details !== undefined ? { details: error.details } : {}) },
     });
     return;
   }

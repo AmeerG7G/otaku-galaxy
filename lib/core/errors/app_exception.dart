@@ -13,7 +13,6 @@ class AppException implements Exception {
     this.statusCode,
     this.code,
     this.messageKey,
-    this.retryAfterSeconds,
   });
 
   final String message;
@@ -32,10 +31,6 @@ class AppException implements Exception {
   /// الخادم نفسها (`data.message`) تبقى كما هي: الخادم يعرف لغة صاحبها
   /// ويرسلها مصرَّفةً، وترجمتُها هنا تحريف.
   final String? messageKey;
-
-  /// ‏429: بعد كم ثانية تُقبل المحاولة التالية (`error.retryAfterSeconds`).
-  /// `null` حين لا يقولها الخادم.
-  final int? retryAfterSeconds;
 
   /// هل رفض الخادم الجلسة فعلاً؟ (بخلاف تعذّر الوصول إليه)
   bool get isUnauthorized => statusCode == 401;

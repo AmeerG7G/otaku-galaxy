@@ -390,19 +390,10 @@ class ApiClient {
       messageKey: serverMessage == null ? _fallbackKeyFor(statusCode) : null,
       statusCode: statusCode,
       code: _codeFrom(data),
-      retryAfterSeconds: _retryAfterFrom(data),
     );
   }
 
   /// رمز الخطأ من مغلف الخادم: `{ error: { code } }`.
-  /// مهلة إعادة المحاولة من مغلف الخادم: `{ error: { retryAfterSeconds } }`.
-  int? _retryAfterFrom(Map<String, dynamic> data) {
-    final error = data['error'];
-    if (error is! Map<String, dynamic>) return null;
-    final value = error['retryAfterSeconds'];
-    return value is num && value > 0 ? value.ceil() : null;
-  }
-
   String? _codeFrom(Map<String, dynamic> data) {
     final error = data['error'];
     if (error is Map<String, dynamic>) {
@@ -442,7 +433,6 @@ class ApiClient {
           messageKey: serverMessage == null ? _fallbackKeyFor(status) : null,
           statusCode: status,
           code: _codeFrom(data),
-          retryAfterSeconds: _retryAfterFrom(data),
         );
       }
       return AppException(
